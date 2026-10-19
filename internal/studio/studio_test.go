@@ -13,6 +13,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
@@ -243,7 +244,7 @@ func TestStudioHandlerServesShellAndSnapshot(t *testing.T) {
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "ML Studio") || !strings.Contains(page.Body.String(), "bsl-editor.js") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"definition\"") || !strings.Contains(page.Body.String(), "/api/search?query=") ||
 		!strings.Contains(page.Body.String(), "data-bsl-action=\"help\"") || !strings.Contains(page.Body.String(), "/api/bsl/help?query=") ||
-		page.Header().Get("Content-Security-Policy") == "" {
+		len(webpage.PolicyMissing(page.Header())) > 0 {
 		t.Fatalf("page status=%d headers=%v body=%s", page.Code, page.Header(), page.Body.String())
 	}
 	asset := httptest.NewRecorder()

@@ -2,7 +2,6 @@
 package studio
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -29,6 +28,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/querylang"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -237,16 +237,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 		response.Header().Set("Cache-Control", "public, max-age=86400")
 		_, _ = response.Write(icon)
 	})
-	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
-		page, err := assets.ReadFile("ui/index.html")
-		if err != nil {
-			http.Error(response, "ML Studio UI unavailable", http.StatusInternalServerError)
-			return
-		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_, _ = response.Write(page)
-	})
+	routes.HandleFunc("GET /{$}", webpage.Page(assets, "ML Studio"))
 	// A project that does not read is in conflict with what Studio shows,
 	// not a request it could not use.
 	routes.HandleFunc("GET /api/project", answerQuery(func(response http.ResponseWriter, err error) {
@@ -266,7 +257,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			response.WriteHeader(http.StatusNotModified)
 			return
 		}
-		writeStudioJSON(response, file)
+		webpage.JSON(response, http.StatusOK, file)
 	})
 	routes.HandleFunc("PUT /api/file", answerStudio(0, writeSourceError, func(input struct {
 		Path             string `json:"path"`
@@ -321,7 +312,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 		if highlights == nil {
 			highlights = []querylang.Highlight{}
 		}
-		writeStudioJSON(response, struct {
+		webpage.JSON(response, http.StatusOK, struct {
 			Highlights []querylang.Highlight `json:"highlights"`
 		}{highlights})
 	})
@@ -444,7 +435,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			writeSaveDataError(response, workspace.PhysicalNames(request.Context()), err)
 			return
 		}
-		writeStudioJSON(response, struct {
+		webpage.JSON(response, http.StatusOK, struct {
 			GitCommit        string `json:"gitCommit"`
 			SchemaSHA256     string `json:"schemaSha256"`
 			SavedAt          string `json:"savedAt"`
@@ -455,13 +446,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			MigrationStatus: migration.Status, DestructiveCount: migration.DestructiveCount,
 		})
 	})
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
-		response.Header().Set("X-Content-Type-Options", "nosniff")
-		response.Header().Set("Referrer-Policy", "no-referrer")
-		response.Header().Set("X-Frame-Options", "DENY")
-		routes.ServeHTTP(response, request)
-	})
+	return webpage.Secured(routes)
 }
 
 func validateStudioMutation(response http.ResponseWriter, request *http.Request) bool {
@@ -487,7 +472,7 @@ func answerRoute(response http.ResponseWriter, refuse func(http.ResponseWriter, 
 		refuse(response, err)
 		return
 	}
-	writeStudioJSON(response, result)
+	webpage.JSON(response, http.StatusOK, result)
 }
 
 // answerStudio is a route of Studio that reads a request the one way
@@ -638,17 +623,6 @@ func writeGitError(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	}
 	http.Error(response, err.Error(), status)
-}
-
-func writeStudioJSON(response http.ResponseWriter, value any) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(value); err != nil {
-		http.Error(response, "Unable to encode response", http.StatusInternalServerError)
-		return
-	}
-	response.Header().Set("Content-Type", "application/json; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
-	_, _ = response.Write(body.Bytes())
 }
 
 func writeSourceError(response http.ResponseWriter, err error) {

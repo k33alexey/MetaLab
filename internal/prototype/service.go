@@ -12,6 +12,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 const calculationSource = `Function Calculate(A, B) Export
@@ -52,22 +53,11 @@ func (service *Service) Handler() http.Handler { return service.handler }
 
 func (service *Service) routes() http.Handler {
 	routes := http.NewServeMux()
-	routes.HandleFunc("GET /{$}", service.index)
+	routes.HandleFunc("GET /{$}", webpage.Page(assets, "ML prototype"))
 	routes.HandleFunc("GET /api/health", service.health)
 	routes.HandleFunc("GET /api/prototype/stats", service.stats)
 	routes.HandleFunc("POST /api/prototype/calculate", service.calculate)
-	return routes
-}
-
-func (service *Service) index(response http.ResponseWriter, _ *http.Request) {
-	page, err := assets.ReadFile("ui/index.html")
-	if err != nil {
-		http.Error(response, "prototype UI unavailable", http.StatusInternalServerError)
-		return
-	}
-	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
-	_, _ = response.Write(page)
+	return webpage.Secured(routes)
 }
 
 func (service *Service) health(response http.ResponseWriter, request *http.Request) {
@@ -75,7 +65,7 @@ func (service *Service) health(response http.ResponseWriter, request *http.Reque
 		writeError(response, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "database": "postgresql"})
+	webpage.JSON(response, http.StatusOK, map[string]string{"status": "ok", "database": "postgresql"})
 }
 
 func (service *Service) stats(response http.ResponseWriter, request *http.Request) {
@@ -84,7 +74,7 @@ func (service *Service) stats(response http.ResponseWriter, request *http.Reques
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(response, http.StatusOK, stats)
+	webpage.JSON(response, http.StatusOK, stats)
 }
 
 func (service *Service) calculate(response http.ResponseWriter, request *http.Request) {
@@ -131,7 +121,7 @@ func (service *Service) calculate(response http.ResponseWriter, request *http.Re
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(response, http.StatusOK, struct {
+	webpage.JSON(response, http.StatusOK, struct {
 		Calculation
 		ElapsedMicroseconds int64 `json:"elapsedMicroseconds"`
 	}{Calculation: calculation, ElapsedMicroseconds: time.Since(started).Microseconds()})
@@ -148,13 +138,6 @@ func ensureJSONEnd(decoder *json.Decoder) error {
 	return nil
 }
 
-func writeJSON(response http.ResponseWriter, status int, value any) {
-	response.Header().Set("Content-Type", "application/json; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
-	response.WriteHeader(status)
-	_ = json.NewEncoder(response).Encode(value)
-}
-
 func writeError(response http.ResponseWriter, status int, message string) {
-	writeJSON(response, status, map[string]string{"error": message})
+	webpage.JSON(response, status, map[string]string{"error": message})
 }

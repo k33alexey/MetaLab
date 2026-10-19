@@ -18,6 +18,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 type RoleSource struct {
@@ -563,7 +564,7 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 			return
 		}
 		response.Header().Set("ETag", `"`+role.Revision+`"`)
-		writeStudioJSON(response, role)
+		webpage.JSON(response, http.StatusOK, role)
 	})
 	routes.HandleFunc("PUT /api/role", answerStudio(0, writeSourceError, func(input struct {
 		Path             string                  `json:"path"`

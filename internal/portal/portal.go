@@ -2,7 +2,6 @@
 package portal
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -24,6 +23,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 const sessionCookie = "ml_session"
@@ -54,18 +54,9 @@ type runtime interface {
 func NewHandler(platformRuntime runtime) http.Handler {
 	routes := http.NewServeMux()
 	loginLimits := newLoginLimiter()
-	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
-		page, err := assets.ReadFile("ui/index.html")
-		if err != nil {
-			http.Error(response, "ML Portal UI unavailable", http.StatusInternalServerError)
-			return
-		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_, _ = response.Write(page)
-	})
+	routes.HandleFunc("GET /{$}", webpage.Page(assets, "ML Portal"))
 	routes.HandleFunc("GET /api/health", func(response http.ResponseWriter, _ *http.Request) {
-		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "database": "postgresql"})
+		webpage.JSON(response, http.StatusOK, map[string]string{"status": "ok", "database": "postgresql"})
 	})
 	routes.HandleFunc("GET /assets/ml-app/{name}", func(response http.ResponseWriter, request *http.Request) {
 		mlapp.ServeAsset(response, request, request.PathValue("name"))
@@ -101,7 +92,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		}
 		loginLimits.Succeeded(limitKey)
 		setSessionCookie(response, request, login.Token, time.Until(login.Session.AbsoluteExpiresAt))
-		writeJSON(response, http.StatusOK, login.Session)
+		webpage.JSON(response, http.StatusOK, login.Session)
 	})
 	routes.HandleFunc("GET /api/portal", func(response http.ResponseWriter, request *http.Request) {
 		token, ok := requireToken(response, request)
@@ -114,7 +105,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Authentication required", http.StatusUnauthorized)
 			return
 		}
-		writeJSON(response, http.StatusOK, struct {
+		webpage.JSON(response, http.StatusOK, struct {
 			Session   systemdb.PortalSession    `json:"session"`
 			Databases []platform.PortalDatabase `json:"databases"`
 		}{Session: session, Databases: databases})
@@ -173,7 +164,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		case err != nil:
 			http.Error(response, "Unable to open database", http.StatusServiceUnavailable)
 		default:
-			writeJSON(response, http.StatusOK, struct {
+			webpage.JSON(response, http.StatusOK, struct {
 				Session systemdb.DatabaseSession `json:"session"`
 				URL     string                   `json:"url"`
 			}{Session: session, URL: "/app/" + id.String()})
@@ -213,7 +204,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Publication state unavailable", http.StatusConflict)
 			return
 		}
-		writeJSON(response, http.StatusOK, marker)
+		webpage.JSON(response, http.StatusOK, marker)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/app-bootstrap", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
@@ -249,7 +240,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "ML App unavailable", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(response, http.StatusOK, bootstrap)
+		webpage.JSON(response, http.StatusOK, bootstrap)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/forms/{objectKind}/{name}/{formKind}", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
@@ -272,7 +263,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Managed form unavailable", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(response, http.StatusOK, form)
+		webpage.JSON(response, http.StatusOK, form)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/lists/{objectKind}/{name}", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
@@ -294,7 +285,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Dynamic list unavailable", http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, page)
+		webpage.JSON(response, http.StatusOK, page)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/objects/{objectKind}/{name}/{reference}", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
@@ -311,7 +302,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Application object unavailable", http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, state)
+		webpage.JSON(response, http.StatusOK, state)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/save", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -335,7 +326,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Unable to save application object", http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, state)
+		webpage.JSON(response, http.StatusOK, state)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/deletion-mark", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -362,7 +353,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Unable to set deletion mark", http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, state)
+		webpage.JSON(response, http.StatusOK, state)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/post", documentAction(platformRuntime.PostApplicationDocument, "Unable to post document"))
 	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/undo-posting", documentAction(platformRuntime.UndoApplicationDocumentPosting, "Unable to undo document posting"))
@@ -376,7 +367,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Database session unavailable", http.StatusConflict)
 			return
 		}
-		writeJSON(response, http.StatusOK, session)
+		webpage.JSON(response, http.StatusOK, session)
 	})
 	routes.HandleFunc("POST /api/sessions/{id}/message/ack", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -397,7 +388,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		}
 		response.WriteHeader(http.StatusNoContent)
 	})
-	return securityHeaders(routes)
+	return webpage.Secured(routes)
 }
 
 func decodeDynamicListRequest(query url.Values) (metadata.DynamicListRequest, error) {
@@ -531,7 +522,7 @@ func documentAction(act func(context.Context, string, uuid.UUID, string, string)
 			http.Error(response, failure, http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, state)
+		webpage.JSON(response, http.StatusOK, state)
 	}
 }
 
@@ -583,34 +574,12 @@ func decodeJSON(response http.ResponseWriter, request *http.Request, destination
 	return true
 }
 
-func writeJSON(response http.ResponseWriter, status int, value any) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(value); err != nil {
-		http.Error(response, "Unable to encode response", http.StatusInternalServerError)
-		return
-	}
-	response.Header().Set("Content-Type", "application/json; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
-	response.WriteHeader(status)
-	_, _ = response.Write(body.Bytes())
-}
-
 func remoteHost(address string) string {
 	host, _, err := net.SplitHostPort(address)
 	if err == nil {
 		return host
 	}
 	return address
-}
-
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
-		response.Header().Set("X-Content-Type-Options", "nosniff")
-		response.Header().Set("Referrer-Policy", "no-referrer")
-		response.Header().Set("X-Frame-Options", "DENY")
-		next.ServeHTTP(response, request)
-	})
 }
 
 // requestLanguages reports the languages this reader asked for, best first, as

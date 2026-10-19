@@ -2,7 +2,6 @@
 package manager
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -19,6 +18,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/postgresadmin"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 //go:embed ui/index.html
@@ -99,16 +99,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 	if len(launchers) > 0 {
 		launcher = launchers[0]
 	}
-	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, _ *http.Request) {
-		page, err := assets.ReadFile("ui/index.html")
-		if err != nil {
-			http.Error(response, "ML Manager UI unavailable", http.StatusInternalServerError)
-			return
-		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_, _ = response.Write(page)
-	})
+	routes.HandleFunc("GET /{$}", webpage.Page(assets, "ML Manager"))
 	routes.HandleFunc("GET /api/status", func(response http.ResponseWriter, request *http.Request) {
 		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
 		defer cancel()
@@ -206,7 +197,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Unable to list ML Studio sessions", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(response, http.StatusOK, items)
+		webpage.JSON(response, http.StatusOK, items)
 	})
 	routes.HandleFunc("DELETE /api/studio/sessions/{databaseId}", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -237,14 +228,14 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 				return
 			}
 		}
-		writeJSON(response, http.StatusOK, state)
+		webpage.JSON(response, http.StatusOK, state)
 	})
 	routes.HandleFunc("GET /api/postgres", func(response http.ResponseWriter, _ *http.Request) {
 		if postgres == nil {
-			writeJSON(response, http.StatusOK, platform.State{})
+			webpage.JSON(response, http.StatusOK, platform.State{})
 			return
 		}
-		writeJSON(response, http.StatusOK, postgres.State())
+		webpage.JSON(response, http.StatusOK, postgres.State())
 	})
 	routes.HandleFunc("POST /api/postgres/check", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -260,7 +251,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, check)
+		webpage.JSON(response, http.StatusOK, check)
 	})
 	routes.HandleFunc("POST /api/postgres/provision", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -276,7 +267,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusCreated, check)
+		webpage.JSON(response, http.StatusCreated, check)
 	})
 	routes.HandleFunc("GET /api/databases", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -288,7 +279,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Unable to read database registry", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(response, http.StatusOK, items)
+		webpage.JSON(response, http.StatusOK, items)
 	})
 	routes.HandleFunc("POST /api/databases", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -308,7 +299,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusCreated, item)
+		webpage.JSON(response, http.StatusCreated, item)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/debug", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -333,7 +324,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 		case err != nil:
 			http.Error(response, err.Error(), http.StatusBadRequest)
 		default:
-			writeJSON(response, http.StatusCreated, item)
+			webpage.JSON(response, http.StatusCreated, item)
 		}
 	})
 	routes.HandleFunc("DELETE /api/databases/{id}", func(response http.ResponseWriter, request *http.Request) {
@@ -373,7 +364,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 					http.Error(response, err.Error(), http.StatusConflict)
 					return
 				}
-				writeJSON(response, http.StatusOK, item)
+				webpage.JSON(response, http.StatusOK, item)
 			})
 		}
 	}
@@ -397,7 +388,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, item)
+		webpage.JSON(response, http.StatusOK, item)
 	})
 	routes.HandleFunc("GET /api/sessions", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -413,7 +404,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Unable to list sessions", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(response, http.StatusOK, items)
+		webpage.JSON(response, http.StatusOK, items)
 	})
 	routes.HandleFunc("POST /api/sessions/{id}/message", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -474,7 +465,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Unable to list logs", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(response, http.StatusOK, items)
+		webpage.JSON(response, http.StatusOK, items)
 	})
 	routes.HandleFunc("GET /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -490,7 +481,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusOK, items)
+		webpage.JSON(response, http.StatusOK, items)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -506,7 +497,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(response, http.StatusCreated, backup)
+		webpage.JSON(response, http.StatusCreated, backup)
 	})
 	routes.HandleFunc("POST /api/databases/{id}/backups/{backupId}/restore", func(response http.ResponseWriter, request *http.Request) {
 		if postgres == nil {
@@ -582,7 +573,7 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Unable to create initial administrator", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(response, http.StatusCreated, struct {
+		webpage.JSON(response, http.StatusCreated, struct {
 			Login         string   `json:"login"`
 			RecoveryCodes []string `json:"recoveryCodes"`
 		}{Login: administrator.Login, RecoveryCodes: codes})
@@ -641,16 +632,4 @@ func decodeJSONBody(response http.ResponseWriter, request *http.Request, body io
 		return false
 	}
 	return true
-}
-
-func writeJSON(response http.ResponseWriter, status int, value any) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(value); err != nil {
-		http.Error(response, "Unable to encode response", http.StatusInternalServerError)
-		return
-	}
-	response.Header().Set("Content-Type", "application/json; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
-	response.WriteHeader(status)
-	_, _ = response.Write(body.Bytes())
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 type applicationRoleBackend interface {
@@ -40,7 +41,7 @@ func registerApplicationRoleRoutes(routes *http.ServeMux, backend platformSetup)
 				applicationRoleError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, view)
+			webpage.JSON(w, http.StatusOK, view)
 			return
 		}
 		var input platform.ApplicationRoleUpdate
@@ -55,7 +56,7 @@ func registerApplicationRoleRoutes(routes *http.ServeMux, backend platformSetup)
 			applicationRoleError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, assignment)
+		webpage.JSON(w, http.StatusOK, assignment)
 	}
 	routes.HandleFunc("GET /api/databases/{id}/application-roles/{userID}", serve)
 	routes.HandleFunc("PUT /api/databases/{id}/application-roles/{userID}", serve)

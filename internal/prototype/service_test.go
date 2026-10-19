@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -156,4 +157,21 @@ func (store *memoryStore) Stats(context.Context) (Stats, error) {
 		stats.LastResult = store.calculations[len(store.calculations)-1].Result
 	}
 	return stats, nil
+}
+
+// TestServicePageIsSecured catches the page of the prototype or an answer of
+// its API given without the policy of ML pages.
+func TestServicePageIsSecured(t *testing.T) {
+	t.Parallel()
+
+	service, err := NewService(&memoryStore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/", "/api/health"} {
+		response := request(t, service.Handler(), http.MethodGet, path, "")
+		if response.Code != http.StatusOK || len(webpage.PolicyMissing(response.Header())) > 0 {
+			t.Fatalf("%s: status=%d, policy lacks %v", path, response.Code, webpage.PolicyMissing(response.Header()))
+		}
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 func TestPortalLoginListOpenAndLogout(t *testing.T) {
@@ -437,5 +438,19 @@ func TestDocumentActionsAndDatabaseRoutesRefuseWhatTheyShould(t *testing.T) {
 	runtime.failure = errors.New("refused")
 	if response := send(http.MethodPost, database+"/documents/Приход/post", `{"reference":"r"}`, true); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "Unable to post document") {
 		t.Fatalf("a refused posting: status %d body %s", response.Code, response.Body.String())
+	}
+}
+
+// TestPortalPageIsSecured catches the page or an answer of the API given
+// without the policy of ML pages.
+func TestPortalPageIsSecured(t *testing.T) {
+	t.Parallel()
+	handler := NewHandler(&fakeRuntime{})
+	for _, path := range []string{"/", "/api/health"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK || len(webpage.PolicyMissing(response.Header())) > 0 {
+			t.Fatalf("%s: status=%d, policy lacks %v", path, response.Code, webpage.PolicyMissing(response.Header()))
+		}
 	}
 }

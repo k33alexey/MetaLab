@@ -3,6 +3,7 @@ package studio
 import (
 	"context"
 	"errors"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,8 +37,8 @@ func TestStudioRequiresDesktopBootstrapAndCurrentLease(t *testing.T) {
 		return w
 	}
 	for _, path := range []string{"/", "/api/project", "/ui/index.html", "/api/file?path=ml.yaml", "/api/role?path=metadata/roles/test.yaml", "/ui/role-editor.js"} {
-		if w := request("GET", path, nil, ""); w.Code != 401 {
-			t.Fatalf("anonymous %s: %d", path, w.Code)
+		if w := request("GET", path, nil, ""); w.Code != 401 || len(webpage.PolicyMissing(w.Header())) > 0 {
+			t.Fatalf("anonymous %s: %d, policy lacks %v", path, w.Code, webpage.PolicyMissing(w.Header()))
 		}
 	}
 	if checks != 0 || operations != 0 {
@@ -50,7 +51,7 @@ func TestStudioRequiresDesktopBootstrapAndCurrentLease(t *testing.T) {
 	if opened.Code != 303 || opened.Header().Get("Location") != "/" {
 		t.Fatalf("bootstrap: %d %s", opened.Code, opened.Body.String())
 	}
-	if strings.Contains(opened.Body.String(), launch) || opened.Header().Get("Referrer-Policy") != "no-referrer" {
+	if strings.Contains(opened.Body.String(), launch) || len(webpage.PolicyMissing(opened.Header())) > 0 {
 		t.Fatal("bootstrap URL leaked")
 	}
 	cookies := opened.Result().Cookies()

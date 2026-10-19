@@ -11,6 +11,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/auth"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 // NewAuthorizedHandler gives one desktop WebView access to an authenticated Studio lease.
@@ -38,9 +39,7 @@ func protectStudioHandler(next http.Handler, host string, authorize func(context
 	used := false
 	guard := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+		webpage.SetPolicy(w.Header())
 		if r.Host != host {
 			http.Error(w, "Invalid Studio host", http.StatusForbidden)
 			return

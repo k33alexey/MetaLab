@@ -12,6 +12,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 type managerSecurity interface {
@@ -88,7 +89,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			return
 		}
 		setCookie(w, r, login.Token)
-		writeJSON(w, 200, login.Session)
+		webpage.JSON(w, 200, login.Session)
 	})
 	routes.HandleFunc("GET /api/manager/session", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
@@ -100,7 +101,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			managerAccessError(w, err)
 			return
 		}
-		writeJSON(w, 200, session)
+		webpage.JSON(w, 200, session)
 	})
 	routes.HandleFunc("POST /api/manager/logout", func(w http.ResponseWriter, r *http.Request) {
 		if !available {
@@ -139,7 +140,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			managerAccessError(w, err)
 			return
 		}
-		writeJSON(w, 200, items)
+		webpage.JSON(w, 200, items)
 	})
 	routes.HandleFunc("POST /api/manager/users", func(w http.ResponseWriter, r *http.Request) {
 		var input systemdb.UserCreation
@@ -151,7 +152,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			http.Error(w, "Unable to create user: check login and password", 400)
 			return
 		}
-		writeJSON(w, 201, user)
+		webpage.JSON(w, 201, user)
 	})
 	routes.HandleFunc("PUT /api/manager/users/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePathUUID(w, r, "user")
@@ -182,7 +183,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			managerAccessError(w, err)
 			return
 		}
-		writeJSON(w, 200, items)
+		webpage.JSON(w, 200, items)
 	})
 	routes.HandleFunc("PUT /api/databases/{id}/permissions", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePathUUID(w, r, "database")
@@ -212,8 +213,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		webpage.SetPolicy(w.Header())
 		_, pattern := routes.Handler(r)
 		if pattern == "" {
 			http.NotFound(w, r)
@@ -257,7 +257,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 				managerAccessError(w, err)
 				return
 			}
-			writeJSON(w, 200, items)
+			webpage.JSON(w, 200, items)
 			return
 		case "GET /api/studio/sessions":
 			items, err := security.ListManagerStudioSessions(ctx)
@@ -265,7 +265,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 				managerAccessError(w, err)
 				return
 			}
-			writeJSON(w, 200, items)
+			webpage.JSON(w, 200, items)
 			return
 		case "GET /api/sessions":
 			id, ok := optionalQueryUUID(w, r, "databaseId")
@@ -277,7 +277,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 				managerAccessError(w, err)
 				return
 			}
-			writeJSON(w, 200, items)
+			webpage.JSON(w, 200, items)
 			return
 		}
 		permission := "platform"

@@ -12,6 +12,7 @@ import (
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
+	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
 type securityBackend struct {
@@ -52,6 +53,11 @@ func TestManagerProductionBoundaryRequiresIdentityAndScope(t *testing.T) {
 	backend := &securityBackend{fakePlatformSetup: fakePlatformSetup{state: platform.State{Configured: true, Connected: true}}, session: systemdb.PortalSession{ID: uuid.MustNew(), UserID: uuid.MustNew(), Login: "developer", MetadataAdmin: true, AbsoluteExpiresAt: time.Now().Add(time.Hour)}, allowedID: uuid.MustNew()}
 	launcher := &fakeStudioLauncher{}
 	handler := NewHandlerWithPlatformAndStudio(appconfig.Default(), backend, launcher)
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest("GET", "http://127.0.0.1:12345/", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "ML Manager") || len(webpage.PolicyMissing(page.Header())) > 0 {
+		t.Fatalf("page: %d, policy lacks %v", page.Code, webpage.PolicyMissing(page.Header()))
+	}
 	request := func(method, path, body string, cookie *http.Cookie, origin string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://127.0.0.1:12345"+path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -66,7 +72,7 @@ func TestManagerProductionBoundaryRequiresIdentityAndScope(t *testing.T) {
 		return w
 	}
 	for _, path := range []string{"/api/databases", "/api/postgres", "/api/studio/sessions", "/api/manager/users"} {
-		if w := request("GET", path, "", nil, ""); w.Code != 401 {
+		if w := request("GET", path, "", nil, ""); w.Code != 401 || len(webpage.PolicyMissing(w.Header())) > 0 {
 			t.Fatalf("anonymous %s: %d %s", path, w.Code, w.Body.String())
 		}
 	}

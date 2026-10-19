@@ -6,8 +6,6 @@
 1	internal/bsl/number/decimal.go internal/bsl/number/decimal.go
 1	internal/bsl/vm/vm.go internal/bsl/vm/vm.go
 3	internal/manager/manager.go internal/manager/manager.go
-1	internal/manager/manager.go internal/portal/portal.go
-1	internal/manager/manager.go internal/portal/portal.go internal/studio/studio.go
 1	internal/metadata/accumulation_register_bsl_events.go internal/metadata/catalog_bsl_events.go internal/metadata/document_bsl_events.go internal/metadata/information_register_bsl_events.go
 1	internal/metadata/accumulation_register_bsl_events.go internal/metadata/information_register_bsl_events.go
 1	internal/metadata/accumulation_register_events.go internal/metadata/information_register_events.go
@@ -35,7 +33,6 @@
 1	internal/platform/application_write.go internal/platform/application_write.go
 1	internal/platform/runtime.go internal/platform/runtime.go
 1	internal/portal/portal.go internal/portal/portal.go
-1	internal/portal/portal.go internal/studio/studio.go
 1	internal/studio/query_designer.go internal/studio/query_designer.go
 1	internal/systemdb/databases.go internal/systemdb/studio_sessions.go
 1	internal/systemdb/sessions.go internal/systemdb/studio_sessions.go
