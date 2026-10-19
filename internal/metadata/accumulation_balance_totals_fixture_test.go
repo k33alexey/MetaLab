@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -14,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -53,37 +51,9 @@ func newBalanceTotalsFixture(ctx context.Context, t *testing.T, splitting bool, 
 // marked "Индексировать".
 func newBalanceTotalsFixtureWith(ctx context.Context, t *testing.T, splitting bool, maxConnections int, productIndexing IndexMode) *balanceTotalsFixture {
 	t.Helper()
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
-	if maxConnections > 0 {
-		separator := "?"
-		if strings.Contains(databaseURL, "?") {
-			separator = "&"
-		}
-		databaseURL += fmt.Sprintf("%spool_max_conns=%d", separator, maxConnections)
-	}
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, maxConnections)
 	projectID := uuid.MustNew()
 	documentID, registerID, warehouseID, productID, quantityID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.register_totals_modes WHERE metadata_id = $1", registerID)
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureRegisterTotalsStorage(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
 	catalog := &Catalog{
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Приход", Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
@@ -100,20 +70,7 @@ func newBalanceTotalsFixtureWith(ctx context.Context, t *testing.T, splitting bo
 		documentByName: map[string]int{"приход": 0}, documentByID: map[uuid.UUID]int{documentID: 0},
 		accumulationRegisterByName: map[string]int{"остатки": 0}, accumulationRegisterByID: map[uuid.UUID]int{registerID: 0},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('e', 64), GitCommit: repeatCatalogHex('f', 40),
-		Desired: desired, ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 	documents, err := NewDocumentRepository(pool, catalog)
 	if err != nil {
 		t.Fatal(err)

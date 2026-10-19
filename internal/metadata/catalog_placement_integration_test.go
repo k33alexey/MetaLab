@@ -3,15 +3,10 @@ package metadata
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -24,31 +19,12 @@ import (
 // these fields live in were built by the schema and never written into until
 // now.
 func TestCatalogRowKeepsWhereItSitsIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, 0)
 	projectID := uuid.MustNew()
 	partnersID, contractsID, flatID, filesID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	predefinedFolderID, predefinedItemID := uuid.MustNew(), uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
-			[]string{partnersID.String(), contractsID.String(), flatID.String(), filesID.String()})
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
 
 	catalog := &Catalog{
 		Catalogs: []CatalogDefinition{
@@ -73,23 +49,7 @@ func TestCatalogRowKeepsWhereItSitsIntegration(t *testing.T) {
 		catalogByName: map[string]int{"партнёры": 0, "договоры": 1, "плоский": 2, "файлы": 3},
 		catalogByID:   map[uuid.UUID]int{partnersID: 0, contractsID: 1, flatID: 2, filesID: 3},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('e', 64), GitCommit: repeatCatalogHex('f', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 	repository, err := NewCatalogRepository(pool, catalog)
 	if err != nil {
 		t.Fatal(err)

@@ -3,16 +3,11 @@ package metadata
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -22,27 +17,10 @@ import (
 // register kinds written directly (not only through a document), and a query
 // join across two sources where only one is readable.
 func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, 0)
 	projectID := uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
 
 	documentID, productAttrID, linesPartID, quantityAttrID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
 	accumulationID, accumulationProductID, accumulationQuantityID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
@@ -135,20 +113,7 @@ func TestApplicationRoleBypassAttemptsIntegration(t *testing.T) {
 		roleByName: map[string]int{"полные": 0, "безпроведения": 1, "безстрок": 2, "безрегистров": 3},
 		roleByID:   map[uuid.UUID]int{fullRoleID: 0, noPostRoleID: 1, noLinesRoleID: 2, noAccumulationRoleID: 3},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('c', 64), GitCommit: repeatCatalogHex('d', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 
 	documents, err := NewDocumentRepository(pool, catalog)
 	if err != nil {

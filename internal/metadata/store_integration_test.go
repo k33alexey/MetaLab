@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/compiler"
 	"github.com/k33alexey/MetaLab/internal/bsl/vm"
@@ -16,17 +13,9 @@ import (
 )
 
 func TestConstantRepositoryIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	pool := integrationPool(t, ctx, 0)
 	if err := EnsureConstantStorage(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
@@ -39,11 +28,7 @@ func TestConstantRepositoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupCtx, "DELETE FROM ml_core.constant_values WHERE constant_id = $1", id.String())
-	})
+	integrationCleanup(t, pool, "DELETE FROM ml_core.constant_values WHERE constant_id = $1", id.String())
 	first, err := repository.Set(ctx, "курс", Value{Kind: NumberType, Data: "40.2500"}, &actor)
 	if err != nil || first.Revision != 1 || first.Value.Data != "40.25" || first.ChangedBy == nil || *first.ChangedBy != actor {
 		t.Fatalf("first = %+v, error=%v", first, err)

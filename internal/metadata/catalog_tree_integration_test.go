@@ -2,16 +2,11 @@ package metadata
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -25,27 +20,8 @@ func treeFixture(t *testing.T, ctx context.Context, levels int) (*CatalogReposit
 
 func treeFixtureOf(t *testing.T, ctx context.Context, levels int, kind HierarchyKind) (*CatalogRepository, uuid.UUID, uuid.UUID) {
 	t.Helper()
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, 0)
 	projectID, treeID, ownedID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
-			[]string{treeID.String(), ownedID.String()})
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
 	hierarchy := Hierarchy{Enabled: true, Kind: kind}
 	if levels > 0 {
 		hierarchy.LimitLevels, hierarchy.LevelCount = true, levels
@@ -63,23 +39,7 @@ func treeFixtureOf(t *testing.T, ctx context.Context, levels int, kind Hierarchy
 		catalogByName: map[string]int{"дерево": 0, "подчинённые": 1},
 		catalogByID:   map[uuid.UUID]int{treeID: 0, ownedID: 1},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('1', 64), GitCommit: repeatCatalogHex('2', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 	repository, err := NewCatalogRepository(pool, catalog)
 	if err != nil {
 		t.Fatal(err)

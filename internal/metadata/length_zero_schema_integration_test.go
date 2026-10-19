@@ -2,12 +2,8 @@ package metadata
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -22,27 +18,10 @@ import (
 // stops the migration of the whole configuration; and a schema that reads back
 // different from what it asked for, so that every save would migrate again.
 func TestALengthOfZeroMigratesIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, 0)
 	projectID := uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
 	root := metadataProject(t)
 	for _, item := range []struct {
 		kind Kind
@@ -59,20 +38,7 @@ func TestALengthOfZeroMigratesIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('3', 64), GitCommit: repeatCatalogHex('4', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatalf("PostgreSQL refused the tables: %v", err)
-	}
+	desired := migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 	again, err := schemadiff.Prepare(ctx, pool, desired)
 	if err != nil {
 		t.Fatal(err)

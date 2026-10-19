@@ -2,16 +2,11 @@ package metadata
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -25,10 +20,6 @@ import (
 // did before this point, and what silence still means - the same posting clears
 // them first and the balance goes to nothing.
 func TestPostingHonoursHowItsRecordsAreDeletedIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	for name, deletion := range map[string]struct {
 		mode RegisterRecordsDeletion
 		// balanceAfterEmptyRepost is what is left after a repost whose handler
@@ -43,26 +34,11 @@ func TestPostingHonoursHowItsRecordsAreDeletedIntegration(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			pool, err := pgxpool.New(ctx, databaseURL)
-			if err != nil {
-				t.Fatal(err)
-			}
+			pool := integrationDatabase(t, ctx, 0)
 			projectID := uuid.MustNew()
 			documentID, registerID := uuid.MustNew(), uuid.MustNew()
 			productAttributeID, quantityAttributeID := uuid.MustNew(), uuid.MustNew()
 			productDimensionID, quantityResourceID := uuid.MustNew(), uuid.MustNew()
-			t.Cleanup(func() {
-				cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-				defer stop()
-				_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-				_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
-					[]string{documentID.String(), registerID.String()})
-				_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-				pool.Close()
-			})
-			if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-				t.Fatal(err)
-			}
 
 			document := DocumentDefinition{
 				ID: documentID, Name: "Поступление",
@@ -85,23 +61,7 @@ func TestPostingHonoursHowItsRecordsAreDeletedIntegration(t *testing.T) {
 				accumulationRegisterByName: map[string]int{"остаткитоваров": 0},
 				accumulationRegisterByID:   map[uuid.UUID]int{registerID: 0},
 			}
-			desired, err := catalog.ApplicationSchema()
-			if err != nil {
-				t.Fatal(err)
-			}
-			prepared, err := schemadiff.Prepare(ctx, pool, desired)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-				ProjectID: projectID, PackageSHA256: repeatCatalogHex('3', 64), GitCommit: repeatCatalogHex('4', 40), Desired: desired,
-				ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-			}); err != nil {
-				t.Fatal(err)
-			}
-			if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
-				t.Fatal(err)
-			}
+			migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 			documents, err := NewDocumentRepository(pool, catalog)
 			if err != nil {
 				t.Fatal(err)
@@ -172,30 +132,11 @@ func TestPostingHonoursHowItsRecordsAreDeletedIntegration(t *testing.T) {
 // the whole point: posting in the regular mode instead would look like success
 // to a caller that asked to compete for the present.
 func TestRealTimePostingIsRefusedWhereItIsDeniedIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := integrationDatabase(t, ctx, 0)
 	projectID := uuid.MustNew()
 	deniedID, allowedID := uuid.MustNew(), uuid.MustNew()
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.object_sequences WHERE metadata_id = ANY($1::uuid[])",
-			[]string{deniedID.String(), allowedID.String()})
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
-		t.Fatal(err)
-	}
 	number := DocumentNumber{Type: StringType, Length: 20, Auto: true, Unique: true, Periodicity: NumberPeriodYear}
 	catalog := &Catalog{
 		Documents: []DocumentDefinition{
@@ -207,23 +148,7 @@ func TestRealTimePostingIsRefusedWhereItIsDeniedIntegration(t *testing.T) {
 		documentByName: map[string]int{"запрещено": 0, "разрешено": 1},
 		documentByID:   map[uuid.UUID]int{deniedID: 0, allowedID: 1},
 	}
-	desired, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('5', 64), GitCommit: repeatCatalogHex('6', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureObjectIntegrityStorage(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, projectID)
 	documents, err := NewDocumentRepository(pool, catalog)
 	if err != nil {
 		t.Fatal(err)

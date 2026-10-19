@@ -3,7 +3,6 @@ package metadata
 import (
 	"context"
 	"errors"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,10 +25,9 @@ import (
 // built, or built differently from what is planned, so that every opening of
 // the project plans the same migration again.
 func TestCompositeProjectSchemaIntegration(t *testing.T) {
-	databaseURL := os.Getenv("ML_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("ML_TEST_DATABASE_URL is not set")
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pool := integrationDatabase(t, ctx, 0)
 	catalog, err := Load(compositeProject(t))
 	if err != nil {
 		t.Fatal(err)
@@ -61,35 +59,7 @@ func TestCompositeProjectSchemaIntegration(t *testing.T) {
 			t.Errorf("%s has no table %s in the schema", name, table)
 		}
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	projectID := uuid.MustNew()
-	dropSchema := "DROP SCHEMA IF EXISTS " + pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize() + " CASCADE"
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		_, _ = pool.Exec(cleanup, dropSchema)
-		_, _ = pool.Exec(cleanup, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
-	if _, err := pool.Exec(ctx, dropSchema); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := schemadiff.Prepare(ctx, pool, desired)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := schemadiff.Execute(ctx, pool, schemadiff.MigrationRequest{
-		ProjectID: projectID, PackageSHA256: repeatCatalogHex('c', 64), GitCommit: repeatCatalogHex('d', 40), Desired: desired,
-		ExpectedPlanSHA256: prepared.SHA256, ExpectedSchemaSHA256: prepared.ActualSHA256, Confirmed: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, uuid.MustNew())
 	again, err := schemadiff.Prepare(ctx, pool, desired)
 	if err != nil {
 		t.Fatal(err)
