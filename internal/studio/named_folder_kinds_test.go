@@ -221,3 +221,52 @@ func TestCatalogAttributesInTheTreeLeaveOutCommonAttributes(t *testing.T) {
 		t.Fatalf("the catalog's attributes in the tree are %+v", attributes.Children)
 	}
 }
+
+// The templates of an HTTP service stand right under the service, with no
+// branch of their own, each with its methods, in the order of the description
+// and above the module - as the prototype's tree shows them (inventory of
+// block 00, «Ветки под объектом», snapshot derevo/11a). Catches a kind kept
+// in a named folder that shows nothing of what its description holds -
+// which the services did - a branch «Шаблоны URL» the prototype has not, and
+// the templates sorted by the alphabet («Получить» before
+// «ХранилищеИИдентификатор»).
+func TestAnHTTPServiceShowsItsTemplatesAndMethodsUnderIt(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	writeProjectFile(t, root, "metadata/http-services/Обмен/object.yaml", "format: 1\nid: f9000000-0000-4000-8000-000000000021\n"+
+		"name: Обмен\ntitle: {ru: Обмен}\nroot_url: exchange\ntemplates:\n"+
+		"  - {id: f9000000-0000-4000-8000-000000000022, name: ХранилищеИИдентификатор, title: {ru: Хранилище}, template: /store, methods: [\n"+
+		"      {id: f9000000-0000-4000-8000-000000000023, name: GET, title: {ru: GET}, method: GET, handler: Прочитать},\n"+
+		"      {id: f9000000-0000-4000-8000-000000000024, name: POST, title: {ru: POST}, method: POST, handler: Записать}]}\n"+
+		"  - {id: f9000000-0000-4000-8000-000000000025, name: Получить, title: {ru: Получить}, template: /get}\n")
+	writeProjectFile(t, root, "metadata/http-services/Обмен/"+project.ServiceModuleFile,
+		"Функция Прочитать(Запрос)\nКонецФункции\n\nФункция Записать(Запрос)\nКонецФункции\n")
+
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Subsystems == nil {
+		t.Fatal("the project does not load as a whole")
+	}
+	service, ok := findNodeByID(snapshot.Tree, "metadata/http-services/Обмен/object.yaml")
+	if !ok {
+		t.Fatal("the service is not in the tree")
+	}
+	var shown []string
+	for _, child := range service.Children {
+		line := child.Title + " " + child.Icon
+		for _, inner := range child.Children {
+			line += " [" + inner.Title + " " + inner.Icon + "]"
+		}
+		shown = append(shown, line)
+	}
+	want := []string{"ХранилищеИИдентификатор url-template [GET http-method] [POST http-method]", "Получить url-template", "Модуль сервиса module"}
+	if strings.Join(shown, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("the service shows\n%s\nwant\n%s", strings.Join(shown, "\n"), strings.Join(want, "\n"))
+	}
+}

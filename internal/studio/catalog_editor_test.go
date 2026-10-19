@@ -263,7 +263,13 @@ func TestDeleteCatalogRouteRequiresCSRF(t *testing.T) {
 	}
 }
 
-func TestMetadataTreeOrdersObjectsAndAttributesAlphabetically(t *testing.T) {
+// The objects of a kind stand by the alphabet (until the order of objects is
+// kept, BLOCKS, «порядок объектов конфигурации хранится»), and the parts of
+// an object in the order of its description, as the prototype's tree shows
+// them (inventory of block 00, «Ветки под объектом», snapshots derevo/07,
+// 11a). Catches objects left in the order of their folders, and parts sorted
+// away from the order the developer declared them in.
+func TestMetadataTreeOrdersObjectsAlphabeticallyAndPartsAsDeclared(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	workspace, err := Open(root)
@@ -308,8 +314,8 @@ func TestMetadataTreeOrdersObjectsAndAttributesAlphabetically(t *testing.T) {
 	if !ok || len(attributesNode.Children) != 2 {
 		t.Fatalf("attributes group: %+v (ok=%v)", attributesNode, ok)
 	}
-	if attributesNode.Children[0].Title != "Артикул" || attributesNode.Children[1].Title != "Яркость" {
-		t.Fatalf("attributes are not alphabetically ordered: %q, %q", attributesNode.Children[0].Title, attributesNode.Children[1].Title)
+	if attributesNode.Children[0].Title != "Яркость" || attributesNode.Children[1].Title != "Артикул" {
+		t.Fatalf("attributes are not in the order of the description: %q, %q", attributesNode.Children[0].Title, attributesNode.Children[1].Title)
 	}
 }
 

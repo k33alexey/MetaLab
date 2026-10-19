@@ -722,7 +722,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 					// A kind that keeps only files still keeps them in a folder
 					// named after the object: its description, and the modules
 					// that run it.
-					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named)
+					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named, loaded)
 					if buildErr == nil {
 						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, loaded)
 					}
@@ -1179,7 +1179,6 @@ const (
 	commandIcon       = "command"
 	templateIcon      = "template"
 	pictureIcon       = "picture"
-	attributeIcon     = "attribute"
 )
 
 // kindIcon is the icon of a kind, which its descriptor names.
@@ -1195,8 +1194,11 @@ func moduleNode(path, title string) Node {
 
 // namedFolderNodes lists the objects of a kind that keeps only files: each in a
 // folder named after it, holding its description and the modules that run it.
-// The node opens the description; the modules hang beneath.
-func namedFolderNodes(directory, relative, kind string, named []string) ([]Node, error) {
+// The node opens the description; the branches of what the object holds
+// (objectBranches) and then the modules hang beneath. A description that
+// does not read gives no identifier, and the branches stand empty: the loader
+// names the fault, the tree still shows the object.
+func namedFolderNodes(directory, relative, kind string, named []string, loaded *metadata.Catalog) ([]Node, error) {
 	description := project.DescriptionFile(kind)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -1215,6 +1217,8 @@ func namedFolderNodes(directory, relative, kind string, named []string) ([]Node,
 			ID: path, Kind: kind, Icon: kindIcon(kind), Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
+		head, _ := yamlSourceHead(filepath.Join(directory, entry.Name(), description), path, entry.Name())
+		node.Children = objectBranches(loaded, kind)(head.id, path)
 		for _, file := range named {
 			if file == description {
 				continue
@@ -1255,35 +1259,43 @@ func objectCommandNodes(objectDirectory, objectRelative string) ([]Node, error) 
 }
 
 // objectBranches builds the branches of the tree under an object of the kind
-// - Реквизиты, Измерения, Ресурсы, Табличные части and the rest - from what
-// the kind's descriptor says an object of it holds (ObjectBranches), every
-// branch standing even when empty, as in the prototype's tree. loaded may be
-// nil (the project does not load as a whole): the branches then stand empty
-// rather than breaking the tree.
+// - Реквизиты, Измерения, Ресурсы, Табличные части, Значения, Графы and the
+// rest - from what the kind's descriptor says an object of it holds
+// (ObjectBranches), every branch standing even when empty, as in the
+// prototype's tree, and an inline one - the templates of an HTTP service -
+// standing as its parts right under the object. What a branch holds is in
+// the order of the description. loaded may be nil (the project does not load
+// as a whole): the branches then stand empty rather than breaking the tree.
 //
-// A part opens its object's description, its fragment naming the part, which
-// the editor of a catalog selects; a field of a table part names the table
-// part.
+// A part of a branch of parts opens its object's description, its fragment
+// naming the part, which the editor of a catalog selects; a field of a table
+// part names the table part. What the editors do not select - an item of a
+// held list, a part shown inline - opens the description alone.
 func objectBranches(loaded *metadata.Catalog, kind string) func(id uuid.UUID, descriptionPath string) []Node {
 	return func(id uuid.UUID, descriptionPath string) []Node {
 		var nodes []Node
 		for _, branch := range loaded.ObjectBranches(metadata.Kind(kind), id) {
-			node := Node{ID: id.String() + ":" + string(branch.Group), Kind: "group", Icon: branch.Icon, Title: branch.Title, Path: descriptionPath}
+			var leaves []Node
 			for _, part := range branch.Parts {
-				leaf := Node{ID: part.ID.String(), Kind: "attribute", Icon: branch.Icon, Title: part.Name, Path: descriptionPath,
-					Fragment: "attribute:" + part.ID.String(), Properties: []Property{{Name: "UUID", Value: part.ID.String()}}}
-				if branch.Group == metadata.TablePartsPart {
+				leaf := Node{ID: part.ID.String(), Kind: "attribute", Icon: part.Icon, Title: part.Name, Path: descriptionPath,
+					Properties: []Property{{Name: "UUID", Value: part.ID.String()}}}
+				switch {
+				case branch.Group == metadata.TablePartsPart:
 					leaf.Kind, leaf.Fragment = "tablepart", "tablepart:"+part.ID.String()
-					for _, field := range part.Parts {
-						leaf.Children = append(leaf.Children, Node{ID: part.ID.String() + ":" + field.ID.String(), Kind: "attribute", Icon: attributeIcon,
-							Title: field.Name, Path: descriptionPath, Fragment: leaf.Fragment, Properties: []Property{{Name: "UUID", Value: field.ID.String()}}})
-					}
-					sortNodesByTitle(leaf.Children)
+				case branch.Group != "" && !branch.Inline:
+					leaf.Fragment = "attribute:" + part.ID.String()
 				}
-				node.Children = append(node.Children, leaf)
+				for _, inner := range part.Parts {
+					leaf.Children = append(leaf.Children, Node{ID: part.ID.String() + ":" + inner.ID.String(), Kind: "attribute", Icon: inner.Icon,
+						Title: inner.Name, Path: descriptionPath, Fragment: leaf.Fragment, Properties: []Property{{Name: "UUID", Value: inner.ID.String()}}})
+				}
+				leaves = append(leaves, leaf)
 			}
-			sortNodesByTitle(node.Children)
-			nodes = append(nodes, node)
+			if branch.Inline {
+				nodes = append(nodes, leaves...)
+				continue
+			}
+			nodes = append(nodes, Node{ID: id.String() + ":" + branch.Key, Kind: "group", Icon: branch.Icon, Title: branch.Title, Path: descriptionPath, Children: leaves})
 		}
 		return nodes
 	}
