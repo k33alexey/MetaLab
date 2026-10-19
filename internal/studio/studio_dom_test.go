@@ -168,7 +168,7 @@ const studioPageWalk = `(async () => {
       languageSelect.value = code;
       languageSelect.dispatchEvent(new Event('change'));
       await settle();
-      titles[code] ??= {header: document.querySelector('#project-name').textContent, tab: document.title};
+      titles[code] ??= {header: document.querySelector('#studio-title').textContent, tab: document.title};
       await walk(host, plan, studio.step);
     }
   }
@@ -325,7 +325,7 @@ func TestStudioEditorsWorkInBrowser(t *testing.T) {
 	}
 	// The synonyms are those written in examples/sales-and-warehouse.
 	for code, synonym := range map[string]string{"ru": "Продажи и склад", "uk": "Продажі і склад", "en": "Sales and warehouse"} {
-		if title := report.Titles[code]; title.Header != synonym || title.Tab != "ML Studio — "+synonym {
+		if title := report.Titles[code]; title.Header != "ML Studio: "+synonym || title.Tab != "ML Studio — "+synonym {
 			t.Errorf("in language %s the header reads %q and the tab %q, want the synonym %q", code, title.Header, title.Tab, synonym)
 		}
 	}
