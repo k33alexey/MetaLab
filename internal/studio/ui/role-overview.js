@@ -826,8 +826,11 @@ function createRoleOverview(host, openRole, onChange) {
   const templateLine = item => `${item.role} · ${item.template}`;
   // Окно шаблонов (справка, form_EditRowTemplatesDlg): у одинаковых во
   // всех выбранных шаблонах наименования и текста флажок изменения стоит,
-  // у разных — снят, поле пусто; правка поля ставит флажок.
-  function templateForm(rows) {
+  // у разных — снят, поле пусто; правка поля ставит флажок. При изменении
+  // (editing) флажки стоят и у одного шаблона, каждый над своим полем, а
+  // подписи — с двоеточием, как у прототипа (снимок shabl-16); окну
+  // добавления шаблона флажки не нужны.
+  function templateForm(rows, editing = false) {
     const content = node('div', undefined, 'role-restriction-form'), state = {};
     const name = common(rows.map(row => row.name)), text = common(rows.map(row => row.condition));
     state.name = name ?? ''; state.condition = text ?? '';
@@ -837,14 +840,16 @@ function createRoleOverview(host, openRole, onChange) {
     const nameInput = textInput(state.name, value => { state.name = value; state.changeName = true; nameFlag.querySelector('input').checked = true; });
     nameInput.setAttribute('aria-label', 'Наименование');
     const editor = queryTextField(state.condition, value => { state.condition = value; state.changeCondition = true; textFlag.querySelector('input').checked = true; }, 'Текст шаблона');
-    content.append(node('div', 'Наименование', 'role-restriction-caption'), nameInput, ...(rows.length > 1 ? [nameFlag] : []),
-      node('div', 'Текст шаблона', 'role-restriction-caption'), editor, ...(rows.length > 1 ? [textFlag] : []));
+    if (editing) content.append(nameFlag, node('div', 'Наименование:', 'role-restriction-caption'), nameInput,
+      textFlag, node('div', 'Текст шаблона:', 'role-restriction-caption'), editor);
+    else content.append(node('div', 'Наименование', 'role-restriction-caption'), nameInput, node('div', 'Текст шаблона', 'role-restriction-caption'), editor);
     return {content, state};
   }
   const templateNameCheck = state => () => state.changeName && !state.name.trim() ? 'Укажите наименование шаблона.' : '';
   async function editTemplates(rows) {
-    const {content, state} = templateForm(rows);
-    const answer = await showDialog({title: 'Изменение шаблонов ограничений', explanation: rows.length > 1 ? `Выбрано шаблонов: ${rows.length}.` : '', content, className: 'role-restriction-dialog',
+    const {content, state} = templateForm(rows, true);
+    const answer = await showDialog({title: rows.length > 1 ? 'Изменение шаблонов ограничений' : 'Изменение шаблона ограничений',
+      explanation: rows.length > 1 ? `Выбрано шаблонов: ${rows.length}.` : '', content, className: 'role-restriction-dialog', side: true, help: 'role-template-edit',
       answers: [['ok', 'ОК'], [null, 'Отмена']], check: templateNameCheck(state)});
     if (answer !== 'ok' || (!state.changeName && !state.changeCondition)) return;
     const change = {name: state.changeName ? state.name : undefined, condition: state.changeCondition ? state.condition : undefined};

@@ -10,6 +10,8 @@
 .localized-title-dialog label{display:grid;gap:6px;font-size:12px;color:#aeb1b8}
 .localized-title-dialog input{padding:7px 9px;border:1px solid #4a4d54;border-radius:5px;background:#1e1f22;color:#dfe1e5}
 .localized-title-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.dialog-side form{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;align-items:start}.dialog-side form>*{grid-column:1}
+.dialog-side form>.localized-title-actions{grid-column:2;grid-row:2/span 4;flex-direction:column;justify-content:flex-start;margin-top:0}.dialog-side .localized-title-actions button{min-width:96px}
 
 /* Диалог подтверждения «Сохранить данные»: перечень того, что коснётся уже
    сохранённых данных, с числом реально затронутых строк. */

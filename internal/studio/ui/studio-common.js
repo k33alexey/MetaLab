@@ -321,10 +321,12 @@ async function postJSON(path, body, options = {}) {
    available - is pressed by Enter, and not at all while it is unavailable.
    Both are asked again after every change in the dialog. help names the window's page of studioHelp: «Справка» and
    F1 open it over the dialog. */
-function showDialog({title, explanation, content, answers, check, className, help}) {
+function showDialog({title, explanation, content, answers, check, className, help, side}) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
-    dialog.className = 'localized-title-dialog' + (className ? ' ' + className : '');
+    // side — кнопки столбцом справа от содержимого, как в окнах прототипа
+    // (снимки shabl-16, obolochka/32); без него — строкой под ним.
+    dialog.className = 'localized-title-dialog' + (side ? ' dialog-side' : '') + (className ? ' ' + className : '');
     const form = document.createElement('form');
     form.method = 'dialog';
     form.append(node('h3', title));
