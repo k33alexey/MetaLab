@@ -45,16 +45,9 @@ type XDTOPackageDefinition struct {
 
 // DecodeXDTOPackage reads and validates one package of exchanged types.
 func DecodeXDTOPackage(source string, reader io.Reader, configuration project.Project) (XDTOPackageDefinition, error) {
-	var value XDTOPackageDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return XDTOPackageDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateNamespace("namespace", value.Namespace, true)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return XDTOPackageDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value XDTOPackageDefinition, configuration project.Project) []string {
+		return validateNamespace("namespace", value.Namespace, true)
+	})
 }
 
 // validateNamespace checks a namespace for being a namespace: one word with no

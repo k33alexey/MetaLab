@@ -51,16 +51,9 @@ type WSReferenceDefinition struct {
 
 // DecodeWSReference reads and validates one WS reference.
 func DecodeWSReference(source string, reader io.Reader, configuration project.Project) (WSReferenceDefinition, error) {
-	var value WSReferenceDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return WSReferenceDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateLocationURL(value.LocationURL)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return WSReferenceDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value WSReferenceDefinition, configuration project.Project) []string {
+		return validateLocationURL(value.LocationURL)
+	})
 }
 
 // validateLocationURL checks the address in form only: one line with no control

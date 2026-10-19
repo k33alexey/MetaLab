@@ -90,53 +90,48 @@ type DocumentDefinition struct {
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
-	var value DocumentDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return DocumentDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	shape := numberedObjectShape{
-		number:             value.Number,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              value.Forms,
-		list:               value.List,
-		reservedName:       reservedDocumentObjectName,
-		kind:               DocumentKind,
-		standardAttributes: value.StandardAttributes,
-		presentation:       value.Presentations,
-		input:              value.ObjectInput,
-		basedOn:            value.BasedOn,
-		dataLock:           value.DataLock,
-		dataLockFields:     value.DataLockFields,
-		fullTextSearch:     value.FullTextSearch,
-		dataHistory:        value.DataHistorySettings,
-		additionalIndexes:  value.AdditionalIndexes,
-	}
-	if value.Numerator != nil {
-		// The number comes from the numerator, and it is filled in once the
-		// whole project is read. Checking the empty block here would report a
-		// missing type for a number this document does not declare.
-		//
-		// The document's own number may still be declared: the prototype
-		// writes it beside the numerator on every such document, and the
-		// configurations being moved do so on all eighteen. It is carried and then
-		// checked like any other; the numerator decides the numbering.
-		shape.numberFromElsewhere = value.Number == (DocumentNumber{})
-		if value.Numerator.IsZero() {
-			issues = append(issues, "numerator must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value DocumentDefinition, configuration project.Project) []string {
+		var issues []string
+		shape := numberedObjectShape{
+			number:             value.Number,
+			attributes:         value.Attributes,
+			tableParts:         value.TableParts,
+			forms:              value.Forms,
+			list:               value.List,
+			reservedName:       reservedDocumentObjectName,
+			kind:               DocumentKind,
+			standardAttributes: value.StandardAttributes,
+			presentation:       value.Presentations,
+			input:              value.ObjectInput,
+			basedOn:            value.BasedOn,
+			dataLock:           value.DataLock,
+			dataLockFields:     value.DataLockFields,
+			fullTextSearch:     value.FullTextSearch,
+			dataHistory:        value.DataHistorySettings,
+			additionalIndexes:  value.AdditionalIndexes,
 		}
-	}
-	issues = append(issues, validateDocumentPosting(value.Posting)...)
-	issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
-	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return DocumentDefinition{}, err
-	}
-	return value, nil
+		if value.Numerator != nil {
+			// The number comes from the numerator, and it is filled in once the
+			// whole project is read. Checking the empty block here would report a
+			// missing type for a number this document does not declare.
+			//
+			// The document's own number may still be declared: the prototype
+			// writes it beside the numerator on every such document, and the
+			// configurations being moved do so on all eighteen. It is carried and then
+			// checked like any other; the numerator decides the numbering.
+			shape.numberFromElsewhere = value.Number == (DocumentNumber{})
+			if value.Numerator.IsZero() {
+				issues = append(issues, "numerator must be a non-zero UUID")
+			}
+		}
+		issues = append(issues, validateDocumentPosting(value.Posting)...)
+		issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
+		issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 // numberedObjectShape is what a numbered object repeats: a number with its

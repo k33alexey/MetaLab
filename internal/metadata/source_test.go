@@ -15,8 +15,9 @@ import (
 // The kinds come from the layout, not from the table: a kind the layout gained
 // and the table did not is what Studio used to save unchecked. Defects caught:
 // a kind missing from the table (read by nobody, saved as bare YAML), a
-// subordinate kind given a list of its own (read twice), and a decoded type
-// without an ID or a Name (sourceIdentity would panic on the first file).
+// subordinate kind given a list of its own (read twice), and a decoded type -
+// a form among them - without the head every description has: a Format, an
+// ID, a Name and a Title (headOf would panic on the first file).
 func TestEverySourceKindIsChecked(t *testing.T) {
 	t.Parallel()
 	// Read otherwise, each for a reason: a common form is a form, read by
@@ -52,13 +53,23 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 			t.Errorf("%s is read twice", item.kind)
 		}
 		seen[item.kind] = true
-		if item.decode == nil {
-			continue
+		if item.decode != nil {
+			checkDescriptionHead(t, string(item.kind), item.described)
 		}
-		id, idOK := item.described.FieldByName("ID")
-		name, nameOK := item.described.FieldByName("Name")
-		if !idOK || id.Type != reflect.TypeFor[uuid.UUID]() || !nameOK || name.Type.Kind() != reflect.String {
-			t.Errorf("%s decodes %s, which has no ID and Name to check against where it lies", item.kind, item.described)
+	}
+	checkDescriptionHead(t, "a form", reflect.TypeFor[ManagedForm]())
+}
+
+// checkDescriptionHead requires of a type a description is read into the four
+// fields headOf reads, each of the type it reads it as.
+func checkDescriptionHead(t *testing.T, kind string, described reflect.Type) {
+	t.Helper()
+	for name, want := range map[string]reflect.Type{
+		"Format": reflect.TypeFor[int](), "ID": reflect.TypeFor[uuid.UUID](),
+		"Name": reflect.TypeFor[string](), "Title": reflect.TypeFor[LocalizedText](),
+	} {
+		if field, ok := described.FieldByName(name); !ok || field.Type != want {
+			t.Errorf("%s decodes %s, which has no %s of %s in the head every description has", kind, described, name, want)
 		}
 	}
 }

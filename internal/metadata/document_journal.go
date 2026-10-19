@@ -60,58 +60,53 @@ type DocumentJournalDefinition struct {
 
 // DecodeDocumentJournal reads and validates one journal.
 func DecodeDocumentJournal(source string, reader io.Reader, configuration project.Project) (DocumentJournalDefinition, error) {
-	var value DocumentJournalDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return DocumentJournalDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	// A journal of no documents, and a column that shows no attribute, are
-	// what a journal is right after it is made; nothing shows the
-	// configurator refusing to save them. Both are carried, show nothing,
-	// and are notes.
-	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
-		recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, column := range value.Columns {
-		prefix := fmt.Sprintf("columns[%d]", index)
-		if column.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value DocumentJournalDefinition, configuration project.Project) []string {
+		var issues []string
+		// A journal of no documents, and a column that shows no attribute, are
+		// what a journal is right after it is made; nothing shows the
+		// configurator refusing to save them. Both are carried, show nothing,
+		// and are notes.
+		issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
+			recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
+		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		for index, column := range value.Columns {
+			prefix := fmt.Sprintf("columns[%d]", index)
+			if column.ID.IsZero() {
+				issues = append(issues, prefix+".id must be a non-zero UUID")
+			}
+			if ids[column.ID] {
+				issues = append(issues, prefix+".id must be unique")
+			}
+			ids[column.ID] = true
+			if !validIdentifier(column.Name) {
+				issues = append(issues, prefix+".name must be a valid identifier")
+			}
+			folded := strings.ToLower(column.Name)
+			if names[folded] {
+				issues = append(issues, prefix+".name must be unique")
+			}
+			names[folded] = true
+			issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
+			if !validIndexMode(column.Indexing) {
+				issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+			}
+			issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
+			issues = append(issues, validateDocumentStandardFields(prefix+".standard_references", column.StandardReferences)...)
 		}
-		if ids[column.ID] {
-			issues = append(issues, prefix+".id must be unique")
-		}
-		ids[column.ID] = true
-		if !validIdentifier(column.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(column.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
-		if !validIndexMode(column.Indexing) {
-			issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
-		}
-		issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
-		issues = append(issues, validateDocumentStandardFields(prefix+".standard_references", column.StandardReferences)...)
-	}
-	// A journal shows documents, so the fields a list of it can be searched by
-	// are the ones every document has.
-	issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
-		"number": StringType, "date": DateType,
-	})...)
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(DocumentJournalKind), configuration)...)
-	issues = append(issues, validateFieldLinks(standardFieldsOfKind(DocumentJournalKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return DocumentJournalDefinition{}, err
-	}
-	return value, nil
+		// A journal shows documents, so the fields a list of it can be searched by
+		// are the ones every document has.
+		issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
+			"number": StringType, "date": DateType,
+		})...)
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(DocumentJournalKind), configuration)...)
+		issues = append(issues, validateFieldLinks(standardFieldsOfKind(DocumentJournalKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefinition {

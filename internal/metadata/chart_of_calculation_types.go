@@ -99,64 +99,59 @@ type ChartOfCalculationTypesDefinition struct {
 
 // DecodeChartOfCalculationTypes reads and validates one chart of calculation types.
 func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuration project.Project) (ChartOfCalculationTypesDefinition, error) {
-	var value ChartOfCalculationTypesDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ChartOfCalculationTypesDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedCalculationTypeName,
-		codeAllowedLength: true,
-		codeType:          true,
-		codeMayBeAbsent:   true,
-		// As on a chart of accounts - see NoteLengthZeroUnchecked.
-		descriptionMayBeAbsent: true,
-		predefinedDataUpdate:   value.PredefinedDataUpdate,
-		presentation:           value.Presentations,
-		choice:                 value.ObjectChoice,
-		basedOn:                value.BasedOn,
-		dataLock:               value.DataLock,
-		dataLockFields:         value.DataLockFields,
-		fullTextSearch:         value.FullTextSearch,
-		dataHistory:            value.DataHistorySettings,
-		additionalIndexes:      value.AdditionalIndexes,
-		kind:                   ChartOfCalculationTypesKind,
-		standardAttributes:     value.StandardAttributes,
-		standardTableParts:     value.StandardTableParts,
-	}, configuration)...)
-	switch value.BaseDependency {
-	case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
-	default:
-		issues = append(issues, "base_dependency must be none, by-action-period or by-registration-period")
-	}
-	// A dependency on a base with no charts to take it from, and base charts
-	// under no dependency, are halves the configurator saves, as it saves the
-	// halves of a chart of accounts' analytics. Both are carried and noted:
-	// the base is gathered from the charts named, and none named gives none.
-	seen := map[uuid.UUID]bool{}
-	for index, chart := range value.BaseCharts {
-		if chart.IsZero() {
-			issues = append(issues, fmt.Sprintf("base_charts[%d] must be a non-zero UUID", index))
+	return decodeDescription(source, reader, configuration, func(value ChartOfCalculationTypesDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+			code:              value.Code,
+			descriptionLength: value.DescriptionLength,
+			attributes:        value.Attributes,
+			tableParts:        value.TableParts,
+			forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+			list:              value.List,
+			reservedName:      reservedCalculationTypeName,
+			codeAllowedLength: true,
+			codeType:          true,
+			codeMayBeAbsent:   true,
+			// As on a chart of accounts - see NoteLengthZeroUnchecked.
+			descriptionMayBeAbsent: true,
+			predefinedDataUpdate:   value.PredefinedDataUpdate,
+			presentation:           value.Presentations,
+			choice:                 value.ObjectChoice,
+			basedOn:                value.BasedOn,
+			dataLock:               value.DataLock,
+			dataLockFields:         value.DataLockFields,
+			fullTextSearch:         value.FullTextSearch,
+			dataHistory:            value.DataHistorySettings,
+			additionalIndexes:      value.AdditionalIndexes,
+			kind:                   ChartOfCalculationTypesKind,
+			standardAttributes:     value.StandardAttributes,
+			standardTableParts:     value.StandardTableParts,
+		}, configuration)...)
+		switch value.BaseDependency {
+		case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
+		default:
+			issues = append(issues, "base_dependency must be none, by-action-period or by-registration-period")
 		}
-		if seen[chart] {
-			issues = append(issues, fmt.Sprintf("base_charts[%d] repeats", index))
+		// A dependency on a base with no charts to take it from, and base charts
+		// under no dependency, are halves the configurator saves, as it saves the
+		// halves of a chart of accounts' analytics. Both are carried and noted:
+		// the base is gathered from the charts named, and none named gives none.
+		seen := map[uuid.UUID]bool{}
+		for index, chart := range value.BaseCharts {
+			if chart.IsZero() {
+				issues = append(issues, fmt.Sprintf("base_charts[%d] must be a non-zero UUID", index))
+			}
+			if seen[chart] {
+				issues = append(issues, fmt.Sprintf("base_charts[%d] repeats", index))
+			}
+			seen[chart] = true
 		}
-		seen[chart] = true
-	}
-	issues = append(issues, validatePredefinedCalculationTypes(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ChartOfCalculationTypesDefinition{}, err
-	}
-	return value, nil
+		issues = append(issues, validatePredefinedCalculationTypes(value)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 func validatePredefinedCalculationTypes(value ChartOfCalculationTypesDefinition) []string {

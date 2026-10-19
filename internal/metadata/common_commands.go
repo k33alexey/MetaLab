@@ -71,45 +71,33 @@ type CommandGroupDefinition struct {
 
 // DecodeCommonCommand reads and validates one common command.
 func DecodeCommonCommand(source string, reader io.Reader, configuration project.Project) (CommonCommandDefinition, error) {
-	var value CommonCommandDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CommonCommandDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	// The command is checked as any command is, against its own identifier:
-	// nothing owns it, so there is no object identifier to keep apart from.
-	issues = append(issues, validateCommandShape("command", value.ObjectCommand, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return CommonCommandDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value CommonCommandDefinition, configuration project.Project) []string {
+		// The command is checked as any command is, against its own identifier:
+		// nothing owns it, so there is no object identifier to keep apart from.
+		return validateCommandShape("command", value.ObjectCommand, configuration)
+	})
 }
 
 // DecodeCommandGroup reads and validates one command group.
 func DecodeCommandGroup(source string, reader io.Reader, configuration project.Project) (CommandGroupDefinition, error) {
-	var value CommandGroupDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CommandGroupDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
-	switch value.Category {
-	case ActionsPanelCategory, NavigationPanelCategory, FormCommandBarCategory, FormNavigationPanelCategory:
-	default:
-		issues = append(issues, "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel")
-	}
-	issues = append(issues, validatePictureReference("picture", value.Picture)...)
-	switch value.Representation {
-	case "", CommandAuto, CommandText, CommandPicture, CommandPictureAndText:
-	default:
-		issues = append(issues, "representation must be auto, text, picture or picture-and-text")
-	}
-	// Drawn as a picture with no picture is kept and drawn as text, as for a
-	// command - see CommandRepresentation.ShownAs.
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return CommandGroupDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value CommandGroupDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateTitle("tooltip", value.Tooltip, configuration)...)
+		switch value.Category {
+		case ActionsPanelCategory, NavigationPanelCategory, FormCommandBarCategory, FormNavigationPanelCategory:
+		default:
+			issues = append(issues, "category must be actions-panel, navigation-panel, form-command-bar or form-navigation-panel")
+		}
+		issues = append(issues, validatePictureReference("picture", value.Picture)...)
+		switch value.Representation {
+		case "", CommandAuto, CommandText, CommandPicture, CommandPictureAndText:
+		default:
+			issues = append(issues, "representation must be auto, text, picture or picture-and-text")
+		}
+		// Drawn as a picture with no picture is kept and drawn as text, as for a
+		// command - see CommandRepresentation.ShownAs.
+		return issues
+	})
 }
 
 func cloneCommonCommand(value CommonCommandDefinition) CommonCommandDefinition {

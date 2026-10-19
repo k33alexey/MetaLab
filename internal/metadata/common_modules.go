@@ -77,20 +77,18 @@ func validReturnValuesReuse(value ReturnValuesReuse) bool {
 }
 
 func DecodeCommonModule(source string, reader io.Reader, configuration project.Project) (CommonModuleDefinition, error) {
-	var value CommonModuleDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CommonModuleDefinition{}, err
-	}
-	if err := ValidateCommonModule(source, value, configuration); err != nil {
-		return CommonModuleDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateCommonModule)
 }
 
 // ValidateCommonModule checks structure only; module source existence is
 // checked catalog-wide by indexAndValidate (validateObjectSources).
 func ValidateCommonModule(source string, value CommonModuleDefinition, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateCommonModule)
+}
+
+// validateCommonModule checks what a common module adds to the head every description has.
+func validateCommonModule(value CommonModuleDefinition, configuration project.Project) []string {
+	var issues []string
 	if value.Module.IsZero() {
 		issues = append(issues, "module must be a non-zero UUID")
 	}
@@ -109,7 +107,7 @@ func ValidateCommonModule(source string, value CommonModuleDefinition, configura
 	if !validReturnValuesReuse(value.ReturnValuesReuse) {
 		issues = append(issues, "return_values_reuse must be dont-use, during-request or during-session")
 	}
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 func (catalog *Catalog) CommonModule(name string) (CommonModuleDefinition, bool) {

@@ -244,19 +244,17 @@ type ManagedFormElement struct {
 
 // DecodeManagedForm reads and validates one strict managed-form YAML document.
 func DecodeManagedForm(source string, reader io.Reader, configuration project.Project) (ManagedForm, error) {
-	var value ManagedForm
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ManagedForm{}, err
-	}
-	if err := ValidateManagedForm(source, value, configuration); err != nil {
-		return ManagedForm{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateManagedForm)
 }
 
 // ValidateManagedForm validates a form received from either YAML or Studio JSON.
 func ValidateManagedForm(source string, value ManagedForm, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateManagedForm)
+}
+
+// validateManagedForm checks what a form adds to the head every description has.
+func validateManagedForm(value ManagedForm, configuration project.Project) []string {
+	var issues []string
 	switch value.Kind {
 	case ObjectForm, ListForm, ChoiceForm, CommonForm:
 	default:
@@ -577,7 +575,7 @@ func ValidateManagedForm(source string, value ManagedForm, configuration project
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
 	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance, false)...)
 	issues = append(issues, validateFormParameters(value.Parameters)...)
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 // validateFormDataPath checks a data path segment by segment. Its length and

@@ -120,21 +120,19 @@ func knownSubscriptionEvent(event string) bool {
 }
 
 func DecodeEventSubscription(source string, reader io.Reader, configuration project.Project) (EventSubscriptionDefinition, error) {
-	var value EventSubscriptionDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return EventSubscriptionDefinition{}, err
-	}
-	if err := ValidateEventSubscription(source, value, configuration); err != nil {
-		return EventSubscriptionDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateEventSubscription)
 }
 
 // ValidateEventSubscription checks structure only; object/module existence,
 // object kind and event compatibility are checked catalog-wide by
 // validateEventSubscriptionReferences.
 func ValidateEventSubscription(source string, value EventSubscriptionDefinition, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateEventSubscription)
+}
+
+// validateEventSubscription checks what an event subscription adds to the head every description has.
+func validateEventSubscription(value EventSubscriptionDefinition, configuration project.Project) []string {
+	var issues []string
 	if len(value.Source) == 0 {
 		issues = append(issues, "source must name at least one type")
 	}
@@ -176,7 +174,7 @@ func ValidateEventSubscription(source string, value EventSubscriptionDefinition,
 	if !validIdentifier(value.Procedure) {
 		issues = append(issues, "procedure must start with a letter and contain only letters or digits")
 	}
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 func (catalog *Catalog) EventSubscription(name string) (EventSubscriptionDefinition, bool) {

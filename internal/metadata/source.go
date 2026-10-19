@@ -735,11 +735,10 @@ func agreesWithFolder(what, name, folder string) error {
 	return nil
 }
 
-// sourceIdentity is what a description says it is. Every type kindInfos
-// decodes has both fields (TestEverySourceKindIsChecked).
+// sourceIdentity is what a description says it is.
 func sourceIdentity(value any) (uuid.UUID, string) {
-	item := reflect.ValueOf(value)
-	return item.FieldByName("ID").Interface().(uuid.UUID), item.FieldByName("Name").String()
+	head := headOf(value)
+	return head.id, head.name
 }
 
 // ReferenceTypeChoice is one type a type editor offers for a stored field

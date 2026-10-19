@@ -43,20 +43,18 @@ type SubsystemDefinition struct {
 }
 
 func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {
-	var value SubsystemDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return SubsystemDefinition{}, err
-	}
-	if err := ValidateSubsystem(source, value, configuration); err != nil {
-		return SubsystemDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateSubsystem)
 }
 
 // ValidateSubsystem checks structure only; membership and parent existence
 // are checked catalog-wide by validateSubsystemReferences.
 func ValidateSubsystem(source string, value SubsystemDefinition, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateSubsystem)
+}
+
+// validateSubsystem checks what a subsystem adds to the head every description has.
+func validateSubsystem(value SubsystemDefinition, configuration project.Project) []string {
+	var issues []string
 	issues = append(issues, validateTitle("explanation", value.Explanation, configuration)...)
 	issues = append(issues, validatePictureReference("picture", value.Picture)...)
 	if value.Parent != nil && *value.Parent == value.ID {
@@ -77,7 +75,7 @@ func ValidateSubsystem(source string, value SubsystemDefinition, configuration p
 		}
 		seen[member] = true
 	}
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 // Subsystem returns one subsystem by its path, folded case: the name of a

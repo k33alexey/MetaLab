@@ -174,66 +174,61 @@ type ChartOfAccountsDefinition struct {
 
 // DecodeChartOfAccounts reads and validates one chart of accounts.
 func DecodeChartOfAccounts(source string, reader io.Reader, configuration project.Project) (ChartOfAccountsDefinition, error) {
-	var value ChartOfAccountsDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ChartOfAccountsDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedChartOfAccountsName,
-		codeSeries:        true,
-		checkUnique:       true,
-		codeMayBeAbsent:   true,
-		// The description of length 0 was not checked by the owner, as the
-		// code was: carried, switched off, a note (NoteLengthZeroUnchecked).
-		descriptionMayBeAbsent: true,
-		// codeAllowedLength stays off: the shape of an account code is the code
-		// mask's to decide, and the prototype gives the chart no such property.
-		predefinedDataUpdate: value.PredefinedDataUpdate,
-		presentation:         value.Presentations,
-		choice:               value.ObjectChoice,
-		basedOn:              value.BasedOn,
-		dataLock:             value.DataLock,
-		dataLockFields:       value.DataLockFields,
-		fullTextSearch:       value.FullTextSearch,
-		dataHistory:          value.DataHistorySettings,
-		additionalIndexes:    value.AdditionalIndexes,
-		kind:                 ChartOfAccountsKind,
-		standardAttributes:   value.StandardAttributes,
-		standardTableParts:   value.StandardTableParts,
-		extraFields: []fieldGroup{
-			{"accounting_flags", accountingFlagFields(value.AccountingFlags)},
-			{"ext_dimension_accounting_flags", accountingFlagFields(value.ExtDimensionAccountingFlags)},
-		},
-	}, configuration)...)
-	issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
-	issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
-	if value.MaxExtDimensionCount < 0 {
-		issues = append(issues, "max_ext_dimension_count must not be negative")
-	}
-	if value.ExtDimensionTypes != nil && value.ExtDimensionTypes.IsZero() {
-		issues = append(issues, "ext_dimension_types must be a non-zero UUID")
-	}
-	// Analytics half set - a count without the chart of kinds to take them
-	// from, the chart with a count of 0, flags of analytics without the chart
-	// - is saved by the configurator: mdclasses keeps a chart with a count of
-	// 3 and no chart of kinds. It is carried and noted; a chart without the
-	// kinds has no analytics - see EffectiveMaxExtDimensionCount.
-	issues = append(issues, validateCodeMask(value)...)
-	issues = append(issues, validatePredefinedAccounts(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ChartOfAccountsDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ChartOfAccountsDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+			code:              value.Code,
+			descriptionLength: value.DescriptionLength,
+			attributes:        value.Attributes,
+			tableParts:        value.TableParts,
+			forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+			list:              value.List,
+			reservedName:      reservedChartOfAccountsName,
+			codeSeries:        true,
+			checkUnique:       true,
+			codeMayBeAbsent:   true,
+			// The description of length 0 was not checked by the owner, as the
+			// code was: carried, switched off, a note (NoteLengthZeroUnchecked).
+			descriptionMayBeAbsent: true,
+			// codeAllowedLength stays off: the shape of an account code is the code
+			// mask's to decide, and the prototype gives the chart no such property.
+			predefinedDataUpdate: value.PredefinedDataUpdate,
+			presentation:         value.Presentations,
+			choice:               value.ObjectChoice,
+			basedOn:              value.BasedOn,
+			dataLock:             value.DataLock,
+			dataLockFields:       value.DataLockFields,
+			fullTextSearch:       value.FullTextSearch,
+			dataHistory:          value.DataHistorySettings,
+			additionalIndexes:    value.AdditionalIndexes,
+			kind:                 ChartOfAccountsKind,
+			standardAttributes:   value.StandardAttributes,
+			standardTableParts:   value.StandardTableParts,
+			extraFields: []fieldGroup{
+				{"accounting_flags", accountingFlagFields(value.AccountingFlags)},
+				{"ext_dimension_accounting_flags", accountingFlagFields(value.ExtDimensionAccountingFlags)},
+			},
+		}, configuration)...)
+		issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
+		issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
+		if value.MaxExtDimensionCount < 0 {
+			issues = append(issues, "max_ext_dimension_count must not be negative")
+		}
+		if value.ExtDimensionTypes != nil && value.ExtDimensionTypes.IsZero() {
+			issues = append(issues, "ext_dimension_types must be a non-zero UUID")
+		}
+		// Analytics half set - a count without the chart of kinds to take them
+		// from, the chart with a count of 0, flags of analytics without the chart
+		// - is saved by the configurator: mdclasses keeps a chart with a count of
+		// 3 and no chart of kinds. It is carried and noted; a chart without the
+		// kinds has no analytics - see EffectiveMaxExtDimensionCount.
+		issues = append(issues, validateCodeMask(value)...)
+		issues = append(issues, validatePredefinedAccounts(value)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 func validateCodeMask(value ChartOfAccountsDefinition) []string {

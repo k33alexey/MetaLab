@@ -3,7 +3,6 @@ package metadata
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -63,75 +62,54 @@ type AccumulationRegisterDefinition struct {
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {
-	var value AccumulationRegisterDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return AccumulationRegisterDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
-	if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
-		issues = append(issues, "kind must be balance or turnover")
-	}
-	issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedAccumulationRegisterName)...)
-	for index, dimension := range value.Dimensions {
-		issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension,
-			accumulationRegisterDimensions())...)
-	}
-	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
-	for index, resource := range value.Resources {
-		issues = append(issues, validateResourceIndexing(fmt.Sprintf("resources[%d]", index), resource.Indexing)...)
-	}
-	for _, group := range []struct {
-		path   string
-		fields []Attribute
-	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
-		for index, field := range group.fields {
-			issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("%s[%d]", group.path, index), field)...)
+	return decodeDescription(source, reader, configuration, func(value AccumulationRegisterDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+		if value.Kind != AccumulationRegisterBalance && value.Kind != AccumulationRegisterTurnover {
+			issues = append(issues, "kind must be balance or turnover")
 		}
-	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
-	registerFields := []fieldGroup{
-		{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
-	}
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
-	issues = append(issues, validateFieldLinks(accumulationStandardFields(value.Kind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
-	if len(value.Resources) == 0 {
-		issues = append(issues, "resources must contain at least one numeric item")
-	}
-	fieldNames, fieldIDs := map[string]string{}, map[uuid.UUID]string{}
-	for _, group := range []struct {
-		kind   string
-		fields []Attribute
-	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
-		for _, field := range group.fields {
-			folded := strings.ToLower(field.Name)
-			if previous, exists := fieldNames[folded]; exists {
-				issues = append(issues, fmt.Sprintf("%s.%s conflicts with %s", group.kind, field.Name, previous))
-			}
-			fieldNames[folded] = group.kind + "." + field.Name
-			if previous, exists := fieldIDs[field.ID]; exists {
-				issues = append(issues, fmt.Sprintf("%s.%s UUID conflicts with %s", group.kind, field.Name, previous))
-			}
-			fieldIDs[field.ID] = group.kind + "." + field.Name
+		issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedAccumulationRegisterName)...)
+		for index, dimension := range value.Dimensions {
+			issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension,
+				accumulationRegisterDimensions())...)
 		}
-	}
-	for index, resource := range value.Resources {
-		issues = append(issues, validateNumericResource(fmt.Sprintf("resources[%d]", index), resource)...)
-	}
-	issues = append(issues, validateAccumulationAggregates(value.Aggregates, RegisterDimensionAttributes(value.Dimensions))...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccumulationRegisterKind,
-		recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
-			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return AccumulationRegisterDefinition{}, err
-	}
-	return value, nil
+		issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedAccumulationRegisterName)...)
+		for index, resource := range value.Resources {
+			issues = append(issues, validateResourceIndexing(fmt.Sprintf("resources[%d]", index), resource.Indexing)...)
+		}
+		for _, group := range []struct {
+			path   string
+			fields []Attribute
+		}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
+			for index, field := range group.fields {
+				issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("%s[%d]", group.path, index), field)...)
+			}
+		}
+		issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedAccumulationRegisterName)...)
+		registerFields := []fieldGroup{
+			{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
+		}
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
+		issues = append(issues, validateFieldLinks(accumulationStandardFields(value.Kind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+		issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
+		if len(value.Resources) == 0 {
+			issues = append(issues, "resources must contain at least one numeric item")
+		}
+		issues = append(issues, validateRegisterFieldsApart(registerFields)...)
+		for index, resource := range value.Resources {
+			issues = append(issues, validateNumericResource(fmt.Sprintf("resources[%d]", index), resource)...)
+		}
+		issues = append(issues, validateAccumulationAggregates(value.Aggregates, RegisterDimensionAttributes(value.Dimensions))...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccumulationRegisterKind,
+			recordIndexTables(accumulationStandardFields(value.Kind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
+				attributeNames(value.Resources), attributeNames(value.Attributes)))...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // reservedAccumulationRegisterName keeps the standard fields of a movement.

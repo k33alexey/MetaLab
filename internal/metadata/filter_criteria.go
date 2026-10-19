@@ -60,49 +60,44 @@ type FilterCriterionDefinition struct {
 
 // DecodeFilterCriterion reads and validates one filter criterion.
 func DecodeFilterCriterion(source string, reader io.Reader, configuration project.Project) (FilterCriterionDefinition, error) {
-	var value FilterCriterionDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return FilterCriterionDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	// A criterion with no type is carried and searches nothing: sb keeps one
-	// with 190 fields of its content. It is a note.
-	if len(value.Types) > 0 {
-		issues = append(issues, validateTypes("types", value.Types)...)
-	}
-	for name, text := range map[string]LocalizedText{
-		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
-		"extended_list_presentation": value.ExtendedListPresentation,
-	} {
-		issues = append(issues, validateTitle(name, text, configuration)...)
-	}
-	seen := map[string]bool{}
-	for index, field := range value.Fields {
-		prefix := fmt.Sprintf("fields[%d]", index)
-		if !criterionFieldKind(field.Kind) {
-			issues = append(issues, prefix+".kind must be a catalog, a document, a business process, a task, an exchange plan, a chart of characteristic types or a chart of calculation types")
+	return decodeDescription(source, reader, configuration, func(value FilterCriterionDefinition, configuration project.Project) []string {
+		var issues []string
+		// A criterion with no type is carried and searches nothing: sb keeps one
+		// with 190 fields of its content. It is a note.
+		if len(value.Types) > 0 {
+			issues = append(issues, validateTypes("types", value.Types)...)
 		}
-		if field.Object.IsZero() {
-			issues = append(issues, prefix+".object must be a non-zero UUID")
+		for name, text := range map[string]LocalizedText{
+			"explanation": value.Explanation, "list_presentation": value.ListPresentation,
+			"extended_list_presentation": value.ExtendedListPresentation,
+		} {
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
-		if field.Attribute.IsZero() {
-			issues = append(issues, prefix+".attribute must be a non-zero UUID")
+		seen := map[string]bool{}
+		for index, field := range value.Fields {
+			prefix := fmt.Sprintf("fields[%d]", index)
+			if !criterionFieldKind(field.Kind) {
+				issues = append(issues, prefix+".kind must be a catalog, a document, a business process, a task, an exchange plan, a chart of characteristic types or a chart of calculation types")
+			}
+			if field.Object.IsZero() {
+				issues = append(issues, prefix+".object must be a non-zero UUID")
+			}
+			if field.Attribute.IsZero() {
+				issues = append(issues, prefix+".attribute must be a non-zero UUID")
+			}
+			if field.TablePart != nil && field.TablePart.IsZero() {
+				issues = append(issues, prefix+".table_part must be a non-zero UUID")
+			}
+			key := string(field.Kind) + ":" + field.Object.String() + ":" + field.Attribute.String()
+			if seen[key] {
+				issues = append(issues, prefix+" is already among the fields")
+			}
+			seen[key] = true
 		}
-		if field.TablePart != nil && field.TablePart.IsZero() {
-			issues = append(issues, prefix+".table_part must be a non-zero UUID")
-		}
-		key := string(field.Kind) + ":" + field.Object.String() + ":" + field.Attribute.String()
-		if seen[key] {
-			issues = append(issues, prefix+" is already among the fields")
-		}
-		seen[key] = true
-	}
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return FilterCriterionDefinition{}, err
-	}
-	return value, nil
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		return issues
+	})
 }
 
 func cloneFilterCriterion(value FilterCriterionDefinition) FilterCriterionDefinition {

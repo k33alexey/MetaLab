@@ -126,56 +126,51 @@ type WebServiceDefinition struct {
 
 // DecodeWebService reads and validates one web service.
 func DecodeWebService(source string, reader io.Reader, configuration project.Project) (WebServiceDefinition, error) {
-	var value WebServiceDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return WebServiceDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateNamespace("namespace", value.Namespace, true)...)
-	issues = append(issues, validateDescriptorFile("descriptor_file", value.DescriptorFile)...)
-	switch value.ReuseSessions {
-	case "", DoNotReuseSession, ReuseSession, ReuseSessionAutomatic:
-	default:
-		issues = append(issues, "reuse_sessions must be do-not-use, use or auto")
-	}
-	if value.SessionMaxAge < 0 {
-		issues = append(issues, "session_max_age must not be negative")
-	}
-	seenPackages := map[string]bool{}
-	for index, item := range value.Packages {
-		where := fmt.Sprintf("packages[%d]", index)
-		var key string
-		switch {
-		case item.Package != nil && item.Namespace != "":
-			issues = append(issues, where+" names both a package of the configuration and a namespace of the platform")
-			continue
-		case item.Package != nil:
-			if item.Package.IsZero() {
-				issues = append(issues, where+".package must be a non-zero UUID")
-				continue
-			}
-			key = "package:" + item.Package.String()
-		case item.Namespace != "":
-			if problems := validateNamespace(where+".namespace", item.Namespace, true); len(problems) > 0 {
-				issues = append(issues, problems...)
-				continue
-			}
-			key = "namespace:" + item.Namespace
+	return decodeDescription(source, reader, configuration, func(value WebServiceDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateNamespace("namespace", value.Namespace, true)...)
+		issues = append(issues, validateDescriptorFile("descriptor_file", value.DescriptorFile)...)
+		switch value.ReuseSessions {
+		case "", DoNotReuseSession, ReuseSession, ReuseSessionAutomatic:
 		default:
-			issues = append(issues, where+" must name a package of the configuration or a namespace of the platform")
-			continue
+			issues = append(issues, "reuse_sessions must be do-not-use, use or auto")
 		}
-		// A package named twice describes the service no better than once.
-		if seenPackages[key] {
-			issues = append(issues, where+" is named twice")
+		if value.SessionMaxAge < 0 {
+			issues = append(issues, "session_max_age must not be negative")
 		}
-		seenPackages[key] = true
-	}
-	issues = append(issues, validateOperations(value.Operations, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return WebServiceDefinition{}, err
-	}
-	return value, nil
+		seenPackages := map[string]bool{}
+		for index, item := range value.Packages {
+			where := fmt.Sprintf("packages[%d]", index)
+			var key string
+			switch {
+			case item.Package != nil && item.Namespace != "":
+				issues = append(issues, where+" names both a package of the configuration and a namespace of the platform")
+				continue
+			case item.Package != nil:
+				if item.Package.IsZero() {
+					issues = append(issues, where+".package must be a non-zero UUID")
+					continue
+				}
+				key = "package:" + item.Package.String()
+			case item.Namespace != "":
+				if problems := validateNamespace(where+".namespace", item.Namespace, true); len(problems) > 0 {
+					issues = append(issues, problems...)
+					continue
+				}
+				key = "namespace:" + item.Namespace
+			default:
+				issues = append(issues, where+" must name a package of the configuration or a namespace of the platform")
+				continue
+			}
+			// A package named twice describes the service no better than once.
+			if seenPackages[key] {
+				issues = append(issues, where+" is named twice")
+			}
+			seenPackages[key] = true
+		}
+		issues = append(issues, validateOperations(value.Operations, configuration)...)
+		return issues
+	})
 }
 
 // validateOperations checks what the service offers: each operation, each of

@@ -81,74 +81,52 @@ type InformationRegisterDefinition struct {
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, configuration project.Project) (InformationRegisterDefinition, error) {
-	var value InformationRegisterDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return InformationRegisterDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
-	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, InformationRegisterKind,
-		recordIndexTables(standardFieldsOfKind(InformationRegisterKind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
-			attributeNames(value.Resources), attributeNames(value.Attributes)))...)
-	switch value.WriteMode {
-	case InformationRegisterIndependent, InformationRegisterRecorder:
-	default:
-		issues = append(issues, "write_mode must be independent or recorder")
-	}
-	switch value.Periodicity {
-	case InformationRegisterPeriodNone, InformationRegisterPeriodSecond, InformationRegisterPeriodDay,
-		InformationRegisterPeriodMonth, InformationRegisterPeriodQuarter, InformationRegisterPeriodYear:
-	case InformationRegisterPeriodRecorderPosition:
-		if value.WriteMode != InformationRegisterRecorder {
-			issues = append(issues, "recorder-position periodicity requires recorder write mode")
+	return decodeDescription(source, reader, configuration, func(value InformationRegisterDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+		issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, InformationRegisterKind,
+			recordIndexTables(standardFieldsOfKind(InformationRegisterKind), attributeNames(RegisterDimensionAttributes(value.Dimensions)),
+				attributeNames(value.Resources), attributeNames(value.Attributes)))...)
+		switch value.WriteMode {
+		case InformationRegisterIndependent, InformationRegisterRecorder:
+		default:
+			issues = append(issues, "write_mode must be independent or recorder")
 		}
-	default:
-		issues = append(issues, "periodicity must be none, second, day, month, quarter, year or recorder-position")
-	}
-	issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedInformationRegisterName)...)
-	for index, dimension := range value.Dimensions {
-		issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension, informationRegisterDimensions())...)
-	}
-	issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedInformationRegisterName)...)
-	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedInformationRegisterName)...)
-	registerFields := []fieldGroup{
-		{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
-	}
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
-	issues = append(issues, validateInformationRegisterProperties(value)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
-	issues = append(issues, validateFieldLinks(standardFieldsOfKind(InformationRegisterKind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
-	// A register with no fields at all keeps one record a period with nothing
-	// in it - what it is right after it is made. Carried and noted.
-	fieldNames := map[string]string{}
-	fieldIDs := map[uuid.UUID]string{}
-	for _, group := range []struct {
-		kind   string
-		fields []Attribute
-	}{{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes}} {
-		for _, field := range group.fields {
-			folded := strings.ToLower(field.Name)
-			if previous, exists := fieldNames[folded]; exists {
-				issues = append(issues, fmt.Sprintf("%s.%s conflicts with %s", group.kind, field.Name, previous))
+		switch value.Periodicity {
+		case InformationRegisterPeriodNone, InformationRegisterPeriodSecond, InformationRegisterPeriodDay,
+			InformationRegisterPeriodMonth, InformationRegisterPeriodQuarter, InformationRegisterPeriodYear:
+		case InformationRegisterPeriodRecorderPosition:
+			if value.WriteMode != InformationRegisterRecorder {
+				issues = append(issues, "recorder-position periodicity requires recorder write mode")
 			}
-			fieldNames[folded] = group.kind + "." + field.Name
-			if previous, exists := fieldIDs[field.ID]; exists {
-				issues = append(issues, fmt.Sprintf("%s.%s UUID conflicts with %s", group.kind, field.Name, previous))
-			}
-			fieldIDs[field.ID] = group.kind + "." + field.Name
+		default:
+			issues = append(issues, "periodicity must be none, second, day, month, quarter, year or recorder-position")
 		}
-	}
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return InformationRegisterDefinition{}, err
-	}
-	return value, nil
+		issues = append(issues, validateAttributes("dimensions", RegisterDimensionAttributes(value.Dimensions), configuration, reservedInformationRegisterName)...)
+		for index, dimension := range value.Dimensions {
+			issues = append(issues, validateRegisterDimension(fmt.Sprintf("dimensions[%d]", index), dimension, informationRegisterDimensions())...)
+		}
+		issues = append(issues, validateAttributes("resources", value.Resources, configuration, reservedInformationRegisterName)...)
+		issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, reservedInformationRegisterName)...)
+		registerFields := []fieldGroup{
+			{"dimensions", RegisterDimensionAttributes(value.Dimensions)}, {"resources", value.Resources}, {"attributes", value.Attributes},
+		}
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
+		issues = append(issues, validateInformationRegisterProperties(value)...)
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(InformationRegisterKind), configuration)...)
+		issues = append(issues, validateFieldLinks(standardFieldsOfKind(InformationRegisterKind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+		issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
+		// A register with no fields at all keeps one record a period with nothing
+		// in it - what it is right after it is made. Carried and noted.
+		issues = append(issues, validateRegisterFieldsApart(registerFields)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // reservedInformationRegisterName keeps the standard fields of a record. The
@@ -179,4 +157,27 @@ func informationRegisterFields(value InformationRegisterDefinition) []Attribute 
 	result = append(result, value.Resources...)
 	result = append(result, value.Attributes...)
 	return result
+}
+
+// validateRegisterFieldsApart requires the dimensions, resources and attributes
+// of a register to be told apart: no two of them share a name, whatever the
+// case, or an identifier, in whichever groups they are.
+func validateRegisterFieldsApart(groups []fieldGroup) []string {
+	var issues []string
+	names, ids := map[string]string{}, map[uuid.UUID]string{}
+	for _, group := range groups {
+		for _, field := range group.fields {
+			place := group.path + "." + field.Name
+			folded := strings.ToLower(field.Name)
+			if previous, exists := names[folded]; exists {
+				issues = append(issues, fmt.Sprintf("%s conflicts with %s", place, previous))
+			}
+			names[folded] = place
+			if previous, exists := ids[field.ID]; exists {
+				issues = append(issues, fmt.Sprintf("%s UUID conflicts with %s", place, previous))
+			}
+			ids[field.ID] = place
+		}
+	}
+	return issues
 }

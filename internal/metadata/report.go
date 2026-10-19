@@ -80,47 +80,37 @@ type DataProcessorDefinition struct {
 
 // DecodeReport reads and validates one report.
 func DecodeReport(source string, reader io.Reader, configuration project.Project) (ReportDefinition, error) {
-	var value ReportDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ReportDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
-	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
-	for name, id := range map[string]*uuid.UUID{
-		"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
-		"settings_storage": value.SettingsStorage,
-	} {
-		if id != nil && id.IsZero() {
-			issues = append(issues, name+" must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value ReportDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
+		issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
+		for name, id := range map[string]*uuid.UUID{
+			"main_schema": value.MainSchema, "variants_storage": value.VariantsStorage,
+			"settings_storage": value.SettingsStorage,
+		} {
+			if id != nil && id.IsZero() {
+				issues = append(issues, name+" must be a non-zero UUID")
+			}
 		}
-	}
-	issues = append(issues, validateMainSchema(value.MainSchema, value.Templates)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ReportDefinition{}, err
-	}
-	return value, nil
+		issues = append(issues, validateMainSchema(value.MainSchema, value.Templates)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // DecodeDataProcessor reads and validates one data processor.
 func DecodeDataProcessor(source string, reader io.Reader, configuration project.Project) (DataProcessorDefinition, error) {
-	var value DataProcessorDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return DataProcessorDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
-	issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return DataProcessorDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value DataProcessorDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateRunningObjectShape(value.Attributes, value.TableParts, configuration)...)
+		issues = append(issues, validateRunningObjectPresentations(value.RunningObjectPresentations, configuration)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // validateMainSchema checks that the main schema of a report, when it is one

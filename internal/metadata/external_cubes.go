@@ -153,59 +153,49 @@ type ExternalDimensionTable struct {
 // DecodeExternalCube reads and validates one cube, without its dimension
 // tables.
 func DecodeExternalCube(source string, reader io.Reader, configuration project.Project) (ExternalCube, error) {
-	var value ExternalCube
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ExternalCube{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
-	issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the cube")...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	issues = append(issues, validateCubeFields(value, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ExternalCube{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ExternalCube, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validateRecordPresentations(value.RecordPresentations, configuration)...)
+		issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the cube")...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		issues = append(issues, validateCubeFields(value, configuration)...)
+		return issues
+	})
 }
 
 // DecodeExternalDimensionTable reads and validates one table of a dimension.
 func DecodeExternalDimensionTable(source string, reader io.Reader, configuration project.Project) (ExternalDimensionTable, error) {
-	var value ExternalDimensionTable
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ExternalDimensionTable{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validatePresentations(value.Presentations, configuration)...)
-	issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the dimension table")...)
-	issues = append(issues, validateNameInDataSource("hierarchy_name_in_data_source", value.HierarchyNameInDataSource)...)
-	if value.LevelNumber < 0 {
-		issues = append(issues, "level_number must not be negative")
-	}
-	// A hierarchical table keeps the level it was saved with: the designer
-	// saves 1 there (mdclasses, 8.3.25 and 8.3.27), while the help says such a
-	// table answers 0. Both are true at once - the number written and the
-	// number the application sees - so the first is carried and the second is
-	// EffectiveLevelNumber.
-	//
-	// The value of an unfilled parent has no ceiling: the help types it as a
-	// string or Null and names none.
-	// Without a hierarchy the value is never read; a table of a source keeps
-	// it there too (mdclasses), so it is carried and is a note.
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields})...)
-	if value.PresentationField != "" && !slices.ContainsFunc(value.Fields, func(field ExternalField) bool {
-		return strings.EqualFold(field.Name, value.PresentationField)
-	}) {
-		issues = append(issues, fmt.Sprintf("presentation_field names %q, which is not a field of this dimension table", value.PresentationField))
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ExternalDimensionTable{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ExternalDimensionTable, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validatePresentations(value.Presentations, configuration)...)
+		issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", value.NameInDataSource, "the dimension table")...)
+		issues = append(issues, validateNameInDataSource("hierarchy_name_in_data_source", value.HierarchyNameInDataSource)...)
+		if value.LevelNumber < 0 {
+			issues = append(issues, "level_number must not be negative")
+		}
+		// A hierarchical table keeps the level it was saved with: the designer
+		// saves 1 there (mdclasses, 8.3.25 and 8.3.27), while the help says such a
+		// table answers 0. Both are true at once - the number written and the
+		// number the application sees - so the first is carried and the second is
+		// EffectiveLevelNumber.
+		//
+		// The value of an unfilled parent has no ceiling: the help types it as a
+		// string or Null and names none.
+		// Without a hierarchy the value is never read; a table of a source keeps
+		// it there too (mdclasses), so it is carried and is a note.
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields})...)
+		if value.PresentationField != "" && !slices.ContainsFunc(value.Fields, func(field ExternalField) bool {
+			return strings.EqualFold(field.Name, value.PresentationField)
+		}) {
+			issues = append(issues, fmt.Sprintf("presentation_field names %q, which is not a field of this dimension table", value.PresentationField))
+		}
+		return issues
+	})
 }
 
 // validateCubeFields checks the dimensions and the resources of a cube. They

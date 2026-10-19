@@ -268,43 +268,38 @@ type BusinessProcessDefinition struct {
 
 // DecodeBusinessProcess reads and validates one business process.
 func DecodeBusinessProcess(source string, reader io.Reader, configuration project.Project) (BusinessProcessDefinition, error) {
-	var value BusinessProcessDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return BusinessProcessDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-		number:             value.Number,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              value.Forms,
-		list:               value.List,
-		reservedName:       reservedBusinessProcessName,
-		kind:               BusinessProcessKind,
-		standardAttributes: value.StandardAttributes,
-		presentation:       value.Presentations,
-		input:              value.ObjectInput,
-		basedOn:            value.BasedOn,
-		dataLock:           value.DataLock,
-		dataLockFields:     value.DataLockFields,
-		fullTextSearch:     value.FullTextSearch,
-		dataHistory:        value.DataHistorySettings,
-		additionalIndexes:  value.AdditionalIndexes,
-	}, configuration)...)
-	if value.Task != nil && value.Task.IsZero() {
-		issues = append(issues, "task must be a non-zero UUID")
-	}
-	if !validEditType(value.EditType) {
-		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
-	}
-	issues = append(issues, validateRouteMap(value.Route, configuration)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return BusinessProcessDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value BusinessProcessDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
+			number:             value.Number,
+			attributes:         value.Attributes,
+			tableParts:         value.TableParts,
+			forms:              value.Forms,
+			list:               value.List,
+			reservedName:       reservedBusinessProcessName,
+			kind:               BusinessProcessKind,
+			standardAttributes: value.StandardAttributes,
+			presentation:       value.Presentations,
+			input:              value.ObjectInput,
+			basedOn:            value.BasedOn,
+			dataLock:           value.DataLock,
+			dataLockFields:     value.DataLockFields,
+			fullTextSearch:     value.FullTextSearch,
+			dataHistory:        value.DataHistorySettings,
+			additionalIndexes:  value.AdditionalIndexes,
+		}, configuration)...)
+		if value.Task != nil && value.Task.IsZero() {
+			issues = append(issues, "task must be a non-zero UUID")
+		}
+		if !validEditType(value.EditType) {
+			issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
+		}
+		issues = append(issues, validateRouteMap(value.Route, configuration)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 func validateRouteMap(route RouteMap, configuration project.Project) []string {

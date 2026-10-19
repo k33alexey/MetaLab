@@ -47,50 +47,45 @@ type FunctionalOptionParameterDefinition struct {
 
 // DecodeFunctionalOptionParameter reads and validates one parameter.
 func DecodeFunctionalOptionParameter(source string, reader io.Reader, configuration project.Project) (FunctionalOptionParameterDefinition, error) {
-	var value FunctionalOptionParameterDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return FunctionalOptionParameterDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	// The help: the property has to be filled. A parameter standing for
-	// nothing gives an option nothing to look its value up by.
-	if len(value.Use) == 0 {
-		issues = append(issues, "use must name at least one catalog or dimension")
-	}
-	seen := map[string]bool{}
-	for index, item := range value.Use {
-		prefix := fmt.Sprintf("use[%d]", index)
-		switch item.Kind {
-		case CatalogKind:
+	return decodeDescription(source, reader, configuration, func(value FunctionalOptionParameterDefinition, configuration project.Project) []string {
+		var issues []string
+		// The help: the property has to be filled. A parameter standing for
+		// nothing gives an option nothing to look its value up by.
+		if len(value.Use) == 0 {
+			issues = append(issues, "use must name at least one catalog or dimension")
+		}
+		seen := map[string]bool{}
+		for index, item := range value.Use {
+			prefix := fmt.Sprintf("use[%d]", index)
+			switch item.Kind {
+			case CatalogKind:
+				if item.Element != nil {
+					issues = append(issues, prefix+".element is not allowed: a parameter stands for a catalog as a whole")
+				}
+			case InformationRegisterKind:
+				if item.Element == nil {
+					issues = append(issues, prefix+".element is required: a parameter stands for a dimension of the register")
+				}
+			default:
+				issues = append(issues, prefix+".kind must be catalogs or information-registers")
+			}
+			if item.Object.IsZero() {
+				issues = append(issues, prefix+".object must be a non-zero UUID")
+			}
+			if item.Element != nil && item.Element.IsZero() {
+				issues = append(issues, prefix+".element must be a non-zero UUID")
+			}
+			key := string(item.Kind) + ":" + item.Object.String()
 			if item.Element != nil {
-				issues = append(issues, prefix+".element is not allowed: a parameter stands for a catalog as a whole")
+				key += ":" + item.Element.String()
 			}
-		case InformationRegisterKind:
-			if item.Element == nil {
-				issues = append(issues, prefix+".element is required: a parameter stands for a dimension of the register")
+			if seen[key] {
+				issues = append(issues, prefix+" is already in the use")
 			}
-		default:
-			issues = append(issues, prefix+".kind must be catalogs or information-registers")
+			seen[key] = true
 		}
-		if item.Object.IsZero() {
-			issues = append(issues, prefix+".object must be a non-zero UUID")
-		}
-		if item.Element != nil && item.Element.IsZero() {
-			issues = append(issues, prefix+".element must be a non-zero UUID")
-		}
-		key := string(item.Kind) + ":" + item.Object.String()
-		if item.Element != nil {
-			key += ":" + item.Element.String()
-		}
-		if seen[key] {
-			issues = append(issues, prefix+" is already in the use")
-		}
-		seen[key] = true
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return FunctionalOptionParameterDefinition{}, err
-	}
-	return value, nil
+		return issues
+	})
 }
 
 func cloneFunctionalOptionParameter(value FunctionalOptionParameterDefinition) FunctionalOptionParameterDefinition {

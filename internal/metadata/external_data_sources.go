@@ -212,17 +212,12 @@ type ExternalField struct {
 // DecodeExternalDataSource reads and validates the description of one source,
 // without its tables.
 func DecodeExternalDataSource(source string, reader io.Reader, configuration project.Project) (ExternalDataSourceDefinition, error) {
-	var value ExternalDataSourceDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ExternalDataSourceDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	issues = append(issues, validateExternalFunctions(value.Functions, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ExternalDataSourceDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ExternalDataSourceDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		issues = append(issues, validateExternalFunctions(value.Functions, configuration)...)
+		return issues
+	})
 }
 
 // DecodeExternalTable reads and validates one table of a source: everything the
@@ -231,18 +226,11 @@ func DecodeExternalDataSource(source string, reader io.Reader, configuration pro
 // fields refer to are there, which the source answers, and what it is entered
 // on the basis of, which the configuration does.
 func DecodeExternalTable(source string, reader io.Reader, configuration project.Project) (ExternalTable, error) {
-	var value ExternalTable
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ExternalTable{}, err
-	}
-	if err := issuesError(source, value.Format, validateExternalTable(value, configuration)); err != nil {
-		return ExternalTable{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateExternalTable)
 }
 
 func validateExternalTable(table ExternalTable, configuration project.Project) []string {
-	issues := validateBase(table.Format, table.ID, table.Name, table.Title, configuration)
+	var issues []string
 	issues = append(issues, validatePresentations(table.Presentations, configuration)...)
 	issues = append(issues, validateRecordPresentations(table.RecordPresentations, configuration)...)
 	issues = append(issues, validateExternalTableSource(table)...)

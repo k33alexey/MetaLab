@@ -131,55 +131,50 @@ func validateCharacteristicTypesHierarchy(hierarchy Hierarchy) []string {
 }
 
 func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configuration project.Project) (ChartOfCharacteristicTypesDefinition, error) {
-	var value ChartOfCharacteristicTypesDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ChartOfCharacteristicTypesDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateCharacteristicTypesHierarchy(value.Hierarchy)...)
-	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:                   value.Code,
-		descriptionLength:      value.DescriptionLength,
-		attributes:             value.Attributes,
-		tableParts:             value.TableParts,
-		forms:                  value.Forms,
-		list:                   value.List,
-		hierarchy:              value.Hierarchy,
-		predefined:             predefinedCharacteristicItems(value.Predefined),
-		reservedName:           reservedChartOfCharacteristicTypesName,
-		attributeUse:           true,
-		codeSeries:             true,
-		codeAllowedLength:      true,
-		codeMayBeAbsent:        true,
-		descriptionMayBeAbsent: true,
-		autonumbering:          true,
-		checkUnique:            true,
-		predefinedDataUpdate:   value.PredefinedDataUpdate,
-		presentation:           value.Presentations,
-		choice:                 value.ObjectChoice,
-		basedOn:                value.BasedOn,
-		dataLock:               value.DataLock,
-		dataLockFields:         value.DataLockFields,
-		fullTextSearch:         value.FullTextSearch,
-		dataHistory:            value.DataHistorySettings,
-		additionalIndexes:      value.AdditionalIndexes,
-		kind:                   ChartOfCharacteristicTypesKind,
-		standardAttributes:     value.StandardAttributes,
-	}, configuration)...)
-	// The value type is the point of the whole object: a chart that allows
-	// nothing describes characteristics nobody can fill in.
-	issues = append(issues, validateTypes("value_type", value.ValueType)...)
-	issues = append(issues, validatePredefinedCharacteristics(value.Predefined)...)
-	if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
-		issues = append(issues, "additional_values must be a non-zero UUID")
-	}
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ChartOfCharacteristicTypesDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ChartOfCharacteristicTypesDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateCharacteristicTypesHierarchy(value.Hierarchy)...)
+		issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+			code:                   value.Code,
+			descriptionLength:      value.DescriptionLength,
+			attributes:             value.Attributes,
+			tableParts:             value.TableParts,
+			forms:                  value.Forms,
+			list:                   value.List,
+			hierarchy:              value.Hierarchy,
+			predefined:             predefinedCharacteristicItems(value.Predefined),
+			reservedName:           reservedChartOfCharacteristicTypesName,
+			attributeUse:           true,
+			codeSeries:             true,
+			codeAllowedLength:      true,
+			codeMayBeAbsent:        true,
+			descriptionMayBeAbsent: true,
+			autonumbering:          true,
+			checkUnique:            true,
+			predefinedDataUpdate:   value.PredefinedDataUpdate,
+			presentation:           value.Presentations,
+			choice:                 value.ObjectChoice,
+			basedOn:                value.BasedOn,
+			dataLock:               value.DataLock,
+			dataLockFields:         value.DataLockFields,
+			fullTextSearch:         value.FullTextSearch,
+			dataHistory:            value.DataHistorySettings,
+			additionalIndexes:      value.AdditionalIndexes,
+			kind:                   ChartOfCharacteristicTypesKind,
+			standardAttributes:     value.StandardAttributes,
+		}, configuration)...)
+		// The value type is the point of the whole object: a chart that allows
+		// nothing describes characteristics nobody can fill in.
+		issues = append(issues, validateTypes("value_type", value.ValueType)...)
+		issues = append(issues, validatePredefinedCharacteristics(value.Predefined)...)
+		if value.AdditionalValues != nil && value.AdditionalValues.IsZero() {
+			issues = append(issues, "additional_values must be a non-zero UUID")
+		}
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 // reservedChartOfCharacteristicTypesName keeps the catalog's own names and adds

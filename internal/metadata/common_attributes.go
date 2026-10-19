@@ -215,20 +215,18 @@ func (value CommonAttributeDefinition) reaches(objectID uuid.UUID) bool {
 }
 
 func DecodeCommonAttribute(source string, reader io.Reader, configuration project.Project) (CommonAttributeDefinition, error) {
-	var value CommonAttributeDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CommonAttributeDefinition{}, err
-	}
-	if err := ValidateCommonAttribute(source, value, configuration); err != nil {
-		return CommonAttributeDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, validateCommonAttribute)
 }
 
 // ValidateCommonAttribute checks structure only; object existence, object
 // kind and name collisions are checked catalog-wide by propagateCommonAttributes.
 func ValidateCommonAttribute(source string, value CommonAttributeDefinition, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateCommonAttribute)
+}
+
+// validateCommonAttribute checks what a common attribute adds to the head every description has.
+func validateCommonAttribute(value CommonAttributeDefinition, configuration project.Project) []string {
+	var issues []string
 	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
 	issues = append(issues, validateDataHistory(DataHistorySettings{DataHistory: value.DataHistory})...)
 	issues = append(issues, validateTypes("types", value.Types)...)
@@ -311,7 +309,7 @@ func ValidateCommonAttribute(source string, value CommonAttributeDefinition, con
 	// An attribute that reaches nobody is carried: the designer saves one, a
 	// field declared and not yet given to any object - checked by the owner
 	// on 01.10.2026.
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 // validateConditionalSeparation checks the condition of one item: it names one

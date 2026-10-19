@@ -164,33 +164,28 @@ func cloneJobSchedule(schedule *JobSchedule) *JobSchedule {
 
 // DecodeScheduledJob reads and validates one scheduled job.
 func DecodeScheduledJob(source string, reader io.Reader, configuration project.Project) (ScheduledJobDefinition, error) {
-	var value ScheduledJobDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ScheduledJobDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if value.Module.IsZero() {
-		issues = append(issues, "module is required: a job runs a procedure of a common module")
-	}
-	if !validIdentifier(value.Procedure) {
-		issues = append(issues, "procedure must be a valid identifier")
-	}
-	// No ceiling on either: the help names none, and the configurations being
-	// moved go up to 10 repeats and an hour.
-	if value.RestartCountOnFailure < 0 {
-		issues = append(issues, "restart_count_on_failure must not be negative")
-	}
-	if value.RestartIntervalOnFailure < 0 {
-		issues = append(issues, "restart_interval_on_failure must not be negative")
-	}
-	issues = append(issues, validateJobSchedule("schedule", value.Schedule)...)
-	// An interval with no repeats is not refused, though it reads as a
-	// contradiction: five jobs of the reference configuration are written that
-	// way, and refusing them would refuse the configuration.
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ScheduledJobDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ScheduledJobDefinition, configuration project.Project) []string {
+		var issues []string
+		if value.Module.IsZero() {
+			issues = append(issues, "module is required: a job runs a procedure of a common module")
+		}
+		if !validIdentifier(value.Procedure) {
+			issues = append(issues, "procedure must be a valid identifier")
+		}
+		// No ceiling on either: the help names none, and the configurations being
+		// moved go up to 10 repeats and an hour.
+		if value.RestartCountOnFailure < 0 {
+			issues = append(issues, "restart_count_on_failure must not be negative")
+		}
+		if value.RestartIntervalOnFailure < 0 {
+			issues = append(issues, "restart_interval_on_failure must not be negative")
+		}
+		issues = append(issues, validateJobSchedule("schedule", value.Schedule)...)
+		// An interval with no repeats is not refused, though it reads as a
+		// contradiction: five jobs of the reference configuration are written that
+		// way, and refusing them would refuse the configuration.
+		return issues
+	})
 }
 
 func cloneScheduledJob(value ScheduledJobDefinition) ScheduledJobDefinition {

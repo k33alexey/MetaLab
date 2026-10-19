@@ -86,81 +86,76 @@ type AccountingRegisterDefinition struct {
 
 // DecodeAccountingRegister reads and validates one accounting register.
 func DecodeAccountingRegister(source string, reader io.Reader, configuration project.Project) (AccountingRegisterDefinition, error) {
-	var value AccountingRegisterDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return AccountingRegisterDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
-	if len(value.Resources) == 0 {
-		issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
-	}
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	// What a dimension and a resource share: the common set and the flag of
-	// the chart of accounts. «Balance» is not checked against correspondence:
-	// the designer offers it without correspondence too, on a dimension and on
-	// a resource alike (checked by the owner on the platform, 01.10.2026), and
-	// the test configurations of mdclasses keep it so.
-	validateField := func(prefix string, field Attribute, accountingFlag *uuid.UUID) {
-		issues = append(issues, validateRegisterField(prefix, field,
-			names, ids, configuration, reservedAccountingRegisterName)...)
-		if accountingFlag != nil && accountingFlag.IsZero() {
-			issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value AccountingRegisterDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+		if len(value.Resources) == 0 {
+			issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
 		}
-		issues = append(issues, validateMovementFieldStorage(prefix, field)...)
-	}
-	for index, dimension := range value.Dimensions {
-		prefix := fmt.Sprintf("dimensions[%d]", index)
-		validateField(prefix, dimension.Attribute, dimension.AccountingFlag)
-		issues = append(issues, validateRegisterDimension(prefix, dimension, accountingRegisterDimensions())...)
-	}
-	for index, resource := range value.Resources {
-		prefix := fmt.Sprintf("resources[%d]", index)
-		validateField(prefix, resource.Attribute, resource.AccountingFlag)
-		issues = append(issues, validateNumericResource(prefix, resource.Attribute)...)
-		if resource.ExtDimensionAccountingFlag != nil && resource.ExtDimensionAccountingFlag.IsZero() {
-			issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
+		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		// What a dimension and a resource share: the common set and the flag of
+		// the chart of accounts. «Balance» is not checked against correspondence:
+		// the designer offers it without correspondence too, on a dimension and on
+		// a resource alike (checked by the owner on the platform, 01.10.2026), and
+		// the test configurations of mdclasses keep it so.
+		validateField := func(prefix string, field Attribute, accountingFlag *uuid.UUID) {
+			issues = append(issues, validateRegisterField(prefix, field,
+				names, ids, configuration, reservedAccountingRegisterName)...)
+			if accountingFlag != nil && accountingFlag.IsZero() {
+				issues = append(issues, prefix+".accounting_flag must be a non-zero UUID")
+			}
+			issues = append(issues, validateMovementFieldStorage(prefix, field)...)
 		}
-		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
-	}
-	issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
-		return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
-	})...)
-	for index, attribute := range value.Attributes {
-		issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)
-	}
-	// How many ext dimensions an entry really has is the chart's to say, and
-	// the chart is in another file: here the platform's ceiling is allowed and
-	// load.go narrows it once the chart is read.
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingDescribedFields(value, mentionedExtDimensions(value)), configuration)...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
-		recordIndexTables(accountingStandardFields(value, mentionedExtDimensions(value)),
-			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),
-			attributeNames(value.Attributes)))...)
-	// Dimensions and resources belong in these two checks, and until now only
-	// attributes were in them. That cost both ways. A choice parameter link
-	// from an attribute to a dimension of the same register - «отбор по
-	// организации проводки» - was refused as pointing outside the object,
-	// because the list of fields the link could reach was built from
-	// attributes alone. And a link drawn from a dimension was not looked at at
-	// all, so one pointing nowhere went in and failed when the form opened.
-	registerFields := accountingLinkedFields(value)
-	// A link may take its value from an ext dimension - Субконто2 - and how many
-	// the entry has is the chart's to say, which is not in hand here. So the
-	// links are checked against as many as they mention, and load.go checks
-	// them again against the chart.
-	issues = append(issues, validateAccountingRegisterLinks(value, mentionedExtDimensions(value))...)
-	issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return AccountingRegisterDefinition{}, err
-	}
-	return value, nil
+		for index, dimension := range value.Dimensions {
+			prefix := fmt.Sprintf("dimensions[%d]", index)
+			validateField(prefix, dimension.Attribute, dimension.AccountingFlag)
+			issues = append(issues, validateRegisterDimension(prefix, dimension, accountingRegisterDimensions())...)
+		}
+		for index, resource := range value.Resources {
+			prefix := fmt.Sprintf("resources[%d]", index)
+			validateField(prefix, resource.Attribute, resource.AccountingFlag)
+			issues = append(issues, validateNumericResource(prefix, resource.Attribute)...)
+			if resource.ExtDimensionAccountingFlag != nil && resource.ExtDimensionAccountingFlag.IsZero() {
+				issues = append(issues, prefix+".ext_dimension_accounting_flag must be a non-zero UUID")
+			}
+			issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
+		}
+		issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
+			return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
+		})...)
+		for index, attribute := range value.Attributes {
+			issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)
+		}
+		// How many ext dimensions an entry really has is the chart's to say, and
+		// the chart is in another file: here the platform's ceiling is allowed and
+		// load.go narrows it once the chart is read.
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validatePeriodAdjustmentLength(value.PeriodAdjustmentLength)...)
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accountingDescribedFields(value, mentionedExtDimensions(value)), configuration)...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, AccountingRegisterKind,
+			recordIndexTables(accountingStandardFields(value, mentionedExtDimensions(value)),
+				attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(accountingResourceAttributes(value.Resources)),
+				attributeNames(value.Attributes)))...)
+		// Dimensions and resources belong in these two checks, and until now only
+		// attributes were in them. That cost both ways. A choice parameter link
+		// from an attribute to a dimension of the same register - «отбор по
+		// организации проводки» - was refused as pointing outside the object,
+		// because the list of fields the link could reach was built from
+		// attributes alone. And a link drawn from a dimension was not looked at at
+		// all, so one pointing nowhere went in and failed when the form opened.
+		registerFields := accountingLinkedFields(value)
+		// A link may take its value from an ext dimension - Субконто2 - and how many
+		// the entry has is the chart's to say, which is not in hand here. So the
+		// links are checked against as many as they mention, and load.go checks
+		// them again against the chart.
+		issues = append(issues, validateAccountingRegisterLinks(value, mentionedExtDimensions(value))...)
+		issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // reservedAccountingRegisterName keeps the standard fields of an entry: when it

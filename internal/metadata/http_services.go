@@ -79,25 +79,20 @@ type HTTPServiceDefinition struct {
 
 // DecodeHTTPService reads and validates one HTTP service.
 func DecodeHTTPService(source string, reader io.Reader, configuration project.Project) (HTTPServiceDefinition, error) {
-	var value HTTPServiceDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return HTTPServiceDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateRootURL(value.RootURL)...)
-	switch value.ReuseSessions {
-	case "", DoNotReuseSession, ReuseSession, ReuseSessionAutomatic:
-	default:
-		issues = append(issues, "reuse_sessions must be do-not-use, use or auto")
-	}
-	if value.SessionMaxAge < 0 {
-		issues = append(issues, "session_max_age must not be negative")
-	}
-	issues = append(issues, validateURLTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return HTTPServiceDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value HTTPServiceDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateRootURL(value.RootURL)...)
+		switch value.ReuseSessions {
+		case "", DoNotReuseSession, ReuseSession, ReuseSessionAutomatic:
+		default:
+			issues = append(issues, "reuse_sessions must be do-not-use, use or auto")
+		}
+		if value.SessionMaxAge < 0 {
+			issues = append(issues, "session_max_age must not be negative")
+		}
+		issues = append(issues, validateURLTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // validateRootURL checks the first segment of every address of the service,

@@ -28,22 +28,17 @@ type NumeratorDefinition struct {
 
 // DecodeNumerator reads and validates one numerator.
 func DecodeNumerator(source string, reader io.Reader, configuration project.Project) (NumeratorDefinition, error) {
-	var value NumeratorDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return NumeratorDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	// A number of length 0 is allowed as on a document, whose length the owner
-	// checked; on a numerator it was not checked, so it is a note
-	// (NoteLengthZeroUnchecked).
-	issues = append(issues, validateNumberShapeOf(value.Number, true)...)
-	if value.Number.Auto {
-		issues = append(issues, "number.auto belongs to the document, not to the numerator it shares")
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return NumeratorDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value NumeratorDefinition, configuration project.Project) []string {
+		var issues []string
+		// A number of length 0 is allowed as on a document, whose length the owner
+		// checked; on a numerator it was not checked, so it is a note
+		// (NoteLengthZeroUnchecked).
+		issues = append(issues, validateNumberShapeOf(value.Number, true)...)
+		if value.Number.Auto {
+			issues = append(issues, "number.auto belongs to the document, not to the numerator it shares")
+		}
+		return issues
+	})
 }
 
 func cloneNumerator(value NumeratorDefinition) NumeratorDefinition {

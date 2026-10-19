@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode"
@@ -1018,171 +1019,142 @@ func (catalog *Catalog) AccumulationRegisterIDs() []uuid.UUID {
 }
 
 func DecodeConstant(source string, reader io.Reader, configuration project.Project) (Constant, error) {
-	var value Constant
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return Constant{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypes("types", value.Types)...)
-	for name, text := range map[string]LocalizedText{
-		"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
-	} {
-		issues = append(issues, validateTitle(name, text, configuration)...)
-	}
-	if value.DefaultForm != nil && value.DefaultForm.IsZero() {
-		issues = append(issues, "default_form must be a non-zero UUID")
-	}
-	issues = append(issues, validateValueSettings(Attribute{
-		Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
-	}, configuration)...)
-	if !validFillCheck(value.FillChecking) {
-		issues = append(issues, "fill_checking must be dont-check or show-error")
-	}
-	// A constant stands alone: there are no sibling fields for a choice
-	// parameter link to take its value from, so a link that names one names
-	// something that is not there. It may take one from another constant.
-	issues = append(issues, validateFieldLinks(nil, nil, nil, choiceHolder{"", value.Choice})...)
-	issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return Constant{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value Constant, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateTypes("types", value.Types)...)
+		for name, text := range map[string]LocalizedText{
+			"explanation": value.Explanation, "extended_presentation": value.ExtendedPresentation,
+		} {
+			issues = append(issues, validateTitle(name, text, configuration)...)
+		}
+		if value.DefaultForm != nil && value.DefaultForm.IsZero() {
+			issues = append(issues, "default_form must be a non-zero UUID")
+		}
+		issues = append(issues, validateValueSettings(Attribute{
+			Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
+		}, configuration)...)
+		if !validFillCheck(value.FillChecking) {
+			issues = append(issues, "fill_checking must be dont-check or show-error")
+		}
+		// A constant stands alone: there are no sibling fields for a choice
+		// parameter link to take its value from, so a link that names one names
+		// something that is not there. It may take one from another constant.
+		issues = append(issues, validateFieldLinks(nil, nil, nil, choiceHolder{"", value.Choice})...)
+		issues = append(issues, validateDataHistory(value.DataHistorySettings)...)
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		return issues
+	})
 }
 
 func DecodeSessionParameter(source string, reader io.Reader, configuration project.Project) (SessionParameter, error) {
-	var value SessionParameter
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return SessionParameter{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypesIn("types", value.Types, placeSessionParameter)...)
-	// No name is the platform's: ТекущийПользователь is the configuration's
-	// own parameter, declared in all three configurations being moved and set
-	// by their session modules (owner, 01.10.2026). The user of ML is another
-	// layer and never appears among these names - see session_values.go.
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return SessionParameter{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value SessionParameter, configuration project.Project) []string {
+		// No name is the platform's: ТекущийПользователь is the configuration's
+		// own parameter, declared in all three configurations being moved and set
+		// by their session modules (owner, 01.10.2026). The user of ML is another
+		// layer and never appears among these names - see session_values.go.
+		return validateTypesIn("types", value.Types, placeSessionParameter)
+	})
 }
 
 func DecodeEnumeration(source string, reader io.Reader, configuration project.Project) (Enumeration, error) {
-	var value Enumeration
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return Enumeration{}, err
-	}
-	// An enumeration with no values is saved by the configurator and occurs in
-	// the configurations being moved - erp СтатьиБезАналитики, acc
-	// РежимыОбменаДанными. Its attribute can hold only the empty reference.
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, item := range value.Values {
-		prefix := fmt.Sprintf("values[%d]", index)
-		if item.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value Enumeration, configuration project.Project) []string {
+		// An enumeration with no values is saved by the configurator and occurs in
+		// the configurations being moved - erp СтатьиБезАналитики, acc
+		// РежимыОбменаДанными. Its attribute can hold only the empty reference.
+		var issues []string
+		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		for index, item := range value.Values {
+			prefix := fmt.Sprintf("values[%d]", index)
+			if item.ID.IsZero() {
+				issues = append(issues, prefix+".id must be a non-zero UUID")
+			}
+			if ids[item.ID] {
+				issues = append(issues, prefix+".id must be unique")
+			}
+			ids[item.ID] = true
+			if !validIdentifier(item.Name) {
+				issues = append(issues, prefix+".name must be a valid identifier")
+			}
+			folded := strings.ToLower(item.Name)
+			if names[folded] {
+				issues = append(issues, prefix+".name must be unique")
+			}
+			names[folded] = true
+			issues = append(issues, validateTitle(prefix+".title", item.Title, configuration)...)
 		}
-		if ids[item.ID] {
-			issues = append(issues, prefix+".id must be unique")
+		for name, text := range map[string]LocalizedText{
+			"explanation": value.Explanation, "list_presentation": value.ListPresentation,
+			"extended_list_presentation": value.ExtendedListPresentation,
+		} {
+			issues = append(issues, validateTitle(name, text, configuration)...)
 		}
-		ids[item.ID] = true
-		if !validIdentifier(item.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
+		// An enumeration has three of the six settings of choice, and they mean here
+		// exactly what they mean on the kinds that have all six - so they are checked
+		// by the same code. See object_choice.go.
+		if !validChoiceMode(value.ChoiceMode) {
+			issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
 		}
-		folded := strings.ToLower(item.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
+		if !validChoiceHistory(value.ChoiceHistoryOnInput) {
+			issues = append(issues, "choice_history_on_input must be auto or dont-use")
 		}
-		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", item.Title, configuration)...)
-	}
-	for name, text := range map[string]LocalizedText{
-		"explanation": value.Explanation, "list_presentation": value.ListPresentation,
-		"extended_list_presentation": value.ExtendedListPresentation,
-	} {
-		issues = append(issues, validateTitle(name, text, configuration)...)
-	}
-	// An enumeration has three of the six settings of choice, and they mean here
-	// exactly what they mean on the kinds that have all six - so they are checked
-	// by the same code. See object_choice.go.
-	if !validChoiceMode(value.ChoiceMode) {
-		issues = append(issues, "choice_mode must be both-ways, from-form or quick-choice")
-	}
-	if !validChoiceHistory(value.ChoiceHistoryOnInput) {
-		issues = append(issues, "choice_history_on_input must be auto or dont-use")
-	}
-	// Quick choice under «from form» is carried and noted, as on the other
-	// kinds - see validateObjectChoice.
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
-	issues = append(issues, validateFieldLinks(standardFieldsOfKind(EnumerationKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return Enumeration{}, err
-	}
-	return value, nil
+		// Quick choice under «from form» is carried and noted, as on the other
+		// kinds - see validateObjectChoice.
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(EnumerationKind), configuration)...)
+		issues = append(issues, validateFieldLinks(standardFieldsOfKind(EnumerationKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 func DecodeDefinedType(source string, reader io.Reader, configuration project.Project) (DefinedTypeObject, error) {
-	var value DefinedTypeObject
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return DefinedTypeObject{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateTypesIn("types", value.Types, placeDefinedType)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return DefinedTypeObject{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value DefinedTypeObject, configuration project.Project) []string {
+		return validateTypesIn("types", value.Types, placeDefinedType)
+	})
 }
 
 func DecodeCatalog(source string, reader io.Reader, configuration project.Project) (CatalogDefinition, error) {
-	var value CatalogDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CatalogDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:                   value.Code,
-		descriptionLength:      value.DescriptionLength,
-		attributes:             value.Attributes,
-		tableParts:             value.TableParts,
-		forms:                  value.Forms,
-		list:                   value.List,
-		hierarchy:              value.Hierarchy,
-		predefined:             value.Predefined,
-		reservedName:           reservedCatalogObjectName,
-		attributeUse:           true,
-		codeSeries:             true,
-		ownerSeries:            true,
-		codeAllowedLength:      true,
-		codeType:               true,
-		codeMayBeAbsent:        true,
-		descriptionMayBeAbsent: true,
-		autonumbering:          true,
-		checkUnique:            true,
-		predefinedDataUpdate:   value.PredefinedDataUpdate,
-		presentation:           value.Presentations,
-		choice:                 value.ObjectChoice,
-		basedOn:                value.BasedOn,
-		dataLock:               value.DataLock,
-		dataLockFields:         value.DataLockFields,
-		fullTextSearch:         value.FullTextSearch,
-		dataHistory:            value.DataHistorySettings,
-		additionalIndexes:      value.AdditionalIndexes,
-		kind:                   CatalogKind,
-		standardAttributes:     value.StandardAttributes,
-	}, configuration)...)
-	issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return CatalogDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value CatalogDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+			code:                   value.Code,
+			descriptionLength:      value.DescriptionLength,
+			attributes:             value.Attributes,
+			tableParts:             value.TableParts,
+			forms:                  value.Forms,
+			list:                   value.List,
+			hierarchy:              value.Hierarchy,
+			predefined:             value.Predefined,
+			reservedName:           reservedCatalogObjectName,
+			attributeUse:           true,
+			codeSeries:             true,
+			ownerSeries:            true,
+			codeAllowedLength:      true,
+			codeType:               true,
+			codeMayBeAbsent:        true,
+			descriptionMayBeAbsent: true,
+			autonumbering:          true,
+			checkUnique:            true,
+			predefinedDataUpdate:   value.PredefinedDataUpdate,
+			presentation:           value.Presentations,
+			choice:                 value.ObjectChoice,
+			basedOn:                value.BasedOn,
+			dataLock:               value.DataLock,
+			dataLockFields:         value.DataLockFields,
+			fullTextSearch:         value.FullTextSearch,
+			dataHistory:            value.DataHistorySettings,
+			additionalIndexes:      value.AdditionalIndexes,
+			kind:                   CatalogKind,
+			standardAttributes:     value.StandardAttributes,
+		}, configuration)...)
+		issues = append(issues, validateCatalogSubordination(value.Owners, value.Subordination)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 // referenceObjectShape is everything a reference object repeats from the
@@ -1819,21 +1791,68 @@ func decodeStrict(source string, reader io.Reader, target any) error {
 	return nil
 }
 
-func validateBase(format int, id uuid.UUID, name string, title LocalizedText, configuration project.Project) []string {
+// decodeDescription is how a description of any kind is read: strictly, so
+// that a field the model does not know is refused rather than dropped, and
+// then checked by checkDescription. A step every description takes goes here
+// and nowhere else.
+func decodeDescription[T any](source string, reader io.Reader, configuration project.Project, kindIssues func(T, project.Project) []string) (T, error) {
+	var value T
+	if err := decodeStrict(source, reader, &value); err != nil {
+		var zero T
+		return zero, err
+	}
+	if err := checkDescription(source, value, configuration, kindIssues); err != nil {
+		var zero T
+		return zero, err
+	}
+	return value, nil
+}
+
+// checkDescription checks a description of any kind: first its head, which
+// every description has, then what its kind adds. Every issue is reported at
+// once, and a description in another format says so, whatever else is wrong.
+func checkDescription[T any](source string, value T, configuration project.Project, kindIssues func(T, project.Project) []string) error {
+	head := headOf(value)
+	issues := append(validateBase(head, configuration), kindIssues(value, configuration)...)
+	return issuesError(source, head.format, issues)
+}
+
+// descriptionHead is what every description says of itself, whatever its
+// kind: the format it is written in, its identifier, its name and its synonym.
+type descriptionHead struct {
+	format int
+	id     uuid.UUID
+	name   string
+	title  LocalizedText
+}
+
+// headOf reads the head of a description. Every type a description is read
+// into has the four fields (TestEverySourceKindIsChecked).
+func headOf(value any) descriptionHead {
+	item := reflect.ValueOf(value)
+	return descriptionHead{
+		format: int(item.FieldByName("Format").Int()),
+		id:     item.FieldByName("ID").Interface().(uuid.UUID),
+		name:   item.FieldByName("Name").String(),
+		title:  item.FieldByName("Title").Interface().(LocalizedText),
+	}
+}
+
+func validateBase(head descriptionHead, configuration project.Project) []string {
 	var issues []string
-	if format != CurrentFormat {
+	if head.format != CurrentFormat {
 		issues = append(issues, fmt.Sprintf("format must be %d", CurrentFormat))
 	}
-	if id.IsZero() {
+	if head.id.IsZero() {
 		issues = append(issues, "id must be a non-zero UUID")
 	}
-	if !validIdentifier(name) {
+	if !validIdentifier(head.name) {
 		issues = append(issues, "name must start with a letter or an underscore and contain only letters, digits or underscores")
 	}
-	if utf8.RuneCountInString(name) > maxNameLength {
+	if utf8.RuneCountInString(head.name) > maxNameLength {
 		issues = append(issues, "name must not exceed 255 characters")
 	}
-	return append(issues, validateTitle("title", title, configuration)...)
+	return append(issues, validateTitle("title", head.title, configuration)...)
 }
 
 func validateTitle(path string, title LocalizedText, configuration project.Project) []string {

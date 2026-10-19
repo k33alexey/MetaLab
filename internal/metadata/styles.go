@@ -286,65 +286,53 @@ type StyleDefinition struct {
 
 // DecodeStyleItem reads and validates one style item.
 func DecodeStyleItem(source string, reader io.Reader, configuration project.Project) (StyleItemDefinition, error) {
-	var value StyleItemDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return StyleItemDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateStyleItemValue("value", value.Type, value.Value, true)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return StyleItemDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value StyleItemDefinition, configuration project.Project) []string {
+		return validateStyleItemValue("value", value.Type, value.Value, true)
+	})
 }
 
 // DecodeStyle reads and validates one style.
 func DecodeStyle(source string, reader io.Reader, configuration project.Project) (StyleDefinition, error) {
-	var value StyleDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return StyleDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	seen := map[string]bool{}
-	for index, setting := range value.Items {
-		prefix := fmt.Sprintf("items[%d]", index)
-		var key string
-		switch {
-		case setting.Item != nil && setting.Standard != "":
-			issues = append(issues, prefix+" names both a style item of the configuration and a standard one")
-			continue
-		case setting.Item != nil:
-			if setting.Item.IsZero() {
-				issues = append(issues, prefix+".item must be a non-zero UUID")
-			}
-			key = setting.Item.String()
-		case setting.Standard != "":
-			itemType, ok := StandardStyleItemType(setting.Standard)
-			if !ok {
-				issues = append(issues, prefix+".standard is not a standard style item")
+	return decodeDescription(source, reader, configuration, func(value StyleDefinition, configuration project.Project) []string {
+		var issues []string
+		seen := map[string]bool{}
+		for index, setting := range value.Items {
+			prefix := fmt.Sprintf("items[%d]", index)
+			var key string
+			switch {
+			case setting.Item != nil && setting.Standard != "":
+				issues = append(issues, prefix+" names both a style item of the configuration and a standard one")
+				continue
+			case setting.Item != nil:
+				if setting.Item.IsZero() {
+					issues = append(issues, prefix+".item must be a non-zero UUID")
+				}
+				key = setting.Item.String()
+			case setting.Standard != "":
+				itemType, ok := StandardStyleItemType(setting.Standard)
+				if !ok {
+					issues = append(issues, prefix+".standard is not a standard style item")
+					continue
+				}
+				// The type of a standard item is known here, so its value is
+				// checked here, not once the project is read.
+				issues = append(issues, validateStyleItemValue(prefix+".value", itemType, setting.Value, true)...)
+				key = "standard:" + string(itemType) + ":" + englishStandardStyleItem(setting.Standard)
+			default:
+				issues = append(issues, prefix+" must name a style item of the configuration or a standard one")
 				continue
 			}
-			// The type of a standard item is known here, so its value is
-			// checked here, not once the project is read.
-			issues = append(issues, validateStyleItemValue(prefix+".value", itemType, setting.Value, true)...)
-			key = "standard:" + string(itemType) + ":" + englishStandardStyleItem(setting.Standard)
-		default:
-			issues = append(issues, prefix+" must name a style item of the configuration or a standard one")
-			continue
+			if seen[key] {
+				issues = append(issues, prefix+" is set twice by one style")
+			}
+			seen[key] = true
+			// The value of a setting for an item of the configuration is checked
+			// once the project is read, against the item it is for - which of the
+			// three it must be is known only then (validateStyleReferences).
 		}
-		if seen[key] {
-			issues = append(issues, prefix+" is set twice by one style")
-		}
-		seen[key] = true
-		// The value of a setting for an item of the configuration is checked
-		// once the project is read, against the item it is for - which of the
-		// three it must be is known only then (validateStyleReferences).
-	}
 
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return StyleDefinition{}, err
-	}
-	return value, nil
+		return issues
+	})
 }
 
 // validateStyleItemValue checks that a value is exactly one of the three and

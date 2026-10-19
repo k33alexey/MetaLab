@@ -107,44 +107,39 @@ var pendingRegistrableKinds []Kind
 
 // DecodeExchangePlan reads and validates one exchange plan.
 func DecodeExchangePlan(source string, reader io.Reader, configuration project.Project) (ExchangePlanDefinition, error) {
-	var value ExchangePlanDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return ExchangePlanDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
-		code:              value.Code,
-		descriptionLength: value.DescriptionLength,
-		attributes:        value.Attributes,
-		tableParts:        value.TableParts,
-		forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-		list:              value.List,
-		reservedName:      reservedExchangePlanName,
-		codeAllowedLength: true,
-		// A length of 0 the owner did not check on this kind: nothing shows
-		// the configurator refusing it, so it is carried, switches the field
-		// off as on a catalog, and is a note (NoteLengthZeroUnchecked).
-		codeMayBeAbsent:        true,
-		descriptionMayBeAbsent: true,
-		kind:                   ExchangePlanKind,
-		presentation:           value.Presentations,
-		choice:                 value.ObjectChoice,
-		basedOn:                value.BasedOn,
-		dataLock:               value.DataLock,
-		dataLockFields:         value.DataLockFields,
-		fullTextSearch:         value.FullTextSearch,
-		dataHistory:            value.DataHistorySettings,
-		additionalIndexes:      value.AdditionalIndexes,
-		standardAttributes:     value.StandardAttributes,
-	}, configuration)...)
-	issues = append(issues, validateExchangePlanContent(value)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return ExchangePlanDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value ExchangePlanDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateReferenceObjectShape(referenceObjectShape{
+			code:              value.Code,
+			descriptionLength: value.DescriptionLength,
+			attributes:        value.Attributes,
+			tableParts:        value.TableParts,
+			forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
+			list:              value.List,
+			reservedName:      reservedExchangePlanName,
+			codeAllowedLength: true,
+			// A length of 0 the owner did not check on this kind: nothing shows
+			// the configurator refusing it, so it is carried, switches the field
+			// off as on a catalog, and is a note (NoteLengthZeroUnchecked).
+			codeMayBeAbsent:        true,
+			descriptionMayBeAbsent: true,
+			kind:                   ExchangePlanKind,
+			presentation:           value.Presentations,
+			choice:                 value.ObjectChoice,
+			basedOn:                value.BasedOn,
+			dataLock:               value.DataLock,
+			dataLockFields:         value.DataLockFields,
+			fullTextSearch:         value.FullTextSearch,
+			dataHistory:            value.DataHistorySettings,
+			additionalIndexes:      value.AdditionalIndexes,
+			standardAttributes:     value.StandardAttributes,
+		}, configuration)...)
+		issues = append(issues, validateExchangePlanContent(value)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 func validateExchangePlanContent(value ExchangePlanDefinition) []string {

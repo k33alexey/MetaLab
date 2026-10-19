@@ -106,27 +106,22 @@ func (client WebSocketClientDefinition) HeaderNames() []string {
 
 // DecodeWebSocketClient reads and validates one WebSocket client.
 func DecodeWebSocketClient(source string, reader io.Reader, configuration project.Project) (WebSocketClientDefinition, error) {
-	var value WebSocketClientDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return WebSocketClientDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	if value.Password != nil {
-		issues = append(issues, "password is not kept in project files: it lies in the operating system's protected store, and the file says password_set: true")
-	}
-	issues = append(issues, validateWebSocketServerURL(value.ServerURL)...)
-	issues = append(issues, validateWebSocketHeaders(value.Headers)...)
-	issues = append(issues, validateSecretHeaders(value.SecretHeaders, value.Headers)...)
-	if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
-		issues = append(issues, "user must be one line without control characters")
-	}
-	if value.Timeout != nil && *value.Timeout < 0 {
-		issues = append(issues, "timeout must not be negative")
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return WebSocketClientDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value WebSocketClientDefinition, configuration project.Project) []string {
+		var issues []string
+		if value.Password != nil {
+			issues = append(issues, "password is not kept in project files: it lies in the operating system's protected store, and the file says password_set: true")
+		}
+		issues = append(issues, validateWebSocketServerURL(value.ServerURL)...)
+		issues = append(issues, validateWebSocketHeaders(value.Headers)...)
+		issues = append(issues, validateSecretHeaders(value.SecretHeaders, value.Headers)...)
+		if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
+			issues = append(issues, "user must be one line without control characters")
+		}
+		if value.Timeout != nil && *value.Timeout < 0 {
+			issues = append(issues, "timeout must not be negative")
+		}
+		return issues
+	})
 }
 
 // validateWebSocketServerURL checks the address in form only: one line with

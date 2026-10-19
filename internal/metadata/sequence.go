@@ -75,50 +75,45 @@ type SequenceDefinition struct {
 
 // DecodeSequence reads and validates one sequence.
 func DecodeSequence(source string, reader io.Reader, configuration project.Project) (SequenceDefinition, error) {
-	var value SequenceDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return SequenceDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	// A sequence over no documents watches nothing happen; it is carried and
-	// is a note, as a journal of no documents is.
-	issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
-	issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,
-		recordIndexTables(sequenceStandardFields, sequenceDimensionNames(value.Dimensions)))...)
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, dimension := range value.Dimensions {
-		prefix := fmt.Sprintf("dimensions[%d]", index)
-		if dimension.ID.IsZero() {
-			issues = append(issues, prefix+".id must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value SequenceDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		// A sequence over no documents watches nothing happen; it is carried and
+		// is a note, as a journal of no documents is.
+		issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
+		issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,
+			recordIndexTables(sequenceStandardFields, sequenceDimensionNames(value.Dimensions)))...)
+		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		for index, dimension := range value.Dimensions {
+			prefix := fmt.Sprintf("dimensions[%d]", index)
+			if dimension.ID.IsZero() {
+				issues = append(issues, prefix+".id must be a non-zero UUID")
+			}
+			if ids[dimension.ID] {
+				issues = append(issues, prefix+".id must be unique")
+			}
+			ids[dimension.ID] = true
+			if !validIdentifier(dimension.Name) {
+				issues = append(issues, prefix+".name must be a valid identifier")
+			}
+			folded := strings.ToLower(dimension.Name)
+			if names[folded] {
+				issues = append(issues, prefix+".name must be unique")
+			}
+			names[folded] = true
+			issues = append(issues, validateTitle(prefix+".title", dimension.Title, configuration)...)
+			issues = append(issues, validateTypes(prefix+".types", dimension.Types)...)
+			issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
+			issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)
+			issues = append(issues, validateDocumentStandardFields(prefix+".document_standard_attributes", dimension.DocumentStandardAttributes)...)
+			// A dimension taken from no attribute of any document is filled by
+			// code: the prototype saves it, and the one sequence of acc has two
+			// such dimensions, set by an event subscription that writes several
+			// records for one document.
 		}
-		if ids[dimension.ID] {
-			issues = append(issues, prefix+".id must be unique")
-		}
-		ids[dimension.ID] = true
-		if !validIdentifier(dimension.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(dimension.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
-		issues = append(issues, validateTitle(prefix+".title", dimension.Title, configuration)...)
-		issues = append(issues, validateTypes(prefix+".types", dimension.Types)...)
-		issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)
-		issues = append(issues, validateUniqueIDs(prefix+".register_dimensions", dimension.RegisterDimensions)...)
-		issues = append(issues, validateDocumentStandardFields(prefix+".document_standard_attributes", dimension.DocumentStandardAttributes)...)
-		// A dimension taken from no attribute of any document is filled by
-		// code: the prototype saves it, and the one sequence of acc has two
-		// such dimensions, set by an event subscription that writes several
-		// records for one document.
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return SequenceDefinition{}, err
-	}
-	return value, nil
+		return issues
+	})
 }
 
 // DocumentStandardField is a standard field of one kind of document - its

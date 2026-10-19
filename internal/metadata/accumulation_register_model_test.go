@@ -55,3 +55,48 @@ func TestAccumulationRegisterSchemaHasMovementsAndTotals(t *testing.T) {
 		t.Fatalf("schema has tables %+v", seen)
 	}
 }
+
+// The dimensions, resources and attributes of a register are one set of
+// fields: a query names any of them by name and the import finds any by
+// identifier, so no two may share either, whichever groups they are in. Both
+// registers that keep the three groups are checked. Defects caught: a
+// resource with the identifier of a dimension taken as a field of its own
+// (no test held this before 2.372), and a name told apart by case alone.
+func TestRegisterFieldsAreToldApart(t *testing.T) {
+	t.Parallel()
+	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
+	field := func(group string, id uuid.UUID, name, types string) string {
+		return group + ":\n  - id: " + id.String() + "\n    name: " + name + "\n    title: {ru: " + name + "}\n    types: [" + types + "]\n"
+	}
+	decoders := map[string]struct {
+		head   string
+		decode func(string) error
+	}{
+		"accumulation": {"kind: balance\n", func(source string) error {
+			_, err := DecodeAccumulationRegister("register.yaml", strings.NewReader(source), configuration)
+			return err
+		}},
+		"information": {"write_mode: independent\nperiodicity: none\n", func(source string) error {
+			_, err := DecodeInformationRegister("register.yaml", strings.NewReader(source), configuration)
+			return err
+		}},
+	}
+	for kind, register := range decoders {
+		shared := uuid.MustNew()
+		for _, testCase := range []struct {
+			name, resourceName string
+			resourceID         uuid.UUID
+			want               string
+		}{
+			{"one identifier", "Количество", shared, "resources.Количество UUID conflicts with dimensions.Товар"},
+			{"one name in another case", "товар", uuid.MustNew(), "resources.товар conflicts with dimensions.Товар"},
+		} {
+			source := "format: 1\nid: " + uuid.MustNew().String() + "\nname: Остатки\ntitle: {ru: Остатки}\n" + register.head +
+				field("dimensions", shared, "Товар", "{kind: string, length: 100}") +
+				field("resources", testCase.resourceID, testCase.resourceName, "{kind: number, precision: 15, scale: 3}")
+			if err := register.decode(source); err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Errorf("%s register, %s: error = %v, want %q", kind, testCase.name, err, testCase.want)
+			}
+		}
+	}
+}

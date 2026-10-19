@@ -536,7 +536,12 @@ func DecodeRole(source string, description io.Reader, grid io.Reader, configurat
 // ValidateRole checks structure. Catalog validation additionally checks object
 // and field ownership, and refuses what ML no longer keeps.
 func ValidateRole(source string, value RoleDefinition, configuration project.Project) error {
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
+	return checkDescription(source, value, configuration, validateRole)
+}
+
+// validateRole checks what a role adds to the head every description has.
+func validateRole(value RoleDefinition, configuration project.Project) []string {
+	var issues []string
 	if !utf8.ValidString(value.Comment) {
 		issues = append(issues, "comment must be valid UTF-8")
 	}
@@ -574,7 +579,7 @@ func ValidateRole(source string, value RoleDefinition, configuration project.Pro
 		}
 		commands[command] = true
 	}
-	return issuesError(source, value.Format, issues)
+	return issues
 }
 
 // validateRightStates checks that every right named is one a role carries,

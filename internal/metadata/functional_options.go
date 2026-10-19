@@ -74,42 +74,37 @@ type FunctionalOptionDefinition struct {
 // points at is resolved against the configuration later, when every kind of
 // object is loaded.
 func DecodeFunctionalOption(source string, reader io.Reader, configuration project.Project) (FunctionalOptionDefinition, error) {
-	var value FunctionalOptionDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return FunctionalOptionDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateOptionLocation(value.Location)...)
-	seen := map[string]bool{}
-	for index, item := range value.Content {
-		prefix := fmt.Sprintf("content[%d]", index)
-		if !usesOf(item.Kind).option.accepted() {
-			issues = append(issues, prefix+".kind is not a kind of metadata object")
-		}
-		if item.Object.IsZero() {
-			issues = append(issues, prefix+".object must be a non-zero UUID")
-		}
-		for name, id := range map[string]*uuid.UUID{".table_part": item.TablePart, ".element": item.Element} {
-			if id != nil && id.IsZero() {
-				issues = append(issues, prefix+name+" must be a non-zero UUID")
+	return decodeDescription(source, reader, configuration, func(value FunctionalOptionDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateOptionLocation(value.Location)...)
+		seen := map[string]bool{}
+		for index, item := range value.Content {
+			prefix := fmt.Sprintf("content[%d]", index)
+			if !usesOf(item.Kind).option.accepted() {
+				issues = append(issues, prefix+".kind is not a kind of metadata object")
 			}
+			if item.Object.IsZero() {
+				issues = append(issues, prefix+".object must be a non-zero UUID")
+			}
+			for name, id := range map[string]*uuid.UUID{".table_part": item.TablePart, ".element": item.Element} {
+				if id != nil && id.IsZero() {
+					issues = append(issues, prefix+name+" must be a non-zero UUID")
+				}
+			}
+			key := string(item.Kind) + ":" + item.Object.String()
+			if item.TablePart != nil {
+				key += ":" + item.TablePart.String()
+			}
+			if item.Element != nil {
+				key += ":" + item.Element.String()
+			}
+			if seen[key] {
+				issues = append(issues, prefix+" is already in the content")
+			}
+			seen[key] = true
 		}
-		key := string(item.Kind) + ":" + item.Object.String()
-		if item.TablePart != nil {
-			key += ":" + item.TablePart.String()
-		}
-		if item.Element != nil {
-			key += ":" + item.Element.String()
-		}
-		if seen[key] {
-			issues = append(issues, prefix+" is already in the content")
-		}
-		seen[key] = true
-	}
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return FunctionalOptionDefinition{}, err
-	}
-	return value, nil
+		return issues
+	})
 }
 
 // validateOptionLocation checks the shape of the place holding the value. A

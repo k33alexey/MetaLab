@@ -141,93 +141,88 @@ func (value CalculationRegisterDefinition) attributeFields() []Attribute {
 }
 
 func DecodeCalculationRegister(source string, reader io.Reader, configuration project.Project) (CalculationRegisterDefinition, error) {
-	var value CalculationRegisterDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return CalculationRegisterDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-	issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
-	issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, CalculationRegisterKind,
-		recordIndexTables(standardFieldsOfKind(CalculationRegisterKind),
-			attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(value.Resources),
-			attributeNames(value.attributeFields())))...)
-	if value.ChartOfCalculationTypes.IsZero() {
-		issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
-	}
-	switch value.Periodicity {
-	case CalculationPeriodDay, CalculationPeriodMonth, CalculationPeriodQuarter, CalculationPeriodYear:
-	default:
-		issues = append(issues, "periodicity must be day, month, quarter or year")
-	}
-	if len(value.Resources) == 0 {
-		issues = append(issues, "resources must contain at least one item: a calculation with no result is not a calculation")
-	}
-	// The three schedule settings are one setting in three parts. Two of them
-	// without the first point into nothing.
-	if value.Schedule == nil && (value.ScheduleValue != nil || value.ScheduleDate != nil) {
-		issues = append(issues, "schedule_value and schedule_date need the schedule they belong to")
-	}
-	// The three are offered only with the period of action: the help of the
-	// register's editor says so of each (calcui, the calculation register),
-	// and both registers of the configurations being moved that read a
-	// schedule keep the period of action.
-	if (value.Schedule != nil || value.ScheduleValue != nil || value.ScheduleDate != nil) && !value.ActionPeriod {
-		issues = append(issues, "a schedule needs the period of action: without it a record spreads over nothing")
-	}
-	if value.Schedule != nil && (value.ScheduleValue == nil || value.ScheduleDate == nil) {
-		issues = append(issues, "a schedule needs both the resource its value is in and the dimension its date is in")
-	}
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
-	for index, dimension := range value.Dimensions {
-		prefix := fmt.Sprintf("dimensions[%d]", index)
-		issues = append(issues, validateRegisterDimension(prefix, dimension, calculationRegisterDimensions())...)
-		issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
-			names, ids, configuration, reservedCalculationRegisterName)...)
-		issues = append(issues, validateMovementFieldStorage(prefix, dimension.Attribute)...)
-		if dimension.ScheduleLink != nil && value.Schedule == nil {
-			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
+	return decodeDescription(source, reader, configuration, func(value CalculationRegisterDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
+		issues = append(issues, validateFullTextSearch("full_text_search", value.FullTextSearch)...)
+		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, CalculationRegisterKind,
+			recordIndexTables(standardFieldsOfKind(CalculationRegisterKind),
+				attributeNames(RegisterDimensionAttributes(value.Dimensions)), attributeNames(value.Resources),
+				attributeNames(value.attributeFields())))...)
+		if value.ChartOfCalculationTypes.IsZero() {
+			issues = append(issues, "chart_of_calculation_types is required: without kinds of accrual there is nothing to calculate")
 		}
-	}
-	for index, resource := range value.Resources {
-		prefix := fmt.Sprintf("resources[%d]", index)
-		issues = append(issues, validateRegisterField(prefix, resource,
-			names, ids, configuration, reservedCalculationRegisterName)...)
-		issues = append(issues, validateNumericResource(prefix, resource)...)
-		issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
-		issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
-	}
-	issues = append(issues, validateAttributes("attributes", value.attributeFields(), configuration, func(name string) bool {
-		return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
-	})...)
-	for index, attribute := range value.Attributes {
-		prefix := fmt.Sprintf("attributes[%d]", index)
-		issues = append(issues, validateMovementFieldStorage(prefix, attribute.Attribute)...)
-		if attribute.ScheduleLink != nil && (value.Schedule == nil || attribute.ScheduleLink.IsZero()) {
-			issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
+		switch value.Periodicity {
+		case CalculationPeriodDay, CalculationPeriodMonth, CalculationPeriodQuarter, CalculationPeriodYear:
+		default:
+			issues = append(issues, "periodicity must be day, month, quarter or year")
 		}
-	}
-	// The dimensions belong here too - see the accounting register for what
-	// leaving a group out of these checks costs on both sides.
-	dimensionFields := make([]Attribute, 0, len(value.Dimensions))
-	for _, dimension := range value.Dimensions {
-		dimensionFields = append(dimensionFields, dimension.Attribute)
-	}
-	calculationFields := []fieldGroup{
-		{"dimensions", dimensionFields}, {"resources", value.Resources}, {"attributes", value.attributeFields()},
-	}
-	issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
-	issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
-	issues = append(issues, validateFieldLinks(standardFieldsOfKind(CalculationRegisterKind), calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
-	issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
-	issues = append(issues, validateRecalculations(value, configuration)...)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return CalculationRegisterDefinition{}, err
-	}
-	return value, nil
+		if len(value.Resources) == 0 {
+			issues = append(issues, "resources must contain at least one item: a calculation with no result is not a calculation")
+		}
+		// The three schedule settings are one setting in three parts. Two of them
+		// without the first point into nothing.
+		if value.Schedule == nil && (value.ScheduleValue != nil || value.ScheduleDate != nil) {
+			issues = append(issues, "schedule_value and schedule_date need the schedule they belong to")
+		}
+		// The three are offered only with the period of action: the help of the
+		// register's editor says so of each (calcui, the calculation register),
+		// and both registers of the configurations being moved that read a
+		// schedule keep the period of action.
+		if (value.Schedule != nil || value.ScheduleValue != nil || value.ScheduleDate != nil) && !value.ActionPeriod {
+			issues = append(issues, "a schedule needs the period of action: without it a record spreads over nothing")
+		}
+		if value.Schedule != nil && (value.ScheduleValue == nil || value.ScheduleDate == nil) {
+			issues = append(issues, "a schedule needs both the resource its value is in and the dimension its date is in")
+		}
+		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		for index, dimension := range value.Dimensions {
+			prefix := fmt.Sprintf("dimensions[%d]", index)
+			issues = append(issues, validateRegisterDimension(prefix, dimension, calculationRegisterDimensions())...)
+			issues = append(issues, validateRegisterField(prefix, dimension.Attribute,
+				names, ids, configuration, reservedCalculationRegisterName)...)
+			issues = append(issues, validateMovementFieldStorage(prefix, dimension.Attribute)...)
+			if dimension.ScheduleLink != nil && value.Schedule == nil {
+				issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
+			}
+		}
+		for index, resource := range value.Resources {
+			prefix := fmt.Sprintf("resources[%d]", index)
+			issues = append(issues, validateRegisterField(prefix, resource,
+				names, ids, configuration, reservedCalculationRegisterName)...)
+			issues = append(issues, validateNumericResource(prefix, resource)...)
+			issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
+			issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
+		}
+		issues = append(issues, validateAttributes("attributes", value.attributeFields(), configuration, func(name string) bool {
+			return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
+		})...)
+		for index, attribute := range value.Attributes {
+			prefix := fmt.Sprintf("attributes[%d]", index)
+			issues = append(issues, validateMovementFieldStorage(prefix, attribute.Attribute)...)
+			if attribute.ScheduleLink != nil && (value.Schedule == nil || attribute.ScheduleLink.IsZero()) {
+				issues = append(issues, prefix+".schedule_link needs a schedule: there is no schedule for it to link to")
+			}
+		}
+		// The dimensions belong here too - see the accounting register for what
+		// leaving a group out of these checks costs on both sides.
+		dimensionFields := make([]Attribute, 0, len(value.Dimensions))
+		for _, dimension := range value.Dimensions {
+			dimensionFields = append(dimensionFields, dimension.Attribute)
+		}
+		calculationFields := []fieldGroup{
+			{"dimensions", dimensionFields}, {"resources", value.Resources}, {"attributes", value.attributeFields()},
+		}
+		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
+		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(CalculationRegisterKind), configuration)...)
+		issues = append(issues, validateFieldLinks(standardFieldsOfKind(CalculationRegisterKind), calculationFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
+		issues = append(issues, validateAttributeUse(calculationFields, nil, false, false)...)
+		issues = append(issues, validateRecalculations(value, configuration)...)
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 // validateRegisterFieldShape checks what every named field of a register

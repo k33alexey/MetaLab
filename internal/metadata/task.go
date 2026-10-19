@@ -99,61 +99,56 @@ type TaskDefinition struct {
 
 // DecodeTask reads and validates one kind of task.
 func DecodeTask(source string, reader io.Reader, configuration project.Project) (TaskDefinition, error) {
-	var value TaskDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return TaskDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-		number:             value.Number,
-		attributes:         value.Attributes,
-		tableParts:         value.TableParts,
-		forms:              value.Forms,
-		list:               value.List,
-		reservedName:       reservedTaskName,
-		kind:               TaskKind,
-		standardAttributes: value.StandardAttributes,
-		presentation:       value.Presentations,
-		input:              value.ObjectInput,
-		basedOn:            value.BasedOn,
-		dataLock:           value.DataLock,
-		dataLockFields:     value.DataLockFields,
-		fullTextSearch:     value.FullTextSearch,
-		dataHistory:        value.DataHistorySettings,
-		additionalIndexes:  value.AdditionalIndexes,
-		extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
-	}, configuration)...)
-	// A description of length 0 switches it off, as on a catalog; on a task
-	// the owner did not check it, so it is a note (NoteLengthZeroUnchecked).
-	if value.DescriptionLength < 0 || value.DescriptionLength > maxDescriptionLength {
-		issues = append(issues, fmt.Sprintf("description_length must be 0..%d", maxDescriptionLength))
-	}
-	// A task lives as long as the process that created it, and renumbering it
-	// at the turn of a year would tear that process in two.
-	if value.Number.Periodicity != "" && value.Number.Periodicity != NumberPeriodNone {
-		issues = append(issues, "number.periodicity must be none: a task number does not restart with a period")
-	}
-	switch value.NumberPrefix {
-	case "", NoNumberPrefix, BusinessProcessNumberPrefix:
-	default:
-		issues = append(issues, "number_prefix must be none or business-process-number")
-	}
-	if !validEditType(value.EditType) {
-		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
-	}
-	// A task has no code, so it stands for itself by its number or its
-	// description - see object_choice.go.
-	if !validTaskPresentation(value.DefaultPresentation) {
-		issues = append(issues, "default_presentation must be as-number or as-description")
-	}
-	issues = append(issues, validateAddressing(value, configuration)...)
-	issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return TaskDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value TaskDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
+			number:             value.Number,
+			attributes:         value.Attributes,
+			tableParts:         value.TableParts,
+			forms:              value.Forms,
+			list:               value.List,
+			reservedName:       reservedTaskName,
+			kind:               TaskKind,
+			standardAttributes: value.StandardAttributes,
+			presentation:       value.Presentations,
+			input:              value.ObjectInput,
+			basedOn:            value.BasedOn,
+			dataLock:           value.DataLock,
+			dataLockFields:     value.DataLockFields,
+			fullTextSearch:     value.FullTextSearch,
+			dataHistory:        value.DataHistorySettings,
+			additionalIndexes:  value.AdditionalIndexes,
+			extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
+		}, configuration)...)
+		// A description of length 0 switches it off, as on a catalog; on a task
+		// the owner did not check it, so it is a note (NoteLengthZeroUnchecked).
+		if value.DescriptionLength < 0 || value.DescriptionLength > maxDescriptionLength {
+			issues = append(issues, fmt.Sprintf("description_length must be 0..%d", maxDescriptionLength))
+		}
+		// A task lives as long as the process that created it, and renumbering it
+		// at the turn of a year would tear that process in two.
+		if value.Number.Periodicity != "" && value.Number.Periodicity != NumberPeriodNone {
+			issues = append(issues, "number.periodicity must be none: a task number does not restart with a period")
+		}
+		switch value.NumberPrefix {
+		case "", NoNumberPrefix, BusinessProcessNumberPrefix:
+		default:
+			issues = append(issues, "number_prefix must be none or business-process-number")
+		}
+		if !validEditType(value.EditType) {
+			issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
+		}
+		// A task has no code, so it stands for itself by its number or its
+		// description - see object_choice.go.
+		if !validTaskPresentation(value.DefaultPresentation) {
+			issues = append(issues, "default_presentation must be as-number or as-description")
+		}
+		issues = append(issues, validateAddressing(value, configuration)...)
+		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		issues = append(issues, validateObjectCharacteristics(value.Characteristics)...)
+		return issues
+	})
 }
 
 // addressingAttributeFields is the addressing attributes as plain fields, for

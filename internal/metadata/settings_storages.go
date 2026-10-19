@@ -64,17 +64,12 @@ type SettingsStorageDefinition struct {
 
 // DecodeSettingsStorage reads and validates one settings storage.
 func DecodeSettingsStorage(source string, reader io.Reader, configuration project.Project) (SettingsStorageDefinition, error) {
-	var value SettingsStorageDefinition
-	if err := decodeStrict(source, reader, &value); err != nil {
-		return SettingsStorageDefinition{}, err
-	}
-	issues := validateBase(value.Format, value.ID, value.Name, value.Title, configuration)
-	issues = append(issues, validateFormSlots(value.Forms.slots())...)
-	issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-	if err := issuesError(source, value.Format, issues); err != nil {
-		return SettingsStorageDefinition{}, err
-	}
-	return value, nil
+	return decodeDescription(source, reader, configuration, func(value SettingsStorageDefinition, configuration project.Project) []string {
+		var issues []string
+		issues = append(issues, validateFormSlots(value.Forms.slots())...)
+		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
+		return issues
+	})
 }
 
 func cloneSettingsStorage(value SettingsStorageDefinition) SettingsStorageDefinition {
