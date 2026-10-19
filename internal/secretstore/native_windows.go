@@ -14,21 +14,6 @@ import (
 // other users (PLATFORM-MODEL.md, «Секреты в Windows»).
 const secretExtension = ".dpapi"
 
-func replaceSecret(temporaryPath, path string) error {
-	from, err := windows.UTF16PtrFromString(temporaryPath)
-	if err != nil {
-		return fmt.Errorf("encode temporary Windows secret path: %w", err)
-	}
-	to, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return fmt.Errorf("encode Windows secret path: %w", err)
-	}
-	if err := windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
-		return fmt.Errorf("replace Windows secret: %w", err)
-	}
-	return nil
-}
-
 func sealSecret(plain []byte) ([]byte, error) {
 	input := windows.DataBlob{Size: uint32(len(plain)), Data: &plain[0]}
 	var output windows.DataBlob

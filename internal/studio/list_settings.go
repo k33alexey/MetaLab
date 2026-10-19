@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -98,12 +99,7 @@ func (workspace *Workspace) SaveListSettings(key string, settings map[string]any
 	if err != nil {
 		return fmt.Errorf("encode list settings: %w", err)
 	}
-	temporary, err := prepareStudioSource(directory, content)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temporary)
-	if err := replaceStudioFile(temporary, filepath.Join(directory, listSettingsFile)); err != nil {
+	if err := atomicfile.Write(filepath.Join(directory, listSettingsFile), ".ml-write-*", 0o644, atomicfile.Bytes(content)); err != nil {
 		return fmt.Errorf("replace list settings: %w", err)
 	}
 	return nil

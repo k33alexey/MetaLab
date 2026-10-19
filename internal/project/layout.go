@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -401,29 +403,10 @@ func SaveConfiguration(root string, configuration Project) error {
 	if current.ID != configuration.ID {
 		return ErrProjectIdentityChanged
 	}
-	temporary, err := os.CreateTemp(root, ".configuration-*.yaml")
-	if err != nil {
-		return fmt.Errorf("create temporary ML Project configuration: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("set temporary configuration permissions: %w", err)
-	}
-	if err := Encode(temporary, configuration); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("sync ML Project configuration: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close ML Project configuration: %w", err)
-	}
-	if err := replaceProjectFile(temporaryPath, filepath.Join(root, ConfigurationFile)); err != nil {
-		return fmt.Errorf("replace ML Project configuration: %w", err)
+	if err := atomicfile.Write(filepath.Join(root, ConfigurationFile), ".configuration-*.yaml", 0o644, func(writer io.Writer) error {
+		return Encode(writer, configuration)
+	}); err != nil {
+		return fmt.Errorf("write ML Project configuration: %w", err)
 	}
 	return nil
 }

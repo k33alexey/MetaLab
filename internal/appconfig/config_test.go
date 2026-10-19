@@ -3,6 +3,7 @@ package appconfig
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -114,6 +115,10 @@ func TestSaveAndLoadSystemDatabaseWithoutPassword(t *testing.T) {
 	}
 	if loaded.SystemDatabase == nil || *loaded.SystemDatabase != *settings.SystemDatabase {
 		t.Fatalf("loaded settings = %+v", loaded)
+	}
+	// The settings name the system database, so only their owner reads them.
+	if information, err := os.Stat(path); err != nil || runtime.GOOS != "windows" && information.Mode().Perm() != 0o600 {
+		t.Fatalf("the settings stand with %v (%v), want 0600", information.Mode().Perm(), err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

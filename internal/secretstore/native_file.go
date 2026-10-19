@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/ownerfile"
 	"github.com/k33alexey/MetaLab/internal/servicestate"
 )
@@ -16,9 +17,10 @@ import (
 // fileBackend keeps each secret in its own file in a machine-wide directory:
 // the account that writes a secret (an administrator) is not the one that
 // reads it (the service), so a store scoped to a user does not fit. What a
-// file is sealed with and how it replaces the previous one is the operating
-// system's part (native_windows.go, native_linux.go); where the directory
-// lies, how it is laid and who a file is handed to — servicestate's.
+// file is sealed with is the operating system's part (native_windows.go,
+// native_linux.go), how it replaces the previous one atomicfile's; where the
+// directory lies, how it is laid and who a file is handed to —
+// servicestate's.
 type fileBackend struct {
 	// directory replaces the machine-wide one in tests.
 	directory string
@@ -59,7 +61,10 @@ func (store fileBackend) Set(service, account, secret string) error {
 	if err := servicestate.HandOver(temporaryPath); err != nil {
 		return err
 	}
-	return replaceSecret(temporaryPath, path)
+	if err := atomicfile.Replace(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace secret: %w", err)
+	}
+	return nil
 }
 
 func (store fileBackend) Get(service, account string) (string, error) {

@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -218,12 +219,7 @@ func writeRoleGrid(gridPath string, grid []byte) error {
 	if info, err := os.Lstat(directory); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: a role's folder must be a plain folder", ErrInvalidSourcePath)
 	}
-	temporary, err := prepareStudioSource(directory, grid)
-	if err != nil {
-		return err
-	}
-	if err := replaceStudioFile(temporary, gridPath); err != nil {
-		_ = os.Remove(temporary)
+	if err := atomicfile.Write(gridPath, ".ml-write-*", 0o644, atomicfile.Bytes(grid)); err != nil {
 		return fmt.Errorf("replace role rights: %w", err)
 	}
 	return nil

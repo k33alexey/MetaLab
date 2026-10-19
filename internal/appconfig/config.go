@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/postgresconn"
 	"github.com/k33alexey/MetaLab/internal/servicestate"
 	"go.yaml.in/yaml/v3"
@@ -174,31 +175,16 @@ func Save(path string, settings Config) error {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("create settings directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(directory, ".config-*.yaml")
+	err := atomicfile.Write(path, ".config-*.yaml", 0o600, func(writer io.Writer) error {
+		encoder := yaml.NewEncoder(writer)
+		encoder.SetIndent(2)
+		if err := encoder.Encode(settings); err != nil {
+			return fmt.Errorf("encode settings: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("create temporary settings: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("protect temporary settings: %w", err)
-	}
-	encoder := yaml.NewEncoder(temporary)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(settings); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("encode settings: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("sync settings: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close settings: %w", err)
-	}
-	if err := replaceFile(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace settings: %w", err)
+		return fmt.Errorf("save settings: %w", err)
 	}
 	return nil
 }

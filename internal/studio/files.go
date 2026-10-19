@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -92,7 +93,7 @@ func (workspace *Workspace) saveSourceLocked(relative, content, expectedRevision
 	if latest.Revision != current.Revision {
 		return SourceFile{}, ErrSourceChanged
 	}
-	if err := replaceStudioFile(temporaryPath, target); err != nil {
+	if err := atomicfile.Replace(temporaryPath, target); err != nil {
 		return SourceFile{}, fmt.Errorf("replace source: %w", err)
 	}
 	workspace.invalidateStudioIndexesLocked()
@@ -150,7 +151,7 @@ func (workspace *Workspace) replaceSourcesLocked(changes, originals map[string][
 			}
 			return rollbackStudioSources(prepared, applied, err)
 		}
-		if err := replaceStudioFile(item.next, item.target); err != nil {
+		if err := atomicfile.Replace(item.next, item.target); err != nil {
 			return rollbackStudioSources(prepared, index, fmt.Errorf("replace refactored source %s: %w", item.relative, err))
 		}
 		applied = index
@@ -159,41 +160,16 @@ func (workspace *Workspace) replaceSourcesLocked(changes, originals map[string][
 }
 
 // prepareStudioSource writes content to a new file in directory, synced and
-// closed, and answers its path: the file that replaceStudioFile then puts in
-// place of a source, of the grid of a role or of the settings of the user.
+// closed, and answers its path: the file that atomicfile.Replace then puts in
+// place of a source.
 func prepareStudioSource(directory string, content []byte) (string, error) {
-	temporary, err := os.CreateTemp(directory, ".ml-write-*")
-	if err != nil {
-		return "", fmt.Errorf("create temporary file: %w", err)
-	}
-	path := temporary.Name()
-	failed := true
-	defer func() {
-		_ = temporary.Close()
-		if failed {
-			_ = os.Remove(path)
-		}
-	}()
-	if err := temporary.Chmod(0o644); err != nil {
-		return "", fmt.Errorf("set temporary file permissions: %w", err)
-	}
-	if _, err := temporary.Write(content); err != nil {
-		return "", fmt.Errorf("write temporary file: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		return "", fmt.Errorf("sync temporary file: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return "", fmt.Errorf("close temporary file: %w", err)
-	}
-	failed = false
-	return path, nil
+	return atomicfile.Prepare(directory, ".ml-write-*", 0o644, atomicfile.Bytes(content))
 }
 
 func rollbackStudioSources(items []studioSourceReplacement, through int, cause error) error {
 	var rollbackError error
 	for index := min(through, len(items)-1); index >= 0; index-- {
-		if err := replaceStudioFile(items[index].rollback, items[index].target); err != nil && rollbackError == nil {
+		if err := atomicfile.Replace(items[index].rollback, items[index].target); err != nil && rollbackError == nil {
 			rollbackError = err
 		}
 	}

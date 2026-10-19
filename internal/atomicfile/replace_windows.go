@@ -1,10 +1,12 @@
 //go:build windows
 
-package project
+package atomicfile
 
 import "golang.org/x/sys/windows"
 
-func replaceProjectFile(source, destination string) error {
+// Replace puts source in place of destination in one step, written through
+// to the disk before it answers.
+func Replace(source, destination string) error {
 	sourcePointer, err := windows.UTF16PtrFromString(source)
 	if err != nil {
 		return err
