@@ -1,5 +1,5 @@
 .PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database ci-fresh-database
-.PHONY: dupl-check fmt fmt-check sweep-check test test-budgets test-integration test-js test-race test-wasm vet web-check
+.PHONY: dupl-check fmt fmt-check staticcheck sweep-check test test-budgets test-integration test-js test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -79,6 +79,20 @@ test-integration: ci-database
 vet:
 	go vet ./...
 
+# staticcheck fails the build on any finding, as vet does: an unused function,
+# a dead assignment, a deprecated call. The version is pinned, so a new release
+# brings its new checks in by a commit, not by a run. The second pass reads the
+# code as the Windows desktop build sees it: code behind the desktop tag and in
+# *_windows.go files is not compiled on any other run. The checks it leaves out
+# are named, with the reason, in staticcheck.conf.
+STATICCHECK_VERSION = v0.8.1
+
+staticcheck:
+	mkdir -p bin
+	GOBIN="$(CURDIR)/bin" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+	bin/staticcheck ./...
+	GOOS=windows CGO_ENABLED=0 bin/staticcheck -tags desktop ./...
+
 # sweep-check проверяет сопоставитель сверки состава, а не саму сверку: сверке
 # нужна выгрузка прототипа, которой в репозитории нет, а сопоставителю нужны
 # только имена. Он врал пять раз за день, каждый раз ложным совпадением, то
@@ -128,7 +142,7 @@ test-budgets:
 	ML_BUDGETS=1 go test -count=1 -run 'StaysWithinItsBudget' ./internal/...
 
 # check is the quick pass: everything that needs no database.
-check: fmt-check dupl-check web-check test-js vet sweep-check test-race test-budgets build test-wasm
+check: fmt-check dupl-check web-check test-js vet staticcheck sweep-check test-race test-budgets build test-wasm
 
 # ci-fresh-database drops what earlier runs left behind, because CI gets a brand
 # new PostgreSQL container every time and a development machine does not.
@@ -156,6 +170,6 @@ ci-fresh-database: ci-database
 # ci runs what GitHub runs, in the order GitHub runs it, so that red is found
 # here and not after the push. Run it before pushing; `make check` is the
 # quicker pass that leaves out the database.
-ci: fmt-check dupl-check vet web-check test-js sweep-check ci-fresh-database test-integration test-budgets build build-windows-desktop test-wasm
+ci: fmt-check dupl-check vet staticcheck web-check test-js sweep-check ci-fresh-database test-integration test-budgets build build-windows-desktop test-wasm
 	@echo 'ci: every check GitHub runs passed.'
 

@@ -64,6 +64,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Any finding fails the build; the version is pinned in the Makefile, and
+      # the second pass reads the code of the Windows desktop build.
+      - name: Staticcheck
+        run: make staticcheck
+
       - name: Check browser modules
         run: node --check internal/mlapp/ui/app.js
 
