@@ -14,8 +14,11 @@ import (
 func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "RolesTest", Title: project.LocalizedText{"ru": "Roles test"}, DefaultLanguage: "ru", Languages: []project.Language{{ID: uuid.MustNew(), Name: "Русский", Title: project.LocalizedText{"ru": "Русский"}, Code: "ru"}}}
-	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель"}}
-	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role})
+	role := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Читатель", Title: metadata.LocalizedText{"ru": "Читатель документов"}}
+	// A synonym in a language the configuration does not declare is no
+	// translation in its main language.
+	writer := metadata.RoleDefinition{Format: 1, ID: uuid.MustNew(), Name: "Писатель", Title: metadata.LocalizedText{"en": "Writer"}}
+	catalog, err := metadata.NewCatalogSnapshotWithRoles(configuration, nil, nil, nil, nil, nil, nil, nil, []metadata.RoleDefinition{role, writer})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,12 +44,12 @@ func TestApplicationPermissionsBindProjectAndDenyUnassigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := managerApplicationRoleView(snapshot, systemdb.ApplicationRoleAssignment{RoleIDs: []uuid.UUID{}, Revision: 0})
-	if view.ProjectID != configuration.ID || len(view.Available) != 1 || view.Available[0].Name != role.Name {
+	// Manager names a role by its synonym in the main language and by its
+	// name where there is none, not by a translation in another language.
+	if view.ProjectID != configuration.ID || len(view.Available) != 2 ||
+		view.Available[0].Name != writer.Name || view.Available[0].Title != "Писатель" ||
+		view.Available[1].Name != role.Name || view.Available[1].Title != "Читатель документов" {
 		t.Fatalf("role choices: %+v", view)
-	}
-	view.Available[0].Title["ru"] = "changed"
-	if snapshot.Roles[0].Title["ru"] != "Читатель" {
-		t.Fatal("role view aliases publication")
 	}
 }
 
@@ -112,7 +115,7 @@ func TestApplicationLanguagePicksWhatTheProjectActuallyHas(t *testing.T) {
 		"blank preference":                 {[]string{"  "}, "ru"},
 	} {
 		language := ApplicationLanguage(configuration, test.preferences)
-		if language.Code != test.want || language.Default != "ru" || len(language.Configured) != 2 {
+		if language.Code != test.want {
 			t.Fatalf("%s: language = %+v, want code %q", name, language, test.want)
 		}
 	}

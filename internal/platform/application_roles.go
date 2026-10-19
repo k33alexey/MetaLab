@@ -14,10 +14,15 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
+// ApplicationRoleOption is one role Manager offers. Its title is the role's
+// synonym in the configuration's main language, and its name where there is
+// none, as Studio shows it (LocalizedText.Presentation): Manager names the
+// roles of a configuration for its administrator and picks no language of
+// its own.
 type ApplicationRoleOption struct {
-	ID    uuid.UUID              `json:"id"`
-	Name  string                 `json:"name"`
-	Title metadata.LocalizedText `json:"title"`
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Title string    `json:"title"`
 }
 
 type ManagerApplicationRoles struct {
@@ -59,11 +64,7 @@ func (runtime *Runtime) GetManagerApplicationRoles(ctx context.Context, database
 func managerApplicationRoleView(snapshot metadata.RuntimeSnapshot, assignment systemdb.ApplicationRoleAssignment) ManagerApplicationRoles {
 	result := ManagerApplicationRoles{ProjectID: snapshot.Project.ID, Assignment: assignment, Available: []ApplicationRoleOption{}}
 	for _, role := range snapshot.Roles {
-		title := metadata.LocalizedText{}
-		for language, text := range role.Title {
-			title[language] = text
-		}
-		result.Available = append(result.Available, ApplicationRoleOption{ID: role.ID, Name: role.Name, Title: title})
+		result.Available = append(result.Available, ApplicationRoleOption{ID: role.ID, Name: role.Name, Title: role.Title.Presentation(snapshot.Project.DefaultLanguage, role.Name)})
 	}
 	sort.Slice(result.Available, func(i, j int) bool {
 		return strings.ToLower(result.Available[i].Name) < strings.ToLower(result.Available[j].Name)

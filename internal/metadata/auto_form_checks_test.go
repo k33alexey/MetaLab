@@ -74,8 +74,10 @@ func TestStandardFormEditsWhatTheObjectFormEditsAndNamesItsFields(t *testing.T) 
 		t.Fatalf("table parts = %+v", form.TableParts)
 	}
 	// The title is written in ru, the configuration's default, and in en; a
-	// form asked for in uk finds the default, not the first by the alphabet.
-	if form, err := catalog.CatalogForm("Товары", ObjectForm, "uk"); err != nil || fieldTitle(form, "Вес") != "Вес товара" {
+	// form asked for in uk shows the attribute's name, neither the default
+	// nor another translation (METADATA-OBJECTS.md, «Нет перевода на языке —
+	// имя»).
+	if form, err := catalog.CatalogForm("Товары", ObjectForm, "uk"); err != nil || fieldTitle(form, "Вес") != "Вес" {
 		t.Fatalf("uk title = %q, %v", fieldTitle(form, "Вес"), err)
 	}
 	if form, err := catalog.CatalogForm("Товары", ObjectForm, "de"); err != nil || fieldTitle(form, "Code") != "Code" || fieldTitle(form, "Description") != "Description" {

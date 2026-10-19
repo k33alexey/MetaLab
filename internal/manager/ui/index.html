@@ -308,7 +308,7 @@
         const label=document.createElement('label'),input=document.createElement('input');label.className='check';input.type='checkbox';input.checked=selected.has(id);
         label.append(input,document.createTextNode(title));if(missing)label.className+=' warning';list.append(label);state.choices.push({id,input});
       }
-      for(const role of view.available)choice(role.id,role.title?.ru||role.title?.en||Object.values(role.title||{})[0]||role.name);
+      for(const role of view.available)choice(role.id,role.title);
       for(const id of selected)if(!available.has(id))choice(id,'Роль отсутствует в публикации — снимите назначение',true);
       if(!view.available.length)error.textContent='В публикации нет ролей. Создайте и опубликуйте их из ML Studio.';
       if(view.assignment.projectId && view.assignment.projectId!==view.projectId)error.textContent='Назначения относятся к другому проекту. Проверьте выбранные роли перед сохранением.';

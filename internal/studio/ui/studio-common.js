@@ -20,30 +20,15 @@ const StudioLanguage = (() => {
   };
 })();
 
-/* resolveLocalizedText picks one translation by the chain of the server's
-   project.LocalizedText.Resolve, step for step: the language asked for, the
-   same language without its region, a stored translation of that language
-   with a region, the project's default language, the configured languages in
-   order, and any non-empty value at all. Studio keeps no chain of its own:
-   five editors used to pick their own way, and one title showed in different
-   languages side by side. TestStudioResolvesTextLikeTheServer runs the same
+/* textPresentation is the server's project.LocalizedText.Presentation, step
+   for step: the translation in the language asked for, and the name where
+   there is none - not a translation in another language (METADATA-OBJECTS.md,
+   «Нет перевода на языке — имя»; the owner's decision of 19.10.2026). A
+   text of spaces is none. TestStudioShowsTextLikeTheServer runs the same
    cases through both. */
-function resolveLocalizedText(text, language, defaultLanguage, languages) {
-  if (!text || typeof text !== 'object') return '';
-  const value = key => (Object.hasOwn(text, key) && typeof text[key] === 'string' ? text[key].trim() : '');
-  const keys = Object.keys(text).sort();
-  if (value(language)) return value(language);
-  const cut = (language || '').indexOf('-');
-  if (cut > 0 && value(language.slice(0, cut))) return value(language.slice(0, cut));
-  const requested = languageBase(language);
-  if (requested) {
-    const key = keys.find(item => languageBase(item) === requested && value(item));
-    if (key !== undefined) return value(key);
-  }
-  if (value(defaultLanguage)) return value(defaultLanguage);
-  for (const item of languages || []) if (value(item.code)) return value(item.code);
-  const key = keys.find(item => value(item));
-  return key === undefined ? '' : value(key);
+function textPresentation(text, language, name) {
+  const value = text && typeof text === 'object' && Object.hasOwn(text, language) && typeof text[language] === 'string' ? text[language].trim() : '';
+  return value || name;
 }
 
 /* setTranslation writes one translation of a localized text - a synonym,
@@ -57,31 +42,21 @@ function setTranslation(text, language, value) {
   return text;
 }
 
-/* languageBase is project.LanguageBase: the language of a code without its
-   region, in lower case. */
-function languageBase(code) {
-  return (code || '').trim().toLowerCase().split('-')[0];
-}
-
 /* localizedTitle is what Studio shows for anything with a localized title:
-   the translation in the current display language by the project's chain,
-   and the name when there is no translation at all. */
-function localizedTitle(item, defaultLanguage, languages) {
-  return resolveLocalizedText(item?.title, StudioLanguage.get() || defaultLanguage, defaultLanguage, languages) || item?.name || '';
+   its presentation in the language Studio edits in. */
+function localizedTitle(item, defaultLanguage) {
+  return textPresentation(item?.title, StudioLanguage.get() || defaultLanguage, item?.name || '');
 }
 
 /* languageTitle names a language by its synonym in the language Studio
    edits in, as the prototype names the languages of «Строки на разных
    языках» (ERP, whose main language is Ukrainian: «Російська»,
    «Українська»; the owner's decision of 19.10.2026) - one rule for every
-   place Studio names a language. With no synonym in that language the
-   language is named by its name, as the platform names whatever has no
-   translation (METADATA-OBJECTS.md, «Нет перевода на языке — имя»): not by a
-   translation in another language. The code stands only for a language with
+   place Studio names a language, and with no synonym in that language its
+   name, as anything else is shown. The code stands only for a language with
    no name. */
 function languageTitle(language, defaultLanguage) {
-  const own = language.title && typeof language.title === 'object' ? language.title[StudioLanguage.get() || defaultLanguage] : '';
-  return (typeof own === 'string' ? own.trim() : '') || language.name || language.code;
+  return localizedTitle(language, defaultLanguage) || language.code;
 }
 
 /* uniqueName returns base, or base followed by the first number from 2 that

@@ -240,25 +240,18 @@ var (
 // LocalizedText stores translations by configured language code.
 type LocalizedText = project.LocalizedText
 
-// TitleLanguage is the whole question "in which language" - the reader's
-// language together with the project's own fallbacks. It travels as one value
-// because the three parts are never useful apart: a component handed only a
-// language code cannot answer correctly when that translation is missing, which
-// is exactly when the answer matters.
+// TitleLanguage is the language a reader is shown texts in. It is chosen
+// among the configuration's languages (platform.ApplicationLanguage); a text
+// with no translation in it shows the name of what it belongs to
+// (LocalizedText.Presentation).
 type TitleLanguage struct {
-	Code       string             `json:"code"`
-	Default    string             `json:"default"`
-	Configured []project.Language `json:"configured,omitempty"`
+	Code string `json:"code"`
 }
 
-// ProjectLanguage returns the chain for one project and one reader.
-func ProjectLanguage(configuration project.Project, code string) TitleLanguage {
-	return TitleLanguage{Code: code, Default: configuration.DefaultLanguage, Configured: configuration.Languages}
-}
-
-// Resolve answers with this chain.
-func (chain TitleLanguage) Resolve(text LocalizedText) string {
-	return text.Resolve(chain.Code, chain.Default, chain.Configured)
+// Presentation is what text shows to this reader - see
+// LocalizedText.Presentation.
+func (language TitleLanguage) Presentation(text LocalizedText, name string) string {
+	return text.Presentation(language.Code, name)
 }
 
 // Type describes one allowed scalar value. References use stable metadata UUIDs.

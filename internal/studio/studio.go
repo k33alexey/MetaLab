@@ -141,7 +141,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	}
 	// The root's synonym is localized now, so the tree reads it the way it
 	// reads every other synonym: in the project's own default language.
-	synonym := configuration.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages)
+	synonym := configuration.Title.Resolve(configuration.DefaultLanguage)
 	properties := []Property{
 		{Name: "Имя", Value: configuration.Name}, {Name: "Синоним", Value: synonym},
 		{Name: "UUID", Value: configuration.ID.String()}, {Name: "Основной язык", Value: configuration.DefaultLanguage},

@@ -104,18 +104,13 @@ func searchableKind(types []metadata.Type) bool {
 }
 
 func customForm(descriptor metadata.FormDescriptor, source metadata.ManagedForm, language metadata.TitleLanguage) Form {
-	title := language.Resolve(source.Title)
-	if title == "" {
-		title = descriptor.Title
-	}
+	// A form with no title of its own in the reader's language is titled as
+	// the generated one is.
+	title := language.Presentation(source.Title, descriptor.Title)
 	commands := make([]Command, len(source.Commands))
 	commandNames := make(map[string]string, len(source.Commands))
 	for index, command := range source.Commands {
-		commandTitle := language.Resolve(command.Title)
-		if commandTitle == "" {
-			commandTitle = command.Name
-		}
-		commands[index] = Command{ID: command.Name, Title: commandTitle, Kind: commandKind(string(command.Action))}
+		commands[index] = Command{ID: command.Name, Title: language.Presentation(command.Title, command.Name), Kind: commandKind(string(command.Action))}
 		commandNames[strings.ToLower(command.Name)] = command.Name
 	}
 	result := Form{ID: formID(descriptor), Title: title, Commands: commands, Items: customElements(source.Items, language, commandNames)}
@@ -153,10 +148,7 @@ func customElements(source []metadata.ManagedFormElement, language metadata.Titl
 		if item.Hidden {
 			continue
 		}
-		title := language.Resolve(item.Title)
-		if title == "" {
-			title = item.Name
-		}
+		title := language.Presentation(item.Title, item.Name)
 		kind, shown := appElementKind(item.Kind)
 		if !shown {
 			continue

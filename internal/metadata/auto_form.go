@@ -129,10 +129,7 @@ func (catalog *Catalog) baseForm(objectKind Kind, id uuid.UUID, name string, tit
 	}
 	result := FormDescriptor{
 		Kind: kind, ObjectKind: objectKind, ObjectID: id, ObjectName: name,
-		Title: catalog.resolveTitle(title, language), Generated: true,
-	}
-	if result.Title == "" {
-		result.Title = name
+		Title: title.Presentation(language, name), Generated: true,
 	}
 	var slot string
 	switch kind {
@@ -260,11 +257,7 @@ func (catalog *Catalog) documentHasMovements(documentID uuid.UUID) bool {
 func (catalog *Catalog) attributeFormFields(attributes []Attribute, language string) []FormField {
 	result := make([]FormField, len(attributes))
 	for index, attribute := range attributes {
-		title := catalog.resolveTitle(attribute.Title, language)
-		if title == "" {
-			title = attribute.Name
-		}
-		result[index] = FormField{Name: attribute.Name, Title: title, Types: cloneTypes(attribute.Types), Required: attribute.FillChecking.checked()}
+		result[index] = FormField{Name: attribute.Name, Title: attribute.Title.Presentation(language, attribute.Name), Types: cloneTypes(attribute.Types), Required: attribute.FillChecking.checked()}
 	}
 	return result
 }
@@ -272,11 +265,7 @@ func (catalog *Catalog) attributeFormFields(attributes []Attribute, language str
 func (catalog *Catalog) tablePartForms(parts []TablePart, language string) []FormTablePart {
 	result := make([]FormTablePart, len(parts))
 	for index, part := range parts {
-		title := catalog.resolveTitle(part.Title, language)
-		if title == "" {
-			title = part.Name
-		}
-		result[index] = FormTablePart{Name: part.Name, Title: title, Columns: catalog.attributeFormFields(part.Attributes, language)}
+		result[index] = FormTablePart{Name: part.Name, Title: part.Title.Presentation(language, part.Name), Columns: catalog.attributeFormFields(part.Attributes, language)}
 	}
 	return result
 }
@@ -322,13 +311,4 @@ func formText(language, key string) string {
 		return text
 	}
 	return texts["en"][key]
-}
-
-// resolveTitle answers with the project's own fallback chain rather than with
-// whatever translation happens to be stored first - see LocalizedText.Resolve.
-func (catalog *Catalog) resolveTitle(text LocalizedText, language string) string {
-	if catalog == nil {
-		return text.Resolve(language, "", nil)
-	}
-	return text.Resolve(language, catalog.Project.DefaultLanguage, catalog.Project.Languages)
 }

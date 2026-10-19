@@ -329,11 +329,7 @@ func (workspace *Workspace) formDataPathsFrom(relative, content string, configur
 	}
 	var result []FormDataPath
 	appendField := func(prefix, name string, title metadata.LocalizedText, kind string) {
-		text := title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages)
-		if strings.TrimSpace(text) == "" {
-			text = name
-		}
-		result = append(result, FormDataPath{Path: prefix + "." + name, Title: text, Kind: kind})
+		result = append(result, FormDataPath{Path: prefix + "." + name, Title: title.Presentation(configuration.DefaultLanguage, name), Kind: kind})
 	}
 	appendObject := func(slots metadata.ObjectForms, own []struct{ name, title string }, attributes []metadata.Attribute, parts []metadata.TablePart) {
 		formKind, ok := slotOf(slots, form)

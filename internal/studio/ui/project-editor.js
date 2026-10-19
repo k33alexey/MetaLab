@@ -108,7 +108,7 @@ function createProjectEditor(host, onChange) {
      единственный след того, что имелось в виду, а показать его — единственный
      способ дать его починить. */
   function presentation(choice) {
-    return localizedTitle(choice, source.configuration.defaultLanguage, source.configuration.languages) || choice.id;
+    return localizedTitle(choice, source.configuration.defaultLanguage) || choice.id;
   }
   function referenceField(label, field, choices) {
     const stored = source.configuration[field] || '';

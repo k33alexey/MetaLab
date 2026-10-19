@@ -28,10 +28,7 @@ import (
 // written down - a window titled "ML Studio — " and nothing else says less
 // than the folder the project was opened from.
 func studioWindowTitle(configuration project.Project) string {
-	if synonym := configuration.Title.Resolve(configuration.DefaultLanguage, configuration.DefaultLanguage, configuration.Languages); synonym != "" {
-		return synonym
-	}
-	return configuration.Name
+	return configuration.Title.Presentation(configuration.DefaultLanguage, configuration.Name)
 }
 
 func runStudio(ctx context.Context, settings appconfig.Config, projectPath, databaseText string) error {

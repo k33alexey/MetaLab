@@ -89,7 +89,7 @@ func (runtime *Runtime) LoadApplicationObjects(ctx context.Context, token string
 				continue
 			}
 			result = append(result, ApplicationObject{Kind: kind, Name: item.Name,
-				Title: resolvedApplicationTitle(item.Title, item.Name, language), Operations: allowedOperations(permissions, item.ID)})
+				Title: language.Presentation(item.Title, item.Name), Operations: allowedOperations(permissions, item.ID)})
 		}
 	}
 	return ApplicationObjects{Objects: result, Language: language}, nil
@@ -361,13 +361,6 @@ func (runtime *Runtime) openRegisteredPool(ctx context.Context, registered syste
 	return pool, nil
 }
 
-func resolvedApplicationTitle(title metadata.LocalizedText, fallback string, language metadata.TitleLanguage) string {
-	if value := language.Resolve(title); value != "" {
-		return value
-	}
-	return fallback
-}
-
 // ApplicationLanguage picks the language one reader sees an application in:
 // their first preference the project actually has, otherwise the project's own
 // default. The choice is made here, where the project's languages are known -
@@ -383,17 +376,17 @@ func ApplicationLanguage(configuration project.Project, preferences []string) me
 		}
 		for _, language := range configuration.Languages {
 			if strings.EqualFold(language.Code, code) {
-				return metadata.ProjectLanguage(configuration, language.Code)
+				return metadata.TitleLanguage{Code: language.Code}
 			}
 		}
 		base, _, _ := strings.Cut(code, "-")
 		for _, language := range configuration.Languages {
 			if configured, _, _ := strings.Cut(strings.ToLower(language.Code), "-"); configured == base {
-				return metadata.ProjectLanguage(configuration, language.Code)
+				return metadata.TitleLanguage{Code: language.Code}
 			}
 		}
 	}
-	return metadata.ProjectLanguage(configuration, configuration.DefaultLanguage)
+	return metadata.TitleLanguage{Code: configuration.DefaultLanguage}
 }
 
 // allowedOperations reports what the caller may do with one object, in a stable

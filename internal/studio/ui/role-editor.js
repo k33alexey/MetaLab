@@ -814,7 +814,7 @@ function createRoleEditor(host, onChange) {
      единственных перечней: свой словарь здесь разошёлся бы с ними при первой
      правке одного из двух. */
   const caption = key => source.schema.rights.find(item => item.key === key)?.title || key;
-  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  function title(item) { return localizedTitle(item, source.defaultLanguage); }
   /* Подписи объектов и полей показываются на текущем языке Studio и
      меняются вместе с ним. */
   StudioLanguage.onChange(() => { if (!source) return; tree.render(); renderPanel(); if (view === 'templates') renderTemplates(); });

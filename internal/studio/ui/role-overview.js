@@ -17,7 +17,7 @@ function createRoleOverviewModel(source) {
     return {path: entry.path, revision: entry.revision, role: entry.role, model, initial: JSON.stringify(model.value())};
   });
   const objects = new Map((source.schema.objects || []).map(item => [item.id, item]));
-  function localized(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  function localized(item) { return localizedTitle(item, source.defaultLanguage); }
   function objectTitle(id) {
     const object = objects.get(id);
     return object ? localized(object) : 'удалённый объект';

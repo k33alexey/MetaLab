@@ -28,8 +28,8 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parameter.Title.Resolve("uk", configuration.DefaultLanguage, configuration.Languages) != "Поточний користувач" || parameter.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages) != "Текущий сотрудник" {
-		t.Fatalf("localized title fallback = %q", parameter.Title.Resolve("en", configuration.DefaultLanguage, configuration.Languages))
+	if parameter.Title.Presentation("uk", parameter.Name) != "Поточний користувач" || parameter.Title.Presentation("en", parameter.Name) != "ТекущийСотрудник" {
+		t.Fatalf("localized title = %q", parameter.Title.Presentation("en", parameter.Name))
 	}
 	_, err = DecodeSessionParameter("session-parameter.yaml", strings.NewReader(`format: 1
 id: `+sessionParameterID+`

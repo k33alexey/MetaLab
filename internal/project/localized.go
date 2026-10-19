@@ -13,55 +13,26 @@ import (
 // the metadata package names this very type rather than one of its own.
 type LocalizedText map[string]string
 
-// Resolve returns a translation by a fixed chain: the language asked for, then
-// the same language without its region, then the project's default language,
-// then the configured languages in order, and finally any non-empty value at
-// all.
-//
-// The chain is fixed on purpose. It used to fall through the configured list
-// straight away, so which translation a user saw when theirs was empty depended
-// on the order languages happened to be stored in - two projects with the same
-// languages could answer differently, and neither answer was the project's own
-// default. What a reader gets when their language is missing is a decision, and
-// it belongs to the project.
-func (text LocalizedText) Resolve(language, defaultLanguage string, configured []Language) string {
-	if value := strings.TrimSpace(text[language]); value != "" {
+// Resolve returns the translation in the language asked for, and nothing
+// when there is none: a translation is tied to the code of a language of the
+// configuration and to nothing else (the help, «ОбъектМетаданных: Язык»,
+// КодЯзыка). A text of spaces says nothing and counts as none.
+func (text LocalizedText) Resolve(language string) string {
+	return strings.TrimSpace(text[language])
+}
+
+// Presentation is what a text shows in a language: the translation in that
+// language, and the name of what it belongs to where there is none - not a
+// translation in another language (METADATA-OBJECTS.md, «Нет перевода на
+// языке — имя»; the owner's decision of 19.10.2026). Every object has a name,
+// so a presentation is never empty. Before that decision a chain went on
+// through the default language, the configured languages and any stored
+// translation, which is not how the prototype shows its languages.
+func (text LocalizedText) Presentation(language, name string) string {
+	if value := text.Resolve(language); value != "" {
 		return value
 	}
-	// "uk-UA" reads a translation stored as "uk", and the other way round: a
-	// region is a refinement of a language, not a different one.
-	if base, _, ok := strings.Cut(language, "-"); ok && base != "" {
-		if value := strings.TrimSpace(text[base]); value != "" {
-			return value
-		}
-	}
-	// A stored "uk-UA" answers a request for "uk" as well: the two are the same
-	// language, and which side carries the region is an accident of how each was
-	// written down.
-	if requested := LanguageBase(language); requested != "" {
-		for _, key := range sortedKeys(text) {
-			if LanguageBase(key) != requested {
-				continue
-			}
-			if value := strings.TrimSpace(text[key]); value != "" {
-				return value
-			}
-		}
-	}
-	if value := strings.TrimSpace(text[defaultLanguage]); value != "" {
-		return value
-	}
-	for _, item := range configured {
-		if value := strings.TrimSpace(text[item.Code]); value != "" {
-			return value
-		}
-	}
-	for _, key := range sortedKeys(text) {
-		if value := strings.TrimSpace(text[key]); value != "" {
-			return value
-		}
-	}
-	return ""
+	return name
 }
 
 // Clone copies a text so that handing one out never hands out the map behind it.
@@ -76,8 +47,8 @@ func (text LocalizedText) Clone() LocalizedText {
 	return copied
 }
 
-// sortedKeys keeps every fallback that walks the stored translations
-// deterministic - two readers with the same data must get the same answer.
+// sortedKeys walks the stored translations in one order, so that the same
+// text is always checked, and its faults named, the same way.
 func sortedKeys(text LocalizedText) []string {
 	keys := make([]string, 0, len(text))
 	for key := range text {
@@ -85,11 +56,4 @@ func sortedKeys(text LocalizedText) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// LanguageBase drops the region from a locale code: "uk-UA" and "uk" are the
-// same language.
-func LanguageBase(code string) string {
-	base, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(code)), "-")
-	return base
 }

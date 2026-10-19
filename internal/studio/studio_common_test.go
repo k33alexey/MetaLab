@@ -11,9 +11,9 @@ import (
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
-// resolveInNode runs resolveLocalizedText of studio-common.js on every case
-// read from stdin and prints the answers in the same order.
-const resolveInNode = `
+// presentInNode runs textPresentation of studio-common.js on every case read
+// from stdin and prints the answers in the same order.
+const presentInNode = `
 const {readFileSync} = await import('node:fs');
 const vm = await import('node:vm');
 const context = vm.createContext({});
@@ -21,64 +21,57 @@ vm.runInContext(readFileSync(process.argv[1], 'utf8'), context);
 const cases = JSON.parse(readFileSync(0, 'utf8'));
 context.cases = cases;
 process.stdout.write(JSON.stringify(vm.runInContext(
-  'cases.map(item => resolveLocalizedText(item.text, item.language, item.defaultLanguage, item.languages))', context)));
+  'cases.map(item => textPresentation(item.text, item.language, item.name))', context)));
 `
 
-// Studio picks the translation it shows by the server's chain, not one of its
-// own. Defect caught: the JS chain drifting from project.LocalizedText.Resolve
-// - the editors used to take the default language and then whatever value came
-// first in the map, so a title could show in one language in Studio and in
-// another in the application. The expectation is written out by hand and both
-// sides are held to it, so a change to either shows here.
-func TestStudioResolvesTextLikeTheServer(t *testing.T) {
+// Studio shows a text by the server's rule, not by one of its own: the
+// translation in the language shown, and the name where there is none
+// (METADATA-OBJECTS.md, «Нет перевода на языке — имя»). Defects caught: a
+// chain through the default language or another stored translation coming
+// back on either side - the one both sides had until 19.10.2026 showed
+// «Поступление товаров и услуг» to a reader of Ukrainian - and the page
+// drifting from project.LocalizedText.Presentation. The expectation is written
+// out by hand, from the owner's rule and the help (a translation is tied to
+// the code of a language, «ОбъектМетаданных: Язык», КодЯзыка), and both
+// sides are held to it.
+func TestStudioShowsTextLikeTheServer(t *testing.T) {
+	const name = "ПоступлениеТоваровУслуг"
+	type presentCase struct {
+		title    string
+		want     string
+		text     project.LocalizedText
+		language string
+	}
+	cases := []presentCase{
+		{"the language shown", "Надходження товарів", project.LocalizedText{"ru": "Поступление товаров", "uk": "Надходження товарів"}, "uk"},
+		{"no translation in it is the name, not the main language", name, project.LocalizedText{"ru": "Поступление товаров"}, "uk"},
+		{"a translation in an undeclared language is no translation", name, project.LocalizedText{"en": "Goods receipt"}, "uk"},
+		{"a translation with no language is no translation", name, project.LocalizedText{"": "Поступление товаров"}, "uk"},
+		{"blank counts as none", name, project.LocalizedText{"uk": "  ", "ru": "Поступление товаров"}, "uk"},
+		{"the value is trimmed", "Надходження", project.LocalizedText{"uk": "  Надходження  "}, "uk"},
+		{"a region is another code", name, project.LocalizedText{"uk": "Надходження"}, "uk-UA"},
+		{"a stored region is another code", name, project.LocalizedText{"uk-UA": "Надходження"}, "uk"},
+		{"the code is matched as written", name, project.LocalizedText{"uk": "Надходження"}, "UK"},
+		{"no language shown", name, project.LocalizedText{"ru": "Поступление товаров"}, ""},
+		{"no text", name, nil, "ru"},
+	}
+	for _, item := range cases {
+		if server := item.text.Presentation(item.language, name); server != item.want {
+			t.Errorf("%s: the server shows %q, want %q", item.title, server, item.want)
+		}
+	}
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node.js is required for this test")
-	}
-	languages := func(codes ...string) []project.Language {
-		result := make([]project.Language, len(codes))
-		for index, code := range codes {
-			result[index] = project.Language{Code: code}
-		}
-		return result
-	}
-	type resolveCase struct {
-		name            string
-		want            string
-		text            project.LocalizedText
-		language        string
-		defaultLanguage string
-		languages       []project.Language
-	}
-	cases := []resolveCase{
-		{"the language asked for", "Goods", project.LocalizedText{"ru": "Товары", "en": "Goods"}, "en", "ru", languages("ru", "en")},
-		{"blank counts as missing", "Товары", project.LocalizedText{"ru": "Товары", "en": "  "}, "en", "ru", languages("ru", "en")},
-		{"value is trimmed", "Товары", project.LocalizedText{"ru": "  Товары  "}, "ru", "ru", languages("ru")},
-		{"region falls back to its language", "Товари", project.LocalizedText{"uk": "Товари", "ru": "Товары"}, "uk-UA", "ru", languages("ru", "uk")},
-		{"language finds a stored region", "Товари", project.LocalizedText{"uk-UA": "Товари", "ru": "Товары"}, "uk", "ru", languages("ru", "uk")},
-		{"case of the region does not matter", "Товари", project.LocalizedText{"uk": "Товари", "ru": "Товары"}, "UK-ua", "ru", languages("ru", "uk")},
-		{"default before the configured order", "Товары", project.LocalizedText{"en": "Goods", "ru": "Товары"}, "de", "ru", languages("en", "ru")},
-		{"configured order, not the sorted one", "Товары", project.LocalizedText{"de": "Waren", "ru": "Товары"}, "fr", "en", languages("en", "ru", "de")},
-		{"any value when no language has one", "A", project.LocalizedText{"zz": "Z", "aa": "A"}, "fr", "en", languages("en")},
-		{"empty language and default", "Товары", project.LocalizedText{"ru": "Товары"}, "", "", nil},
-		{"nothing at all", "", project.LocalizedText{"ru": " "}, "ru", "ru", languages("ru")},
-		{"no text", "", nil, "ru", "ru", languages("ru")},
-	}
-	type jsLanguage struct {
-		Code string `json:"code"`
+		t.Skip("Node.js is required for the page's half of this test")
 	}
 	type jsCase struct {
-		Text            project.LocalizedText `json:"text"`
-		Language        string                `json:"language"`
-		DefaultLanguage string                `json:"defaultLanguage"`
-		Languages       []jsLanguage          `json:"languages"`
+		Text     project.LocalizedText `json:"text"`
+		Language string                `json:"language"`
+		Name     string                `json:"name"`
 	}
 	input := make([]jsCase, len(cases))
 	for index, item := range cases {
-		input[index] = jsCase{Text: item.text, Language: item.language, DefaultLanguage: item.defaultLanguage, Languages: []jsLanguage{}}
-		for _, language := range item.languages {
-			input[index].Languages = append(input[index].Languages, jsLanguage{Code: language.Code})
-		}
+		input[index] = jsCase{Text: item.text, Language: item.language, Name: name}
 	}
 	payload, err := json.Marshal(input)
 	if err != nil {
@@ -86,7 +79,7 @@ func TestStudioResolvesTextLikeTheServer(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, node, "--input-type=module", "-e", resolveInNode, "ui/studio-common.js")
+	command := exec.CommandContext(ctx, node, "--input-type=module", "-e", presentInNode, "ui/studio-common.js")
 	command.Stdin = bytes.NewReader(payload)
 	output, err := command.Output()
 	if err != nil {
@@ -100,12 +93,8 @@ func TestStudioResolvesTextLikeTheServer(t *testing.T) {
 		t.Fatalf("node answered %d cases of %d", len(answers), len(cases))
 	}
 	for index, item := range cases {
-		server := item.text.Resolve(item.language, item.defaultLanguage, item.languages)
-		if server != item.want {
-			t.Errorf("%s: the server shows %q, want %q", item.name, server, item.want)
-		}
 		if answers[index] != item.want {
-			t.Errorf("%s: Studio shows %q, want %q", item.name, answers[index], item.want)
+			t.Errorf("%s: Studio shows %q, want %q", item.title, answers[index], item.want)
 		}
 	}
 }

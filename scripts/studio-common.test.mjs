@@ -92,19 +92,19 @@ test('switching StudioLanguage refreshes every mounted field',()=>{
   field.destroy();
 });
 
-// Подпись показывается на текущем языке Studio, а без перевода на нём — по
-// цепочке проекта (язык по умолчанию, затем порядок языков), и только потом —
-// именем. Дефект: редактор берёт язык по умолчанию и первый попавшийся
-// перевод, а переключатель языка Studio на подписи не действует.
-test('a title follows the Studio language, then the project chain, then the name',()=>{
-  const languages=[{code:'ru'},{code:'de'},{code:'en'}];
+// Подпись показывается на текущем языке Studio, а без перевода на нём —
+// именем, не переводом на другом языке (правило платформы «нет перевода на
+// языке — имя», решение владельца 19.10.2026). Дефекты: переключатель языка
+// Studio на подписи не действует; без перевода на языке Studio берётся язык
+// по умолчанию или первый попавшийся перевод.
+test('a title follows the Studio language, else it is the name',()=>{
   StudioLanguage.set('en');
-  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru',languages),'Products');
-  assert.equal(localizedTitle({name:'Goods',title:{en:'  ',ru:'Товары'}},'ru',languages),'Товары');
-  assert.equal(localizedTitle({name:'Goods',title:{en:'',de:'Waren',ar:'بضائع'}},'ru',languages),'Waren');
-  assert.equal(localizedTitle({name:'Goods',title:{}},'ru',languages),'Goods');
+  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru'),'Products');
+  assert.equal(localizedTitle({name:'Goods',title:{en:'  ',ru:'Товары'}},'ru'),'Goods');
+  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',de:'Waren'}},'ru'),'Goods');
+  assert.equal(localizedTitle({name:'Goods',title:{}},'ru'),'Goods');
   StudioLanguage.set('ru');
-  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru',languages),'Товары');
+  assert.equal(localizedTitle({name:'Goods',title:{ru:'Товары',en:'Products'}},'ru'),'Товары');
 });
 
 // Язык называется на самом себе, а не на текущем языке Studio и не на языке

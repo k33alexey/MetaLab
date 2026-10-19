@@ -255,7 +255,7 @@ func (runtime *fakeRuntime) AcknowledgeSessionMessage(context.Context, string, u
 	return runtime.failure
 }
 func (runtime *fakeRuntime) LoadApplicationObjects(_ context.Context, _ string, _ uuid.UUID, preferences []string) (platform.ApplicationObjects, error) {
-	language := metadata.TitleLanguage{Code: "ru", Default: "ru"}
+	language := metadata.TitleLanguage{Code: "ru"}
 	if len(preferences) > 0 {
 		language.Code = preferences[0]
 	}

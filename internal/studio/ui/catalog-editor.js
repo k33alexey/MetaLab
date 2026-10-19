@@ -120,7 +120,7 @@ function createCatalogModel(source) {
 
 function createCatalogEditor(host, onChange) {
   let source, model, selected = {kind: 'catalog'}, titleFieldCleanups = [];
-  function title(item) { return localizedTitle(item, source.defaultLanguage, source.languages); }
+  function title(item) { return localizedTitle(item, source.defaultLanguage); }
   /* Подписи в списках показываются на текущем языке Studio и меняются вместе
      с ним. */
   StudioLanguage.onChange(() => { if (source) renderBody(); });
