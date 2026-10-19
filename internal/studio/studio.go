@@ -721,7 +721,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 	// object that owns it - but the directory is still checked here, so a
 	// stray file is reported when the tree is read and not only when data is
 	// saved into the database.
-	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules", language, languages); err != nil {
+	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules"); err != nil {
 		return nil, err
 	}
 	built := make(map[string]Node, len(project.MetadataKinds()))
@@ -762,7 +762,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, language, languages)
 					}
 				} else {
-					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata", language, languages)
+					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata")
 				}
 				if buildErr != nil {
 					return nil, buildErr
@@ -777,7 +777,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 		if kind == "common-modules" {
 			workspace.attachCommonModuleSources(&node)
 		}
-		node.Properties = countProperties(node.Path, len(node.Children))
+		node.Properties = countProperties(node.Path, len(node.Children)+nestedObjects(node.Children))
 		built[kind] = node
 	}
 	// The branches stand in the order and the places the kinds give them.
@@ -837,12 +837,13 @@ func (workspace *Workspace) attachCommonModuleSources(node *Node) {
 	}
 }
 
-func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, language string, languages []project.Language) ([]Node, error) {
+func (workspace *Workspace) sourceFiles(directory, relative, extension, kind string) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
 	}
 	nodes := make([]Node, 0, len(entries))
+	parents := make(map[string]string)
 	// The folder a role, a subsystem or a group of commands keeps beside its
 	// description is the loader's to check, and is no node of its own.
 	folderKind := metadata.Kind(strings.TrimPrefix(relative, "metadata/"))
@@ -875,9 +876,13 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 		path := filepath.ToSlash(filepath.Join(relative, entry.Name()))
 		title := id.String()
 		if ext == ".yaml" {
-			title, err = yamlSourceTitle(filepath.Join(directory, entry.Name()), path, title, info.Size(), language, languages)
+			head, err := yamlSourceHead(filepath.Join(directory, entry.Name()), path, title)
 			if err != nil {
 				return nil, err
+			}
+			title = head.title
+			if !head.parent.IsZero() {
+				parents[id.String()] = head.parent.String()
 			}
 		}
 		icon := moduleIcon
@@ -890,8 +895,50 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind, la
 		}
 		nodes = append(nodes, node)
 	}
-	sortNodesByTitle(nodes)
-	return nodes, nil
+	return nestUnderParents(nodes, parents), nil
+}
+
+// nestUnderParents puts a description that names its parent among the others
+// under it, as the prototype's tree shows a subsystem under the one it lies
+// in (inventory of block 00, «Подсистема», snapshot 20-vlozhennaya-sklad).
+// One whose parent is not there, or whose chain of parents comes back to
+// itself, stays at the top, so that the tree still shows it while the loader
+// refuses the project. Every level is in the order of titles.
+func nestUnderParents(nodes []Node, parents map[string]string) []Node {
+	index := make(map[string]int, len(nodes))
+	for position, node := range nodes {
+		index[node.ID] = position
+	}
+	nested := func(id string) bool {
+		seen := map[string]bool{id: true}
+		for current := parents[id]; current != ""; current = parents[current] {
+			if _, ok := index[current]; !ok || seen[current] {
+				return false
+			}
+			seen[current] = true
+		}
+		return parents[id] != ""
+	}
+	children := make(map[string][]Node)
+	var top []Node
+	for _, node := range nodes {
+		if nested(node.ID) {
+			children[parents[node.ID]] = append(children[parents[node.ID]], node)
+		} else {
+			top = append(top, node)
+		}
+	}
+	var attach func(level []Node) []Node
+	attach = func(level []Node) []Node {
+		for position := range level {
+			if below := children[level[position].ID]; below != nil {
+				level[position].Children = attach(below)
+			}
+		}
+		sortNodesByTitle(level)
+		return level
+	}
+	return attach(top)
 }
 
 // objectFolderNodes lists one metadata kind's per-object folders (catalogs,
@@ -926,10 +973,11 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 		if err != nil {
 			return nil, fmt.Errorf("inspect metadata object %q: %w", descriptionPath, err)
 		}
-		title, id, err := yamlSourceTitleAndID(filepath.Join(objectDirectory, "object.yaml"), descriptionPath, entry.Name(), info.Size())
+		head, err := yamlSourceHead(filepath.Join(objectDirectory, "object.yaml"), descriptionPath, entry.Name())
 		if err != nil {
 			return nil, err
 		}
+		title, id := head.title, head.id
 		owned, err := objectOwnedFileNodes(objectDirectory, objectRelative, kind, project.SubordinateCollections(kind)...)
 		if err != nil {
 			return nil, err
@@ -1362,33 +1410,36 @@ func sortNodesByTitle(nodes []Node) {
 	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Title < nodes[right].Title })
 }
 
-func yamlSourceTitle(filePath, relative, fallback string, size int64, language string, languages []project.Language) (string, error) {
-	title, _, err := yamlSourceTitleAndID(filePath, relative, fallback, size)
-	return title, err
+// sourceHead is what the tree needs from an object's description: the name
+// it is shown by, the identifier everything else addresses it with, and the
+// object of its own kind it stands under, if it names one.
+type sourceHead struct {
+	title      string
+	id, parent uuid.UUID
 }
 
-// yamlSourceTitleAndID reads the two things the tree needs from an object's
-// description: the name it is shown by, and the identifier everything else
-// addresses it with. The folder is named by the name now, so the identifier
-// has to come from inside the file.
-func yamlSourceTitleAndID(filePath, relative, fallback string, size int64) (string, uuid.UUID, error) {
+// yamlSourceHead reads the head of a description. The folder is named by the
+// name now, so the identifier has to come from inside the file. What does not
+// read as a value is left as it is: the tree shows the object by the fallback
+// and the loader names the fault.
+func yamlSourceHead(filePath, relative, fallback string) (sourceHead, error) {
+	head := sourceHead{title: fallback}
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", uuid.UUID{}, fmt.Errorf("open source %q: %w", relative, err)
+		return head, fmt.Errorf("open source %q: %w", relative, err)
 	}
 	defer file.Close()
 	var document yaml.Node
 	if err := yaml.NewDecoder(file).Decode(&document); err != nil {
-		return "", uuid.UUID{}, fmt.Errorf("decode source %q: %w", relative, err)
+		return head, fmt.Errorf("decode source %q: %w", relative, err)
 	}
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return fallback, uuid.UUID{}, nil
+		return head, nil
 	}
 	// The tree always shows an object's Имя (Name), never its Заголовок
 	// (Title) — matching 1C Configurator, where the tree is the developer's
 	// technical view and the localized title is only what end users see.
 	mapping := document.Content[0]
-	title, id := fallback, uuid.UUID{}
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
 		key, value := mapping.Content[index], mapping.Content[index+1]
 		if value.Kind != yaml.ScalarNode {
@@ -1397,19 +1448,42 @@ func yamlSourceTitleAndID(filePath, relative, fallback string, size int64) (stri
 		switch key.Value {
 		case "name":
 			if name := strings.TrimSpace(value.Value); name != "" {
-				title = name
+				head.title = name
 			}
-		case "id":
+		case "id", "parent":
 			if parsed, err := uuid.Parse(strings.TrimSpace(value.Value)); err == nil {
-				id = parsed
+				if key.Value == "id" {
+					head.id = parsed
+				} else {
+					head.parent = parsed
+				}
 			}
 		}
 	}
-	return title, id, nil
+	return head, nil
 }
 
 func countProperties(path string, count int) []Property {
 	return []Property{{Name: "Путь", Value: path}, {Name: "Объектов", Value: fmt.Sprint(count)}}
+}
+
+// nestedObjects counts the objects of the configuration standing under
+// others of their branch - a subsystem under the one it lies in - which are as
+// many objects of the branch as those at its top. What an object holds -
+// its groups, a cube of a source - is no object of the branch.
+func nestedObjects(nodes []Node) int {
+	count := 0
+	for _, node := range nodes {
+		if node.Kind != "metadata" {
+			continue
+		}
+		for _, child := range node.Children {
+			if child.Kind == "metadata" {
+				count += 1 + nestedObjects([]Node{child})
+			}
+		}
+	}
+	return count
 }
 
 func countDescendants(node Node) int {
