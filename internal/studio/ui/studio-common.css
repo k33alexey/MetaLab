@@ -50,6 +50,7 @@
 .context-menu-item{background:transparent!important;border:none!important;border-radius:4px;padding:6px 12px!important;color:#dfe1e5;text-align:left;font-size:13px;cursor:pointer}
 .context-menu-item:hover,.context-menu-item:focus{background:#2f4a6d!important;outline:none}
 .context-menu-separator{height:1px;margin:4px 6px;background:#4a4d54}.context-menu-key{float:right;margin-left:24px;color:#aeb1b8}.context-menu-item:disabled .context-menu-key{color:inherit}
+.context-menu-item>.tree-icon{margin-right:8px;vertical-align:-3px}.context-menu-item:disabled>.tree-icon{opacity:.4}
 .context-menu-item:disabled{color:#6f737a;cursor:default}.context-menu-item:disabled:hover{background:transparent!important}
 .clearable-select{display:inline-flex;align-items:stretch;gap:2px}.clearable-select select{flex:1}.clearable-select-clear{padding:2px 8px!important}
 
@@ -60,3 +61,42 @@
 
 /* A button drawn by its icon alone (iconButton in studio-common.js). */
 button.icon-only { display:inline-flex; align-items:center; justify-content:center; padding:4px 6px; line-height:0 }
+
+/* Список, разложенный по своей настройке (listLayout в studio-list.js):
+   строка — сетка составных колонок с общим для всех строк шаблоном, в
+   составной колонке — линии колонок одна под другой; ячейка высотой в свои
+   строки, с автовысотой — по тексту, но не выше их, обрезанный текст — с
+   многоточием в последней строке. */
+table.settable-list{display:block;width:100%;table-layout:auto}
+table.settable-list>thead,table.settable-list>tbody{display:block}
+table.settable-list tr{display:grid;grid-template-columns:var(--list-columns)}
+table.settable-list th,table.settable-list td{display:block;min-width:0;padding:0;overflow:hidden;white-space:normal;text-overflow:clip}
+table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
+.list-line{display:grid;min-width:0}
+.list-heading{position:relative;padding:6px 14px 6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;user-select:none}
+.list-heading[data-sort]::after{position:absolute;right:6px;font-size:9px;color:#aeb1b8}
+.list-heading[data-sort=ascending]::after{content:'▲'}.list-heading[data-sort=descending]::after{content:'▼'}
+.list-resize{position:absolute;top:0;right:0;bottom:0;width:5px;cursor:col-resize}
+.list-cell{--line:16px;box-sizing:content-box;min-width:0;padding:4px 8px;line-height:var(--line);white-space:pre-wrap;overflow-wrap:anywhere;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines)}
+.list-cell.list-fixed{height:calc(var(--lines) * var(--line))}
+.list-cell.list-auto{max-height:calc(var(--lines) * var(--line))}
+
+/* Окно «Настройка списка» (снимки vse-ogr-12…16): закладки «Колонки» и
+   «Прочее»; список колонок слева, группа «Колонка» справа. */
+.localized-title-dialog.list-settings-dialog{width:min(560px,calc(100% - 40px))}
+.list-settings-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border,#393b40)}
+.list-settings-tabs button{background:transparent!important;border:0;border-bottom:2px solid transparent;border-radius:0;padding:6px 12px;color:#aeb1b8}
+.list-settings-tabs button[aria-selected=true]{color:#dfe1e5;border-bottom-color:#589df6}
+.list-settings-page{display:grid;align-content:start;gap:8px;min-height:310px;padding-top:8px}.list-settings-page[hidden]{display:none}
+.list-settings-bar{display:flex;align-items:center;gap:6px}
+.list-settings-body{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:12px}
+.list-settings-columns{height:260px;overflow:auto;border:1px solid #4a4d54;border-radius:4px;background:#1e1f22}
+.localized-title-dialog .list-settings-item{display:flex;align-items:center;gap:6px;padding:3px 6px;color:#dfe1e5;cursor:default}
+.list-settings-item.selected{background:#2f4a6d}
+.list-settings-marks{display:flex;gap:4px;margin-bottom:6px}
+.list-settings-column{display:grid;gap:8px;margin:0;padding:8px 10px;border:1px solid #4a4d54;border-radius:4px}
+.list-settings-column legend{padding:0 4px;color:#dfe1e5;font-size:12px}
+.list-settings-column select,.list-settings-inline select{padding:5px 7px;border:1px solid #4a4d54;border-radius:4px;background:#1e1f22;color:#dfe1e5}
+.list-settings-column input[type=number]{width:70px}
+.localized-title-dialog .list-settings-check{display:flex;align-items:center;gap:6px}
+.localized-title-dialog .list-settings-inline{display:flex;align-items:center;gap:10px}

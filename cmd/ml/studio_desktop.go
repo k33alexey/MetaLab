@@ -40,6 +40,11 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	if err != nil {
 		return fmt.Errorf("open ML Project: %w", err)
 	}
+	settingsDirectory, err := studio.UserSettingsDirectory()
+	if err != nil {
+		return err
+	}
+	workspace.KeepUserSettingsIn(settingsDirectory)
 	snapshot, err := workspace.Snapshot()
 	if err != nil {
 		return fmt.Errorf("read ML Project: %w", err)

@@ -211,12 +211,8 @@ var standardIcons = []Icon{
 		colored(path(Line, "M12.5 8.5Q12.5 3 9 3"), red),
 		colored(path(Accent, "M10 0.5L7.5 3L10 5.5Z"), red),
 	})},
-	{ID: "move-left", Color: blue, Parts: []Part{
-		path(Body, blockArrow(270)),
-	}},
-	{ID: "move-right", Color: blue, Parts: []Part{
-		path(Body, blockArrow(90)),
-	}},
+	{ID: "move-left", Color: blue, Accent: blue, Parts: solidArrow(270)},
+	{ID: "move-right", Color: blue, Accent: blue, Parts: solidArrow(90)},
 	{ID: "report-settings", Color: gray, Parts: join([]Part{
 		colored(rect(Body, 1.5, 1.5, 11, 10), slate),
 		colored(path(Detail, "M1.5 4.5H12.5M4.5 4.5V11.5"), slate),

@@ -5,9 +5,11 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../internal/studio/ui/role-overview.js',import.meta.url),'utf8');
 const context=vm.createContext({structuredClone});
-// Окно опирается на общие помощники Studio и на модель редактора роли, как в
-// index.html, где studio-common.js и role-editor.js подключаются раньше.
+// Окно опирается на общие помощники Studio, механизм списков и модель
+// редактора роли, как в index.html, где studio-common.js, studio-list.js и
+// role-editor.js подключаются раньше.
 vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',import.meta.url),'utf8'),context);
+vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-list.js',import.meta.url),'utf8'),context);
 vm.runInContext(readFileSync(new URL('../internal/studio/ui/role-editor.js',import.meta.url),'utf8'),context);
 vm.runInContext(script,context);
 vm.runInContext('globalThis.StudioLanguage = StudioLanguage;',context);
@@ -156,8 +158,6 @@ test('the project-wide list carries every restriction of every role, ordered',()
   const rows=create(source).allRestrictions();
   assert.deepEqual(plain(rows.map(row=>`${row.object}/${row.role}/${row.operation}`)),
     ['Пользователи/Кладовщик/read','Товары/Продавец/read']);
-  assert.equal(rows[1].fields,'2 из 3');
-  assert.equal(rows[0].fields,'0 из 2');
   assert.equal(rows[1].objectID,'goods');
 });
 

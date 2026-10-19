@@ -583,13 +583,20 @@ function subsystemFilterButton({schema, root, holder, applied, button = node('bu
    «Действия», a menu of every command in its order under its menuText with
    its keyText, an unavailable one shown so; a null command is a line
    between groups of the menu, and Ins adds and F2 changes, as the menu
-   says. Enter and a double click change, Del removes. */
-function roleListTable(headings, rows, chosen, choose, commands, empty, {actions = false} = {}) {
+   says. Enter and a double click change, Del removes. A command whose
+   seventh element holds is in the menu only, as «Настройка списка...» is;
+   the eighth names its icon: with actions the bar shows each command by its
+   icon alone, its menuText the tooltip, a null a line between groups, and
+   the menu draws the icon before the text (snapshot vse-ogr-01).
+   layout (listLayout, studio-list.js) lays the list out by its setting:
+   the cells of a row are then given in the order of the list's columns,
+   and the column of the cell clicked last is the key of its column. */
+function roleListTable(headings, rows, chosen, choose, commands, empty, {actions = false, layout = null} = {}) {
   const table=node('table',undefined,'role-list'),head=node('tr');
-  for(const text of headings)head.append(node('th',text));
+  if(layout)head.append(...layout.heading());else for(const text of headings)head.append(node('th',text));
   const thead=node('thead');thead.append(head);const body=node('tbody');
   const many=chosen instanceof Set,isChosen=index=>many?chosen.has(index):index===chosen;
-  let anchor=many?[...chosen].at(-1)??-1:chosen,column=0,last=anchor;
+  let anchor=many?[...chosen].at(-1)??-1:chosen,column=layout?layout.first():0,last=anchor;
   const current=()=>({row:isChosen(last)?last:-1,column});
   const run=name=>{const command=commands.find(item=>item?.[0]===name);if(command&&command[3]())command[2](current());};
   function click(index,event){
@@ -606,21 +613,30 @@ function roleListTable(headings, rows, chosen, choose, commands, empty, {actions
   }
   rows.forEach((cells,index)=>{
     const row=node('tr',undefined,isChosen(index)?'selected':undefined);row.tabIndex=0;
-    for(const cell of cells){if(cell instanceof Node){row.append(cell);continue;}const [text,className]=cell,item=node('td',text,className);item.title=text;row.append(item);}
-    row.addEventListener('click',event=>{const cell=event.target.closest?.('td');if(cell)column=[...row.children].indexOf(cell);click(index,event);});
+    if(layout)row.append(...layout.row(cells));else for(const cell of cells){if(cell instanceof Node){row.append(cell);continue;}const [text,className]=cell,item=node('td',text,className);item.title=text;row.append(item);}
+    row.addEventListener('click',event=>{if(layout){const cell=event.target.closest?.('[data-column]');if(cell)column=cell.dataset.column;}else{const cell=event.target.closest?.('td');if(cell)column=[...row.children].indexOf(cell);}click(index,event);});
     row.addEventListener('dblclick',()=>{if(!isChosen(index))click(index);run('edit');});
     row.addEventListener('keydown',event=>{if(event.key==='Enter'||(actions&&event.key==='F2')){event.preventDefault();row.dispatchEvent(new MouseEvent('dblclick'));}if(event.key==='Delete'){event.preventDefault();if(!isChosen(index))click(index);run('remove');}});
     body.append(row);
   });
   if(!rows.length){const row=node('tr'),cell=node('td',empty,'muted');cell.colSpan=headings.length;row.append(cell);body.append(row);}
   table.append(thead,body);
+  layout?.apply(table);
   const bar=node('div',undefined,'role-bulk'),buttons=[];
   if(actions){
-    const menu=node('button','Действия');menu.type='button';menu.setAttribute('aria-haspopup','menu');
-    menu.addEventListener('click',event=>showContextMenu(event,commands.map(command=>command&&[command[4]||command[1],()=>command[2](current()),command[3](),command[5]])));
+    const menu=node('button','Действия','role-actions-menu');menu.type='button';menu.setAttribute('aria-haspopup','menu');
+    menu.addEventListener('click',event=>showContextMenu(event,commands.map(command=>command&&[command[4]||command[1],()=>command[2](current()),command[3](),command[5],command[7]])));
     bar.append(menu);
   }
-  for(const [key,text,action,enabled] of commands.filter(Boolean)){const button=node('button',text);button.type='button';button.dataset.command=key;button.addEventListener('click',()=>action(current()));buttons.push([button,enabled]);bar.append(button);}
+  // On the bar of actions a line stands only between two groups that both
+  // show a button.
+  let line=false;
+  for(const command of commands){
+    if(!command){line=actions&&buttons.length>0;continue;}
+    const [key,text,action,enabled,menuText,,menuOnly,icon]=command;if(menuOnly)continue;
+    if(line){bar.append(node('span',undefined,'role-bulk-separator'));line=false;}
+    const button=actions&&icon?iconButton(icon,menuText||text):node('button',text);button.type='button';button.dataset.command=key;button.addEventListener('click',()=>action(current()));buttons.push([button,enabled]);bar.append(button);
+  }
   function syncCommands(){for(const [button,enabled] of buttons)button.disabled=!enabled();}
   syncCommands();
   const block=node('div');

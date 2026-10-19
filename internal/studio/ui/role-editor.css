@@ -43,3 +43,10 @@
 .role-list-marks{display:flex;gap:4px}.role-list-marks button{font-size:11px;padding:2px 8px}
 .role-restriction-form .role-check input:disabled+span{color:#6f737a}
 .role-fields-row[hidden]{display:none}
+/* Панель команд над списком, как у прототипа (снимок vse-ogr-01): «Действия»
+   с меткой раскрытия, команды — значками, группы — через черту. */
+.role-bulk-top{align-items:center;gap:2px}
+.role-actions-menu::after{content:' ▾';font-size:10px;color:#aeb1b8}
+.role-bulk-top>button.icon-only{background:transparent;border-color:transparent}.role-bulk-top>button.icon-only:hover:not(:disabled){background:#ffffff1f}
+.role-bulk-top>button.icon-only:disabled .tree-icon{opacity:.4}
+.role-bulk-separator{width:1px;height:18px;margin:0 4px;background:#4a4d54}

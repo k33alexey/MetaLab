@@ -50,6 +50,12 @@ type Workspace struct {
 	debugDatabase uuid.UUID
 	saveData      SaveDataProvider
 	savedNames    SavedNamesProvider
+	// configurationID names the folder of the user's settings of this
+	// configuration (list_settings.go).
+	configurationID       uuid.UUID
+	listSettingsMu        sync.Mutex
+	listSettingsDirectory string
+	listSettingsMemory    map[string]any
 }
 
 // Snapshot is the read-only project model rendered by the Studio shell.
@@ -124,10 +130,11 @@ func openWorkspace(root string, databaseID uuid.UUID, targets *debugtarget.Regis
 	if err != nil {
 		return nil, fmt.Errorf("resolve ML Project path: %w", err)
 	}
-	if _, err := project.ValidateLayout(absolute); err != nil {
+	configuration, err := project.ValidateLayout(absolute)
+	if err != nil {
 		return nil, err
 	}
-	return &Workspace{root: filepath.Clean(absolute), debugTargets: targets, debugDatabase: databaseID}, nil
+	return &Workspace{root: filepath.Clean(absolute), debugTargets: targets, debugDatabase: databaseID, configurationID: configuration.ID}, nil
 }
 
 // Snapshot scans current project sources, including edits made outside Studio.
@@ -224,6 +231,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
+	registerListSettingsRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
 	routes.HandleFunc("GET /ui/icons.svg", func(response http.ResponseWriter, _ *http.Request) {
 		response.Header().Set("Content-Type", "image/svg+xml")

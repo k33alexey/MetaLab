@@ -413,17 +413,22 @@ function showHelp(key) {
    instead. The arrows move between commands, Enter chooses one. An item
    [text, act, false] is shown unavailable, as the prototype's menus show a
    command that cannot act now; [text, act, enabled, key] shows its key at
-   the right, as «Ins» of «Добавить»; null is a line between groups. */
+   the right, as «Ins» of «Добавить»; a fifth element names the icon of the
+   command, drawn before its text, and once one item has an icon every item
+   keeps the place of one, so the texts stand in a column, as in the
+   prototype's menus; null is a line between groups. */
 function showContextMenu(event, items) {
   event.preventDefault();
   closeContextMenu();
   const menu = node('div', undefined, 'context-menu');
   menu.setAttribute('role', 'menu');
+  const icons = items.some(item => item?.[4]);
   for (const item of items) {
     if (!item) { menu.append(node('div', undefined, 'context-menu-separator')); continue; }
-    const [text, act, enabled = true, key] = item;
+    const [text, act, enabled = true, key, icon] = item;
     const button = node('button', text, 'context-menu-item');
     button.type = 'button';
+    if (icons) button.prepend(iconElement(icon));
     if (key) button.append(node('span', key, 'context-menu-key'));
     button.disabled = !enabled;
     button.setAttribute('role', 'menuitem');

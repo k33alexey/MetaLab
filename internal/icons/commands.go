@@ -143,6 +143,13 @@ func calculator() []Part {
 // and a column of pixels and its sides go through the middles of pixels.
 // Either is then turned by quarters round the middle of the grid, which
 // keeps a corner on the half-pixel grid.
+// solidArrow is the arrow of moving: a block arrow filled solid with a
+// darker rim, which reads at 16 pixels where an outline did not (the
+// owner's remark of 19.10.2026 on «Переместить вверх/вниз»).
+func solidArrow(angle float64) []Part {
+	return []Part{path(Accent, blockArrow(angle)), path(Rim, blockArrow(angle))}
+}
+
 func blockArrow(angle float64) string {
 	corners := [][2]float64{{8, 1.5}, {14, 7.5}, {10.5, 7.5}, {10.5, 14.5}, {5.5, 14.5}, {5.5, 7.5}, {2, 7.5}}
 	if math.Mod(angle, 90) != 0 {
@@ -486,12 +493,8 @@ var commandIcons = []Icon{
 	{ID: "delete", Color: red, Accent: red, Parts: []Part{
 		path(Mark, cross),
 	}},
-	{ID: "move-up", Color: blue, Parts: []Part{
-		path(Body, blockArrow(0)),
-	}},
-	{ID: "move-down", Color: blue, Parts: []Part{
-		path(Body, blockArrow(180)),
-	}},
+	{ID: "move-up", Color: blue, Accent: blue, Parts: solidArrow(0)},
+	{ID: "move-down", Color: blue, Accent: blue, Parts: solidArrow(180)},
 	{ID: "sort", Color: slate, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 9, 13), path(Detail, "M3.5 4.5H8.5M3.5 7.5H8.5M3.5 10.5H8.5"),
 		path(Accent, wideArrow(13, 15, 0, 1, 13)),

@@ -25,15 +25,6 @@ function createRoleOverviewModel(source) {
   function describe(objectID, restriction) {
     return {operation: restriction.right, field: restrictionFieldsCaption(objects.get(objectID), restriction, localized), condition: restriction.condition || ''};
   }
-  /* Поля объекта — части, на которые даются Просмотр и Редактирование;
-     команды, операции и методы полями не считаются. */
-  function fieldKeys(objectID) { return new Set((objects.get(objectID)?.fields || []).filter(field => field.operations.includes('edit')).map(field => field.key)); }
-  function fieldSummary(grant, objectID) {
-    const keys = fieldKeys(objectID), total = keys.size;
-    if (!grant?.operations?.includes('read') || !total) return '—';
-    const granted = Math.min((grant?.fields || []).filter(field => keys.has(field.field) && (field.operations || []).includes('view')).length, total);
-    return granted >= total ? 'все' : `${granted} из ${total}`;
-  }
   /* Строки окна по выбранному в дереве: права объекта или права части, у
      каждой — как прочитать и записать её в роли. */
   function lines(selection) {
@@ -250,7 +241,7 @@ function createRoleOverviewModel(source) {
           const index = counted.get(restriction.right) || 0;
           counted.set(restriction.right, index + 1);
           rows.push({path: entry.path, roleIndex, index, objectID: grant.object, object: objectTitle(grant.object),
-            role: localized(entry.role), fields: fieldSummary(grant, grant.object), keys: restriction.fields || [], ...describe(grant.object, restriction)});
+            role: localized(entry.role), keys: restriction.fields || [], ...describe(grant.object, restriction)});
         }
       }
     });
@@ -351,6 +342,25 @@ function createRoleOverviewModel(source) {
 // Окна прототипа над всеми ролями, по ключу — подпись окна.
 const overviewWindows = {roles: 'Все роли', restrictions: 'Все ограничения доступа'};
 
+// Списки окна «Все ограничения доступа», по закладке: колонки прототипа в его
+// порядке и их стандартная настройка (сверено в конфигураторе 18.10.2026,
+// docs/block-00/vse-ogranicheniya-dostupa.md, снимки vse-ogr-12, vse-ogr-15,
+// shabl-03): ширина 14 символов, высота в строку; у «Ограничения доступа»
+// высота 5 с автовысотой. Список открывается в конце, «Автоматически» — в
+// начале (он не упорядочен по дате), ограничения упорядочены по объекту,
+// шаблоны — по роли (снимки vse-ogr-10, shabl-01).
+const overviewLists = {
+  restrictions: createListSettings({key: 'all-restrictions', opening: 'end', autoOpening: 'beginning', sort: {column: 'object'}, columns: [
+    {key: 'object', title: 'Объект'}, {key: 'role', title: 'Роль'}, {key: 'operation', title: 'Право'}, {key: 'field', title: 'Поля'},
+    {key: 'condition', title: 'Ограничение доступа', height: 5, autoHeight: true}]}),
+  // «Наименование» и «Текст шаблона» окном настройки не сняты: ширина,
+  // высота и автовысота — по виду списка на снимке shabl-01 (BLOCKS, 2в,
+  // доснять).
+  templates: createListSettings({key: 'all-templates', opening: 'end', autoOpening: 'beginning', sort: {column: 'role'}, columns: [
+    {key: 'role', title: 'Роль'}, {key: 'name', title: 'Наименование', height: 2, autoHeight: true},
+    {key: 'condition', title: 'Текст шаблона', width: 39, height: 8, autoHeight: true}]}),
+};
+
 function createRoleOverview(host, openRole, onChange) {
   let source, model, selected = null, tree, panel, tab = 'roles', body, filter = '';
   // Окно и его закладки (справка: «Все роли» и «Все ограничения доступа» —
@@ -439,12 +449,12 @@ function createRoleOverview(host, openRole, onChange) {
     section.querySelector('h4').after(heading);
     return section;
   }
+  // Роль в ячейке списка — ссылкой, открывающей роль.
   function roleLink(text, path, objectID) {
-    const cell = node('td'), link = node('button', text, 'overview-role');
+    const link = node('button', text, 'overview-role');
     link.type = 'button';
     link.addEventListener('click', () => openRole(path, objectID));
-    cell.append(link);
-    return cell;
+    return link;
   }
   // «Все ограничения доступа» — две закладки: ограничения и шаблоны. Строки выбираются по одной или несколько сразу — с Ctrl и Shift, — и
   // команды списка действуют на все выбранные (справка, «Все ограничения
@@ -457,69 +467,122 @@ function createRoleOverview(host, openRole, onChange) {
   let listFilter = noFilters();
   function setListFilter(key, value) { listFilter[key] = value; listChosen = new Set(); refill(); }
   const chosenOf = rows => [...listChosen].sort((left, right) => left - right).map(index => rows[index]).filter(Boolean);
+  // Настройка списков окна (overviewLists): прочитанная у пользователя, null
+  // — ещё не прочитана. Настройки приходят с сервера после открытия
+  // страницы, и окно, открытое раньше, показывается по ним заново.
+  const listSettings = {restrictions: null, templates: null}, shownRows = {restrictions: [], templates: []};
+  StudioListSettings.load().then(() => {
+    listSettings.restrictions = listSettings.templates = null;
+    if (source && tab !== 'roles') renderBody();
+  });
+  function settingsOf(key) { return listSettings[key] ??= overviewLists[key].read(StudioListSettings.get(overviewLists[key].key)); }
+  // Строка списка узнаётся по месту своего ограничения или шаблона, а не по
+  // номеру: выбранные остаются выбранными и после смены порядка.
+  const rowKey = row => `${row.path}\n${row.objectID ?? ''}\n${row.operation ?? ''}\n${row.index}`;
+  let keptRows = null, opening = false, revealing = false;
+  // Новая настройка списка key: запоминается у пользователя и сразу
+  // показывается.
+  function setListSettings(key, next) {
+    keptRows = new Set(chosenOf(shownRows[key]).map(rowKey));
+    listSettings[key] = next;
+    StudioListSettings.save(overviewLists[key].key, next);
+    refill();
+  }
+  // Текст ячейки колонки column, по которому список упорядочивается.
+  const columnText = {
+    restrictions: (row, column) => column === 'operation' ? caption(row.operation) : row[column],
+    templates: (row, column) => row[column],
+  };
+  // Строки списка key в порядке его настройки. Окно, только что открытое,
+  // встаёт на строку, куда велит «При открытии переходить» (снимок
+  // vse-ogr-18: в конце списка, последняя строка текущая).
+  function arranged(key, rows) {
+    const list = overviewLists[key], settings = settingsOf(key), sorted = list.sorted(rows, settings, columnText[key]);
+    shownRows[key] = sorted;
+    if (opening) {
+      const at = list.openingRow(settings, sorted.length);
+      listChosen = new Set(at < 0 ? [] : [at]);
+      opening = false; revealing = true;
+    } else if (keptRows) listChosen = new Set(sorted.flatMap((row, index) => keptRows.has(rowKey(row)) ? [index] : []));
+    keptRows = null;
+    return sorted;
+  }
+  // Раскладка списка key по его настройке: щелчок по заголовку колонки
+  // упорядочивает по ней, перетаскивание края заголовка меняет ширину.
+  function layoutOf(key) {
+    const list = overviewLists[key];
+    return listLayout(list, settingsOf(key), {onSort: column => setListSettings(key, list.sortedBy(settingsOf(key), column)), onSettings: next => setListSettings(key, next)});
+  }
   // Команды «Действия» списка в порядке прототипа, группами через черту, с
   // клавишами (сверено в конфигураторе 14 и 18.10.2026,
   // docs/block-00/vse-ogranicheniya-dostupa.md): правка, копирование,
-  // отбор. Без строки недоступны правка, удаление, копирование и отбор по
-  // значению; «Отключить отбор» доступна всегда. «Отбор по значению в
-  // текущей колонке» берёт ячейку, щёлкнутую последней, columns — ключи
-  // колонок строки в порядке заголовков. Удаление спрашивает removing —
-  // [вопрос об одной строке, о нескольких]. «Вывести список...» и
-  // «Настройка списка...» — свои пункты карты.
-  function listCommands(key, rows, columns, {add, canAdd, edit, copy, copyText, remove, removing, choose}) {
+  // отбор, настройка. Без строки недоступны правка, удаление, копирование и
+  // отбор по значению; «Отключить отбор» и «Настройка списка...» доступны
+  // всегда. «Отбор по значению в текущей колонке» берёт ячейку, щёлкнутую
+  // последней. «Настройка списка...» — только в меню: кнопки на панели у
+  // неё нет (снимок vse-ogr-01). Удаление спрашивает removing — [вопрос об
+  // одной строке, о нескольких]. «Вывести список...» — свой пункт карты
+  // (блок 11). Значки команд — стандартные картинки прототипа (снимок
+  // vse-ogr-01, ICONS.md): на панели команда показана только значком.
+  function listCommands(key, rows, {add, canAdd, edit, copy, copyText, remove, removing, choose}) {
     const some = () => listChosen.size > 0;
     return [
-      ['add', 'Добавить', add, canAdd, '', 'Ins'],
-      ['edit', 'Изменить', () => { if (some()) edit(chosenOf(rows)); }, some, '', 'F2'],
+      ['add', 'Добавить', add, canAdd, '', 'Ins', false, 'add'],
+      ['edit', 'Изменить', () => { if (some()) edit(chosenOf(rows)); }, some, '', 'F2', false, 'change'],
       ['remove', 'Удалить', async () => {
         if (!some()) return;
         const chosen = chosenOf(rows);
         if (await askChoice(removing[chosen.length > 1 ? 1 : 0], '', [['yes', 'Да'], [null, 'Нет']]) !== 'yes') return;
         remove(chosen); listChanged();
-      }, some, '', 'Del'],
+      }, some, '', 'Del', false, 'delete'],
       null,
-      ['copy', 'Копировать', () => { if (some()) copy(chosenOf(rows)); }, some, copyText],
+      ['copy', 'Копировать', () => { if (some()) copy(chosenOf(rows)); }, some, copyText, '', false, 'clone'],
       null,
-      ['filter', 'Установить отбор', choose, () => true, 'Установить отбор...'],
+      ['filter', 'Установить отбор', choose, () => true, 'Установить отбор...', '', false, 'filter-and-sort'],
       ['by-value', 'Отбор по значению', ({row, column}) => {
         if (!rows[row]) return;
-        const next = model.byValue(listFilter[key], rows[row], columns[column]);
+        const next = model.byValue(listFilter[key], rows[row], column);
         if (next !== listFilter[key]) setListFilter(key, next);
-      }, some, 'Отбор по значению в текущей колонке'],
-      ['unfilter', 'Отключить отбор', () => setListFilter(key, null), () => true],
+      }, some, 'Отбор по значению в текущей колонке', '', false, 'filter-by-current-value'],
+      ['unfilter', 'Отключить отбор', () => setListFilter(key, null), () => true, '', '', false, 'clear-filter'],
+      null,
+      ['settings', 'Настройка списка', async () => {
+        const next = await chooseListSettings(overviewLists[key], settingsOf(key), applied => setListSettings(key, applied));
+        if (next) setListSettings(key, next);
+      }, () => true, 'Настройка списка...', '', true, 'list-settings'],
     ];
   }
   // Под списком — строка «Отбор:» с условиями действующего отбора.
   const filterLine = text => node('p', `Отбор: ${text}`, 'overview-filter-line');
-  function renderAllRestrictions() {
+  // Закладка окна — список key: пояснение, сам список с выбором окна, его
+  // командами (listCommands) и раскладкой по настройке, под ним — строка
+  // «Отбор:». cells(row) — ячейки строки в порядке колонок списка.
+  function listBlock(key, intro, rows, cells, commands, empty, filterText) {
     const block = node('section', undefined, 'overview-block');
-    const rows = model.allRestrictions(listFilter.restrictions);
-    block.append(node('p', 'Каждая строка — одно ограничение одной роли на одно право. «Реквизиты» — сколько реквизитов объекта эта роль вообще читает: ограничение сужает записи, права на реквизиты — столбцы. Несколько строк выбираются с Ctrl или Shift.', 'muted'));
-    block.append(roleListTable(['Объект', 'Роль', 'Право', 'Реквизиты', 'Поля', 'Условие'],
-      rows.map(row => [[row.object], roleLink(row.role, row.path, row.objectID), [caption(row.operation)], [row.fields], [row.field], [row.condition, 'overview-condition']]),
-      listChosen, chosen => { listChosen = chosen; }, listCommands('restrictions', rows, ['object', 'role', 'operation', 'fields', 'field', 'condition'], {
+    block.append(node('p', intro, 'muted'),
+      roleListTable([], rows.map(cells), listChosen, chosen => { listChosen = chosen; }, listCommands(key, rows, commands), empty, {actions: true, layout: layoutOf(key)}),
+      filterLine(filterText));
+    return block;
+  }
+  function renderAllRestrictions() {
+    const rows = arranged('restrictions', model.allRestrictions(listFilter.restrictions));
+    return listBlock('restrictions', 'Каждая строка — одно ограничение одной роли на одно право. Несколько строк выбираются с Ctrl или Shift.', rows,
+      row => [[row.object], roleLink(row.role, row.path, row.objectID), [caption(row.operation)], [row.field], [row.condition, 'overview-condition']], {
         add: () => newRestriction(), canAdd: () => model.roleCount() > 0 && model.restrictable().length > 0,
         edit: editRestrictions, copy: copyRestrictions, copyText: 'Копировать ограничения доступа', remove: chosen => model.removeRestrictions(chosen),
         removing: ['Удалить ограничение доступа?', 'Удалить ограничения доступа?'],
         choose: () => filterRestrictions(),
-      }), model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.', {actions: true}),
-      filterLine(model.restrictionFilterText(listFilter.restrictions)));
-    return block;
+      }, model.allRestrictions().length ? 'Ничего не найдено.' : 'В проекте нет ни одного ограничения доступа.', model.restrictionFilterText(listFilter.restrictions));
   }
   function renderAllTemplates() {
-    const block = node('section', undefined, 'overview-block');
-    const all = model.allTemplates(), rows = model.allTemplates(listFilter.templates);
-    block.append(node('p', all.length ? 'Шаблон принадлежит роли: условие её ограничения вызывает его как #Имя("значение", ...). Несколько строк выбираются с Ctrl или Shift.' : 'Ни одна роль не объявила шаблонов ограничений.', 'muted'));
-    block.append(roleListTable(['Роль', 'Наименование', 'Текст шаблона'],
-      rows.map(row => [roleLink(row.role, row.path), [row.name], [row.condition, 'overview-condition']]),
-      listChosen, chosen => { listChosen = chosen; }, listCommands('templates', rows, ['role', 'name', 'condition'], {
+    const all = model.allTemplates(), rows = arranged('templates', model.allTemplates(listFilter.templates));
+    return listBlock('templates', all.length ? 'Шаблон принадлежит роли: условие её ограничения вызывает его как #Имя("значение", ...). Несколько строк выбираются с Ctrl или Shift.' : 'Ни одна роль не объявила шаблонов ограничений.', rows,
+      row => [roleLink(row.role, row.path), [row.name], [row.condition, 'overview-condition']], {
         add: () => addTemplate(), canAdd: () => model.roleCount() > 0,
         edit: editTemplates, copy: copyTemplates, copyText: 'Копировать шаблоны ограничений', remove: chosen => model.removeTemplates(chosen),
         removing: ['Удалить шаблон?', 'Удалить шаблоны?'],
         choose: () => filterTemplates(),
-      }), all.length ? 'Ничего не найдено.' : 'Шаблонов нет', {actions: true}),
-      filterLine(model.templateFilterText(listFilter.templates)));
-    return block;
+      }, all.length ? 'Ничего не найдено.' : 'Шаблонов нет', model.templateFilterText(listFilter.templates));
   }
   // Значение, общее для всех выбранных, или null, когда они расходятся.
   function common(values) { return values.every(value => value === values[0]) ? values[0] : null; }
@@ -880,9 +943,10 @@ function createRoleOverview(host, openRole, onChange) {
     const list = node('div');
     const fill = () => list.replaceChildren(tab === 'restrictions' ? renderAllRestrictions() : renderAllTemplates());
     refill = fill;
-    listChosen = new Set();
+    listChosen = new Set(); opening = true;
     fill();
     body.append(list);
+    if (revealing) { revealing = false; list.querySelector('tbody tr.selected')?.scrollIntoView({block: 'nearest'}); }
   }
   function renderPanel() {
     panel.replaceChildren();

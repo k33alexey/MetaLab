@@ -80,27 +80,11 @@ func (workspace *Workspace) saveSourceLocked(relative, content, expectedRevision
 	if err != nil {
 		return SourceFile{}, err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(target), ".ml-save-*")
+	temporaryPath, err := prepareStudioSource(filepath.Dir(target), bytesToWrite)
 	if err != nil {
-		return SourceFile{}, fmt.Errorf("create temporary source: %w", err)
+		return SourceFile{}, err
 	}
-	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		_ = temporary.Close()
-		return SourceFile{}, fmt.Errorf("set temporary source permissions: %w", err)
-	}
-	if _, err := temporary.Write(bytesToWrite); err != nil {
-		_ = temporary.Close()
-		return SourceFile{}, fmt.Errorf("write temporary source: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return SourceFile{}, fmt.Errorf("sync temporary source: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return SourceFile{}, fmt.Errorf("close temporary source: %w", err)
-	}
 	latest, err := workspace.readSource(relative)
 	if err != nil {
 		return SourceFile{}, err
@@ -174,10 +158,13 @@ func (workspace *Workspace) replaceSourcesLocked(changes, originals map[string][
 	return nil
 }
 
+// prepareStudioSource writes content to a new file in directory, synced and
+// closed, and answers its path: the file that replaceStudioFile then puts in
+// place of a source, of the grid of a role or of the settings of the user.
 func prepareStudioSource(directory string, content []byte) (string, error) {
-	temporary, err := os.CreateTemp(directory, ".ml-refactor-*")
+	temporary, err := os.CreateTemp(directory, ".ml-write-*")
 	if err != nil {
-		return "", fmt.Errorf("create temporary refactoring source: %w", err)
+		return "", fmt.Errorf("create temporary file: %w", err)
 	}
 	path := temporary.Name()
 	failed := true
@@ -188,16 +175,16 @@ func prepareStudioSource(directory string, content []byte) (string, error) {
 		}
 	}()
 	if err := temporary.Chmod(0o644); err != nil {
-		return "", fmt.Errorf("set temporary refactoring source permissions: %w", err)
+		return "", fmt.Errorf("set temporary file permissions: %w", err)
 	}
 	if _, err := temporary.Write(content); err != nil {
-		return "", fmt.Errorf("write temporary refactoring source: %w", err)
+		return "", fmt.Errorf("write temporary file: %w", err)
 	}
 	if err := temporary.Sync(); err != nil {
-		return "", fmt.Errorf("sync temporary refactoring source: %w", err)
+		return "", fmt.Errorf("sync temporary file: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return "", fmt.Errorf("close temporary refactoring source: %w", err)
+		return "", fmt.Errorf("close temporary file: %w", err)
 	}
 	failed = false
 	return path, nil
