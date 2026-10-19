@@ -425,13 +425,7 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
 function subsystemFilterPasses(schema, filter) {
   if (!filter) return () => true;
   const subsystems = schema.subsystems || {}, owners = new Map(schema.objects.map(item => [item.id, item.owner]));
-  const above = id => { const result = []; for (let up = owners.get(id); up in subsystems; up = owners.get(up)) result.push(up); return result; };
-  const marked = new Set();
-  for (const id of Object.keys(subsystems)) {
-    if (!filter.chosen.has(id)) { if (filter.children && above(id).some(up => filter.chosen.has(up))) marked.add(id); continue; }
-    marked.add(id);
-    if (filter.parents) for (const up of above(id)) marked.add(up);
-  }
+  const {marked} = subsystemFilterMarks(schema, filter);
   const held = new Set([...marked].flatMap(id => subsystems[id])), anywhere = new Set(Object.values(subsystems).flat());
   return id => {
     if (id in subsystems) return marked.has(id);
@@ -439,6 +433,40 @@ function subsystemFilterPasses(schema, filter) {
     while (!(top in subsystems) && owners.get(top)) top = owners.get(top);
     return held.has(top) || (filter.chosen.has('') && !anywhere.has(top));
   };
+}
+
+/* The subsystems a filter takes in (marked): those chosen, those beneath a
+   chosen one by children, those above it by parents - the last also apart
+   (parents); above lists the subsystems a subsystem lies in, nearest first. */
+function subsystemFilterMarks(schema, filter) {
+  const subsystems = schema.subsystems || {}, owners = new Map(schema.objects.map(item => [item.id, item.owner]));
+  const above = id => { const result = []; for (let up = owners.get(id); up in subsystems; up = owners.get(up)) result.push(up); return result; };
+  const marked = new Set(), parents = new Set();
+  for (const id of Object.keys(subsystems)) {
+    if (!filter.chosen.has(id)) { if (filter.children && above(id).some(up => filter.chosen.has(up))) marked.add(id); continue; }
+    marked.add(id);
+    if (filter.parents) for (const up of above(id)) { marked.add(up); parents.add(up); }
+  }
+  return {marked, parents, above};
+}
+
+/* The subsystems the tree of the configuration shows under a filter, as
+   rows of its branch of subsystems (inventory of block 00, «Отбор по
+   подсистемам», snapshots derevo/22-23): each the filter takes in, and each
+   above one of those, as the path to it, though what it holds is not shown;
+   one taken in as the parent of a chosen one stands with every subsystem
+   beneath it, what they hold not shown either. A chosen one without
+   «подчиненных» shows alone, as before: the prototype was not looked at so.
+   Without a filter, null: every row shows. */
+function subsystemFilterRows(schema, filter) {
+  if (!filter) return null;
+  const {marked, parents, above} = subsystemFilterMarks(schema, filter), rows = new Set(marked);
+  for (const id of Object.keys(schema.subsystems || {})) {
+    const path = above(id);
+    if (marked.has(id)) for (const up of path) rows.add(up);
+    if (path.some(up => parents.has(up))) rows.add(id);
+  }
+  return rows;
 }
 
 /* The name of the configuration of a role's schema: its root object. */

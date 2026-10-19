@@ -381,3 +381,19 @@ test('the filter by subsystems takes what the marked hold, beneath and above onl
   assert.deepEqual(subsystems(filter(['А'],{children:true})),['А','Б']);
   assert.deepEqual(subsystems(filter(['Б'],{parents:true})),['А','Б']);
 });
+test('the tree of the configuration shows the parent of a marked subsystem as the path to it, and one taken in as a parent with all beneath it',()=>{
+  // Казначейство holds Банк and Касса (inventory of block 00, «Отбор по
+  // подсистемам», snapshots derevo/22-23); Кадры lies beside it.
+  const schema={objects:[{id:'Казначейство'},{id:'Банк',owner:'Казначейство'},{id:'Касса',owner:'Казначейство'},{id:'Кадры'}],
+    subsystems:{'Казначейство':[],'Банк':[],'Касса':[],'Кадры':[]}};
+  const rows=(chosen,flags={})=>{const shown=context.subsystemFilterRows(schema,{chosen:new Set(chosen),...flags});return ['Казначейство','Банк','Касса','Кадры'].filter(id=>shown.has(id));};
+  assert.equal(context.subsystemFilterRows(schema,null),null);
+  // Дефект: родительская отмеченной вложенной не видна, и с ней вся ветвь.
+  assert.deepEqual(rows(['Касса'],{children:true}),['Казначейство','Касса']);
+  // Дефект: с «родительских» видна только отмеченная вложенная, соседних нет.
+  assert.deepEqual(rows(['Касса'],{children:true,parents:true}),['Казначейство','Банк','Касса']);
+  assert.deepEqual(rows(['Казначейство'],{children:true}),['Казначейство','Банк','Касса']);
+  // Не снято у прототипа: отмеченная без «подчиненных» - одна, как было.
+  assert.deepEqual(rows(['Казначейство']),['Казначейство']);
+  assert.deepEqual(rows(['']),[]);
+});

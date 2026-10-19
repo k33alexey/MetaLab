@@ -259,16 +259,19 @@
     // со всем, что в нём. Ветвь вида, где не осталось ни одного объекта, и
     // «Общие» без ветвей не показываются (решение владельца 18.10.2026); без
     // отбора пустая ветвь видна, как была. Подсистема, вложенная в другую,
-    // стоит под ней и проходит отбор так же; не прошла родительская —
-    // вложенной не видно. Отбор живёт, пока открыта Studio,
+    // стоит под ней; строки подсистем — subsystemFilterRows: родительская
+    // видна путём к отмеченной, без своих объектов, а взятая флагом
+    // «родительских» — со всеми вложенными (опись блока 00, снимки
+    // derevo/22-23). Отбор живёт, пока открыта Studio,
     // и переживает перечитывание проекта. Без прочитанного целиком проекта
     // отбора нет.
     let projectData=null;const treeFilter={subsystems:null};
     function filteredTree(root){
       if(!treeFilter.subsystems)return root;
-      const passes=subsystemFilterPasses(projectData.subsystems||{objects:[]},treeFilter.subsystems);
+      const schema=projectData.subsystems||{objects:[]},passes=subsystemFilterPasses(schema,treeFilter.subsystems),rows=subsystemFilterRows(schema,treeFilter.subsystems);
+      const shows=id=>id in (schema.subsystems||{})?rows.has(id):passes(id);
       const branch=item=>item.kind==='metadata-group'||item.id==='metadata/common';
-      const kept=(item,child)=>item.kind==='metadata-group'?child.kind==='metadata-group'||passes(child.id):child.kind!=='metadata'||passes(child.id);
+      const kept=(item,child)=>item.kind==='metadata-group'?child.kind==='metadata-group'||shows(child.id):child.kind!=='metadata'||shows(child.id);
       const narrow=item=>!item.children?item:{...item,children:item.children.filter(child=>kept(item,child)).map(narrow).filter(child=>!branch(child)||child.children?.length)};
       return narrow(root);
     }

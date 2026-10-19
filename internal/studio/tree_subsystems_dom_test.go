@@ -372,3 +372,76 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// treePathWalk filters the tree by Склад alone, which lies in Продажи beside
+// Доставка (which holds ПоступлениеТоваров), then takes in its parents too, and answers what the branches show
+// each time.
+const treePathWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  const caption = item => (item.querySelector(':scope > summary') || item).textContent.trim();
+  const branch = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
+  const children = text => { const item = branch(text); return !item ? null : item.tagName === 'SUMMARY' ? [...item.nextElementSibling.children].map(caption) : []; };
+  const state = () => ({catalogs: children('Справочники'), documents: children('Документы'), subsystems: children('Подсистемы'), sales: children('Продажи')});
+  const dialog = () => document.querySelector('dialog[open]');
+  const box = text => [...dialog().querySelectorAll('label')].find(label => label.textContent === text).querySelector('input');
+  const press = async text => { [...dialog().querySelectorAll('button')].find(button => button.textContent === text).click(); await studio.settle(); };
+  const open = async () => { document.querySelector('#tree-subsystems').click(); await studio.settle(); };
+  await open();
+  for (const text of ['Продажи', 'Доставка', '<Не входящие в подсистемы>']) box(text).click();
+  await press('Установить');
+  steps.nested = state();
+  await open();
+  box('Включать объекты родительских подсистем').click();
+  await press('Установить');
+  steps.parents = state();
+  return steps;
+})()`
+
+// The tree of the configuration under a filter by a nested subsystem
+// (inventory of block 00, «Отбор по подсистемам», snapshots derevo/22-23).
+// Defects caught: the parent of the marked subsystem hidden, and with it the
+// marked one, which stands under it; the parent shown with what it holds
+// though only the nested one is marked; a subsystem beside the marked one
+// shown as a path it is not; with «Включать объекты родительских подсистем»
+// the parent shown without the subsystems beneath it, or with what the one
+// beside holds.
+func TestConfigurationTreeShowsThePathToAMarkedSubsystem(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addTreeSubsystems(t, root)
+	const delivery = "30000000-0000-4000-8000-000000000303"
+	if err := os.WriteFile(filepath.Join(root, "metadata", "subsystems", delivery+".yaml"),
+		[]byte("format: 1\nid: "+delivery+"\nname: Доставка\ntitle: {ru: Доставка}\nparent: "+treeSalesSubsystem+"\nmembers:\n  - 10000000-0000-4000-8000-000000000201\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, treePathWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type state struct{ Catalogs, Documents, Subsystems, Sales []string }
+	var steps struct{ Nested, Parents state }
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	same := func(a, b []string) bool { return (a == nil) == (b == nil) && slices.Equal(a, b) }
+	for _, check := range []struct {
+		name      string
+		got, want state
+	}{
+		// Склад alone: Продажи is the path to it, Контрагенты and
+		// ПродажаТоваров, which Продажи holds, are not shown, nor Доставка.
+		{"under Склад alone", steps.Nested, state{Catalogs: []string{"Товары"}, Subsystems: []string{"Продажи"}, Sales: []string{"Склад"}}},
+		// With the parents: Продажи with what it holds and both beneath it,
+		// but not ПоступлениеТоваров, which Доставка holds.
+		{"with the parents", steps.Parents, state{Catalogs: []string{"Контрагенты", "Товары"}, Documents: []string{"ПродажаТоваров"},
+			Subsystems: []string{"Продажи"}, Sales: []string{"Доставка", "Склад"}}},
+	} {
+		if !same(check.got.Catalogs, check.want.Catalogs) || !same(check.got.Documents, check.want.Documents) ||
+			!same(check.got.Subsystems, check.want.Subsystems) || !same(check.got.Sales, check.want.Sales) {
+			t.Errorf("%s the tree shows %+v, want %+v", check.name, check.got, check.want)
+		}
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
