@@ -1,5 +1,5 @@
 .PHONY: build build-desktop build-windows-desktop build-wasm check ci ci-database ci-fresh-database
-.PHONY: dupl-check fmt fmt-check sweep-check test test-budgets test-integration test-race test-wasm vet web-check
+.PHONY: dupl-check fmt fmt-check sweep-check test test-budgets test-integration test-js test-race test-wasm vet web-check
 
 build:
 	mkdir -p bin
@@ -94,6 +94,14 @@ dupl-check:
 web-check:
 	node --check internal/mlapp/ui/app.js
 
+# test-js runs the tests of the browser code: the models of the Studio windows,
+# the shared helpers of studio-common.js, the application and the manager. They
+# need nothing but node, and until they ran here a broken window model failed
+# no build. wasm-smoke.mjs is not one of them: test-wasm runs it on a client it
+# builds first.
+test-js:
+	node --test scripts/*.test.mjs
+
 # ci-database refuses to go on without a test database. The failures that kept
 # CI red for thirty runs were all invisible to a local `go test ./...`: three of
 # them needed PostgreSQL, and without it the tests that would have caught them
@@ -120,7 +128,7 @@ test-budgets:
 	ML_BUDGETS=1 go test -count=1 -run 'StaysWithinItsBudget' ./internal/...
 
 # check is the quick pass: everything that needs no database.
-check: fmt-check dupl-check web-check vet sweep-check test-race test-budgets build test-wasm
+check: fmt-check dupl-check web-check test-js vet sweep-check test-race test-budgets build test-wasm
 
 # ci-fresh-database drops what earlier runs left behind, because CI gets a brand
 # new PostgreSQL container every time and a development machine does not.
@@ -148,6 +156,6 @@ ci-fresh-database: ci-database
 # ci runs what GitHub runs, in the order GitHub runs it, so that red is found
 # here and not after the push. Run it before pushing; `make check` is the
 # quicker pass that leaves out the database.
-ci: fmt-check dupl-check vet web-check sweep-check ci-fresh-database test-integration test-budgets build build-windows-desktop test-wasm
+ci: fmt-check dupl-check vet web-check test-js sweep-check ci-fresh-database test-integration test-budgets build build-windows-desktop test-wasm
 	@echo 'ci: every check GitHub runs passed.'
 

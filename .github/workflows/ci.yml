@@ -67,6 +67,11 @@ jobs:
       - name: Check browser modules
         run: node --check internal/mlapp/ui/app.js
 
+      # The models of the Studio windows and the shared helpers are tested in
+      # node; without this step a broken window model failed no build.
+      - name: Test browser code
+        run: make test-js
+
       # The sweep itself needs the prototype's export, which is not in the
       # repository; its matcher needs only names. The matcher went quiet on a
       # real gap five times in one day, so its own checks run here.
