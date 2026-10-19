@@ -393,7 +393,8 @@ test('the tree of the configuration shows the parent of a marked subsystem as th
   // Дефект: с «родительских» видна только отмеченная вложенная, соседних нет.
   assert.deepEqual(rows(['Касса'],{children:true,parents:true}),['Казначейство','Банк','Касса']);
   assert.deepEqual(rows(['Казначейство'],{children:true}),['Казначейство','Банк','Касса']);
-  // Не снято у прототипа: отмеченная без «подчиненных» - одна, как было.
+  // Дефект: отмеченная без «подчиненных» показана со вложенными - у
+  // прототипа она стоит одна, без значка раскрытия (derevo/25).
   assert.deepEqual(rows(['Казначейство']),['Казначейство']);
   assert.deepEqual(rows(['']),[]);
 });

@@ -452,12 +452,12 @@ function subsystemFilterMarks(schema, filter) {
 
 /* The subsystems the tree of the configuration shows under a filter, as
    rows of its branch of subsystems (inventory of block 00, «Отбор по
-   подсистемам», snapshots derevo/22-23): each the filter takes in, and each
+   подсистемам», snapshots derevo/22-26): each the filter takes in, and each
    above one of those, as the path to it, though what it holds is not shown;
    one taken in as the parent of a chosen one stands with every subsystem
    beneath it, what they hold not shown either. A chosen one without
-   «подчиненных» shows alone, as before: the prototype was not looked at so.
-   Without a filter, null: every row shows. */
+   «подчиненных» shows alone, with nothing beneath it, as the prototype's
+   does. Without a filter, null: every row shows. */
 function subsystemFilterRows(schema, filter) {
   if (!filter) return null;
   const {marked, parents, above} = subsystemFilterMarks(schema, filter), rows = new Set(marked);
