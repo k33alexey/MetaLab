@@ -624,9 +624,7 @@ function roleListTable(headings, rows, chosen, choose, commands, empty, {actions
   layout?.apply(table);
   const bar=node('div',undefined,'role-bulk'),buttons=[];
   if(actions){
-    const menu=node('button','Действия','role-actions-menu');menu.type='button';menu.setAttribute('aria-haspopup','menu');
-    menu.addEventListener('click',event=>showContextMenu(event,commands.map(command=>command&&[command[4]||command[1],()=>command[2](current()),command[3](),command[5],command[7]])));
-    bar.append(menu);
+    bar.append(menuButton('Действия',()=>commands.map(command=>command&&[command[4]||command[1],()=>command[2](current()),command[3](),command[5],command[7]])));
   }
   // On the bar of actions a line stands only between two groups that both
   // show a button.
@@ -953,8 +951,7 @@ function createRoleEditor(host, onChange) {
       host.append(tabs);
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
-      const bar=node('div',undefined,'role-tree-bar'),actions=node('button','Действия');actions.type='button';actions.setAttribute('aria-haspopup','menu');
-      actions.addEventListener('click',event=>showContextMenu(event,[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]));
+      const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));
       sidebar.append(bar,search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}

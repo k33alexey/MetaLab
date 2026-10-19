@@ -51,6 +51,7 @@
 .context-menu-item:hover,.context-menu-item:focus{background:#2f4a6d!important;outline:none}
 .context-menu-separator{height:1px;margin:4px 6px;background:#4a4d54}.context-menu-key{float:right;margin-left:24px;color:#aeb1b8}.context-menu-item:disabled .context-menu-key{color:inherit}
 .context-menu-item>.tree-icon{margin-right:8px;vertical-align:-3px}
+.menu-button::after{content:'▾';margin-left:5px;font-size:10px;color:#aeb1b8}
 /* Значок недоступной команды — серый, как у прототипа: в меню, на панелях и
    кнопках одно правило (замечание владельца 19.10.2026). */
 button:disabled .tree-icon,.context-menu-item:disabled>.tree-icon{filter:grayscale(1);opacity:.5}

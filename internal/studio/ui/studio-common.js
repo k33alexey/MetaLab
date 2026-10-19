@@ -568,6 +568,21 @@ function iconElement(name) {
 
 // iconButton is a button drawn by its icon alone, the command named in its
 // tooltip and for a screen reader.
+/* menuButton is a button that holds more than one action - «Действия» - and
+   opens them as a menu under itself (showContextMenu), drawn with the sign
+   of a menu after its text, as every such button of the prototype is (the
+   owner's rule of 19.10.2026; snapshots obolochka/31-derevo-dejstviya,
+   configurator-2026-10-18/vse-ogr-01). items() answers the items of the
+   menu at the moment of the click. Every button of Studio that opens a menu
+   is made here. */
+function menuButton(text, items, className) {
+  const button = node('button', text, className ? `menu-button ${className}` : 'menu-button');
+  button.type = 'button';
+  button.setAttribute('aria-haspopup', 'menu');
+  button.addEventListener('click', event => showContextMenu(event, items()));
+  return button;
+}
+
 function iconButton(name, title) {
   const button = document.createElement('button');
   button.type = 'button';
