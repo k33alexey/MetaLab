@@ -34,15 +34,18 @@ const (
 
 // partGroupInfo is one sort of part: the word the prototype names a part of
 // it by in a role (Catalog.Товары.TabularSection.Состав), the caption of its
-// folder, the rights the configurator offers on such a part, and the field of
-// a description that lists the parts of the sort (describedParts) - empty for
-// a sort the platform gives or a kind reads in its own way.
+// folder, the rights the configurator offers on such a part, the field of a
+// description that lists the parts of the sort (describedParts) - empty for
+// a sort the platform gives or a kind reads in its own way - and the icon its
+// branch and its parts are shown by in the tree (ICONS.md), empty for a sort
+// the tree shows no branch of.
 type partGroupInfo struct {
 	group     PartGroup
 	prototype string
 	title     string
 	rights    []PermissionOperation
 	field     string
+	icon      string
 }
 
 // partGroups lists every sort of part in the order the tree shows them. The
@@ -52,20 +55,20 @@ type partGroupInfo struct {
 // service. A template of an HTTP service has no rights: the exports write
 // them on its methods only.
 var partGroups = []partGroupInfo{
-	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights, ""},
-	{DimensionsPart, "Dimension", "Измерения", fieldRights, "Dimensions"},
-	{ResourcesPart, "Resource", "Ресурсы", fieldRights, "Resources"},
-	{AttributesPart, "Attribute", "Реквизиты", fieldRights, "Attributes"},
-	{AddressingAttributesPart, "AddressingAttribute", "Реквизиты адресации", fieldRights, ""},
-	{AccountingFlagsPart, "AccountingFlag", "Признаки учета", fieldRights, "AccountingFlags"},
-	{ExtDimensionAccountingFlagsPart, "ExtDimensionAccountingFlag", "Признаки учета субконто", fieldRights, "ExtDimensionAccountingFlags"},
-	{TablePartsPart, "TabularSection", "Табличные части", fieldRights, "TableParts"},
-	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights, ""},
-	{FieldsPart, "Field", "Поля", fieldRights, "Fields"},
-	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}, "Commands"},
-	{OperationsPart, "Operation", "Операции", []PermissionOperation{PermissionUse}, ""},
-	{URLTemplatesPart, "URLTemplate", "Шаблоны URL", nil, ""},
-	{MethodsPart, "Method", "Методы", []PermissionOperation{PermissionUse}, ""},
+	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights, "", ""},
+	{DimensionsPart, "Dimension", "Измерения", fieldRights, "Dimensions", "dimension"},
+	{ResourcesPart, "Resource", "Ресурсы", fieldRights, "Resources", "resource"},
+	{AttributesPart, "Attribute", "Реквизиты", fieldRights, "Attributes", "attribute"},
+	{AddressingAttributesPart, "AddressingAttribute", "Реквизиты адресации", fieldRights, "", "addressing-attribute"},
+	{AccountingFlagsPart, "AccountingFlag", "Признаки учета", fieldRights, "AccountingFlags", "accounting-flag"},
+	{ExtDimensionAccountingFlagsPart, "ExtDimensionAccountingFlag", "Признаки учета субконто", fieldRights, "ExtDimensionAccountingFlags", "ext-dimension-accounting-flag"},
+	{TablePartsPart, "TabularSection", "Табличные части", fieldRights, "TableParts", "tabular-section"},
+	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights, "", ""},
+	{FieldsPart, "Field", "Поля", fieldRights, "Fields", "attribute"},
+	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}, "Commands", ""},
+	{OperationsPart, "Operation", "Операции", []PermissionOperation{PermissionUse}, "", ""},
+	{URLTemplatesPart, "URLTemplate", "Шаблоны URL", nil, "", ""},
+	{MethodsPart, "Method", "Методы", []PermissionOperation{PermissionUse}, "", ""},
 }
 
 // fieldRights are a field's two rights, whatever the field is.
@@ -124,6 +127,10 @@ type kindComposition struct {
 	// in its own way - a task, a criterion of filter, the services. Nil, and
 	// not described, is a kind whose objects declare no parts.
 	parts func(catalog *Catalog, id uuid.UUID) []objectPart
+	// branches are the sorts of part an object of a kind that reads its
+	// parts in its own way shows a branch of in the tree; a described kind
+	// has the branch of every sort its description keeps (branchesOf).
+	branches []PartGroup
 	// dataVersion is a kind whose objects keep the version of their data
 	// (help, the tables of the query language; the table of a chart of
 	// calculation types does not list it, its object - ПланВидовРасчетаОбъект
@@ -364,7 +371,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	ChartOfCalculationTypesKind:    referenceKind(ChartOfCalculationTypesKind),
 	// The addressing attributes of a task are no fields of its own sort:
 	// they stand between its attributes and its table parts.
-	TaskKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	TaskKind: {dataVersion: true, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart}, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Tasks[c.taskByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
 		for _, attribute := range addressingAsAttributes(item) {
@@ -539,4 +546,80 @@ func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPar
 		}
 	}
 	return fields
+}
+
+// branchesOf is the sorts of part an object of the kind shows a branch of
+// under it in the configuration tree, in the order of the tree: for a kind
+// read off its description, every sort whose field its description keeps and
+// the tree shows (inventory of block 00, «Ветки под объектом», snapshots
+// derevo/); for another, what its composition says. A branch stands whether
+// it holds anything or not, as in the prototype's tree.
+func branchesOf(kind Kind) []PartGroup {
+	composition := kindCompositionOf[kind]
+	if !composition.described {
+		return composition.branches
+	}
+	info, _ := kindInfoOf(kind)
+	var result []PartGroup
+	for _, sort := range partGroups {
+		if sort.icon == "" || sort.field == "" || info.described == nil {
+			continue
+		}
+		if _, ok := info.described.FieldByName(sort.field); ok {
+			result = append(result, sort.group)
+		}
+	}
+	return result
+}
+
+// ObjectBranch is one branch of the configuration tree under an object: the
+// sort of its parts, its caption and icon, and the parts it holds.
+type ObjectBranch struct {
+	Group PartGroup
+	Title string
+	Icon  string
+	Parts []BranchPart
+}
+
+// BranchPart is a part of an object in a branch, and the parts lying in it:
+// the fields of a table part.
+type BranchPart struct {
+	ID    uuid.UUID
+	Name  string
+	Parts []BranchPart
+}
+
+// ObjectBranches is the branches of the configuration tree under an object of
+// the kind, each with the parts the object declares of its sort, read by the
+// one walk of what the object holds (partsOf). A common attribute taken into
+// the object is the common attribute's, and is not among them. A catalog that
+// is not there - a project that does not load - gives every branch empty.
+func (catalog *Catalog) ObjectBranches(kind Kind, id uuid.UUID) []ObjectBranch {
+	var parts []objectPart
+	if catalog != nil {
+		parts, _ = catalog.partsOf(kind, id)
+	}
+	inside := map[string][]BranchPart{}
+	for _, part := range parts {
+		if partID, err := uuid.Parse(part.key); err == nil && part.parent != "" {
+			inside[part.parent] = append(inside[part.parent], BranchPart{ID: partID, Name: part.name})
+		}
+	}
+	var result []ObjectBranch
+	for _, group := range branchesOf(kind) {
+		info := partGroups[slices.IndexFunc(partGroups, func(item partGroupInfo) bool { return item.group == group })]
+		branch := ObjectBranch{Group: group, Title: info.title, Icon: info.icon}
+		for _, part := range parts {
+			partID, err := uuid.Parse(part.key)
+			if err != nil || part.group != group || part.parent != "" {
+				continue
+			}
+			if _, common := catalog.commonAttributeByID[partID]; common {
+				continue
+			}
+			branch.Parts = append(branch.Parts, BranchPart{ID: partID, Name: part.name, Parts: inside[part.key]})
+		}
+		result = append(result, branch)
+	}
+	return result
 }

@@ -752,14 +752,14 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 			if _, err := os.Stat(path); err == nil {
 				var buildErr error
 				if slices.Contains(project.ObjectFolderKinds(), kind) {
-					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", kind, language, languages, objectDataGroups(loaded, kind, language, languages))
+					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", kind, loaded)
 				} else if named, ok := project.NamedFolderFiles(kind); ok {
 					// A kind that keeps only files still keeps them in a folder
 					// named after the object: its description, and the modules
 					// that run it.
 					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named)
 					if buildErr == nil {
-						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, language, languages)
+						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, loaded)
 					}
 				} else {
 					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata")
@@ -950,7 +950,7 @@ func nestUnderParents(nodes []Node, parents map[string]string) []Node {
 // kind is the kind of the objects; nodeKind is what their nodes are called in
 // the tree - "metadata" for an object of the configuration, which is what
 // opens its editor, the kind itself for an object inside another.
-func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kind, language string, languages []project.Language, dataGroups func(id uuid.UUID, descriptionPath string) []Node) ([]Node, error) {
+func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kind string, loaded *metadata.Catalog) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
@@ -982,10 +982,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 		if err != nil {
 			return nil, err
 		}
-		var children []Node
-		if dataGroups != nil {
-			children = append(children, dataGroups(id, descriptionPath)...)
-		}
+		children := objectBranches(loaded, kind)(id, descriptionPath)
 		children = append(children, owned.inner...)
 		// A group stands where the kind has what it holds, as in the
 		// prototype's tree: a sequence has none of them, a criterion of
@@ -1013,7 +1010,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 	sortNodesByTitle(nodes)
 	// An object that keeps objects of its own - a cube its dimension tables -
 	// shows them under it the way a source shows its tables.
-	if err := workspace.attachSubordinateObjects(nodes, directory, relative, kind, language, languages); err != nil {
+	if err := workspace.attachSubordinateObjects(nodes, directory, relative, kind, loaded); err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -1161,11 +1158,11 @@ func objectFormNodes(parentDirectory, parentRelative, forms string) ([]Node, err
 
 // attachSubordinateObjects hangs under each object the collections of objects
 // that lie inside it - the tables of an external data source - each object
-// shown the way an object of the configuration is, with its forms, commands,
-// templates and modules. A collection stands even when it is empty, the way
+// shown the way an object of the configuration is, with its branches, forms,
+// commands, templates and modules. A collection stands even when it is empty, the way
 // a branch of the tree does: an empty branch in its place says there is
 // nothing, a missing one says nothing at all.
-func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, relative, kind, language string, languages []project.Language) error {
+func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, relative, kind string, loaded *metadata.Catalog) error {
 	collections := project.SubordinateCollections(kind)
 	if len(collections) == 0 {
 		return nil
@@ -1175,6 +1172,7 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 		// of a node may be the object's synonym, and the folder is named after
 		// the object's name.
 		ownerName := filepath.Base(filepath.Dir(filepath.FromSlash(owners[index].Path)))
+		groups := make([]Node, 0, len(collections))
 		for _, collection := range collections {
 			subordinateKind, _ := project.SubordinateObjectKind(kind, collection)
 			group := Node{
@@ -1182,7 +1180,7 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 			}
 			collectionDirectory := filepath.Join(directory, ownerName, collection)
 			if _, err := os.Stat(collectionDirectory); err == nil {
-				children, err := workspace.objectFolderNodes(collectionDirectory, group.ID, subordinateKind, subordinateKind, language, languages, nil)
+				children, err := workspace.objectFolderNodes(collectionDirectory, group.ID, subordinateKind, subordinateKind, loaded)
 				if err != nil {
 					return err
 				}
@@ -1190,8 +1188,11 @@ func (workspace *Workspace) attachSubordinateObjects(owners []Node, directory, r
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("inspect %s: %w", group.ID, err)
 			}
-			owners[index].Children = append(owners[index].Children, group)
+			groups = append(groups, group)
 		}
+		// What lies inside the object comes first, as in the prototype's
+		// tree: a cube shows its dimension tables above its dimensions.
+		owners[index].Children = append(groups, owners[index].Children...)
 	}
 	return nil
 }
@@ -1214,9 +1215,6 @@ const (
 	templateIcon      = "template"
 	pictureIcon       = "picture"
 	attributeIcon     = "attribute"
-	dimensionIcon     = "dimension"
-	resourceIcon      = "resource"
-	tablePartIcon     = "tabular-section"
 )
 
 // kindIcon is the icon of a kind, which its descriptor names.
@@ -1291,114 +1289,39 @@ func objectCommandNodes(objectDirectory, objectRelative string) ([]Node, error) 
 	return nodes, nil
 }
 
-// objectDataGroups returns, per metadata kind, a function building that
-// object's data-shape tree groups (Реквизиты, Измерения, Ресурсы, Табличные
-// части, ...) — always present, even empty, so a catalog/document/register
-// node has the same fixed subtree shape 1C shows regardless of content.
-// loaded may be nil (metadata failed to fully validate); the resulting
-// groups then simply come back empty rather than breaking the whole tree.
-func objectDataGroups(loaded *metadata.Catalog, kind, language string, languages []project.Language) func(id uuid.UUID, descriptionPath string) []Node {
-	switch kind {
-	case "catalogs":
-		return func(id uuid.UUID, descriptionPath string) []Node {
-			var definition metadata.CatalogDefinition
-			if loaded != nil {
-				definition, _ = loaded.CatalogByID(id)
+// objectBranches builds the branches of the tree under an object of the kind
+// - Реквизиты, Измерения, Ресурсы, Табличные части and the rest - from what
+// the kind's descriptor says an object of it holds (ObjectBranches), every
+// branch standing even when empty, as in the prototype's tree. loaded may be
+// nil (the project does not load as a whole): the branches then stand empty
+// rather than breaking the tree.
+//
+// A part opens its object's description, its fragment naming the part, which
+// the editor of a catalog selects; a field of a table part names the table
+// part.
+func objectBranches(loaded *metadata.Catalog, kind string) func(id uuid.UUID, descriptionPath string) []Node {
+	return func(id uuid.UUID, descriptionPath string) []Node {
+		var nodes []Node
+		for _, branch := range loaded.ObjectBranches(metadata.Kind(kind), id) {
+			node := Node{ID: id.String() + ":" + string(branch.Group), Kind: "group", Icon: branch.Icon, Title: branch.Title, Path: descriptionPath}
+			for _, part := range branch.Parts {
+				leaf := Node{ID: part.ID.String(), Kind: "attribute", Icon: branch.Icon, Title: part.Name, Path: descriptionPath,
+					Fragment: "attribute:" + part.ID.String(), Properties: []Property{{Name: "UUID", Value: part.ID.String()}}}
+				if branch.Group == metadata.TablePartsPart {
+					leaf.Kind, leaf.Fragment = "tablepart", "tablepart:"+part.ID.String()
+					for _, field := range part.Parts {
+						leaf.Children = append(leaf.Children, Node{ID: part.ID.String() + ":" + field.ID.String(), Kind: "attribute", Icon: attributeIcon,
+							Title: field.Name, Path: descriptionPath, Fragment: leaf.Fragment, Properties: []Property{{Name: "UUID", Value: field.ID.String()}}})
+					}
+					sortNodesByTitle(leaf.Children)
+				}
+				node.Children = append(node.Children, leaf)
 			}
-			return objectAttributeGroups(id, loaded.OwnAttributes(definition.Attributes), definition.TableParts, descriptionPath, language, languages)
+			sortNodesByTitle(node.Children)
+			nodes = append(nodes, node)
 		}
-	case "documents":
-		return func(id uuid.UUID, descriptionPath string) []Node {
-			var definition metadata.DocumentDefinition
-			if loaded != nil {
-				definition, _ = loaded.DocumentByID(id)
-			}
-			return objectAttributeGroups(id, loaded.OwnAttributes(definition.Attributes), definition.TableParts, descriptionPath, language, languages)
-		}
-	case "information-registers":
-		return func(id uuid.UUID, descriptionPath string) []Node {
-			var definition metadata.InformationRegisterDefinition
-			if loaded != nil {
-				definition, _ = loaded.InformationRegisterByID(id)
-			}
-			return registerGroups(id, definition.Dimensions, definition.Resources, loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages)
-		}
-	case "accumulation-registers":
-		return func(id uuid.UUID, descriptionPath string) []Node {
-			var definition metadata.AccumulationRegisterDefinition
-			if loaded != nil {
-				definition, _ = loaded.AccumulationRegisterByID(id)
-			}
-			return registerGroups(id, definition.Dimensions, definition.Resources, loaded.OwnAttributes(definition.Attributes), descriptionPath, language, languages)
-		}
-	default:
-		return nil
+		return nodes
 	}
-}
-
-// objectAttributeGroups are the groups of an object that keeps attributes
-// and tabular sections: a catalog and a document show the same two.
-func objectAttributeGroups(id uuid.UUID, attributes []metadata.Attribute, tableParts []metadata.TablePart, descriptionPath, language string, languages []project.Language) []Node {
-	return []Node{
-		attributeGroupNode(id.String()+":attributes", "Реквизиты", attributeIcon, attributes, descriptionPath, language, languages),
-		tablePartGroupNode(id.String()+":table-parts", "Табличные части", tableParts, descriptionPath, language, languages),
-	}
-}
-
-// registerGroups are the groups of a register: its dimensions, resources and
-// attributes, in the order the configurator's tree shows them.
-func registerGroups(id uuid.UUID, dimensions []metadata.RegisterDimension, resources, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) []Node {
-	return []Node{
-		attributeGroupNode(id.String()+":dimensions", "Измерения", dimensionIcon, metadata.RegisterDimensionAttributes(dimensions), descriptionPath, language, languages),
-		attributeGroupNode(id.String()+":resources", "Ресурсы", resourceIcon, resources, descriptionPath, language, languages),
-		attributeGroupNode(id.String()+":attributes", "Реквизиты", attributeIcon, attributes, descriptionPath, language, languages),
-	}
-}
-
-// attributeGroupNode builds one always-visible tree group (Реквизиты,
-// Измерения, Ресурсы, ...) listing one object's plain attributes. Each leaf
-// carries the object's own object.yaml as Path (so selecting it opens the
-// matching visual editor once one exists for this kind) and a Fragment
-// identifying which attribute to select there.
-func attributeGroupNode(groupID, title, icon string, attributes []metadata.Attribute, descriptionPath, language string, languages []project.Language) Node {
-	children := make([]Node, 0, len(attributes))
-	for _, attribute := range attributes {
-		children = append(children, Node{
-			ID: attribute.ID.String(), Kind: "attribute", Icon: icon,
-			Title: attribute.Name,
-			Path:  descriptionPath, Fragment: "attribute:" + attribute.ID.String(),
-			Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
-		})
-	}
-	sortNodesByTitle(children)
-	return Node{ID: groupID, Kind: "group", Icon: icon, Title: title, Path: descriptionPath, Children: children}
-}
-
-// tablePartGroupNode builds the always-visible "Табличные части" group,
-// nesting each table part's own attributes as informational children.
-func tablePartGroupNode(groupID, title string, tableParts []metadata.TablePart, descriptionPath, language string, languages []project.Language) Node {
-	children := make([]Node, 0, len(tableParts))
-	for _, part := range tableParts {
-		fragment := "tablepart:" + part.ID.String()
-		partAttributes := make([]Node, 0, len(part.Attributes))
-		for _, attribute := range part.Attributes {
-			partAttributes = append(partAttributes, Node{
-				ID: part.ID.String() + ":" + attribute.ID.String(), Kind: "attribute", Icon: attributeIcon,
-				Title: attribute.Name,
-				Path:  descriptionPath, Fragment: fragment,
-				Properties: []Property{{Name: "UUID", Value: attribute.ID.String()}},
-			})
-		}
-		sortNodesByTitle(partAttributes)
-		children = append(children, Node{
-			ID: part.ID.String(), Kind: "tablepart", Icon: tablePartIcon,
-			Title: part.Name,
-			Path:  descriptionPath, Fragment: fragment, Children: partAttributes,
-			Properties: []Property{{Name: "UUID", Value: part.ID.String()}},
-		})
-	}
-	sortNodesByTitle(children)
-	return Node{ID: groupID, Kind: "group", Icon: tablePartIcon, Title: title, Path: descriptionPath, Children: children}
 }
 
 // sortNodesByTitle orders tree nodes by their display title so that

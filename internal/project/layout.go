@@ -553,15 +553,17 @@ func IsSubordinateObjectKind(kind string) bool {
 }
 
 // SubordinateCollections returns the collection folders an object of a kind
-// keeps for subordinate objects, sorted: "tables" for an external data source.
+// keeps for subordinate objects, in the order of the kinds, which is the
+// order the prototype's tree shows them in: "tables", then "cubes" for an
+// external data source (inventory of block 00, snapshot
+// derevo/10-vneshnij-istochnik).
 func SubordinateCollections(kind string) []string {
 	var result []string
-	for _, subordinate := range subordinateObjectKinds {
-		if subordinate.owner == kind {
+	for _, item := range kinds.All() {
+		if subordinate, ok := subordinateObjectKinds[string(item.Kind)]; ok && subordinate.owner == kind {
 			result = append(result, subordinate.collection)
 		}
 	}
-	slices.Sort(result)
 	return result
 }
 
