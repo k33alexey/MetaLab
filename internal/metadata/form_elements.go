@@ -1203,12 +1203,7 @@ func validateInputFieldChoice(path string, choice InputFieldChoice, kind FormEle
 	if choice.ChoiceFormGone != nil && choice.ChoiceFormGone.IsZero() {
 		issues = append(issues, path+".choice_form_gone must be a non-zero UUID")
 	}
-	if choice.ChoiceListHeight < 0 {
-		issues = append(issues, path+".choice_list_height must not be negative")
-	}
-	if choice.DropListWidth < 0 {
-		issues = append(issues, path+".drop_list_width must not be negative")
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("choice_list_height", choice.ChoiceListHeight), sizeOf("drop_list_width", choice.DropListWidth))...)
 	if !validChoiceHistory(choice.ChoiceHistoryOnInput) {
 		issues = append(issues, path+".choice_history_on_input must be auto or dont-use")
 	}

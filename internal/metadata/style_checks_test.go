@@ -61,7 +61,7 @@ func TestARouteMapGridMayHaveNoStep(t *testing.T) {
 	if _, err := Load(routeOnlyProcess(t, route("0"))); err != nil {
 		t.Fatalf("a grid with no step was refused: %v", err)
 	}
-	if _, err := Load(routeOnlyProcess(t, route("-1"))); err == nil || !strings.Contains(err.Error(), "grid steps must not be negative") {
+	if _, err := Load(routeOnlyProcess(t, route("-1"))); err == nil || !strings.Contains(err.Error(), "route.look.grid_horizontal_step must not be negative") {
 		t.Fatalf("a negative step: %v", err)
 	}
 }

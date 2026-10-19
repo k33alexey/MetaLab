@@ -237,13 +237,10 @@ func validateRouteMapLook(look *RouteMapLook) []string {
 	if look.GridMode != "" && !slices.Contains(routeGridModes, look.GridMode) {
 		issues = append(issues, "route.look.grid_mode must be none, dots, chess or lines")
 	}
-	if look.GridHorizontalStep < 0 || look.GridVerticalStep < 0 {
-		issues = append(issues, "route.look grid steps must not be negative")
-	}
+	issues = append(issues, negativeSizes("route.look", sizeOf("grid_horizontal_step", look.GridHorizontalStep), sizeOf("grid_vertical_step", look.GridVerticalStep))...)
 	if print := look.Print; print != nil {
-		if print.TopMargin < 0 || print.LeftMargin < 0 || print.BottomMargin < 0 || print.RightMargin < 0 {
-			issues = append(issues, "route.look.print margins must not be negative")
-		}
+		issues = append(issues, negativeSizes("route.look.print", sizeOf("top_margin", print.TopMargin), sizeOf("left_margin", print.LeftMargin),
+			sizeOf("bottom_margin", print.BottomMargin), sizeOf("right_margin", print.RightMargin))...)
 		if print.FitPage != "" && !slices.Contains(routeFitPages, print.FitPage) {
 			issues = append(issues, "route.look.print.fit_page must be auto, page-width or proportionally")
 		}

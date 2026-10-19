@@ -456,20 +456,13 @@ func validateChartContent(path string, value *ChartContent) []string {
 	if value.ActivePoint < -1 || value.ActivePoint >= max(value.PointCount, 1) {
 		issues = append(issues, path+".active_point must be the number of a point of the chart, or -1")
 	}
-	for _, number := range []struct {
-		name  string
-		value int
-	}{{"series_count", value.SeriesCount}, {"point_count", value.PointCount}, {"next_series_id", value.NextSeriesID},
-		{"next_point_id", value.NextPointID}, {"max_series_count", value.MaxSeriesCount}, {"spline_strain", value.SplineStrain},
-		{"donut_chart_inner_radius", value.DonutChartInnerRadius}, {"funnel_neck_height", value.FunnelNeckHeight},
-		{"funnel_neck_width", value.FunnelNeckWidth}, {"funnel_space", value.FunnelSpace},
-		{"gauge.thickness", value.Gauge.Thickness}, {"gauge.bush_thickness", value.Gauge.BushThickness},
-		{"state.rebuild_time", value.State.RebuildTime}, {"state.pie_point", value.State.PiePoint},
-		{"state.stock_series", value.State.StockSeries}} {
-		if number.value < 0 {
-			issues = append(issues, path+"."+number.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("series_count", value.SeriesCount), sizeOf("point_count", value.PointCount),
+		sizeOf("next_series_id", value.NextSeriesID), sizeOf("next_point_id", value.NextPointID), sizeOf("max_series_count", value.MaxSeriesCount),
+		sizeOf("spline_strain", value.SplineStrain), sizeOf("donut_chart_inner_radius", value.DonutChartInnerRadius),
+		sizeOf("funnel_neck_height", value.FunnelNeckHeight), sizeOf("funnel_neck_width", value.FunnelNeckWidth),
+		sizeOf("funnel_space", value.FunnelSpace), sizeOf("gauge.thickness", value.Gauge.Thickness),
+		sizeOf("gauge.bush_thickness", value.Gauge.BushThickness), sizeOf("state.rebuild_time", value.State.RebuildTime),
+		sizeOf("state.pie_point", value.State.PiePoint), sizeOf("state.stock_series", value.State.StockSeries))...)
 	for _, percent := range []struct {
 		name  string
 		value int

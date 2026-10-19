@@ -229,14 +229,8 @@ func validateGanttChartContent(path string, value *GanttChartContent) []string {
 	issues = append(issues, oneOfList(path+".value_text_representation", value.ValueTextRepresentation, ganttValueTexts, false)...)
 	issues = append(issues, oneOfList(path+".vertical_stretch", value.VerticalStretch, ganttVerticalStretches, false)...)
 	issues = append(issues, oneOfList(path+".state.none_variant_measure", value.State.NoneVariantMeasure, timeScaleUnits, false)...)
-	for _, number := range []struct {
-		name  string
-		value int
-	}{{"periodic_variant_repetition", value.PeriodicVariantRepetition}, {"state.none_variant_chars", value.State.NoneVariantChars}} {
-		if number.value < 0 {
-			issues = append(issues, path+"."+number.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("periodic_variant_repetition", value.PeriodicVariantRepetition),
+		sizeOf("state.none_variant_chars", value.State.NoneVariantChars))...)
 	begin, beginIssues := ganttDate(path+".begin_of_whole_interval", value.BeginOfWholeInterval)
 	end, endIssues := ganttDate(path+".end_of_whole_interval", value.EndOfWholeInterval)
 	issues = append(append(issues, beginIssues...), endIssues...)

@@ -145,15 +145,9 @@ func validatePlannerContent(path string, value *PlannerContent) []string {
 	issues = append(issues, oneOfList(path+".items_time_representation", value.ItemsTimeRepresentation, plannerItemsTimeRepresentations, false)...)
 	issues = append(issues, oneOfList(path+".items_behavior_when_space_insufficient", value.ItemsBehaviorWhenSpaceInsufficient, plannerItemsBehaviors, false)...)
 	issues = append(issues, oneOfList(path+".new_items_text_type", value.NewItemsTextType, plannerNewItemsTextTypes, false)...)
-	for _, number := range []struct {
-		name  string
-		value int
-	}{{"periodic_variant_repetition", value.PeriodicVariantRepetition}, {"time_scale_wrap_begin_indent", value.TimeScaleWrapBeginIndent},
-		{"time_scale_wrap_end_indent", value.TimeScaleWrapEndIndent}, {"min_column_width", value.MinColumnWidth}, {"min_row_height", value.MinRowHeight}} {
-		if number.value < 0 {
-			issues = append(issues, path+"."+number.name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("periodic_variant_repetition", value.PeriodicVariantRepetition),
+		sizeOf("time_scale_wrap_begin_indent", value.TimeScaleWrapBeginIndent), sizeOf("time_scale_wrap_end_indent", value.TimeScaleWrapEndIndent),
+		sizeOf("min_column_width", value.MinColumnWidth), sizeOf("min_row_height", value.MinRowHeight))...)
 	for _, date := range []struct{ name, value string }{{"begin_of_representation_period", value.BeginOfRepresentationPeriod},
 		{"end_of_representation_period", value.EndOfRepresentationPeriod}} {
 		_, dateIssues := ganttDate(path+"."+date.name, date.value)

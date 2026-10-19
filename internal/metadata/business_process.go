@@ -551,11 +551,13 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 		if decoration.LineLook != nil {
 			issues = append(issues, validateRouteLineLook(prefix+".line_look", *decoration.LineLook)...)
 		}
-		for end, attached := range map[string]*RouteEnd{"from": decoration.From, "to": decoration.To} {
-			if attached != nil && attached.Port < 0 {
-				issues = append(issues, prefix+"."+end+".port must not be negative")
+		port := func(end *RouteEnd) *int {
+			if end == nil {
+				return nil
 			}
+			return &end.Port
 		}
+		issues = append(issues, negativeSizes(prefix, elementSize{"from.port", port(decoration.From)}, elementSize{"to.port", port(decoration.To)})...)
 	}
 	return issues
 }
@@ -568,9 +570,7 @@ func validateRouteTransitionLook(prefix string, transition RouteTransition, conf
 		issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 	}
 	issues = append(issues, validateTitle(prefix+".title", transition.Title, configuration)...)
-	if transition.FromPort < 0 || transition.ToPort < 0 {
-		issues = append(issues, prefix+" ports must not be negative")
-	}
+	issues = append(issues, negativeSizes(prefix, sizeOf("from_port", transition.FromPort), sizeOf("to_port", transition.ToPort))...)
 	issues = append(issues, validateRouteLook(prefix+".look", transition.Look, false, configuration)...)
 	if transition.LineLook != nil {
 		issues = append(issues, validateRouteLineLook(prefix+".line_look", *transition.LineLook)...)

@@ -112,12 +112,9 @@ func validateJobSchedule(path string, schedule *JobSchedule) []string {
 			issues = append(issues, path+"."+name+" must be a time of day written HH:MM:SS")
 		}
 	}
-	for name, value := range map[string]int{"completion_interval": schedule.CompletionInterval, "repeat_period_in_day": schedule.RepeatPeriodInDay,
-		"repeat_pause": schedule.RepeatPause, "weeks_period": schedule.WeeksPeriod, "days_repeat_period": schedule.DaysRepeatPeriod} {
-		if value < 0 {
-			issues = append(issues, path+"."+name+" must not be negative")
-		}
-	}
+	issues = append(issues, negativeSizes(path, sizeOf("completion_interval", schedule.CompletionInterval),
+		sizeOf("repeat_period_in_day", schedule.RepeatPeriodInDay), sizeOf("repeat_pause", schedule.RepeatPause),
+		sizeOf("weeks_period", schedule.WeeksPeriod), sizeOf("days_repeat_period", schedule.DaysRepeatPeriod))...)
 	// The help gives both only a sign: from the start of the month or from its
 	// end. A day of the month goes to 31 either way - the configurator's dialog
 	// takes no more (checked by the owner, 05.10.2026). A week of the month goes
@@ -174,12 +171,8 @@ func DecodeScheduledJob(source string, reader io.Reader, configuration project.P
 		}
 		// No ceiling on either: the help names none, and the configurations being
 		// moved go up to 10 repeats and an hour.
-		if value.RestartCountOnFailure < 0 {
-			issues = append(issues, "restart_count_on_failure must not be negative")
-		}
-		if value.RestartIntervalOnFailure < 0 {
-			issues = append(issues, "restart_interval_on_failure must not be negative")
-		}
+		issues = append(issues, negativeSizes("", sizeOf("restart_count_on_failure", value.RestartCountOnFailure),
+			sizeOf("restart_interval_on_failure", value.RestartIntervalOnFailure))...)
 		issues = append(issues, validateJobSchedule("schedule", value.Schedule)...)
 		// An interval with no repeats is not refused, though it reads as a
 		// contradiction: five jobs of the reference configuration are written that

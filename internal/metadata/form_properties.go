@@ -241,8 +241,8 @@ func oneOf[T ~string](name string, value T, allowed ...T) []string {
 	return []string{name + " must be " + strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]}
 }
 
-// elementSize is a size, a count or a height of an element, by its key; one not
-// said is nil.
+// elementSize is a size, a count, a height or another number of a description
+// that cannot be below zero, by its key; one not said is nil.
 type elementSize struct {
 	name  string
 	value *int
@@ -251,13 +251,18 @@ type elementSize struct {
 // sizeOf names a size the description always has.
 func sizeOf(name string, value int) elementSize { return elementSize{name, &value} }
 
-// negativeSizes refuses each size below zero, under path: none of an
-// element's sizes, counts and heights is negative.
+// negativeSizes refuses each size below zero, under path, or by its key alone
+// where the path is empty: the one rule, and the one text of the refusal, for
+// every number of a description that cannot be negative - the sizes of an
+// element, the counts of a chart, the periods of a schedule.
 func negativeSizes(path string, sizes ...elementSize) []string {
+	if path != "" {
+		path += "."
+	}
 	var issues []string
 	for _, item := range sizes {
 		if item.value != nil && *item.value < 0 {
-			issues = append(issues, path+"."+item.name+" must not be negative")
+			issues = append(issues, path+item.name+" must not be negative")
 		}
 	}
 	return issues
@@ -266,15 +271,7 @@ func negativeSizes(path string, sizes ...elementSize) []string {
 func validateFormLayout(layout FormLayout) []string {
 	var issues []string
 	issues = append(issues, oneOf("vertical_scroll", layout.VerticalScroll, FormScrollAuto, FormScrollUse, FormScrollUseWithoutStretch, FormScrollUseIfNecessary)...)
-	if layout.Width < 0 {
-		issues = append(issues, "width must not be negative")
-	}
-	if layout.Height < 0 {
-		issues = append(issues, "height must not be negative")
-	}
-	if layout.Scale < 0 {
-		issues = append(issues, "scale must not be negative")
-	}
+	issues = append(issues, negativeSizes("", sizeOf("width", layout.Width), sizeOf("height", layout.Height), sizeOf("scale", layout.Scale))...)
 	issues = append(issues, oneOf("children_group", layout.ChildrenGroup, ChildrenVertical, ChildrenHorizontal, ChildrenAlwaysHorizontal, ChildrenHorizontalIfPossible)...)
 	issues = append(issues, oneOf("children_width", layout.ChildrenWidth, ChildrenWidthAuto, ChildrenWidthEqual, ChildrenWidthLeftNarrowest, ChildrenWidthLeftNarrow, ChildrenWidthLeftWide, ChildrenWidthLeftWidest)...)
 	issues = append(issues, oneOf("horizontal_align", layout.HorizontalAlign, ItemHorizontalAuto, ItemHorizontalLeft, ItemHorizontalCenter, ItemHorizontalRight)...)
