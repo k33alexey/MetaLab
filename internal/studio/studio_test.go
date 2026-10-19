@@ -325,3 +325,65 @@ func treeContainsTitle(node Node, title string) bool {
 	}
 	return false
 }
+
+// Every request of Studio that changes something or runs code is read the one
+// way decodeStudioJSON reads it: the mark against a request from another
+// site, JSON and nothing else, no field the request does not have, nothing
+// after the value, and the ceiling on the body of the route. Eight routes used
+// to repeat it each by hand; one that drops a step is what this catches.
+// Defects caught: a route that takes a request without the mark (written from
+// another site's page), a body of another type, an unknown field silently
+// dropped, a second value after the first, and a body beyond the ceiling of the
+// form handler (64 KiB) or of the query builder (1 MiB, the longest query
+// text).
+func TestEveryChangingRequestOfStudioIsReadOneWay(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(workspace)
+	routes := []struct {
+		method, path string
+		ceiling      int
+	}{
+		{http.MethodPut, "/api/file", 0},
+		{http.MethodPut, "/api/form", 0},
+		{http.MethodPost, "/api/form/handler", 64 << 10},
+		{http.MethodPost, "/api/query/build", 1 << 20},
+		{http.MethodPost, "/api/bsl/analyze", 0},
+		{http.MethodPost, "/api/bsl/complete", 0},
+		{http.MethodPost, "/api/bsl/navigate", 0},
+		{http.MethodPost, "/api/bsl/help/resolve", 0},
+	}
+	for _, route := range routes {
+		cases := []struct {
+			name, body, contentType, csrf string
+			status                        int
+		}{
+			{"without the mark", `{}`, "application/json", "", http.StatusForbidden},
+			{"not JSON", `{}`, "text/plain", "1", http.StatusUnsupportedMediaType},
+			{"an unknown field", `{"unknownField":1}`, "application/json", "1", http.StatusBadRequest},
+			{"a second value", `{} {}`, "application/json", "1", http.StatusBadRequest},
+		}
+		if route.ceiling > 0 {
+			cases = append(cases, struct {
+				name, body, contentType, csrf string
+				status                        int
+			}{"beyond the ceiling", strings.Repeat(" ", route.ceiling) + `{}`, "application/json", "1", http.StatusBadRequest})
+		}
+		for _, testCase := range cases {
+			request := httptest.NewRequest(route.method, route.path, strings.NewReader(testCase.body))
+			request.Header.Set("Content-Type", testCase.contentType)
+			request.Header.Set("X-ML-CSRF", testCase.csrf)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			// A refused reading says so; a route that read the request and
+			// refused what it found answers 400 too, for another reason.
+			refused := testCase.status != http.StatusBadRequest || strings.TrimSpace(response.Body.String()) == "Invalid request"
+			if response.Code != testCase.status || !refused {
+				t.Errorf("%s %s, %s: status %d, want %d (%s)", route.method, route.path, testCase.name, response.Code, testCase.status, strings.TrimSpace(response.Body.String()))
+			}
+		}
+	}
+}

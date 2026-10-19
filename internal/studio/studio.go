@@ -271,38 +271,13 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, file)
 	})
-	routes.HandleFunc("PUT /api/file", func(response http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("X-ML-CSRF") != "1" {
-			http.Error(response, "CSRF check failed", http.StatusForbidden)
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var input struct {
-			Path             string `json:"path"`
-			Content          string `json:"content"`
-			ExpectedRevision string `json:"expectedRevision"`
-		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		file, err := workspace.SaveSource(input.Path, input.Content, input.ExpectedRevision)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, file)
-	})
+	routes.HandleFunc("PUT /api/file", answerStudio(0, writeSourceError, func(input struct {
+		Path             string `json:"path"`
+		Content          string `json:"content"`
+		ExpectedRevision string `json:"expectedRevision"`
+	}) (any, error) {
+		return workspace.SaveSource(input.Path, input.Content, input.ExpectedRevision)
+	}))
 	routes.HandleFunc("GET /api/form", func(response http.ResponseWriter, request *http.Request) {
 		form, err := workspace.ReadManagedForm(request.URL.Query().Get("path"))
 		if err != nil {
@@ -311,59 +286,20 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, form)
 	})
-	routes.HandleFunc("PUT /api/form", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var input struct {
-			Path             string               `json:"path"`
-			ExpectedRevision string               `json:"expectedRevision"`
-			Form             metadata.ManagedForm `json:"form"`
-		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		form, err := workspace.SaveManagedForm(input.Path, input.Form, input.ExpectedRevision)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, form)
-	})
+	routes.HandleFunc("PUT /api/form", answerStudio(0, writeSourceError, func(input struct {
+		Path             string               `json:"path"`
+		ExpectedRevision string               `json:"expectedRevision"`
+		Form             metadata.ManagedForm `json:"form"`
+	}) (any, error) {
+		return workspace.SaveManagedForm(input.Path, input.Form, input.ExpectedRevision)
+	}))
 	routes.HandleFunc("POST /api/form/handler", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
 		var input struct {
 			Path             string `json:"path"`
 			ExpectedRevision string `json:"expectedRevision"`
 			Command          string `json:"command"`
 		}
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 64<<10))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
+		if !decodeStudioJSON(response, request, &input, 64<<10) {
 			return
 		}
 		commandID, err := uuid.Parse(input.Command)
@@ -386,33 +322,9 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, schema)
 	})
-	routes.HandleFunc("POST /api/query/build", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var design QueryDesign
-		decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, querylang.MaxSourceBytes))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&design); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		result, err := workspace.BuildDesignedQuery(design)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeStudioJSON(response, result)
-	})
+	routes.HandleFunc("POST /api/query/build", answerStudio(querylang.MaxSourceBytes, writeBadRequest, func(design QueryDesign) (any, error) {
+		return workspace.BuildDesignedQuery(design)
+	}))
 	// The text of a restriction or a template of one is highlighted by the
 	// query language's own list of keywords, not by a second one in the page.
 	routes.HandleFunc("POST /api/query/highlight", func(response http.ResponseWriter, request *http.Request) {
@@ -431,26 +343,11 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}{highlights})
 	})
 	routes.HandleFunc("POST /api/bsl/analyze", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
 		var input struct {
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
+		if !decodeStudioJSONRequest(response, request, &input) {
 			return
 		}
 		relative, language, err := validateEditablePath(input.Path)
@@ -465,86 +362,29 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, analysis)
 	})
-	routes.HandleFunc("POST /api/bsl/complete", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var input struct {
-			Path     string      `json:"path"`
-			Content  string      `json:"content"`
-			Position BSLPosition `json:"position"`
-		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		completion, err := workspace.CompleteBSL(input.Path, input.Content, input.Position)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeStudioJSON(response, completion)
-	})
-	routes.HandleFunc("POST /api/bsl/navigate", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var input struct {
-			Path     string      `json:"path"`
-			Content  string      `json:"content"`
-			Position BSLPosition `json:"position"`
-			Mode     string      `json:"mode"`
-		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		result, err := workspace.NavigateBSL(input.Path, input.Content, input.Position, input.Mode)
-		if err != nil {
-			writeBSLNavigationError(response, err)
-			return
-		}
-		writeStudioJSON(response, result)
-	})
-	routes.HandleFunc("POST /api/bsl/rename", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Path             string      `json:"path"`
-			Position         BSLPosition `json:"position"`
-			NewName          string      `json:"newName"`
-			ExpectedRevision string      `json:"expectedRevision"`
-		}
-		if !decodeStudioMutation(response, request, &input) {
-			return
-		}
-		result, err := workspace.RenameBSL(input.Path, input.Position, input.NewName, input.ExpectedRevision)
-		if err != nil {
-			writeBSLNavigationError(response, err)
-			return
-		}
-		writeStudioJSON(response, result)
-	})
+	routes.HandleFunc("POST /api/bsl/complete", answerStudio(0, writeBadRequest, func(input struct {
+		Path     string      `json:"path"`
+		Content  string      `json:"content"`
+		Position BSLPosition `json:"position"`
+	}) (any, error) {
+		return workspace.CompleteBSL(input.Path, input.Content, input.Position)
+	}))
+	routes.HandleFunc("POST /api/bsl/navigate", answerStudio(0, writeBSLNavigationError, func(input struct {
+		Path     string      `json:"path"`
+		Content  string      `json:"content"`
+		Position BSLPosition `json:"position"`
+		Mode     string      `json:"mode"`
+	}) (any, error) {
+		return workspace.NavigateBSL(input.Path, input.Content, input.Position, input.Mode)
+	}))
+	routes.HandleFunc("POST /api/bsl/rename", answerStudio(studioMutationCeiling, writeBSLNavigationError, func(input struct {
+		Path             string      `json:"path"`
+		Position         BSLPosition `json:"position"`
+		NewName          string      `json:"newName"`
+		ExpectedRevision string      `json:"expectedRevision"`
+	}) (any, error) {
+		return workspace.RenameBSL(input.Path, input.Position, input.NewName, input.ExpectedRevision)
+	}))
 	routes.HandleFunc("GET /api/search", func(response http.ResponseWriter, request *http.Request) {
 		result, err := workspace.SearchProject(request.URL.Query().Get("query"))
 		if err != nil {
@@ -561,37 +401,13 @@ func NewHandler(workspace *Workspace) http.Handler {
 		}
 		writeStudioJSON(response, result)
 	})
-	routes.HandleFunc("POST /api/bsl/help/resolve", func(response http.ResponseWriter, request *http.Request) {
-		if !validateStudioMutation(response, request) {
-			return
-		}
-		if !strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-			http.Error(response, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		var input struct {
-			Path     string      `json:"path"`
-			Content  string      `json:"content"`
-			Position BSLPosition `json:"position"`
-		}
-		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
-			http.Error(response, "Invalid request", http.StatusBadRequest)
-			return
-		}
-		item, err := workspace.ResolveBSLHelp(input.Path, input.Content, input.Position)
-		if err != nil {
-			writeBSLNavigationError(response, err)
-			return
-		}
-		writeStudioJSON(response, item)
-	})
+	routes.HandleFunc("POST /api/bsl/help/resolve", answerStudio(0, writeBSLNavigationError, func(input struct {
+		Path     string      `json:"path"`
+		Content  string      `json:"content"`
+		Position BSLPosition `json:"position"`
+	}) (any, error) {
+		return workspace.ResolveBSLHelp(input.Path, input.Content, input.Position)
+	}))
 	routes.HandleFunc("GET /api/git/status", func(response http.ResponseWriter, request *http.Request) {
 		client, err := gitclient.Open(request.Context(), workspace.root)
 		if err != nil {
@@ -733,8 +549,43 @@ func validateStudioMutation(response http.ResponseWriter, request *http.Request)
 	return true
 }
 
+// studioMutationCeiling is the body of a small request of Studio: a command,
+// a name, a message.
+const studioMutationCeiling = 16 << 10
+
 func decodeStudioMutation(response http.ResponseWriter, request *http.Request, value any) bool {
-	return decodeStudioJSON(response, request, value, 16<<10)
+	return decodeStudioJSON(response, request, value, studioMutationCeiling)
+}
+
+// answerStudio is a route of Studio that reads a request the one way
+// (decodeStudioJSON, with the ceiling of the route), does what it asks and
+// answers with the result as JSON, or with the error the way the route
+// answers errors.
+func answerStudio[In any](limit int64, refuse func(http.ResponseWriter, error), do func(In) (any, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		var input In
+		if !decodeStudioJSON(response, request, &input, limit) {
+			return
+		}
+		result, err := do(input)
+		if err != nil {
+			refuse(response, err)
+			return
+		}
+		writeStudioJSON(response, result)
+	}
+}
+
+// writeBadRequest answers a request whose content the route could not use.
+func writeBadRequest(response http.ResponseWriter, err error) {
+	http.Error(response, err.Error(), http.StatusBadRequest)
+}
+
+// decodeStudioJSONRequest reads a request of Studio with no ceiling of its
+// own on the body: a role, a text of a restriction, a module or a form may be
+// large.
+func decodeStudioJSONRequest(response http.ResponseWriter, request *http.Request, target any) bool {
+	return decodeStudioJSON(response, request, target, 0)
 }
 
 // decodeStudioJSON reads the one JSON value of a request of Studio, with

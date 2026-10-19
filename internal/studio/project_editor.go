@@ -291,19 +291,10 @@ func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		}
 		writeStudioJSON(response, value)
 	})
-	routes.HandleFunc("PUT /api/project-configuration", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			ExpectedRevision string          `json:"expectedRevision"`
-			Configuration    project.Project `json:"configuration"`
-		}
-		if !decodeStudioJSONRequest(response, request, &input) {
-			return
-		}
-		value, err := workspace.SaveProjectEditor(input.Configuration, input.ExpectedRevision)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, value)
-	})
+	routes.HandleFunc("PUT /api/project-configuration", answerStudio(0, writeSourceError, func(input struct {
+		ExpectedRevision string          `json:"expectedRevision"`
+		Configuration    project.Project `json:"configuration"`
+	}) (any, error) {
+		return workspace.SaveProjectEditor(input.Configuration, input.ExpectedRevision)
+	}))
 }

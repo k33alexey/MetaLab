@@ -548,20 +548,11 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		}
 		writeStudioJSON(response, overview)
 	})
-	routes.HandleFunc("PUT /api/roles", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Roles []RoleSave `json:"roles"`
-		}
-		if !decodeStudioJSONRequest(response, request, &input) {
-			return
-		}
-		overview, err := workspace.SaveRoles(input.Roles)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, overview)
-	})
+	routes.HandleFunc("PUT /api/roles", answerStudio(0, writeSourceError, func(input struct {
+		Roles []RoleSave `json:"roles"`
+	}) (any, error) {
+		return workspace.SaveRoles(input.Roles)
+	}))
 	routes.HandleFunc("GET /api/role", func(response http.ResponseWriter, request *http.Request) {
 		path := request.URL.Query().Get("path")
 		// A role unchanged since the caller read it is answered without the
@@ -586,36 +577,18 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		response.Header().Set("ETag", `"`+role.Revision+`"`)
 		writeStudioJSON(response, role)
 	})
-	routes.HandleFunc("PUT /api/role", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Path             string                  `json:"path"`
-			ExpectedRevision string                  `json:"expectedRevision"`
-			Role             metadata.RoleDefinition `json:"role"`
-		}
-		if !decodeStudioJSONRequest(response, request, &input) {
-			return
-		}
-		role, err := workspace.SaveRole(input.Path, input.Role, input.ExpectedRevision)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, role)
-	})
-	routes.HandleFunc("POST /api/role", func(response http.ResponseWriter, request *http.Request) {
-		var input struct {
-			Name string `json:"name"`
-		}
-		if !decodeStudioJSONRequest(response, request, &input) {
-			return
-		}
-		role, err := workspace.CreateRole(input.Name)
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		writeStudioJSON(response, role)
-	})
+	routes.HandleFunc("PUT /api/role", answerStudio(0, writeSourceError, func(input struct {
+		Path             string                  `json:"path"`
+		ExpectedRevision string                  `json:"expectedRevision"`
+		Role             metadata.RoleDefinition `json:"role"`
+	}) (any, error) {
+		return workspace.SaveRole(input.Path, input.Role, input.ExpectedRevision)
+	}))
+	routes.HandleFunc("POST /api/role", answerStudio(0, writeSourceError, func(input struct {
+		Name string `json:"name"`
+	}) (any, error) {
+		return workspace.CreateRole(input.Name)
+	}))
 	routes.HandleFunc("DELETE /api/role", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
 			return
@@ -626,10 +599,4 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		}
 		response.WriteHeader(http.StatusNoContent)
 	})
-}
-
-// decodeStudioJSONRequest reads a request of Studio with no ceiling of its
-// own on the body: a role or a text of a restriction may be large.
-func decodeStudioJSONRequest(response http.ResponseWriter, request *http.Request, target any) bool {
-	return decodeStudioJSON(response, request, target, 0)
 }
