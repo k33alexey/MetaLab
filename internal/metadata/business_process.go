@@ -270,24 +270,7 @@ type BusinessProcessDefinition struct {
 func DecodeBusinessProcess(source string, reader io.Reader, configuration project.Project) (BusinessProcessDefinition, error) {
 	return decodeDescription(source, reader, configuration, func(value BusinessProcessDefinition, configuration project.Project) []string {
 		var issues []string
-		issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-			number:             value.Number,
-			attributes:         value.Attributes,
-			tableParts:         value.TableParts,
-			forms:              value.Forms,
-			list:               value.List,
-			reservedName:       reservedBusinessProcessName,
-			kind:               BusinessProcessKind,
-			standardAttributes: value.StandardAttributes,
-			presentation:       value.Presentations,
-			input:              value.ObjectInput,
-			basedOn:            value.BasedOn,
-			dataLock:           value.DataLock,
-			dataLockFields:     value.DataLockFields,
-			fullTextSearch:     value.FullTextSearch,
-			dataHistory:        value.DataHistorySettings,
-			additionalIndexes:  value.AdditionalIndexes,
-		}, configuration)...)
+		issues = append(issues, validateNumberedObjectShape(numberedShapeOf(value, BusinessProcessKind, reservedBusinessProcessName), configuration)...)
 		if value.Task != nil && value.Task.IsZero() {
 			issues = append(issues, "task must be a non-zero UUID")
 		}

@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -92,24 +93,7 @@ type DocumentDefinition struct {
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
 	return decodeDescription(source, reader, configuration, func(value DocumentDefinition, configuration project.Project) []string {
 		var issues []string
-		shape := numberedObjectShape{
-			number:             value.Number,
-			attributes:         value.Attributes,
-			tableParts:         value.TableParts,
-			forms:              value.Forms,
-			list:               value.List,
-			reservedName:       reservedDocumentObjectName,
-			kind:               DocumentKind,
-			standardAttributes: value.StandardAttributes,
-			presentation:       value.Presentations,
-			input:              value.ObjectInput,
-			basedOn:            value.BasedOn,
-			dataLock:           value.DataLock,
-			dataLockFields:     value.DataLockFields,
-			fullTextSearch:     value.FullTextSearch,
-			dataHistory:        value.DataHistorySettings,
-			additionalIndexes:  value.AdditionalIndexes,
-		}
+		shape := numberedShapeOf(value, DocumentKind, reservedDocumentObjectName)
 		if value.Numerator != nil {
 			// The number comes from the numerator, and it is filled in once the
 			// whole project is read. Checking the empty block here would report a
@@ -184,6 +168,36 @@ type numberedObjectShape struct {
 	// an ordinary attribute's is. Carrying the link and never checking where it
 	// points would leave a broken reference to be found at run time.
 	extraFields []fieldGroup
+}
+
+// numberedShapeOf reads the shape from the description of a numbered object
+// by the names of its fields, as headOf reads the head: a document, a business
+// process and a task name them alike, so a field the shape gains is read here
+// once rather than in each of the three. What a kind keeps apart from the
+// shape - a task's addressing attributes, a document's numerator - its
+// decoder adds. A description without one of the fields panics at once, in
+// the tests of every numbered kind, rather than read a zero value.
+func numberedShapeOf(description any, kind Kind, reservedName func(string) bool) numberedObjectShape {
+	value := reflect.ValueOf(description)
+	field := func(name string) any { return value.FieldByName(name).Interface() }
+	return numberedObjectShape{
+		number:             field("Number").(DocumentNumber),
+		attributes:         field("Attributes").([]Attribute),
+		tableParts:         field("TableParts").([]TablePart),
+		forms:              field("Forms").(ObjectForms),
+		list:               field("List").(ListSettings),
+		reservedName:       reservedName,
+		kind:               kind,
+		standardAttributes: field("StandardAttributes").([]StandardAttribute),
+		presentation:       field("Presentations").(Presentations),
+		input:              field("ObjectInput").(ObjectInput),
+		basedOn:            field("BasedOn").([]uuid.UUID),
+		dataLock:           field("DataLock").(project.DataLockControlMode),
+		dataLockFields:     field("DataLockFields").([]ObjectField),
+		fullTextSearch:     field("FullTextSearch").(FullTextSearchMode),
+		dataHistory:        field("DataHistorySettings").(DataHistorySettings),
+		additionalIndexes:  field("AdditionalIndexes").([]AdditionalIndex),
+	}
 }
 
 // validateNumberShape checks a number on its own, apart from the object that

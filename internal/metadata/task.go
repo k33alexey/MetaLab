@@ -101,25 +101,9 @@ type TaskDefinition struct {
 func DecodeTask(source string, reader io.Reader, configuration project.Project) (TaskDefinition, error) {
 	return decodeDescription(source, reader, configuration, func(value TaskDefinition, configuration project.Project) []string {
 		var issues []string
-		issues = append(issues, validateNumberedObjectShape(numberedObjectShape{
-			number:             value.Number,
-			attributes:         value.Attributes,
-			tableParts:         value.TableParts,
-			forms:              value.Forms,
-			list:               value.List,
-			reservedName:       reservedTaskName,
-			kind:               TaskKind,
-			standardAttributes: value.StandardAttributes,
-			presentation:       value.Presentations,
-			input:              value.ObjectInput,
-			basedOn:            value.BasedOn,
-			dataLock:           value.DataLock,
-			dataLockFields:     value.DataLockFields,
-			fullTextSearch:     value.FullTextSearch,
-			dataHistory:        value.DataHistorySettings,
-			additionalIndexes:  value.AdditionalIndexes,
-			extraFields:        []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}},
-		}, configuration)...)
+		shape := numberedShapeOf(value, TaskKind, reservedTaskName)
+		shape.extraFields = []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}}
+		issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
 		// A description of length 0 switches it off, as on a catalog; on a task
 		// the owner did not check it, so it is a note (NoteLengthZeroUnchecked).
 		if value.DescriptionLength < 0 || value.DescriptionLength > maxDescriptionLength {
