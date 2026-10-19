@@ -147,7 +147,12 @@ func calculator() []Part {
 // darker rim, which reads at 16 pixels where an outline did not (the
 // owner's remark of 19.10.2026 on «Переместить вверх/вниз»).
 func solidArrow(angle float64) []Part {
-	return []Part{path(Accent, blockArrow(angle)), path(Rim, blockArrow(angle))}
+	return solidPath(blockArrow(angle))
+}
+
+// solidPath is a shape filled solid in the accent with a darker rim.
+func solidPath(shape string) []Part {
+	return []Part{path(Accent, shape), path(Rim, shape)}
 }
 
 func blockArrow(angle float64) string {
@@ -279,10 +284,28 @@ var commandIcons = []Icon{
 		path(Body, "M1.5 6.5H5.5L7.5 8.5H14.5V14.5H1.5Z"),
 		path(Line, "M10.5 6.5V4"), path(Accent, head(10.5, 0.5, 0, -1, 2)),
 	}},
-	{ID: "file-close", Color: gray, Accent: gray, Parts: []Part{
-		path(Body, "M1.5 6.5H5.5L7.5 8.5H14.5V14.5H1.5Z"),
-		path(Line, "M10.5 1.5V3"), path(Accent, head(10.5, 6.5, 0, 1, 2)),
+	// The folder of «Открыть» with the arrow going down into it to its
+	// bottom, in the colours of «Открыть»: the prototype's grey is its
+	// unavailable state, which read as a disabled command (the owner's
+	// remarks of 19.10.2026); the folder ten points high at its left, the
+	// edge of the folder clearing round the arrow.
+	{ID: "file-close", Color: groupColor, Accent: blue, Parts: append([]Part{path(Body, "M1.5 4.5H5.5L7.5 6.5H14.5V14.5H1.5Z")},
+		thinlyCleared(path(Line, "M10.5 0.5V10"), path(Accent, head(10.5, 13.5, 0, 1, 2)))...)},
+	// A white sheet of XML in a blue edge: the small black brackets of a
+	// tag in its upper half and at its foot a bold green arrow down -
+	// loading - outlined in white at its sides and below, across the edge
+	// of the sheet, but not above, where it would wipe out the tag (the
+	// owner's picture and choices of 19.10.2026, docs/загрузить из хмл.png,
+	// drawn our own way; the band with the letters XML did not read at 16
+	// points and is left out).
+	{ID: "load-xml", Color: sea, Accent: sea, Parts: []Part{
+		colored(path(Accent, "M2 1H10L12 3V14H2Z"), "#ffffff"),
+		path(Line, "M1.5 0.5H9.5L12.5 3.5V14.5H1.5Z"), path(Line, "M9.5 0.5V3.5H12.5"),
+		colored(path(Line, "M5 5.5L4 6.5L5 7.5M9 5.5L10 6.5L9 7.5M7.5 5L6.5 8"), "#222222"),
+		colored(path(Accent, "M5 9H9V11H12L7 16L2 11H5Z"), "#ffffff"),
+		colored(path(Accent, "M6 9H8V12H10L7 15L4 12H6Z"), green),
 	}},
+
 	{ID: "save", Color: blue, Accent: slate, Parts: floppy()},
 	{ID: "compare-files", Color: slate, Parts: join([]Part{
 		rect(Body, 1.5, 1.5, 7, 9), path(Detail, "M3.5 4.5H6.5M3.5 6.5H6.5"),
@@ -301,12 +324,13 @@ var commandIcons = []Icon{
 		path(Line, "M4.5 1.5V14.5M11.5 1.5V14.5M2.5 4.5H13.5M2.5 11.5H13.5"),
 	}},
 	// Правка.
-	{ID: "undo", Color: steel, Accent: steel, Parts: []Part{
-		path(Line, "M13.5 12.5Q13.5 5.5 7 5.5H5"), path(Accent, head(1.5, 5.5, -1, 0, 2)),
-	}},
-	{ID: "redo", Color: steel, Accent: steel, Parts: []Part{
-		path(Line, "M2.5 12.5Q2.5 5.5 9 5.5H11"), path(Accent, head(14.5, 5.5, 1, 0, 2)),
-	}},
+	// «Отменить» and «Вернуть» are the prototype's arrows: a large wide head
+	// and a short tail bending down from it and narrowing to its end, solid,
+	// in the same blue; an unavailable command greys it (the owner's
+	// snapshot and words of 19.10.2026).
+	{ID: "undo", Color: steel, Accent: steel, Parts: []Part{path(Accent, "M1 7L7 1V4.5Q12 4.5 13.5 9Q14.5 12 13 15Q12 11 10 10Q8.5 9.5 7 9.5V13Z")}},
+	{ID: "redo", Color: steel, Accent: steel, Parts: []Part{path(Accent, "M15 7L9 1V4.5Q4 4.5 2.5 9Q1.5 12 3 15Q4 11 6 10Q7.5 9.5 9 9.5V13Z")}},
+
 	{ID: "cut", Color: slate, Parts: scissors()},
 	{ID: "copy", Color: slate, Parts: twoPages()},
 	{ID: "paste", Color: gray, Accent: slate, Parts: clipboard()},

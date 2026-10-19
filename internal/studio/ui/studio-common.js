@@ -450,8 +450,7 @@ function showContextMenu(event, items) {
     const box = event.currentTarget.getBoundingClientRect();
     x = box.left; y = box.bottom;
   }
-  menu.style.left = Math.max(0, Math.min(x, innerWidth - menu.offsetWidth)) + 'px';
-  menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
+  placeMenu(menu, x, y);
   const away = other => { if (!menu.contains(other.target)) closeContextMenu(); };
   const close = () => closeContextMenu();
   closeContextMenu.release = () => {
@@ -461,6 +460,14 @@ function showContextMenu(event, items) {
   addEventListener('mousedown', away, true); addEventListener('scroll', close, true);
   addEventListener('blur', close); addEventListener('resize', close);
   commands[0]?.focus();
+}
+
+/* placeMenu puts a menu shown at x, y where it stays in the window: moved
+   left and up by what would stand out of it - a context menu, a menu of the
+   main menu and its submenus alike. */
+function placeMenu(menu, x, y) {
+  menu.style.left = Math.max(0, Math.min(x, innerWidth - menu.offsetWidth)) + 'px';
+  menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
 function closeContextMenu() {

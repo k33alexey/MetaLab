@@ -50,7 +50,10 @@
 .context-menu-item{background:transparent!important;border:none!important;border-radius:4px;padding:6px 12px!important;color:#dfe1e5;text-align:left;font-size:13px;cursor:pointer}
 .context-menu-item:hover,.context-menu-item:focus{background:#2f4a6d!important;outline:none}
 .context-menu-separator{height:1px;margin:4px 6px;background:#4a4d54}.context-menu-key{float:right;margin-left:24px;color:#aeb1b8}.context-menu-item:disabled .context-menu-key{color:inherit}
-.context-menu-item>.tree-icon{margin-right:8px;vertical-align:-3px}.context-menu-item:disabled>.tree-icon{opacity:.4}
+.context-menu-item>.tree-icon{margin-right:8px;vertical-align:-3px}
+/* Значок недоступной команды — серый, как у прототипа: в меню, на панелях и
+   кнопках одно правило (замечание владельца 19.10.2026). */
+button:disabled .tree-icon,.context-menu-item:disabled>.tree-icon{filter:grayscale(1);opacity:.5}
 .context-menu-item:disabled{color:#6f737a;cursor:default}.context-menu-item:disabled:hover{background:transparent!important}
 .clearable-select{display:inline-flex;align-items:stretch;gap:2px}.clearable-select select{flex:1}.clearable-select-clear{padding:2px 8px!important}
 
