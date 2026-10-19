@@ -1035,24 +1035,20 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			}
 		}
 	}
+	// A field of a source refers to a table of that same source, which is
+	// narrower than what the walk of every object asks of a reference; the
+	// narrower rule answers first, and says what is wrong.
+	if err := catalog.validateExternalDataSources(); err != nil {
+		return err
+	}
+	if err := catalog.validateObjectsAsLoaded(root, order); err != nil {
+		return err
+	}
 	for _, item := range catalog.Constants {
-		if err := catalog.validateReferences("constant "+item.Name, item.Types); err != nil {
-			return err
-		}
 		if item.Default != nil {
 			if _, err := catalog.NormalizeValue(item, *item.Default); err != nil {
 				return fmt.Errorf("constant %s default: %w", item.Name, err)
 			}
-		}
-	}
-	for _, item := range catalog.SessionParameters {
-		if err := catalog.validateReferences("session parameter "+item.Name, item.Types); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.CommonAttributes {
-		if err := catalog.validateReferences("common attribute "+item.Name, item.Types); err != nil {
-			return err
 		}
 	}
 	for _, item := range catalog.CommonModules {
@@ -1060,60 +1056,8 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
-	for _, item := range catalog.DefinedTypes {
-		if err := catalog.validateReferences("defined type "+item.Name, item.Types); err != nil {
-			return err
-		}
-	}
 	for _, item := range catalog.Catalogs {
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences("catalog "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences("catalog "+item.Name+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		for _, predefined := range item.Predefined {
-			values := make(map[uuid.UUID]Value, len(predefined.Attributes))
-			for name, value := range predefined.Attributes {
-				attribute, ok := findCatalogAttribute(item.Attributes, name)
-				if !ok {
-					return fmt.Errorf("predefined catalog item %s.%s has unknown attribute %s", item.Name, predefined.Name, name)
-				}
-				values[attribute.ID] = value
-			}
-			if _, err := catalog.normalizeAttributes(item.Name+"."+predefined.Name, item.Attributes, values); err != nil {
-				return fmt.Errorf("predefined catalog item %s.%s: %w", item.Name, predefined.Name, err)
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: CatalogKind, kind: "catalog", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.SettingsStorages {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: SettingsStorageKind,
-			kind: "settings storage", name: item.Name,
-			formSlots: item.Forms.slots(), templates: item.Templates}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.FilterCriteria {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: FilterCriterionKind,
-			kind: "filter criterion", name: item.Name,
-			formSlots: item.Forms.slots(), commands: item.Commands}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.Enumerations {
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: EnumerationKind,
-			kind: "enumeration", name: item.Name,
-			formSlots: item.Forms.slots(),
-			commands:  item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validatePredefinedValues("catalog item", item.Name, item.Attributes, item.Predefined); err != nil {
 			return err
 		}
 	}
@@ -1130,98 +1074,29 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 				return fmt.Errorf("%s references unknown catalog of additional values %s", owner, item.AdditionalValues)
 			}
 		}
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
+		predefined := make([]PredefinedCatalogItem, 0, len(item.Predefined))
+		for _, characteristic := range item.Predefined {
+			predefined = append(predefined, characteristic.PredefinedCatalogItem)
 		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		for _, predefined := range item.Predefined {
-			values := make(map[uuid.UUID]Value, len(predefined.Attributes))
-			for name, value := range predefined.Attributes {
-				attribute, ok := findCatalogAttribute(item.Attributes, name)
-				if !ok {
-					return fmt.Errorf("predefined characteristic %s.%s has unknown attribute %s", item.Name, predefined.Name, name)
-				}
-				values[attribute.ID] = value
-			}
-			if _, err := catalog.normalizeAttributes(item.Name+"."+predefined.Name, item.Attributes, values); err != nil {
-				return fmt.Errorf("predefined characteristic %s.%s: %w", item.Name, predefined.Name, err)
-			}
+		if err := catalog.validatePredefinedValues("characteristic", item.Name, item.Attributes, predefined); err != nil {
+			return err
 		}
 		if err := catalog.validatePredefinedCharacteristicTypes(owner, item); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfCharacteristicTypesKind, kind: "chart of characteristic types", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
 	}
 	for _, item := range catalog.ChartsOfAccounts {
-		owner := "chart of accounts " + item.Name
-		if err := catalog.validateChartOfAccountsAnalytics(owner, item); err != nil {
-			return err
-		}
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfAccountsKind, kind: "chart of accounts", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateChartOfAccountsAnalytics("chart of accounts "+item.Name, item); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.ChartsOfCalculationTypes {
-		owner := "chart of calculation types " + item.Name
-		if err := catalog.validateCalculationBase(owner, item); err != nil {
-			return err
-		}
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ChartOfCalculationTypesKind, kind: "chart of calculation types", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateCalculationBase("chart of calculation types "+item.Name, item); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.Tasks {
-		owner := "task " + item.Name
-		if err := catalog.validateTaskAddressing(owner, item); err != nil {
-			return err
-		}
-		for _, attribute := range append(slices.Clone(item.Attributes), addressingAsAttributes(item)...) {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: TaskKind, kind: "task", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateTaskAddressing("task "+item.Name, item); err != nil {
 			return err
 		}
 	}
@@ -1249,132 +1124,36 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		if err := catalog.validateSequence("sequence "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: SequenceKind, kind: "sequence", name: item.Name}); err != nil {
-			return err
-		}
 	}
 	for _, item := range catalog.DocumentJournals {
 		if err := catalog.validateDocumentJournal("document journal "+item.Name, item, owners); err != nil {
 			return err
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DocumentJournalKind, kind: "document journal", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
 	}
 	for _, item := range catalog.ExchangePlans {
-		owner := "exchange plan " + item.Name
-		if err := catalog.validateExchangePlanRegistration(owner, item); err != nil {
-			return err
-		}
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ExchangePlanKind, kind: "exchange plan", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateExchangePlanRegistration("exchange plan "+item.Name, item); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.BusinessProcesses {
-		owner := "business process " + item.Name
-		if err := catalog.validateBusinessProcessRoute(owner, item); err != nil {
-			return err
-		}
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences(owner+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: BusinessProcessKind, kind: "business process", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates,
-			collections: []string{project.RouteDirectory}, route: &item.Route}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.Documents {
-		for _, attribute := range item.Attributes {
-			if err := catalog.validateReferences("document "+item.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		for _, part := range item.TableParts {
-			for _, attribute := range part.Attributes {
-				if err := catalog.validateReferences("document "+item.Name+" table part "+part.Name+" attribute "+attribute.Name, attribute.Types); err != nil {
-					return err
-				}
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DocumentKind, kind: "document", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.InformationRegisters {
-		for _, field := range informationRegisterFields(item) {
-			if err := catalog.validateReferences("information register "+item.Name+" field "+field.Name, field.Types); err != nil {
-				return err
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: InformationRegisterKind, kind: "information register", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
+		if err := catalog.validateBusinessProcessRoute("business process "+item.Name, item); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.AccumulationRegisters {
-		for _, field := range accumulationRegisterFields(item) {
-			if err := catalog.validateReferences("accumulation register "+item.Name+" field "+field.Name, field.Types); err != nil {
-				return err
-			}
-		}
 		for _, resource := range item.Resources {
 			if _, err := catalog.accumulationResourceType(resource); err != nil {
 				return fmt.Errorf("accumulation register %s: %w", item.Name, err)
 			}
 		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: AccumulationRegisterKind, kind: "accumulation register", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
 	}
 	for _, item := range catalog.AccountingRegisters {
-		if err := catalog.validateAccountingRegister(root, item); err != nil {
+		if err := catalog.validateAccountingRegister(item); err != nil {
 			return err
 		}
 	}
 	for _, item := range catalog.CalculationRegisters {
 		if err := catalog.validateCalculationRegister(root, item); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.Reports {
-		owner := "report " + item.Name
-		for _, attribute := range append(slices.Clone(item.Attributes), tablePartAttributes(item.TableParts)...) {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: ReportKind, kind: "report", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-			return err
-		}
-	}
-	for _, item := range catalog.DataProcessors {
-		owner := "data processor " + item.Name
-		for _, attribute := range append(slices.Clone(item.Attributes), tablePartAttributes(item.TableParts)...) {
-			if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-				return err
-			}
-		}
-		if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: DataProcessorKind, kind: "data processor", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
 			return err
 		}
 	}
@@ -1462,15 +1241,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateWebSocketClientFiles(root); err != nil {
 		return err
 	}
-	if err := catalog.validateExternalDataSources(); err != nil {
-		return err
-	}
-	if err := catalog.validateExternalTableFiles(root); err != nil {
-		return err
-	}
-	if err := catalog.validateExternalCubeFiles(root); err != nil {
-		return err
-	}
 	// Both resolve through defined types or across objects, so they come
 	// after everything is loaded. Defined types end: one never holds another
 	// (DecodeDefinedType refuses it), and a catalog made without decoding is
@@ -1480,6 +1250,71 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 		return err
 	}
 	return catalog.resolveFieldChoices(root != "")
+}
+
+// validateObjectsAsLoaded is the one walk of the checks every object takes
+// once the whole configuration is in, whatever its kind: every type its
+// fields and the fields of its table parts name, or the type of its value,
+// refers to an object that is there; and its folder keeps what it declares
+// and nothing else. What each kind holds comes from its composition
+// (kindCompositionOf), so a new place of fields or a new kind is checked by
+// being described, not by a loop of its own here. What a kind checks besides
+// is its own, in indexAndValidate.
+func (catalog *Catalog) validateObjectsAsLoaded(root string, order []uuid.UUID) error {
+	for _, id := range order {
+		object := catalog.objects[id]
+		owner := kindWord(object.kind) + " " + object.name
+		composition := kindCompositionOf[object.kind]
+		if composition.types != nil {
+			if err := catalog.validateReferences(owner, composition.types(catalog, id)); err != nil {
+				return err
+			}
+		}
+		parts, _ := catalog.partsOf(object.kind, id)
+		names := make(map[string]string, len(parts))
+		for _, part := range parts {
+			names[part.key] = part.name
+			if part.attribute == nil {
+				continue
+			}
+			field := owner
+			if part.parent != "" {
+				field += " table part " + names[part.parent]
+			}
+			field += " " + partWord(part.group) + " " + part.name
+			if err := catalog.validateReferences(field, part.attribute.Types); err != nil {
+				return err
+			}
+		}
+		if composition.files != nil {
+			files := composition.files(catalog, id)
+			files.root, files.id, files.directoryKind, files.kind, files.name = root, id, object.kind, kindWord(object.kind), object.name
+			if err := catalog.validateObjectFileSources(files); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validatePredefinedValues checks the values the predefined items of an
+// object give its attributes: each names an attribute the object has, and its
+// value is one the attribute holds.
+func (catalog *Catalog) validatePredefinedValues(word, owner string, attributes []Attribute, items []PredefinedCatalogItem) error {
+	for _, predefined := range items {
+		values := make(map[uuid.UUID]Value, len(predefined.Attributes))
+		for name, value := range predefined.Attributes {
+			attribute, ok := findCatalogAttribute(attributes, name)
+			if !ok {
+				return fmt.Errorf("predefined %s %s.%s has unknown attribute %s", word, owner, predefined.Name, name)
+			}
+			values[attribute.ID] = value
+		}
+		if _, err := catalog.normalizeAttributes(owner+"."+predefined.Name, attributes, values); err != nil {
+			return fmt.Errorf("predefined %s %s.%s: %w", word, owner, predefined.Name, err)
+		}
+	}
+	return nil
 }
 
 // validateChartOfAccountsAnalytics ties a chart of accounts to the chart of
@@ -1660,7 +1495,7 @@ func (catalog *Catalog) validateTaskAddressing(owner string, item TaskDefinition
 // the flags its fields depend on. A flag from another chart is the quiet kind
 // of mistake: the field would exist, the accounts would never turn it on, and
 // the column would stay empty for as long as anybody cared to look.
-func (catalog *Catalog) validateAccountingRegister(root string, item AccountingRegisterDefinition) error {
+func (catalog *Catalog) validateAccountingRegister(item AccountingRegisterDefinition) error {
 	owner := "accounting register " + item.Name
 	// A register with no chart has no flags to depend on and no ext
 	// dimensions: an empty chart answers both questions.
@@ -1699,9 +1534,6 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	}
 	for _, flagged := range fields {
 		field := flagged.field
-		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
-			return err
-		}
 		if flagged.accounting != nil && !flags[*flagged.accounting] {
 			return fmt.Errorf("%s field %s depends on %s, which is not an accounting flag of %s",
 				owner, field.Name, flagged.accounting, chart.Name)
@@ -1709,11 +1541,6 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 		if flagged.extension != nil && !extFlags[*flagged.extension] {
 			return fmt.Errorf("%s field %s depends on %s, which is not an ext dimension accounting flag of %s",
 				owner, field.Name, flagged.extension, chart.Name)
-		}
-	}
-	for _, attribute := range item.Attributes {
-		if err := catalog.validateReferences(owner+" attribute "+attribute.Name, attribute.Types); err != nil {
-			return err
 		}
 	}
 	// The ext dimensions of an entry are as many as the chart allows, and the
@@ -1729,7 +1556,7 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 	if issues := validateAccountingRegisterLinks(item, chart.EffectiveMaxExtDimensionCount()); len(issues) > 0 {
 		return fmt.Errorf("%s: %s", owner, strings.Join(issues, "; "))
 	}
-	return catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: AccountingRegisterKind, kind: "accounting register", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates})
+	return nil
 }
 
 // takesABase says whether a chart gathers a base at all. An unset dependency
@@ -1737,15 +1564,6 @@ func (catalog *Catalog) validateAccountingRegister(root string, item AccountingR
 // would let a base period through on half the charts that have none.
 func takesABase(chart ChartOfCalculationTypesDefinition) bool {
 	return chart.BaseDependency != "" && chart.BaseDependency != NoBaseDependency
-}
-
-// tablePartAttributes is every attribute inside the parts, flattened.
-func tablePartAttributes(parts []TablePart) []Attribute {
-	var result []Attribute
-	for _, part := range parts {
-		result = append(result, part.Attributes...)
-	}
-	return result
 }
 
 // validateCalculationRegister resolves the chart a register calculates by, the
@@ -1809,9 +1627,6 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 	dimensions := map[uuid.UUID]bool{}
 	for _, dimension := range item.Dimensions {
 		dimensions[dimension.ID] = true
-		if err := catalog.validateReferences(owner+" dimension "+dimension.Name, dimension.Types); err != nil {
-			return err
-		}
 		if dimension.Base && !takesABase(chart) {
 			return fmt.Errorf("%s dimension %s is a base dimension, but %s takes no base", owner, dimension.Name, chart.Name)
 		}
@@ -1827,11 +1642,6 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 	for _, resource := range item.Resources {
 		if _, err := catalog.accumulationResourceType(resource); err != nil {
 			return fmt.Errorf("%s: %w", owner, err)
-		}
-	}
-	for _, field := range append(slices.Clone(item.Resources), item.attributeFields()...) {
-		if err := catalog.validateReferences(owner+" field "+field.Name, field.Types); err != nil {
-			return err
 		}
 	}
 	// Leading data are fields of calculation registers - this one or another.
@@ -1864,9 +1674,6 @@ func (catalog *Catalog) validateCalculationRegister(root string, item Calculatio
 				}
 			}
 		}
-	}
-	if err := catalog.validateObjectFileSources(objectFiles{root: root, id: item.ID, directoryKind: CalculationRegisterKind, kind: "calculation register", name: item.Name, formSlots: item.Forms.slots(), commands: item.Commands, templates: item.Templates}); err != nil {
-		return err
 	}
 	return validateRecalculationFiles(root, item)
 }

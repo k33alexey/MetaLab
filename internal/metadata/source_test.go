@@ -103,3 +103,33 @@ func TestEveryKindIsNamed(t *testing.T) {
 		}
 	}
 }
+
+// The folder of an object is checked against what its description declares,
+// read off the description itself (declaredFilesOf). That needs the walk to
+// find the description, and the fields it reads to be what it reads them as.
+// Defects caught: a kind whose folder is checked but whose description cannot
+// be found - its forms, commands and templates silently unchecked - and a
+// field of forms, commands or templates of another type, which would panic on
+// the first object of the kind.
+func TestEveryCheckedFolderIsReadOffItsDescription(t *testing.T) {
+	t.Parallel()
+	for _, item := range kindInfos {
+		if kindCompositionOf[item.kind].files == nil {
+			continue
+		}
+		if item.object == nil || item.described == nil {
+			t.Errorf("%s has its folder checked, and its description cannot be found", item.kind)
+			continue
+		}
+		if forms, ok := item.described.FieldByName("Forms"); ok && !forms.Type.Implements(reflect.TypeFor[formRoles]()) {
+			t.Errorf("%s keeps forms of %s, which says no form roles", item.kind, forms.Type)
+		}
+		for name, want := range map[string]reflect.Type{
+			"Commands": reflect.TypeFor[[]ObjectCommand](), "Templates": reflect.TypeFor[[]ObjectTemplate](),
+		} {
+			if field, ok := item.described.FieldByName(name); ok && field.Type != want {
+				t.Errorf("%s keeps %s of %s, not %s", item.kind, name, field.Type, want)
+			}
+		}
+	}
+}

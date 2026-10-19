@@ -36,6 +36,9 @@ type kindInfo struct {
 	objects func(catalog *Catalog) reflect.Value
 	// has says an object of the kind with the identifier is in the catalog.
 	has func(catalog *Catalog, id uuid.UUID) bool
+	// object finds the description of an object of the kind by its
+	// identifier, nil for a kind not kept in a list of its own.
+	object func(catalog *Catalog, id uuid.UUID) (any, bool)
 	// references are the types of a reference to an object of the kind, in
 	// the order and number the kinds package names them, each with the set
 	// that holds all of them; none for a kind whose objects have no
@@ -447,12 +450,30 @@ func init() {
 		// A table, a cube and a dimension table are found among the objects of
 		// every source.
 		describedAs(ExternalDataSourceTableKind, DecodeExternalTable, nil, nil).
-			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalTableByID[id]; return ok }).
+			located(func(c *Catalog, id uuid.UUID) (any, bool) {
+				at, ok := c.externalTableByID[id]
+				if !ok {
+					return nil, false
+				}
+				return c.ExternalDataSources[at.source].Tables[at.table], true
+			}).
 			refers(kindReference{ExternalTableType, "", notStored}),
 		describedAs(ExternalCubeKind, DecodeExternalCube, nil, nil).
-			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalCubeByID[id]; return ok }),
+			located(func(c *Catalog, id uuid.UUID) (any, bool) {
+				at, ok := c.externalCubeByID[id]
+				if !ok {
+					return nil, false
+				}
+				return c.ExternalDataSources[at.source].Cubes[at.cube], true
+			}),
 		describedAs(ExternalDimensionTableKind, DecodeExternalDimensionTable, nil, nil).
-			found(func(c *Catalog, id uuid.UUID) bool { _, ok := c.externalDimensionTableByID[id]; return ok }).
+			located(func(c *Catalog, id uuid.UUID) (any, bool) {
+				at, ok := c.externalDimensionTableByID[id]
+				if !ok {
+					return nil, false
+				}
+				return c.ExternalDataSources[at.source].Cubes[at.cube].DimensionTables[at.table], true
+			}).
 			refers(kindReference{ExternalDimensionTableType, "", notStored}),
 		// A function is read inside the description of its source: no
 		// reading of its own, only what may name it.
@@ -563,6 +584,15 @@ func describedAs[T any](kind Kind, decode func(string, io.Reader, project.Projec
 	if ids != nil {
 		item.has = indexed(ids)
 	}
+	if list != nil && ids != nil {
+		item.object = func(catalog *Catalog, id uuid.UUID) (any, bool) {
+			index, ok := ids(catalog)[id]
+			if !ok {
+				return nil, false
+			}
+			return (*list(catalog))[index], true
+		}
+	}
 	return item
 }
 
@@ -571,9 +601,12 @@ func indexed(ids func(*Catalog) map[uuid.UUID]int) func(*Catalog, uuid.UUID) boo
 	return func(catalog *Catalog, id uuid.UUID) bool { _, ok := ids(catalog)[id]; return ok }
 }
 
-// found, refers, holds and names fill in the rest of a kind.
-func (item kindInfo) found(has func(*Catalog, uuid.UUID) bool) kindInfo {
-	item.has = has
+// located, refers, holds and names fill in the rest of a kind. located
+// finds the objects of a kind that lie inside another's description - a
+// table or a cube of a source - by where they lie.
+func (item kindInfo) located(object func(*Catalog, uuid.UUID) (any, bool)) kindInfo {
+	item.object = object
+	item.has = func(catalog *Catalog, id uuid.UUID) bool { _, ok := object(catalog, id); return ok }
 	return item
 }
 

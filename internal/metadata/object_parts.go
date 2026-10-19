@@ -2,8 +2,11 @@ package metadata
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -127,6 +130,54 @@ type kindComposition struct {
 	// common attributes (help: КонстантаМенеджерЗначения.<Имя>.<Имя общего
 	// реквизита>). Nil where there are none.
 	valueFields func(catalog *Catalog, id uuid.UUID) []Attribute
+	// types is the types of the value of a kind whose object is one value
+	// and declares no fields: a constant, a session parameter, a common
+	// attribute, a defined type. Nil where the object is no such value.
+	types func(catalog *Catalog, id uuid.UUID) []Type
+	// files is what the folder of an object of the kind keeps beside its
+	// modules and declares in its description - the form roles, the commands,
+	// the templates, the folders of its own content; the load fills in the
+	// rest (validateObjectsAsLoaded). Nil is a kind whose objects keep no
+	// such folder, or whose files are checked by code of their own.
+	files func(catalog *Catalog, id uuid.UUID) objectFiles
+}
+
+// withFiles is the composition with the files its objects keep.
+func (composition kindComposition) withFiles(files func(catalog *Catalog, id uuid.UUID) objectFiles) kindComposition {
+	composition.files = files
+	return composition
+}
+
+// formRoles is the forms of a description: every kind keeps its own set of
+// roles and says which it has (formSlot).
+type formRoles interface{ slots() []formSlot }
+
+// declaredFilesOf is what the folder of an object keeps because its
+// description declares it: the forms of its roles, its commands and its
+// templates - as many of these as a description of its kind has. The kind
+// says which by the description itself, so a kind that gains templates is
+// checked for them without a word here.
+func declaredFilesOf(catalog *Catalog, id uuid.UUID) objectFiles {
+	var files objectFiles
+	info, _ := kindInfoOf(catalog.objects[id].kind)
+	if info.object == nil {
+		return files
+	}
+	found, ok := info.object(catalog, id)
+	if !ok {
+		return files
+	}
+	description := reflect.ValueOf(found)
+	if forms := description.FieldByName("Forms"); forms.IsValid() {
+		files.formSlots = forms.Interface().(formRoles).slots()
+	}
+	if commands := description.FieldByName("Commands"); commands.IsValid() {
+		files.commands = commands.Interface().([]ObjectCommand)
+	}
+	if templates := description.FieldByName("Templates"); templates.IsValid() {
+		files.templates = templates.Interface().([]ObjectTemplate)
+	}
+	return files
 }
 
 // heldIdentity is something an object holds with an identifier of its own,
@@ -169,16 +220,22 @@ var kindCompositionOf = map[Kind]kindComposition{
 	SubsystemKind: {},
 	ConstantKind: {valueFields: func(c *Catalog, id uuid.UUID) []Attribute {
 		return c.Constants[c.constantByID[id]].CommonAttributeFields
+	}, types: func(c *Catalog, id uuid.UUID) []Type {
+		return c.Constants[c.constantByID[id]].Types
 	}},
-	SessionParameterKind:  {},
-	CommonAttributeKind:   {},
+	SessionParameterKind: {types: func(c *Catalog, id uuid.UUID) []Type {
+		return c.SessionParameters[c.sessionParameterByID[id]].Types
+	}},
+	CommonAttributeKind: {types: func(c *Catalog, id uuid.UUID) []Type {
+		return c.CommonAttributes[c.commonAttributeByID[id]].Types
+	}},
 	CommonModuleKind:      {},
 	EventSubscriptionKind: {},
 	EnumerationKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.Enumerations[c.enumerationByID[id]].Commands)
 	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("value", c.Enumerations[c.enumerationByID[id]].Values)
-	}},
+	}, files: declaredFilesOf},
 	ScheduledJobKind:   {},
 	CommandGroupKind:   {},
 	CommonCommandKind:  {},
@@ -199,6 +256,16 @@ var kindCompositionOf = map[Kind]kindComposition{
 		location := c.externalTableByID[id]
 		table := c.ExternalDataSources[location.source].Tables[location.table]
 		return externalFieldParts(table.Fields, table.Commands)
+	}, files: func(c *Catalog, id uuid.UUID) objectFiles {
+		files := declaredFilesOf(c, id)
+		// The kind has both modules of data; a table keeps the one of its
+		// type.
+		other := kinds.ObjectModule
+		if location := c.externalTableByID[id]; c.ExternalDataSources[location.source].Tables[location.table].ObjectTable() {
+			other = kinds.RecordSetModule
+		}
+		files.modules = slices.DeleteFunc(kinds.Must(ExternalDataSourceTableKind).Layout().Modules, func(module kinds.Module) bool { return module == other })
+		return files
 	}},
 	// A cube is read as a register is: its dimensions and resources are the
 	// fields of its records (help: ВнешнийИсточникДанныхКубЗапись.<Имя
@@ -207,14 +274,14 @@ var kindCompositionOf = map[Kind]kindComposition{
 		location := c.externalCubeByID[id]
 		cube := c.ExternalDataSources[location.source].Cubes[location.cube]
 		return registerParts(cube.dimensionAttributes(), cube.resourceAttributes(), nil, cube.Commands)
-	}},
+	}, files: declaredFilesOf},
 	// A dimension table holds fields as a table of a source does (help:
 	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект.<Имя поля>).
 	ExternalDimensionTableKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		location := c.externalDimensionTableByID[id]
 		table := c.ExternalDataSources[location.source].Cubes[location.cube].DimensionTables[location.table]
 		return externalFieldParts(table.Fields, table.Commands)
-	}},
+	}, files: declaredFilesOf},
 	ExternalFunctionKind: {},
 	HTTPServiceKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
@@ -232,20 +299,22 @@ var kindCompositionOf = map[Kind]kindComposition{
 	StyleKind:                     {},
 	FunctionalOptionKind:          {},
 	FunctionalOptionParameterKind: {},
-	SettingsStorageKind:           {},
+	SettingsStorageKind:           {files: declaredFilesOf},
 	FilterCriterionKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.FilterCriteria[c.filterCriterionByID[id]].Commands)
+	}, files: declaredFilesOf},
+	DefinedTypeKind: {types: func(c *Catalog, id uuid.UUID) []Type {
+		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
-	DefinedTypeKind: {},
-	LanguageKind:    {},
+	LanguageKind: {},
 	CatalogKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCatalogItem) {
 		item := c.Catalogs[c.catalogByID[id]]
 		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}),
+	}).withFiles(declaredFilesOf),
 	ChartOfCharacteristicTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCharacteristic) {
 		item := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
 		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}),
+	}).withFiles(declaredFilesOf),
 	ChartOfAccountsKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
@@ -258,11 +327,11 @@ var kindCompositionOf = map[Kind]kindComposition{
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("predefined item", c.ChartsOfAccounts[c.chartOfAccountsByID[id]].Predefined)
-	}},
+	}, files: declaredFilesOf},
 	ChartOfCalculationTypesKind: referenceKind(func(c *Catalog, id uuid.UUID) ([]Attribute, []TablePart, []ObjectCommand, []PredefinedCalculationType) {
 		item := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
 		return item.Attributes, item.TableParts, item.Commands, item.Predefined
-	}),
+	}).withFiles(declaredFilesOf),
 	TaskKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Tasks[c.taskByID[id]]
 		parts := declaredParts(item.Attributes, nil, nil)
@@ -270,15 +339,15 @@ var kindCompositionOf = map[Kind]kindComposition{
 			parts = append(parts, fieldPart(&attribute, AddressingAttributesPart, ""))
 		}
 		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
-	}},
+	}, files: declaredFilesOf},
 	AccountingRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.AccountingRegisters[c.accountingRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources), item.Attributes, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	CalculationRegisterKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.CalculationRegisters[c.calculationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.attributeFields(), item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	RecalculationKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		recalculation, _ := c.recalculationOf(id)
 		return identitiesOf("dimension", recalculation.Dimensions)
@@ -286,42 +355,49 @@ var kindCompositionOf = map[Kind]kindComposition{
 	ReportKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Reports[c.reportByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	DataProcessorKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.DataProcessors[c.dataProcessorByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	NumeratorKind: {},
 	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
-	}},
+	}, files: declaredFilesOf},
 	DocumentJournalKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.DocumentJournals[c.documentJournalByID[id]].Commands)
 	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
-	}},
+	}, files: declaredFilesOf},
 	ExchangePlanKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.ExchangePlans[c.exchangePlanByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	BusinessProcessKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.BusinessProcesses[c.businessProcessByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
 	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
+	}, files: func(c *Catalog, id uuid.UUID) objectFiles {
+		// The route map keeps the pictures its items draw in a folder of
+		// the process.
+		files := declaredFilesOf(c, id)
+		files.collections = []string{project.RouteDirectory}
+		files.route = &c.BusinessProcesses[c.businessProcessByID[id]].Route
+		return files
 	}},
 	DocumentKind: {dataVersion: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.Documents[c.documentByID[id]]
 		return declaredParts(item.Attributes, item.TableParts, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	InformationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.InformationRegisters[c.informationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 	AccumulationRegisterKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		item := c.AccumulationRegisters[c.accumulationRegisterByID[id]]
 		return registerParts(RegisterDimensionAttributes(item.Dimensions), item.Resources, item.Attributes, item.Commands)
-	}},
+	}, files: declaredFilesOf},
 }
 
 // referenceKind is the composition of a kind whose objects declare
@@ -414,6 +490,12 @@ func (catalog *Catalog) partsOf(kind Kind, id uuid.UUID) ([]objectPart, bool) {
 	return parts, true
 }
 
+// partWord is what one part of the group is called in a message: an
+// attribute, a dimension, a table part.
+func partWord(group PartGroup) string {
+	return strings.ReplaceAll(strings.TrimSuffix(string(group), "s"), "-", " ")
+}
+
 // heldIdentities is everything of an object with an identifier of its own:
 // the parts the one walk of its composition finds, and the rest
 // (kindComposition.identities). A common attribute taken into the object is
@@ -434,8 +516,7 @@ func (catalog *Catalog) heldIdentities(kind Kind, id uuid.UUID) []heldIdentity {
 		} else if _, common := catalog.commonAttributeByID[partID]; common {
 			continue
 		}
-		word := strings.ReplaceAll(strings.TrimSuffix(string(part.group), "s"), "-", " ")
-		result = append(result, heldIdentity{id: partID, word: word, name: name})
+		result = append(result, heldIdentity{id: partID, word: partWord(part.group), name: name})
 	}
 	if more := kindCompositionOf[kind].identities; more != nil {
 		result = append(result, more(catalog, id)...)

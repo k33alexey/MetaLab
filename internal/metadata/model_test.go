@@ -1058,3 +1058,60 @@ func TestPredefinedTreeKeepsToTheLevels(t *testing.T) {
 		})
 	}
 }
+
+// A predefined item gives values to the attributes of its object by their
+// names, and the values are checked once the whole configuration is in: the
+// name has to be an attribute the object has, and the value one it holds. Both
+// kinds whose predefined items carry attribute values are checked. Defects
+// caught: a value for an attribute the object does not have kept and never
+// written anywhere, and a value the attribute cannot hold - a string longer
+// than it - taken as it is (no test held this before 2.375).
+func TestPredefinedValuesFitTheAttributesOfTheirObject(t *testing.T) {
+	t.Parallel()
+	objects := map[string]struct {
+		kind       Kind
+		word, head string
+	}{
+		"catalog": {CatalogKind, "catalog item", ""},
+		"chart":   {ChartOfCharacteristicTypesKind, "characteristic", "value_type: [{kind: string, length: 50}]\n"},
+	}
+	for name, object := range objects {
+		for _, testCase := range []struct {
+			values, want string
+		}{
+			// Refused already by the reading of the description; the load's
+			// own refusal is for a catalog made without one.
+			{`Нет: {kind: string, data: "1"}`, "predefined[0].attributes.Нет is unknown"},
+			{`ИНН: {kind: string, data: "1234567890123"}`, "predefined " + object.word + " Контрагенты.Основной: "},
+			{`ИНН: {kind: string, data: "123456789012"}`, ""},
+		} {
+			root := metadataProject(t)
+			writeMetadata(t, root, object.kind, catalogID, `format: 1
+id: `+catalogID+`
+name: Контрагенты
+title: {ru: Контрагенты}
+code: {type: string, length: 9}
+description_length: 150
+`+object.head+`attributes:
+  - id: `+attributeID+`
+    name: ИНН
+    title: {ru: ИНН}
+    types: [{kind: string, length: 12}]
+predefined:
+  - id: 70000000-0000-4000-8000-0000000000e1
+    name: Основной
+    code: "000000001"
+    description: Основной
+    attributes:
+      `+testCase.values+`
+`)
+			_, err := Load(root)
+			switch {
+			case testCase.want == "" && err != nil:
+				t.Errorf("%s: a value that fits was refused: %v", name, err)
+			case testCase.want != "" && (err == nil || !strings.Contains(err.Error(), testCase.want)):
+				t.Errorf("%s, %s: error = %v, want %q", name, testCase.values, err, testCase.want)
+			}
+		}
+	}
+}

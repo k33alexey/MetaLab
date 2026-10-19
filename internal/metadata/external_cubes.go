@@ -375,8 +375,9 @@ func cloneExternalCube(cube ExternalCube) ExternalCube {
 // and each cube's dimension tables from the cube's folder of them.
 //
 // What else lies in a cube's folder and a dimension table's - modules, forms,
-// commands, templates - is checked the way any object folder is, by
-// validateExternalCubeFiles once the whole configuration is read.
+// commands, templates - is checked the way any object folder is, by the walk
+// of every object once the whole configuration is read
+// (validateObjectsAsLoaded).
 func loadExternalCubes(sourceDirectory, relative string, configuration project.Project) ([]ExternalCube, error) {
 	directories, err := subordinateFolders(filepath.Join(sourceDirectory, ExternalDataSourceCubesDirectory),
 		relative+"/"+ExternalDataSourceCubesDirectory, "a cube")
@@ -452,32 +453,6 @@ func decodeFolderObject[T any](directory, relative string, configuration project
 		return zero, fmt.Errorf("%s is not the description of an object", source)
 	}
 	return value.(T), nil
-}
-
-// validateExternalCubeFiles checks the folders of every cube and dimension
-// table the way any object folder is checked. A cube is read as records, so it
-// keeps a record set module; a dimension table's members are things, so it
-// keeps an object module; both keep a manager module. A cube's folder keeps
-// the folder of its dimension tables beside all that.
-func (catalog *Catalog) validateExternalCubeFiles(root string) error {
-	for _, source := range catalog.ExternalDataSources {
-		for _, cube := range source.Cubes {
-			name := source.Name + "." + cube.Name
-			if err := catalog.validateObjectFileSources(objectFiles{root: root, id: cube.ID, directoryKind: ExternalCubeKind,
-				kind: "external data source cube", name: name,
-				formSlots: cube.Forms.slots(), commands: cube.Commands, templates: cube.Templates}); err != nil {
-				return err
-			}
-			for _, table := range cube.DimensionTables {
-				if err := catalog.validateObjectFileSources(objectFiles{root: root, id: table.ID, directoryKind: ExternalDimensionTableKind,
-					kind: "external data source dimension table", name: name + "." + table.Name,
-					formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
 }
 
 // ExternalCube returns one cube of a source by the names of both, folded case.

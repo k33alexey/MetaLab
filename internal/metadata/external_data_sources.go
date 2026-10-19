@@ -647,7 +647,8 @@ func (catalog *Catalog) ExternalTableByID(id uuid.UUID) (ExternalTable, string, 
 //
 // The folder of a table is an object folder: its modules, forms, commands and
 // templates lie there the way a catalog's lie in its, and are checked the same
-// way, by validateExternalTableFiles once the whole configuration is read.
+// way, by the walk of every object once the whole configuration is read
+// (validateObjectsAsLoaded).
 func addExternalDataSource(catalog *Catalog, root string, value any) error {
 	source := value.(ExternalDataSourceDefinition)
 	relative := "metadata/" + string(ExternalDataSourceKind) + "/" + source.Name
@@ -704,30 +705,6 @@ func loadExternalTables(directory, relative string, configuration project.Projec
 		tables = append(tables, table)
 	}
 	return tables, nil
-}
-
-// validateExternalTableFiles checks the folder of every table the way the
-// folder of a catalog is checked: the modules it keeps play roles the table
-// has - an object module for object data, a record set module for records, a
-// manager module for either - and the forms, commands and templates it
-// declares are there, and nothing else is.
-func (catalog *Catalog) validateExternalTableFiles(root string) error {
-	for _, source := range catalog.ExternalDataSources {
-		for _, table := range source.Tables {
-			// The kind has both; a table keeps the one of its type.
-			other := kinds.ObjectModule
-			if table.ObjectTable() {
-				other = kinds.RecordSetModule
-			}
-			modules := slices.DeleteFunc(kinds.Must(ExternalDataSourceTableKind).Layout().Modules, func(module kinds.Module) bool { return module == other })
-			if err := catalog.validateObjectFileSources(objectFiles{root: root, id: table.ID, directoryKind: ExternalDataSourceTableKind,
-				kind: "external data source table", name: source.Name + "." + table.Name, modules: modules,
-				formSlots: table.Forms.slots(), commands: table.Commands, templates: table.Templates}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // validateExternalDataSources checks what a table cannot check about itself:
