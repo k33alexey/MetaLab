@@ -66,6 +66,35 @@ func JSON(response http.ResponseWriter, status int, value any) {
 	_, _ = response.Write(body.Bytes())
 }
 
+// Answer answers what a route of a server did: a failure the way the route
+// refuses it, and otherwise the result as JSON with status - or nothing but
+// the status for 204 No Content, which has no body. Every route of Studio,
+// Manager and Portal that does one thing and answers it ends through here.
+func Answer(response http.ResponseWriter, status int, result any, err error, refuse func(http.ResponseWriter, error)) {
+	if err != nil {
+		refuse(response, err)
+		return
+	}
+	if status == http.StatusNoContent {
+		response.WriteHeader(status)
+		return
+	}
+	JSON(response, status, result)
+}
+
+// Refusal is the refusal of a route that answers every failure the same way:
+// with status and text, or with the failure's own words where text is empty.
+// A route that tells failures apart writes its refusal itself.
+func Refusal(status int, text string) func(http.ResponseWriter, error) {
+	return func(response http.ResponseWriter, err error) {
+		message := text
+		if message == "" {
+			message = err.Error()
+		}
+		http.Error(response, message, status)
+	}
+}
+
 // PolicyMissing names the headers of the policy an answer lacks or carries
 // with another value; the tests of every server ask it of their answers, so
 // that the policy is spelt out in one place and its values in one test.

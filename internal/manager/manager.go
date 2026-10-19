@@ -115,31 +115,29 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 				_ = serviceResponse.Body.Close()
 			}
 		}
-		response.Header().Set("Content-Type", "application/json; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(response).Encode(status)
+		webpage.JSON(response, http.StatusOK, status)
 	})
 	routes.HandleFunc("POST /api/portal/open", func(response http.ResponseWriter, _ *http.Request) {
 		result := struct {
 			URL    string `json:"url"`
 			Opened bool   `json:"opened"`
 		}{URL: settings.PortalURL()}
+		var err error
 		if browser, ok := launcher.(BrowserOpener); ok && browser != nil {
-			if err := browser.OpenURL(result.URL); err != nil {
-				http.Error(response, "Не удалось открыть браузер: "+err.Error(), http.StatusBadGateway)
-				return
-			}
-			result.Opened = true
+			err = browser.OpenURL(result.URL)
+			result.Opened = err == nil
 		}
-		response.Header().Set("Content-Type", "application/json; charset=utf-8")
-		response.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(response).Encode(result)
+		webpage.Answer(response, http.StatusOK, result, err, func(response http.ResponseWriter, err error) {
+			http.Error(response, "Не удалось открыть браузер: "+err.Error(), http.StatusBadGateway)
+		})
 	})
-	routes.HandleFunc("POST /api/studio/open", func(response http.ResponseWriter, request *http.Request) {
-		if launcher == nil {
-			http.Error(response, "ML Studio launcher is unavailable", http.StatusServiceUnavailable)
-			return
-		}
+	studio := func(route http.HandlerFunc) http.HandlerFunc {
+		return whenAvailable(launcher != nil, "ML Studio launcher is unavailable", route)
+	}
+	operations := func(unavailable string, route http.HandlerFunc) http.HandlerFunc {
+		return whenAvailable(postgres != nil, unavailable, route)
+	}
+	routes.HandleFunc("POST /api/studio/open", studio(func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			DatabaseID  uuid.UUID `json:"databaseId"`
 			ProjectPath string    `json:"projectPath"`
@@ -163,17 +161,10 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 				return
 			}
 		}
-		if err := launcher.OpenStudio(request.Context(), input.DatabaseID, input.ProjectPath); err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("POST /api/studio/clone", func(response http.ResponseWriter, request *http.Request) {
-		if launcher == nil {
-			http.Error(response, "ML Studio launcher is unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		err := launcher.OpenStudio(request.Context(), input.DatabaseID, input.ProjectPath)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("POST /api/studio/clone", studio(func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			Repository  string `json:"repository"`
 			Destination string `json:"destination"`
@@ -181,54 +172,28 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 		if !decodeJSON(response, request, &input) {
 			return
 		}
-		if err := launcher.CloneProject(request.Context(), input.Repository, input.Destination); err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
+		err := launcher.CloneProject(request.Context(), input.Repository, input.Destination)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("GET /api/studio/sessions", operations(platformUnavailable, listing(postgres, platformSetup.ListStudioSessions, "Unable to list ML Studio sessions")))
+	routes.HandleFunc("DELETE /api/studio/sessions/{databaseId}", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
+		databaseID, ok := parsePathValue(response, request, "databaseId", "database")
+		if !ok {
 			return
 		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("GET /api/studio/sessions", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		items, err := postgres.ListStudioSessions(request.Context())
-		if err != nil {
-			http.Error(response, "Unable to list ML Studio sessions", http.StatusServiceUnavailable)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, items)
-	})
-	routes.HandleFunc("DELETE /api/studio/sessions/{databaseId}", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		databaseID, err := uuid.Parse(request.PathValue("databaseId"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
-		if err := postgres.TerminateStudioSession(request.Context(), databaseID); err != nil {
-			http.Error(response, err.Error(), http.StatusConflict)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
+		err := postgres.TerminateStudioSession(request.Context(), databaseID)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusConflict, ""))
+	}))
 	routes.HandleFunc("GET /api/setup", func(response http.ResponseWriter, request *http.Request) {
 		state := struct {
 			Available bool `json:"available"`
 			Required  bool `json:"required"`
 		}{Available: setup != nil}
+		var err error
 		if setup != nil {
-			var err error
 			state.Required, err = setup.InitialSetupRequired(request.Context())
-			if err != nil {
-				http.Error(response, "Unable to read initial setup state", http.StatusInternalServerError)
-				return
-			}
 		}
-		webpage.JSON(response, http.StatusOK, state)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusInternalServerError, "Unable to read initial setup state"))
 	})
 	routes.HandleFunc("GET /api/postgres", func(response http.ResponseWriter, _ *http.Request) {
 		if postgres == nil {
@@ -237,78 +202,27 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 		}
 		webpage.JSON(response, http.StatusOK, postgres.State())
 	})
-	routes.HandleFunc("POST /api/postgres/check", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "PostgreSQL setup is unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		var input platform.ProvisionRequest
-		if !decodeJSON(response, request, &input) {
-			return
-		}
-		check, err := postgres.CheckPostgreSQL(request.Context(), input)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, check)
-	})
-	routes.HandleFunc("POST /api/postgres/provision", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "PostgreSQL setup is unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		var input platform.ProvisionRequest
-		if !decodeJSON(response, request, &input) {
-			return
-		}
-		check, err := postgres.ProvisionPostgreSQL(request.Context(), input)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusCreated, check)
-	})
-	routes.HandleFunc("GET /api/databases", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		items, err := postgres.ListDatabases(request.Context())
-		if err != nil {
-			http.Error(response, "Unable to read database registry", http.StatusServiceUnavailable)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, items)
-	})
-	routes.HandleFunc("POST /api/databases", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		var input platform.RegisterDatabaseRequest
-		if !decodeJSON(response, request, &input) {
-			return
-		}
-		item, err := postgres.RegisterDatabase(request.Context(), input)
-		switch {
-		case errors.Is(err, systemdb.ErrDatabaseNameExists), errors.Is(err, systemdb.ErrPhysicalDatabaseExists):
-			http.Error(response, err.Error(), http.StatusConflict)
-			return
-		case err != nil:
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusCreated, item)
-	})
-	routes.HandleFunc("POST /api/databases/{id}/debug", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid source database identifier", http.StatusBadRequest)
+	for path, step := range map[string]struct {
+		do     func(context.Context, platform.ProvisionRequest) (postgresadmin.Check, error)
+		status int
+	}{
+		"check": {func(ctx context.Context, input platform.ProvisionRequest) (postgresadmin.Check, error) {
+			return postgres.CheckPostgreSQL(ctx, input)
+		}, http.StatusOK},
+		"provision": {func(ctx context.Context, input platform.ProvisionRequest) (postgresadmin.Check, error) {
+			return postgres.ProvisionPostgreSQL(ctx, input)
+		}, http.StatusCreated},
+	} {
+		routes.HandleFunc("POST /api/postgres/"+path, operations("PostgreSQL setup is unavailable",
+			fromBody(step.do, step.status, webpage.Refusal(http.StatusBadRequest, ""))))
+	}
+	routes.HandleFunc("GET /api/databases", operations(registryUnavailable, listing(postgres, platformSetup.ListDatabases, "Unable to read database registry")))
+	routes.HandleFunc("POST /api/databases", operations(registryUnavailable, fromBody(func(ctx context.Context, input platform.RegisterDatabaseRequest) (systemdb.RegisteredDatabase, error) {
+		return postgres.RegisterDatabase(ctx, input)
+	}, http.StatusCreated, refuseRegistration)))
+	routes.HandleFunc("POST /api/databases/{id}/debug", operations(registryUnavailable, func(response http.ResponseWriter, request *http.Request) {
+		id, ok := parsePathUUID(response, request, "source database")
+		if !ok {
 			return
 		}
 		var input platform.CreateDebugDatabaseRequest
@@ -316,63 +230,39 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			return
 		}
 		item, err := postgres.CreateDebugDatabase(request.Context(), id, input)
-		switch {
-		case errors.Is(err, systemdb.ErrDatabaseNotFound):
-			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseNameExists), errors.Is(err, systemdb.ErrPhysicalDatabaseExists):
-			http.Error(response, err.Error(), http.StatusConflict)
-		case err != nil:
-			http.Error(response, err.Error(), http.StatusBadRequest)
-		default:
-			webpage.JSON(response, http.StatusCreated, item)
-		}
-	})
-	routes.HandleFunc("DELETE /api/databases/{id}", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Database registry is unavailable", http.StatusServiceUnavailable)
+		webpage.Answer(response, http.StatusCreated, item, err, func(response http.ResponseWriter, err error) {
+			if errors.Is(err, systemdb.ErrDatabaseNotFound) {
+				http.Error(response, err.Error(), http.StatusNotFound)
+				return
+			}
+			refuseRegistration(response, err)
+		})
+	}))
+	routes.HandleFunc("DELETE /api/databases/{id}", operations(registryUnavailable, func(response http.ResponseWriter, request *http.Request) {
+		id, ok := parsePathUUID(response, request, "database")
+		if !ok {
 			return
 		}
-		id, err := uuid.Parse(request.PathValue("id"))
-		if err != nil {
-			http.Error(response, "Invalid database identifier", http.StatusBadRequest)
-			return
-		}
-		err = postgres.UnregisterDatabase(request.Context(), id)
-		switch {
-		case errors.Is(err, systemdb.ErrDatabaseNotFound):
-			http.Error(response, err.Error(), http.StatusNotFound)
-		case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies), errors.Is(err, systemdb.ErrDatabaseHasBackups), errors.Is(err, systemdb.ErrDatabaseHasStudioSession):
-			http.Error(response, err.Error(), http.StatusConflict)
-		case err != nil:
-			http.Error(response, "Unable to unregister database", http.StatusInternalServerError)
-		default:
-			response.WriteHeader(http.StatusNoContent)
-		}
-	})
+		err := postgres.UnregisterDatabase(request.Context(), id)
+		webpage.Answer(response, http.StatusNoContent, nil, err, func(response http.ResponseWriter, err error) {
+			switch {
+			case errors.Is(err, systemdb.ErrDatabaseNotFound):
+				http.Error(response, err.Error(), http.StatusNotFound)
+			case errors.Is(err, systemdb.ErrDatabaseCannotUnregister), errors.Is(err, systemdb.ErrDatabaseHasDebugCopies), errors.Is(err, systemdb.ErrDatabaseHasBackups), errors.Is(err, systemdb.ErrDatabaseHasStudioSession):
+				http.Error(response, err.Error(), http.StatusConflict)
+			default:
+				http.Error(response, "Unable to unregister database", http.StatusInternalServerError)
+			}
+		})
+	}))
 	if postgres != nil {
-		for action, operation := range map[string]func(context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error){
-			"start": postgres.StartDatabase, "stop": postgres.StopDatabase, "health": postgres.CheckDatabaseHealth,
+		for action, operation := range map[string]func(platformSetup, context.Context, uuid.UUID) (systemdb.RegisteredDatabase, error){
+			"start": platformSetup.StartDatabase, "stop": platformSetup.StopDatabase, "health": platformSetup.CheckDatabaseHealth,
 		} {
-			action, operation := action, operation
-			routes.HandleFunc("POST /api/databases/{id}/"+action, func(response http.ResponseWriter, request *http.Request) {
-				id, ok := parsePathUUID(response, request, "database")
-				if !ok {
-					return
-				}
-				item, err := operation(request.Context(), id)
-				if err != nil {
-					http.Error(response, err.Error(), http.StatusConflict)
-					return
-				}
-				webpage.JSON(response, http.StatusOK, item)
-			})
+			routes.HandleFunc("POST /api/databases/{id}/"+action, ofDatabase(postgres, operation, http.StatusOK, webpage.Refusal(http.StatusConflict, "")))
 		}
 	}
-	routes.HandleFunc("PUT /api/databases/{id}/session-access", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
+	routes.HandleFunc("PUT /api/databases/{id}/session-access", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
 		id, ok := parsePathUUID(response, request, "database")
 		if !ok {
 			return
@@ -384,33 +274,17 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			return
 		}
 		item, err := postgres.SetDatabaseSessionAccess(request.Context(), id, input.Allowed)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, item)
-	})
-	routes.HandleFunc("GET /api/sessions", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		webpage.Answer(response, http.StatusOK, item, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("GET /api/sessions", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
 		databaseID, ok := optionalQueryUUID(response, request, "databaseId")
 		if !ok {
 			return
 		}
 		items, err := postgres.ListDatabaseSessions(request.Context(), databaseID)
-		if err != nil {
-			http.Error(response, "Unable to list sessions", http.StatusServiceUnavailable)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, items)
-	})
-	routes.HandleFunc("POST /api/sessions/{id}/message", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		webpage.Answer(response, http.StatusOK, items, err, webpage.Refusal(http.StatusServiceUnavailable, "Unable to list sessions"))
+	}))
+	routes.HandleFunc("POST /api/sessions/{id}/message", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
 		id, ok := parsePathUUID(response, request, "session")
 		if !ok {
 			return
@@ -421,32 +295,18 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 		if !decodeJSON(response, request, &input) {
 			return
 		}
-		if err := postgres.SendSessionMessage(request.Context(), id, input.Message); err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("DELETE /api/sessions/{id}", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		err := postgres.SendSessionMessage(request.Context(), id, input.Message)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("DELETE /api/sessions/{id}", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
 		id, ok := parsePathUUID(response, request, "session")
 		if !ok {
 			return
 		}
-		if err := postgres.TerminateDatabaseSession(request.Context(), id); err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("GET /api/logs", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		err := postgres.TerminateDatabaseSession(request.Context(), id)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("GET /api/logs", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
 		databaseID, ok := optionalQueryUUID(response, request, "databaseId")
 		if !ok {
 			return
@@ -461,56 +321,15 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			limit = parsed
 		}
 		items, err := postgres.ListAuditEvents(request.Context(), databaseID, limit)
-		if err != nil {
-			http.Error(response, "Unable to list logs", http.StatusServiceUnavailable)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, items)
-	})
-	routes.HandleFunc("GET /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		id, ok := parsePathUUID(response, request, "database")
+		webpage.Answer(response, http.StatusOK, items, err, webpage.Refusal(http.StatusServiceUnavailable, "Unable to list logs"))
+	}))
+	routes.HandleFunc("GET /api/databases/{id}/backups", operations(platformUnavailable,
+		ofDatabase(postgres, platformSetup.ListDatabaseBackups, http.StatusOK, webpage.Refusal(http.StatusBadRequest, ""))))
+	routes.HandleFunc("POST /api/databases/{id}/backups", operations(platformUnavailable,
+		ofDatabase(postgres, platformSetup.CreateDatabaseBackup, http.StatusCreated, webpage.Refusal(http.StatusBadRequest, ""))))
+	routes.HandleFunc("POST /api/databases/{id}/backups/{backupId}/restore", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
+		databaseID, backupID, ok := backupPath(response, request)
 		if !ok {
-			return
-		}
-		items, err := postgres.ListDatabaseBackups(request.Context(), id)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, items)
-	})
-	routes.HandleFunc("POST /api/databases/{id}/backups", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		id, ok := parsePathUUID(response, request, "database")
-		if !ok {
-			return
-		}
-		backup, err := postgres.CreateDatabaseBackup(request.Context(), id)
-		if err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusCreated, backup)
-	})
-	routes.HandleFunc("POST /api/databases/{id}/backups/{backupId}/restore", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		databaseID, ok := parsePathUUID(response, request, "database")
-		if !ok {
-			return
-		}
-		backupID, err := uuid.Parse(request.PathValue("backupId"))
-		if err != nil {
-			http.Error(response, "Invalid backup identifier", http.StatusBadRequest)
 			return
 		}
 		var input struct {
@@ -523,37 +342,18 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			http.Error(response, "Restore confirmation is required", http.StatusBadRequest)
 			return
 		}
-		if err := postgres.RestoreDatabaseBackup(request.Context(), databaseID, backupID); err != nil {
-			http.Error(response, err.Error(), http.StatusConflict)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("DELETE /api/databases/{id}/backups/{backupId}", func(response http.ResponseWriter, request *http.Request) {
-		if postgres == nil {
-			http.Error(response, "Platform operations are unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		databaseID, ok := parsePathUUID(response, request, "database")
+		err := postgres.RestoreDatabaseBackup(request.Context(), databaseID, backupID)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusConflict, ""))
+	}))
+	routes.HandleFunc("DELETE /api/databases/{id}/backups/{backupId}", operations(platformUnavailable, func(response http.ResponseWriter, request *http.Request) {
+		databaseID, backupID, ok := backupPath(response, request)
 		if !ok {
 			return
 		}
-		backupID, err := uuid.Parse(request.PathValue("backupId"))
-		if err != nil {
-			http.Error(response, "Invalid backup identifier", http.StatusBadRequest)
-			return
-		}
-		if err := postgres.DeleteDatabaseBackup(request.Context(), databaseID, backupID); err != nil {
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
-	})
-	routes.HandleFunc("POST /api/setup/administrator", func(response http.ResponseWriter, request *http.Request) {
-		if setup == nil {
-			http.Error(response, "ML System database is not configured", http.StatusServiceUnavailable)
-			return
-		}
+		err := postgres.DeleteDatabaseBackup(request.Context(), databaseID, backupID)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, ""))
+	}))
+	routes.HandleFunc("POST /api/setup/administrator", whenAvailable(setup != nil, "ML System database is not configured", func(response http.ResponseWriter, request *http.Request) {
 		var input struct {
 			Login    string `json:"login"`
 			Password string `json:"password"`
@@ -562,32 +362,117 @@ func newHandler(settings appconfig.Config, client *http.Client, setup administra
 			return
 		}
 		administrator, codes, err := setup.CreateInitial(request.Context(), input.Login, input.Password)
-		switch {
-		case errors.Is(err, systemdb.ErrInitialAdministratorExists):
-			http.Error(response, "Initial administrator already exists", http.StatusConflict)
-			return
-		case errors.Is(err, systemdb.ErrInvalidLogin), errors.Is(err, auth.ErrPasswordPolicy):
-			http.Error(response, err.Error(), http.StatusBadRequest)
-			return
-		case err != nil:
-			http.Error(response, "Unable to create initial administrator", http.StatusInternalServerError)
-			return
-		}
-		webpage.JSON(response, http.StatusCreated, struct {
+		webpage.Answer(response, http.StatusCreated, struct {
 			Login         string   `json:"login"`
 			RecoveryCodes []string `json:"recoveryCodes"`
-		}{Login: administrator.Login, RecoveryCodes: codes})
-	})
+		}{Login: administrator.Login, RecoveryCodes: codes}, err, func(response http.ResponseWriter, err error) {
+			switch {
+			case errors.Is(err, systemdb.ErrInitialAdministratorExists):
+				http.Error(response, "Initial administrator already exists", http.StatusConflict)
+			case errors.Is(err, systemdb.ErrInvalidLogin), errors.Is(err, auth.ErrPasswordPolicy):
+				http.Error(response, err.Error(), http.StatusBadRequest)
+			default:
+				http.Error(response, "Unable to create initial administrator", http.StatusInternalServerError)
+			}
+		})
+	}))
 	return routes
 }
 
+// The words a route of Manager says when what it needs is not there.
+const (
+	platformUnavailable = "Platform operations are unavailable"
+	registryUnavailable = "Database registry is unavailable"
+)
+
+// whenAvailable is a route of what this Manager may run without - the
+// platform's operations, the system database, the launcher of Studio: the
+// route itself where it is there, and otherwise a refusal 503 in the route's
+// own words. Whether it is there is settled when Manager starts.
+func whenAvailable(available bool, unavailable string, route http.HandlerFunc) http.HandlerFunc {
+	if available {
+		return route
+	}
+	return func(response http.ResponseWriter, _ *http.Request) {
+		http.Error(response, unavailable, http.StatusServiceUnavailable)
+	}
+}
+
+// listing is a route of Manager that lists what the platform keeps and
+// answers the list; a failure is that the platform cannot be read, said in
+// the route's words. The list is named by the method of the platform, read
+// only when the route is asked.
+func listing[List any](postgres platformSetup, list func(platformSetup, context.Context) (List, error), failure string) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		items, err := list(postgres, request.Context())
+		webpage.Answer(response, http.StatusOK, items, err, webpage.Refusal(http.StatusServiceUnavailable, failure))
+	}
+}
+
+// fromBody is a route of Manager that reads its request whole from the body
+// (decodeJSON), does what it asks and answers what came of it with status,
+// or refuses as the route does.
+func fromBody[In, Result any](do func(context.Context, In) (Result, error), status int, refuse func(http.ResponseWriter, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		var input In
+		if !decodeJSON(response, request, &input) {
+			return
+		}
+		result, err := do(request.Context(), input)
+		webpage.Answer(response, status, result, err, refuse)
+	}
+}
+
+// ofDatabase is a route of Manager that does one thing to the database its
+// address names in {id} - starts it, lists or makes its backups - and answers
+// what came of it with status, or refuses as the route does.
+func ofDatabase[Result any](postgres platformSetup, do func(platformSetup, context.Context, uuid.UUID) (Result, error), status int, refuse func(http.ResponseWriter, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		id, ok := parsePathUUID(response, request, "database")
+		if !ok {
+			return
+		}
+		result, err := do(postgres, request.Context(), id)
+		webpage.Answer(response, status, result, err, refuse)
+	}
+}
+
+// refuseRegistration refuses a database that cannot be registered: a name or
+// a database of the server taken already is a conflict, the rest a bad
+// request.
+func refuseRegistration(response http.ResponseWriter, err error) {
+	if errors.Is(err, systemdb.ErrDatabaseNameExists) || errors.Is(err, systemdb.ErrPhysicalDatabaseExists) {
+		http.Error(response, err.Error(), http.StatusConflict)
+		return
+	}
+	http.Error(response, err.Error(), http.StatusBadRequest)
+}
+
+// parsePathUUID reads the identifier of the address's {id}, naming what it
+// identifies in the refusal.
 func parsePathUUID(response http.ResponseWriter, request *http.Request, kind string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(request.PathValue("id"))
+	return parsePathValue(response, request, "id", kind)
+}
+
+// parsePathValue reads the identifier of one value of the address and
+// refuses a request whose value is no identifier, naming what it identifies.
+func parsePathValue(response http.ResponseWriter, request *http.Request, name, kind string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(request.PathValue(name))
 	if err != nil {
 		http.Error(response, "Invalid "+kind+" identifier", http.StatusBadRequest)
 		return uuid.UUID{}, false
 	}
 	return id, true
+}
+
+// backupPath reads the database and the backup an address of a backup names.
+func backupPath(response http.ResponseWriter, request *http.Request) (uuid.UUID, uuid.UUID, bool) {
+	databaseID, ok := parsePathUUID(response, request, "database")
+	if !ok {
+		return uuid.UUID{}, uuid.UUID{}, false
+	}
+	backupID, ok := parsePathValue(response, request, "backupId", "backup")
+	return databaseID, backupID, ok
 }
 
 func optionalQueryUUID(response http.ResponseWriter, request *http.Request, name string) (*uuid.UUID, bool) {

@@ -299,7 +299,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		result, err := workspace.EnsureManagedFormHandler(input.Path, input.ExpectedRevision, commandID)
-		answerRoute(response, writeSourceError, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, writeSourceError)
 	})
 	routes.HandleFunc("GET /api/query/schema", answerQuery(writeSourceError, func(*http.Request) (any, error) {
 		return workspace.QueryDesignerSchema()
@@ -338,7 +338,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 			return
 		}
 		analysis, err := AnalyzeBSL(relative, input.Content)
-		answerRoute(response, writeBadRequest, analysis, err)
+		webpage.Answer(response, http.StatusOK, analysis, err, writeBadRequest)
 	})
 	routes.HandleFunc("POST /api/bsl/complete", answerStudio(0, writeBadRequest, func(input struct {
 		Path     string      `json:"path"`
@@ -396,7 +396,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 		result, err := workspace.git(request, func(request *http.Request, client *gitclient.Client) (any, error) {
 			return client.Commit(request.Context(), input.Message)
 		})
-		answerRoute(response, writeGitError, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, writeGitError)
 	})
 	// Pulling and switching a branch change the modules under the index of
 	// BSL, so it is read again.
@@ -428,7 +428,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 		if err == nil {
 			workspace.invalidateBSLIndex()
 		}
-		answerRoute(response, writeGitError, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, writeGitError)
 	})
 	routes.HandleFunc("POST /api/save-data", func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
@@ -473,19 +473,9 @@ func decodeStudioMutation(response http.ResponseWriter, request *http.Request, v
 	return decodeStudioJSON(response, request, value, studioMutationCeiling)
 }
 
-// answerRoute answers what a route of Studio did: the result as JSON, or the
-// error the way the route answers errors. Every route answers through it.
-func answerRoute(response http.ResponseWriter, refuse func(http.ResponseWriter, error), result any, err error) {
-	if err != nil {
-		refuse(response, err)
-		return
-	}
-	webpage.JSON(response, http.StatusOK, result)
-}
-
 // answerStudio is a route of Studio that reads a request the one way
 // (decodeStudioJSON, with the ceiling of the route), does what it asks and
-// answers through answerRoute.
+// answers through webpage.Answer.
 func answerStudio[In any](limit int64, refuse func(http.ResponseWriter, error), do func(In) (any, error)) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		var input In
@@ -493,29 +483,29 @@ func answerStudio[In any](limit int64, refuse func(http.ResponseWriter, error), 
 			return
 		}
 		result, err := do(input)
-		answerRoute(response, refuse, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, refuse)
 	}
 }
 
 // answerQuery is a route of Studio that reads nothing but its address - a
-// path, a query - does what it asks and answers through answerRoute.
+// path, a query - does what it asks and answers through webpage.Answer.
 func answerQuery(refuse func(http.ResponseWriter, error), do func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		result, err := do(request)
-		answerRoute(response, refuse, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, refuse)
 	}
 }
 
 // answerMarked is a route of Studio that changes something and carries no
 // body: it acts only on a request with the mark of Studio's page
-// (validateStudioMutation) and answers through answerRoute.
+// (validateStudioMutation) and answers through webpage.Answer.
 func answerMarked(refuse func(http.ResponseWriter, error), do func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !validateStudioMutation(response, request) {
 			return
 		}
 		result, err := do(request)
-		answerRoute(response, refuse, result, err)
+		webpage.Answer(response, http.StatusOK, result, err, refuse)
 	}
 }
 

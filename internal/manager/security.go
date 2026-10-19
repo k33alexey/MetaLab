@@ -53,14 +53,13 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		}
 		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: age})
 	}
+	authentication := func(route http.HandlerFunc) http.HandlerFunc {
+		return whenAvailable(available, "Manager authentication unavailable", route)
+	}
 	var loginMu sync.Mutex
 	var loginWindow time.Time
 	loginAttempts := 0
-	routes.HandleFunc("POST /api/manager/login", func(w http.ResponseWriter, r *http.Request) {
-		if !available {
-			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
-			return
-		}
+	routes.HandleFunc("POST /api/manager/login", authentication(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Login    string `json:"login"`
 			Password string `json:"password"`
@@ -90,24 +89,12 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		}
 		setCookie(w, r, login.Token)
 		webpage.JSON(w, 200, login.Session)
-	})
-	routes.HandleFunc("GET /api/manager/session", func(w http.ResponseWriter, r *http.Request) {
-		if !available {
-			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
-			return
-		}
+	}))
+	routes.HandleFunc("GET /api/manager/session", authentication(func(w http.ResponseWriter, r *http.Request) {
 		session, err := security.AuthenticateManager(r.Context(), tokenOf(r))
-		if err != nil {
-			managerAccessError(w, err)
-			return
-		}
-		webpage.JSON(w, 200, session)
-	})
-	routes.HandleFunc("POST /api/manager/logout", func(w http.ResponseWriter, r *http.Request) {
-		if !available {
-			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
-			return
-		}
+		webpage.Answer(w, http.StatusOK, session, err, managerAccessError)
+	}))
+	routes.HandleFunc("POST /api/manager/logout", authentication(func(w http.ResponseWriter, r *http.Request) {
 		err := security.LogoutManager(r.Context(), tokenOf(r))
 		if err != nil && !errors.Is(err, systemdb.ErrSessionNotFound) {
 			managerAccessError(w, err)
@@ -115,12 +102,8 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		}
 		setCookie(w, r, "")
 		w.WriteHeader(204)
-	})
-	routes.HandleFunc("POST /api/manager/password", func(w http.ResponseWriter, r *http.Request) {
-		if !available {
-			http.Error(w, "Manager authentication unavailable", http.StatusServiceUnavailable)
-			return
-		}
+	}))
+	routes.HandleFunc("POST /api/manager/password", authentication(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Current string `json:"currentPassword"`
 			New     string `json:"newPassword"`
@@ -128,32 +111,16 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		if !decodeJSON(w, r, &input) {
 			return
 		}
-		if err := security.ChangeManagerPassword(r.Context(), tokenOf(r), input.Current, input.New); err != nil {
-			http.Error(w, "Unable to change password", 400)
-			return
-		}
-		w.WriteHeader(204)
-	})
+		err := security.ChangeManagerPassword(r.Context(), tokenOf(r), input.Current, input.New)
+		webpage.Answer(w, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, "Unable to change password"))
+	}))
 	routes.HandleFunc("GET /api/manager/users", func(w http.ResponseWriter, r *http.Request) {
 		items, err := security.ListManagerUsers(r.Context())
-		if err != nil {
-			managerAccessError(w, err)
-			return
-		}
-		webpage.JSON(w, 200, items)
+		webpage.Answer(w, http.StatusOK, items, err, managerAccessError)
 	})
-	routes.HandleFunc("POST /api/manager/users", func(w http.ResponseWriter, r *http.Request) {
-		var input systemdb.UserCreation
-		if !decodeJSON(w, r, &input) {
-			return
-		}
-		user, err := security.CreateManagerUser(r.Context(), input)
-		if err != nil {
-			http.Error(w, "Unable to create user: check login and password", 400)
-			return
-		}
-		webpage.JSON(w, 201, user)
-	})
+	routes.HandleFunc("POST /api/manager/users", fromBody(func(ctx context.Context, input systemdb.UserCreation) (systemdb.User, error) {
+		return security.CreateManagerUser(ctx, input)
+	}, http.StatusCreated, webpage.Refusal(http.StatusBadRequest, "Unable to create user: check login and password")))
 	routes.HandleFunc("PUT /api/manager/users/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePathUUID(w, r, "user")
 		if !ok {
@@ -163,15 +130,14 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		if !decodeJSON(w, r, &input) {
 			return
 		}
-		if err := security.UpdateManagerUser(r.Context(), id, input); err != nil {
+		err := security.UpdateManagerUser(r.Context(), id, input)
+		webpage.Answer(w, http.StatusNoContent, nil, err, func(w http.ResponseWriter, err error) {
 			if errors.Is(err, systemdb.ErrLastPlatformAdministrator) {
 				http.Error(w, "Cannot disable or demote the last platform administrator", http.StatusConflict)
 				return
 			}
 			managerAccessError(w, err)
-			return
-		}
-		w.WriteHeader(204)
+		})
 	})
 	routes.HandleFunc("GET /api/databases/{id}/permissions", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePathUUID(w, r, "database")
@@ -179,11 +145,7 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 			return
 		}
 		items, err := security.ListManagerDatabaseAccess(r.Context(), id)
-		if err != nil {
-			managerAccessError(w, err)
-			return
-		}
-		webpage.JSON(w, 200, items)
+		webpage.Answer(w, http.StatusOK, items, err, managerAccessError)
 	})
 	routes.HandleFunc("PUT /api/databases/{id}/permissions", func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parsePathUUID(w, r, "database")
@@ -197,11 +159,8 @@ func secureManager(routes *http.ServeMux, backend platformSetup) http.Handler {
 		if !decodeJSON(w, r, &input) {
 			return
 		}
-		if err := security.AssignManagerDatabasePermissions(r.Context(), id, input.Login, input.Permissions); err != nil {
-			http.Error(w, "Unable to assign access: check user and system roles", 400)
-			return
-		}
-		w.WriteHeader(204)
+		err := security.AssignManagerDatabasePermissions(r.Context(), id, input.Login, input.Permissions)
+		webpage.Answer(w, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, "Unable to assign access: check user and system roles"))
 	})
 	guard := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)

@@ -393,7 +393,7 @@ func TestEveryChangingRequestOfStudioIsReadOneWay(t *testing.T) {
 // Every route of Studio without a body answers one way: one that changes
 // something acts only on a request with the mark of Studio's page, one that
 // reads its address answers its result as JSON that is not cached, and each
-// refuses with the status of its own errors (answerRoute, answerQuery,
+// refuses with the status of its own errors (webpage.Answer, answerQuery,
 // answerMarked, answerRemoval). The statuses are written here from what each
 // route promises, not read off the code. Defects caught: a route that changes
 // something acting without the mark; a deletion answering anything but No

@@ -137,11 +137,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !decodeJSON(response, request, &input) {
 			return
 		}
-		if err := platformRuntime.ChangePortalPassword(request.Context(), token, input.CurrentPassword, input.NewPassword); err != nil {
-			http.Error(response, "Unable to change password", http.StatusBadRequest)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
+		err := platformRuntime.ChangePortalPassword(request.Context(), token, input.CurrentPassword, input.NewPassword)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusBadRequest, "Unable to change password"))
 	})
 	routes.HandleFunc("POST /api/databases/{id}/open", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -194,18 +191,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 	// Открытая форма не перезагружается сама: ML App спрашивает эту отметку и,
 	// если она изменилась, показывает ненавязчивое предложение обновиться.
 	// Решает человек - у него могут быть несохранённые данные.
-	routes.HandleFunc("GET /api/databases/{id}/publication", func(response http.ResponseWriter, request *http.Request) {
-		token, id, ok := databaseRequest(response, request)
-		if !ok {
-			return
-		}
-		marker, err := platformRuntime.ApplicationPublication(request.Context(), token, id)
-		if err != nil {
-			http.Error(response, "Publication state unavailable", http.StatusConflict)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, marker)
-	})
+	routes.HandleFunc("GET /api/databases/{id}/publication", databaseState(platformRuntime.ApplicationPublication, "Publication state unavailable"))
 	routes.HandleFunc("GET /api/databases/{id}/app-bootstrap", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
 		if !ok {
@@ -259,20 +245,15 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		form, err := mlapp.FormFromMetadata(applicationForm.Descriptor, applicationForm.Custom, applicationForm.Language)
-		if err != nil {
-			http.Error(response, "Managed form unavailable", http.StatusInternalServerError)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, form)
+		webpage.Answer(response, http.StatusOK, form, err, webpage.Refusal(http.StatusInternalServerError, "Managed form unavailable"))
 	})
 	routes.HandleFunc("GET /api/databases/{id}/lists/{objectKind}/{name}", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if !metadata.OpensInApplication(objectKind) {
-			http.Error(response, "Invalid dynamic list address", http.StatusBadRequest)
+		objectKind, ok := applicationKind(response, request, "Invalid dynamic list address")
+		if !ok {
 			return
 		}
 		listRequest, err := decodeDynamicListRequest(request.URL.Query())
@@ -281,28 +262,19 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		page, err := platformRuntime.LoadApplicationList(request.Context(), token, id, objectKind, request.PathValue("name"), listRequest)
-		if err != nil {
-			http.Error(response, "Dynamic list unavailable", http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, page)
+		webpage.Answer(response, http.StatusOK, page, err, webpage.Refusal(http.StatusBadRequest, "Dynamic list unavailable"))
 	})
 	routes.HandleFunc("GET /api/databases/{id}/objects/{objectKind}/{name}/{reference}", func(response http.ResponseWriter, request *http.Request) {
 		token, id, ok := databaseRequest(response, request)
 		if !ok {
 			return
 		}
-		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if !metadata.OpensInApplication(objectKind) {
-			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+		objectKind, ok := applicationKind(response, request, "Invalid application object address")
+		if !ok {
 			return
 		}
 		state, err := platformRuntime.GetApplicationObject(request.Context(), token, id, objectKind, request.PathValue("name"), request.PathValue("reference"))
-		if err != nil {
-			http.Error(response, "Application object unavailable", http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, state)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusBadRequest, "Application object unavailable"))
 	})
 	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/save", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -312,9 +284,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !ok {
 			return
 		}
-		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if !metadata.OpensInApplication(objectKind) {
-			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+		objectKind, ok := applicationKind(response, request, "Invalid application object address")
+		if !ok {
 			return
 		}
 		var input platform.ApplicationObjectWrite
@@ -322,11 +293,7 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		state, err := platformRuntime.SaveApplicationObject(request.Context(), token, id, objectKind, request.PathValue("name"), input)
-		if err != nil {
-			http.Error(response, "Unable to save application object", http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, state)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusBadRequest, "Unable to save application object"))
 	})
 	routes.HandleFunc("POST /api/databases/{id}/objects/{objectKind}/{name}/deletion-mark", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
@@ -336,9 +303,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		if !ok {
 			return
 		}
-		objectKind := metadata.Kind(request.PathValue("objectKind"))
-		if !metadata.OpensInApplication(objectKind) {
-			http.Error(response, "Invalid application object address", http.StatusBadRequest)
+		objectKind, ok := applicationKind(response, request, "Invalid application object address")
+		if !ok {
 			return
 		}
 		var input struct {
@@ -349,26 +315,11 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		state, err := platformRuntime.SetApplicationDeletionMark(request.Context(), token, id, objectKind, request.PathValue("name"), input.Reference, input.Mark)
-		if err != nil {
-			http.Error(response, "Unable to set deletion mark", http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, state)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusBadRequest, "Unable to set deletion mark"))
 	})
 	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/post", documentAction(platformRuntime.PostApplicationDocument, "Unable to post document"))
 	routes.HandleFunc("POST /api/databases/{id}/documents/{name}/undo-posting", documentAction(platformRuntime.UndoApplicationDocumentPosting, "Unable to undo document posting"))
-	routes.HandleFunc("GET /api/databases/{id}/session", func(response http.ResponseWriter, request *http.Request) {
-		token, id, ok := databaseRequest(response, request)
-		if !ok {
-			return
-		}
-		session, err := platformRuntime.ResumePortalDatabase(request.Context(), token, id)
-		if err != nil {
-			http.Error(response, "Database session unavailable", http.StatusConflict)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, session)
-	})
+	routes.HandleFunc("GET /api/databases/{id}/session", databaseState(platformRuntime.ResumePortalDatabase, "Database session unavailable"))
 	routes.HandleFunc("POST /api/sessions/{id}/message/ack", func(response http.ResponseWriter, request *http.Request) {
 		if !requireCSRF(response, request) {
 			return
@@ -382,11 +333,8 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			http.Error(response, "Invalid session identifier", http.StatusBadRequest)
 			return
 		}
-		if err := platformRuntime.AcknowledgeSessionMessage(request.Context(), token, id); err != nil {
-			http.Error(response, "Session unavailable", http.StatusConflict)
-			return
-		}
-		response.WriteHeader(http.StatusNoContent)
+		err = platformRuntime.AcknowledgeSessionMessage(request.Context(), token, id)
+		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusConflict, "Session unavailable"))
 	})
 	return webpage.Secured(routes)
 }
@@ -499,6 +447,20 @@ func databaseRequest(response http.ResponseWriter, request *http.Request) (strin
 	return token, id, true
 }
 
+// databaseState is a route that reads where one database of the session
+// stands - what is published, the session in it - and answers it; a failure
+// is a conflict, said in the route's words.
+func databaseState[State any](read func(context.Context, string, uuid.UUID) (State, error), failure string) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		token, id, ok := databaseRequest(response, request)
+		if !ok {
+			return
+		}
+		state, err := read(request.Context(), token, id)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusConflict, failure))
+	}
+}
+
 // documentAction is a route that does one thing to a written document - posts
 // it or undoes its posting - and answers the document as it then stands;
 // failure is what a refusal says.
@@ -518,12 +480,19 @@ func documentAction(act func(context.Context, string, uuid.UUID, string, string)
 			return
 		}
 		state, err := act(request.Context(), token, id, request.PathValue("name"), input.Reference)
-		if err != nil {
-			http.Error(response, failure, http.StatusBadRequest)
-			return
-		}
-		webpage.JSON(response, http.StatusOK, state)
+		webpage.Answer(response, http.StatusOK, state, err, webpage.Refusal(http.StatusBadRequest, failure))
 	}
+}
+
+// applicationKind reads the kind of the object an address of ML App names and
+// refuses, in the words of the route, a kind that does not open there.
+func applicationKind(response http.ResponseWriter, request *http.Request, refusal string) (metadata.Kind, bool) {
+	kind := metadata.Kind(request.PathValue("objectKind"))
+	if !metadata.OpensInApplication(kind) {
+		http.Error(response, refusal, http.StatusBadRequest)
+		return "", false
+	}
+	return kind, true
 }
 
 func requireCSRF(response http.ResponseWriter, request *http.Request) bool {

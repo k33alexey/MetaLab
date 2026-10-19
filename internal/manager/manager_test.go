@@ -186,13 +186,14 @@ func TestManagerPostgreSQLSetupAPI(t *testing.T) {
 		t.Fatalf("state status=%d body=%s", stateResponse.Code, stateResponse.Body.String())
 	}
 	payload := `{"host":"localhost","port":5432,"administratorDatabase":"postgres","administratorUser":"postgres","administratorPassword":"secret","sslMode":"disable","systemDatabase":"metalab_system","technicalUser":"metalab_service"}`
-	for _, path := range []string{"/api/postgres/check", "/api/postgres/provision"} {
+	// A check answers what it found, a provision what it created.
+	for path, status := range map[string]int{"/api/postgres/check": http.StatusOK, "/api/postgres/provision": http.StatusCreated} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(payload))
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if response.Code < 200 || response.Code >= 300 || strings.Contains(response.Body.String(), "secret") {
-			t.Fatalf("path=%s status=%d body=%s", path, response.Code, response.Body.String())
+		if response.Code != status || strings.Contains(response.Body.String(), "secret") {
+			t.Fatalf("path=%s status=%d (want %d) body=%s", path, response.Code, status, response.Body.String())
 		}
 	}
 	if setup.request.AdministratorPassword != "secret" || setup.checks != 1 || setup.provisions != 1 {
@@ -252,6 +253,15 @@ func TestManagerDatabaseRegistryReportsConflicts(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid identifier status=%d body=%s", response.Code, response.Body.String())
 	}
+	// A list the platform cannot read is the platform unavailable, in the
+	// list's words, and not the failure's.
+	for path, words := range map[string]string{"/api/databases": "Unable to read database registry", "/api/studio/sessions": "Unable to list ML Studio sessions"} {
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusServiceUnavailable || response.Body.String() != words+"\n" {
+			t.Fatalf("%s: status=%d body=%q", path, response.Code, response.Body.String())
+		}
+	}
 }
 
 func TestManagerOperationalAPI(t *testing.T) {
@@ -291,6 +301,20 @@ func TestManagerOperationalAPI(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("restore status=%d body=%s", response.Code, response.Body.String())
+	}
+	if setup.backupDatabase != databaseID || setup.backup != backupID {
+		t.Fatalf("restore reached database %s backup %s, want %s %s", setup.backupDatabase, setup.backup, databaseID, backupID)
+	}
+	setup.backupDatabase, setup.backup = uuid.UUID{}, uuid.UUID{}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/databases/"+databaseID.String()+"/backups/"+backupID.String(), nil))
+	if response.Code != http.StatusNoContent || setup.backupDatabase != databaseID || setup.backup != backupID {
+		t.Fatalf("delete backup status=%d body=%s reached %s %s", response.Code, response.Body.String(), setup.backupDatabase, setup.backup)
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/databases/"+databaseID.String()+"/backups/not-a-uuid", nil))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "Invalid backup identifier") {
+		t.Fatalf("invalid backup status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 
@@ -344,6 +368,8 @@ type fakePlatformSetup struct {
 	registryError    error
 	studioSessions   []systemdb.StudioSession
 	terminatedStudio uuid.UUID
+	backupDatabase   uuid.UUID
+	backup           uuid.UUID
 }
 
 func (setup *fakePlatformSetup) State() platform.State { return setup.state }
@@ -401,10 +427,12 @@ func (setup *fakePlatformSetup) CreateDatabaseBackup(_ context.Context, id uuid.
 func (setup *fakePlatformSetup) ListDatabaseBackups(context.Context, uuid.UUID) ([]systemdb.Backup, error) {
 	return []systemdb.Backup{}, setup.registryError
 }
-func (setup *fakePlatformSetup) DeleteDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error {
+func (setup *fakePlatformSetup) DeleteDatabaseBackup(_ context.Context, database, backup uuid.UUID) error {
+	setup.backupDatabase, setup.backup = database, backup
 	return setup.registryError
 }
-func (setup *fakePlatformSetup) RestoreDatabaseBackup(context.Context, uuid.UUID, uuid.UUID) error {
+func (setup *fakePlatformSetup) RestoreDatabaseBackup(_ context.Context, database, backup uuid.UUID) error {
+	setup.backupDatabase, setup.backup = database, backup
 	return setup.registryError
 }
 func (setup *fakePlatformSetup) ListStudioSessions(context.Context) ([]systemdb.StudioSession, error) {

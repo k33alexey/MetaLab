@@ -439,6 +439,32 @@ func TestDocumentActionsAndDatabaseRoutesRefuseWhatTheyShould(t *testing.T) {
 	if response := send(http.MethodPost, database+"/documents/Приход/post", `{"reference":"r"}`, true); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "Unable to post document") {
 		t.Fatalf("a refused posting: status %d body %s", response.Code, response.Body.String())
 	}
+	// Each route refuses a failure of the platform with its own status and
+	// words, never the failure's own text (written here from what each route
+	// promises the page, not read off the code).
+	for _, check := range []struct {
+		method, path, body string
+		status             int
+		words              string
+	}{
+		{http.MethodGet, database + "/publication", "", http.StatusConflict, "Publication state unavailable"},
+		{http.MethodGet, database + "/session", "", http.StatusConflict, "Database session unavailable"},
+		{http.MethodGet, database + "/lists/catalogs/Товары", "", http.StatusBadRequest, "Dynamic list unavailable"},
+		{http.MethodGet, database + "/objects/catalogs/Товары/r", "", http.StatusBadRequest, "Application object unavailable"},
+		{http.MethodPost, database + "/objects/catalogs/Товары/save", `{}`, http.StatusBadRequest, "Unable to save application object"},
+		{http.MethodPost, database + "/objects/catalogs/Товары/deletion-mark", `{"reference":"r","mark":true}`, http.StatusBadRequest, "Unable to set deletion mark"},
+		{http.MethodPost, "/api/sessions/" + uuid.MustNew().String() + "/message/ack", "", http.StatusConflict, "Session unavailable"},
+		{http.MethodPost, "/api/password", `{"currentPassword":"a","newPassword":"b"}`, http.StatusBadRequest, "Unable to change password"},
+	} {
+		response := send(check.method, check.path, check.body, true)
+		if response.Code != check.status || response.Body.String() != check.words+"\n" {
+			t.Errorf("%s %s refused with %d %q, want %d %q", check.method, check.path, response.Code, response.Body.String(), check.status, check.words)
+		}
+	}
+	if response := send(http.MethodGet, database+"/lists/accumulation-registers/Остатки", "", false); response.Code != http.StatusBadRequest ||
+		response.Body.String() != "Invalid dynamic list address\n" {
+		t.Fatalf("a register opened as a list of the application: status %d body %q", response.Code, response.Body.String())
+	}
 }
 
 // TestPortalPageIsSecured catches the page or an answer of the API given
