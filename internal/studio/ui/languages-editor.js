@@ -13,8 +13,10 @@
    for tree objects belongs to the configuration tree's own toolbar, not to
    ad-hoc buttons duplicated inside each panel. */
 function createLanguagesEditor(host, onChange) {
-  let source, model, selected = null;
+  let source, model, selected = null, synonymCleanup = null;
   function touch() { onChange(); }
+  /* Языки названы на языке Studio и меняются вместе с ним. */
+  StudioLanguage.onChange(() => { if (source) render(); });
   /* Предел — только тот, что есть в модели: имя языка — 255 знаков, у
      комментария предела нет. */
   function textField(label, value, apply, options = {}) {
@@ -30,10 +32,10 @@ function createLanguagesEditor(host, onChange) {
     for (const language of source.configuration.languages) panel.append(node('div', title(language), 'catalog-uuid'));
     return panel;
   }
-  /* Синоним языка локализован, как у всякого объекта, и показывается на себе
-     самом — как в списке языков у сервера. */
+  /* Синоним языка локализован, как у всякого объекта, и показывается на
+     языке Studio — одним правилом languageTitle. */
   function title(language) {
-    return languageTitle(language, source.configuration.defaultLanguage, source.configuration.languages);
+    return languageTitle(language, source.configuration.defaultLanguage);
   }
   function renderLanguage(language) {
     const locked = language.code === 'en';
@@ -41,23 +43,25 @@ function createLanguagesEditor(host, onChange) {
     panel.append(node('h3', title(language)));
     panel.append(textField('Код', language.code, () => {}, {disabled: true, maxLength: 16}));
     panel.append(textField('Имя', language.name, value => model.setLanguageField(language.code, 'name', value), {disabled: locked}));
-    /* Синоним — по полю на каждый настроенный язык, как всякий читаемый
-       человеком текст конфигурации: язык проекта называется на всех языках
-       проекта, и первым стоит он сам. */
-    const stored = (language.title && typeof language.title === 'object') ? language.title : {};
-    panel.append(localizedTextField('Синоним', source.configuration.languages, code => stored[code],
-      (code, value) => { model.setLanguageTitle(language.code, code, value); touch(); }, {disabled: locked}));
+    /* Синоним — многоязычное поле, как всякий читаемый человеком текст
+       конфигурации: язык называется на всех языках проекта. */
+    const synonym = createLocalizedField(source.configuration, code => language.title?.[code],
+      (code, value) => model.setLanguageTitle(language.code, code, value), touch, {disabled: locked});
+    synonymCleanup = synonym.destroy;
+    panel.append(labeledField('Синоним', synonym));
     panel.append(textField('Комментарий', language.comment,
       value => model.setLanguageField(language.code, 'comment', value), {disabled: locked, unbounded: true}));
     if (locked) panel.append(node('div', 'Всегда доступен, нельзя изменить или удалить', 'catalog-uuid'));
     return panel;
   }
   function render() {
+    synonymCleanup?.();
+    synonymCleanup = null;
     host.replaceChildren();
     const language = selected && source.configuration.languages.find(item => item.code === selected);
     host.append(language ? renderLanguage(language) : renderOverview());
   }
-  return hostedEditor(host, () => { source = null; model = null; selected = null; }, {
+  return hostedEditor(host, () => { synonymCleanup?.(); synonymCleanup = null; source = null; model = null; selected = null; }, {
     open(value) {
       source = structuredClone(value);
       model = createProjectModel(source);

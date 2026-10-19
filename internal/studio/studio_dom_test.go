@@ -62,7 +62,8 @@ const studioPageProbe = `(() => {
 // studioPageWalk clicks every node of the configuration tree. The first time
 // an editor shows a file, it is walked in every language of the project: each
 // element the editor lists is chosen, each restriction and template opens
-// its window, and so does each window of a filter, each then cancelled. Then the query designer and the
+// its window, and so does each window of a filter and of the translations of
+// a localized field, each then cancelled. Then the query designer and the
 // debugger are opened. A step that ends with the status bar in red is a
 // problem too: an editor that cannot open a file says so there, not in the
 // console.
@@ -87,12 +88,13 @@ const studioPageWalk = `(async () => {
       {select: '.role-tree-item', then: [{select: '.role-restriction-rights button', then: [{open: '.role-restrictions .role-list tbody tr[tabindex]'}]}]},
       {select: '.role-tabs button', then: [{open: '.role-list tbody tr[tabindex]'}]},
       {press: '.role-tree-bar .role-subsystems'},
+      {press: '.role-identity .field-with-buttons button'},
     ]],
     ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
     ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.overview-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}, {press: '.overview-block .role-bulk button[data-command=filter]'}]}]],
-    ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item'}]],
-    ['project', '#project-editor', null, []],
-    ['languages', '#languages-editor', null, []],
+    ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item', then: [{press: '.field-with-buttons button'}]}]],
+    ['project', '#project-editor', null, [{press: '.field-with-buttons button'}]],
+    ['languages', '#languages-editor', null, [{press: '.field-with-buttons button:enabled'}]],
   ];
   function shown() {
     for (const [name, where, host, plan] of editors) {

@@ -34,7 +34,7 @@ type CatalogEditorSource struct {
 	Revision        string                         `json:"revision"`
 	Catalog         metadata.CatalogDefinition     `json:"catalog"`
 	TypeChoices     []metadata.ReferenceTypeChoice `json:"typeChoices"`
-	Languages       []FormLanguage                 `json:"languages"`
+	Languages       []project.Language             `json:"languages"`
 	DefaultLanguage string                         `json:"defaultLanguage"`
 }
 
@@ -78,7 +78,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	}
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeChoices: choices,
-		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }
 
@@ -262,7 +262,7 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	}
 	return CatalogEditorSource{
 		Path: relative, Revision: sourceFile(relative, "yaml", encoded.Bytes()).Revision, Catalog: value, TypeChoices: choices,
-		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }
 

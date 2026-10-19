@@ -7,8 +7,9 @@
    dedicated editor (languages-editor.js) reached only through the "Языки"
    branch of the configuration tree — not duplicated into this panel.
 
-   Texts a person reads are stored per language, so each of them is edited as
-   one field per configured language rather than one field. */
+   Texts a person reads are stored per language, and each of them is one
+   localized field: the translation in the language Studio edits in, and the
+   magnifier that opens every language (createLocalizedField). */
 function createProjectModel(source) {
   const configuration = source.configuration;
   configuration.languages ||= [];
@@ -78,7 +79,7 @@ function createProjectModel(source) {
 }
 
 function createProjectEditor(host, onChange) {
-  let source, model;
+  let source, model, fieldCleanups = [];
   /* Подписи объектов показываются на текущем языке Studio и меняются вместе
      с ним. */
   StudioLanguage.onChange(() => { if (source) render(); });
@@ -92,9 +93,10 @@ function createProjectEditor(host, onChange) {
     return labeledField(label, textInput(value, value => { apply(value); touch(); }, options));
   }
   function localizedField(label, field, options = {}) {
-    const stored = source.configuration[field] || {};
-    return localizedTextField(label, source.configuration.languages, code => stored[code],
-      (code, value) => { model.setText(field, code, value); touch(); }, options);
+    const text = createLocalizedField(source.configuration, code => source.configuration[field]?.[code],
+      (code, value) => model.setText(field, code, value), touch, options);
+    fieldCleanups.push(text.destroy);
+    return labeledField(label, text);
   }
   /* Умолчание называет другой объект конфигурации, поэтому оно выбирается из
      того, что в конфигурации есть, а не набирается руками: набранный
@@ -182,7 +184,12 @@ function createProjectEditor(host, onChange) {
     block.append(node('h4', title));
     return block;
   }
+  function clearFields() {
+    for (const cleanup of fieldCleanups) cleanup();
+    fieldCleanups = [];
+  }
   function render() {
+    clearFields();
     host.replaceChildren();
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Корень конфигурации'));
@@ -194,7 +201,7 @@ function createProjectEditor(host, onChange) {
       value => model.setField('comment', value)));
     const languages = source.configuration.languages;
     identity.append(labeledField('Язык по умолчанию', selectInput(
-      languages.map(language => [language.code, languageTitle(language, source.configuration.defaultLanguage, languages)]),
+      languages.map(language => [language.code, languageTitle(language, source.configuration.defaultLanguage)]),
       source.configuration.defaultLanguage, value => { model.setDefaultLanguage(value); rerender(); })));
     panel.append(identity);
 
@@ -309,7 +316,7 @@ function createProjectEditor(host, onChange) {
 
     host.append(panel);
   }
-  return hostedEditor(host, () => { source = null; model = null; }, {
+  return hostedEditor(host, () => { clearFields(); source = null; model = null; }, {
     open(value) {
       source = structuredClone(value);
       model = createProjectModel(source);

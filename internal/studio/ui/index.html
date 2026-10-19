@@ -248,9 +248,10 @@
       StudioLanguage.init(defaultLanguage);
       const current=StudioLanguage.get();
       studioLanguageSelect.replaceChildren();
-      for(const language of languages||[]){const option=document.createElement('option');option.value=language.code;option.textContent=languageTitle(language,defaultLanguage,languages);option.selected=language.code===current;studioLanguageSelect.append(option)}
+      for(const language of languages||[]){const option=document.createElement('option');option.value=language.code;option.textContent=languageTitle(language,defaultLanguage);option.selected=language.code===current;studioLanguageSelect.append(option)}
       studioLanguageSelect.hidden=(languages||[]).length<=1;
     }
+    StudioLanguage.onChange(()=>{if(configuration)refreshLanguageSelector(configuration.languages,configuration.defaultLanguage)});
     // Отбор дерева по подсистемам (справка form_subsystemchoicedlg; ТЗ
     // ACCESS-RIGHTS, «Дерево конфигурации»): то же окно, что у прав роли, с
     // «Отключить», и то же правило отбора. Под ним в ветвях видов остаются

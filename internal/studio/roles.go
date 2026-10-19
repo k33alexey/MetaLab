@@ -25,7 +25,7 @@ type RoleSource struct {
 	Revision        string                    `json:"revision"`
 	Role            metadata.RoleDefinition   `json:"role"`
 	Schema          metadata.PermissionSchema `json:"schema"`
-	Languages       []FormLanguage            `json:"languages"`
+	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
 	// KindTitles are the captions of the kinds of metadata, from the one
 	// list Studio names them by.
@@ -78,7 +78,7 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
+	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
 }
 
 // roleFiles is a role as it lies on disk: its description, and the grid of
@@ -255,7 +255,7 @@ func (workspace *Workspace) roleDescriptions() ([]string, error) {
 type RoleOverview struct {
 	Roles           []RoleOverviewEntry       `json:"roles"`
 	Schema          metadata.PermissionSchema `json:"schema"`
-	Languages       []FormLanguage            `json:"languages"`
+	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
 	KindTitles      map[string]string         `json:"kindTitles"`
 }
@@ -286,7 +286,7 @@ func (workspace *Workspace) readAllRolesLocked() (RoleOverview, error) {
 	if err != nil {
 		return RoleOverview{}, err
 	}
-	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}
+	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}
 	for _, relative := range descriptions {
 		role, revision, err := workspace.decodeRoleLocked(relative, configuration)
 		if err != nil {
@@ -486,7 +486,7 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
+	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide
@@ -519,24 +519,17 @@ func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.Role
 	return nil
 }
 
-// roleLanguages names every configured language for the browser: its code, and
-// the synonym to show it by.
-//
-// The synonym of a language is localized like every other, so it is resolved -
-// in that language itself first, because a language names itself in itself, and
-// a list where one language is written in another reads as a mistake. A
-// language with no synonym at all is shown by its name: an empty chip in a list
-// of languages is worse than a technical one.
-func roleLanguages(configuration project.Project) []FormLanguage {
-	result := make([]FormLanguage, len(configuration.Languages))
-	for index, language := range configuration.Languages {
-		title := language.Title.Resolve(language.Code, configuration.DefaultLanguage, configuration.Languages)
-		if title == "" {
-			title = language.Name
-		}
-		result[index] = FormLanguage{Code: language.Code, Title: title}
+// editorLanguages are the configured languages as an editor of Studio gets
+// them: whole, with the synonym in every language. The page names a language
+// by its synonym in the language Studio edits in, as the prototype does
+// (languageTitle, studio-common.js; the owner's decision of 19.10.2026), so
+// the name it is shown by changes with that language and is not resolved
+// here.
+func editorLanguages(configuration project.Project) []project.Language {
+	if configuration.Languages == nil {
+		return []project.Language{}
 	}
-	return result
+	return configuration.Languages
 }
 
 func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {

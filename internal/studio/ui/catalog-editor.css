@@ -11,7 +11,8 @@
 .catalog-detail h3{margin:0 0 14px;font-size:15px}
 .catalog-uuid{margin-bottom:12px;color:#92959d;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .catalog-field{display:grid;grid-template-columns:minmax(120px,220px) 1fr;align-items:center;gap:10px;margin:8px 0;font-size:12px}
-.catalog-field input,.catalog-field select{padding:6px 8px;max-width:280px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
+.catalog-field input,.catalog-field select,.catalog-field textarea{padding:6px 8px;max-width:280px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
+.catalog-field .field-with-buttons{max-width:280px}.catalog-field textarea{font:inherit;resize:vertical}
 .catalog-check{display:flex;align-items:center;gap:7px;margin:8px 0;font-size:13px}
 .catalog-check input{accent-color:#589df6;margin:0}
 .catalog-titles{border-top:1px solid var(--border,#393b40);margin:12px 0;padding-top:8px}

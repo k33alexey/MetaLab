@@ -10,7 +10,7 @@ vm.runInContext(script,context);
 // classic <script> tags in a real browser, but not exposed as a property of
 // the vm context on its own. Expose it explicitly for this test file.
 vm.runInContext('globalThis.StudioLanguage = StudioLanguage;',context);
-const {StudioLanguage,createLocalizedTitleField,localizedTitle,languageTitle,uniqueName,textInput}=context;
+const {StudioLanguage,createLocalizedField,localizedTitle,languageTitle,uniqueName,textInput}=context;
 
 // A minimal DOM stub: just enough createElement/append/dataset surface for
 // studio-common.js to build its field and dialog, without a real DOM.
@@ -18,7 +18,7 @@ function makeDocumentStub(){
   function makeElement(tag){
     const listeners={};
     return {
-      tagName:tag,children:[],dataset:{},style:{},
+      tagName:tag,children:[],dataset:{},style:{},classList:{add(){},toggle(){}},
       set textContent(value){this._text=value;},get textContent(){return this._text;},
       set value(value){this._value=value;},get value(){return this._value;},
       set type(value){this._type=value;},get type(){return this._type;},
@@ -34,7 +34,7 @@ function makeDocumentStub(){
       showModal(){},
     };
   }
-  return {createElement:makeElement,createTextNode:text=>({text}),body:{append(){}}};
+  return {createElement:makeElement,createElementNS:(namespace,tag)=>makeElement(tag),createTextNode:text=>({text}),body:{append(){}}};
 }
 
 test('StudioLanguage: init only sets the default once, set() notifies listeners',()=>{
@@ -53,10 +53,10 @@ test('StudioLanguage: init only sets the default once, set() notifies listeners'
   StudioLanguage.set('ru'); // restore for the remaining tests below
 });
 
-test('collapsed field shows the current language and edits it in place',()=>{
+test('the field shows the current language and edits it in place',()=>{
   StudioLanguage.set('ru');
   const title={ru:'Товары',en:'Products'};
-  const field=createLocalizedTitleField([{code:'ru',title:'Русский'},{code:'en',title:'English'}],code=>title[code],(code,value)=>title[code]=value,()=>{});
+  const field=createLocalizedField({languages:[{code:'ru'},{code:'en'}],defaultLanguage:'ru'},code=>title[code],(code,value)=>title[code]=value,()=>{});
   const input=field.children[0];
   assert.equal(input.value,'Товары');
   input.value='Изменено';
@@ -65,16 +65,25 @@ test('collapsed field shows the current language and edits it in place',()=>{
   field.destroy();
 });
 
-test('the expand button is hidden for a single-language project',()=>{
-  const field=createLocalizedTitleField([{code:'ru',title:'Русский'}],()=>'',()=>{},()=>{});
-  assert.equal(field.children.length,1); // just the input, no magnifying-glass button
-  field.destroy();
+// Лупа появляется, когда языков больше одного (решение владельца
+// 19.10.2026): одному языку переводить не на что. Дефект: лупа у проекта с
+// одним языком или её нет у проекта с двумя.
+test('the magnifier stands inside the field while there is more than one language',()=>{
+  const lupa=languages=>{
+    const field=createLocalizedField({languages,defaultLanguage:'ru'},()=>'',()=>{},()=>{});
+    const [input,tray]=field.children;
+    assert.equal(input.tagName,'input');
+    field.destroy();
+    return tray.children.map(button=>button.title);
+  };
+  assert.deepEqual(lupa([{code:'ru'}]),[]);
+  assert.deepEqual(lupa([{code:'ru'},{code:'en'}]),['Строки на разных языках']);
 });
 
 test('switching StudioLanguage refreshes every mounted field',()=>{
   StudioLanguage.set('ru');
   const title={ru:'Товары',en:'Products'};
-  const field=createLocalizedTitleField([{code:'ru',title:'Русский'},{code:'en',title:'English'}],code=>title[code],(code,value)=>title[code]=value,()=>{});
+  const field=createLocalizedField({languages:[{code:'ru'},{code:'en'}],defaultLanguage:'ru'},code=>title[code],(code,value)=>title[code]=value,()=>{});
   const input=field.children[0];
   assert.equal(input.value,'Товары');
   StudioLanguage.set('en');
@@ -100,12 +109,21 @@ test('a title follows the Studio language, then the project chain, then the name
 
 // Язык называется на самом себе, а не на текущем языке Studio и не на языке
 // по умолчанию: список, где один язык написан на другом, читается как ошибка.
-test('a language is named on itself, then by its name, then by its code',()=>{
-  const languages=[{code:'ru'},{code:'en'}];
+// Язык называется синонимом на языке Studio, как прототип подписывает
+// строки окна «Строки на разных языках» (ERP: «Російська» при украинском
+// основном языке), а без синонима на нём — именем, по правилу платформы
+// «нет перевода на языке — имя» (решения владельца 19.10.2026). Дефекты: язык
+// назван на себе самом, не следует смене языка Studio, назван переводом на
+// другом языке.
+test('a language is named in the language of Studio, else by its name, else by its code',()=>{
   StudioLanguage.set('ru');
-  assert.equal(languageTitle({code:'en',name:'English',title:{ru:'Английский',en:'English (US)'}},'ru',languages),'English (US)');
-  assert.equal(languageTitle({code:'en',name:'English',title:{}},'ru',languages),'English');
-  assert.equal(languageTitle({code:'en',name:'',title:null},'ru',languages),'en');
+  assert.equal(languageTitle({code:'en',name:'English',title:{ru:'Английский',en:'English (US)'}},'ru'),'Английский');
+  StudioLanguage.set('en');
+  assert.equal(languageTitle({code:'en',name:'English',title:{ru:'Английский',en:'English (US)'}},'ru'),'English (US)');
+  StudioLanguage.set('ru');
+  assert.equal(languageTitle({code:'en',name:'English',title:{en:'English (US)',de:'Englisch'}},'ru'),'English');
+  assert.equal(languageTitle({code:'en',name:'English',title:{ru:'  '}},'ru'),'English');
+  assert.equal(languageTitle({code:'en',name:'',title:null},'ru'),'en');
 });
 
 // Имя сверяется без учёта регистра, как имена конфигурации.

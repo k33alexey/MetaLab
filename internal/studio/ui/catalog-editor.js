@@ -146,12 +146,9 @@ function createCatalogEditor(host, onChange) {
     return checkboxField(label, checked, value => { apply(value); rerender(); });
   }
   function localizedTitleField(target, setTitle) {
-    const wrapper = node('label', undefined, 'catalog-field');
-    wrapper.append(node('span', 'Заголовок'));
-    const field = createLocalizedTitleField(source.languages, code => target.title?.[code], (code, value) => setTitle(code, value), touch);
+    const field = createLocalizedField(source, code => target.title?.[code], setTitle, touch, titleTextOptions);
     titleFieldCleanups.push(field.destroy);
-    wrapper.append(field);
-    return wrapper;
+    return labeledField('Заголовок', field);
   }
   function renderTypeRow(container, attribute, type, index) {
     const row = node('div', undefined, 'catalog-type-row');

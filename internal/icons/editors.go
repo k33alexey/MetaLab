@@ -59,6 +59,12 @@ var editorIcons = []Icon{
 	{ID: "apply", Color: green, Accent: green, Parts: []Part{
 		path(Mark, "M2.5 8.5L6 12L13.5 4"),
 	}},
+	// The magnifier inside a localized field of the palette and of a window,
+	// which opens «Строки на разных языках» (the owner's snapshot of
+	// 19.10.2026, materials/block-00/konfiguraciya). It is not the library's
+	// Лупа: that one is drawn as two windows (standartnye-kartinki.md). Grey,
+	// as the buttons of an input field are.
+	{ID: "field-translations", Color: gray, Parts: lens(6, 6, 4.5)},
 	// Окно типа: примитивные типы, ссылка, любая ссылка. Дата — значок
 	// календаря, характеристика и определяемый тип — папка группы.
 	{ID: "type-number", Color: blue, Parts: []Part{

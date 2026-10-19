@@ -18,7 +18,7 @@ type ManagedFormSource struct {
 	Path      string               `json:"path"`
 	Revision  string               `json:"revision"`
 	Form      metadata.ManagedForm `json:"form"`
-	Languages []FormLanguage       `json:"languages"`
+	Languages []project.Language   `json:"languages"`
 	// DefaultLanguage is the project's: the designer shows a title by the
 	// same chain as the server and writes a new command's title in it.
 	DefaultLanguage string         `json:"defaultLanguage"`
@@ -26,11 +26,6 @@ type ManagedFormSource struct {
 	// ElementIcons name the picture of every kind of element, which the
 	// designer draws its tree with.
 	ElementIcons map[metadata.FormElementKind]string `json:"elementIcons"`
-}
-
-type FormLanguage struct {
-	Code  string `json:"code"`
-	Title string `json:"title"`
 }
 
 type FormDataPath struct {
@@ -71,7 +66,7 @@ func (workspace *Workspace) readManagedForm(relative string) (ManagedFormSource,
 	}
 	form := value.(metadata.ManagedForm)
 	return ManagedFormSource{Path: relative, Revision: file.Revision, Form: form,
-		Languages: roleLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		DataPaths: workspace.formDataPaths(relative, configuration), ElementIcons: metadata.FormElementIcons()}, nil
 }
 

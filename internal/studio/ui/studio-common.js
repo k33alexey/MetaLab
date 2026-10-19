@@ -70,12 +70,18 @@ function localizedTitle(item, defaultLanguage, languages) {
   return resolveLocalizedText(item?.title, StudioLanguage.get() || defaultLanguage, defaultLanguage, languages) || item?.name || '';
 }
 
-/* languageTitle names a language on itself, as the server does for the
-   language list: a list where one language is written in another reads as a
-   mistake. Without a synonym the name stays, and the code after it — an empty
-   row in the list of languages is worse than a technical one. */
-function languageTitle(language, defaultLanguage, languages) {
-  return resolveLocalizedText(language.title, language.code, defaultLanguage, languages) || language.name || language.code;
+/* languageTitle names a language by its synonym in the language Studio
+   edits in, as the prototype names the languages of «Строки на разных
+   языках» (ERP, whose main language is Ukrainian: «Російська»,
+   «Українська»; the owner's decision of 19.10.2026) - one rule for every
+   place Studio names a language. With no synonym in that language the
+   language is named by its name, as the platform names whatever has no
+   translation (METADATA-OBJECTS.md, «Нет перевода на языке — имя»): not by a
+   translation in another language. The code stands only for a language with
+   no name. */
+function languageTitle(language, defaultLanguage) {
+  const own = language.title && typeof language.title === 'object' ? language.title[StudioLanguage.get() || defaultLanguage] : '';
+  return (typeof own === 'string' ? own.trim() : '') || language.name || language.code;
 }
 
 /* uniqueName returns base, or base followed by the first number from 2 that
@@ -161,69 +167,100 @@ function checkboxField(label, checked, apply, className = 'catalog-check', disab
   return wrapper;
 }
 
-/* localizedTextField writes one text in every language of the project, a row
-   per language with the language's code beside it, so which translation is
-   being written is never a guess. value(code) reads a translation,
-   apply(code, text) writes one; options go to every row's textInput. */
-function localizedTextField(label, languages, value, apply, options = {}) {
-  const wrapper = node('div', undefined, 'project-localized');
-  wrapper.append(node('span', label, 'project-localized-label'));
-  const rows = node('div', undefined, 'project-localized-rows');
-  for (const language of languages) {
-    const row = node('div', undefined, 'project-localized-row');
-    row.append(node('span', language.code, 'project-language-chip'),
-      textInput(value(language.code), text => apply(language.code, text), options));
-    rows.append(row);
-  }
-  wrapper.append(rows);
-  return wrapper;
+/* fieldButton is a button of a field - the magnifier, the opening, the
+   clearing, the choice - drawn by its icon of the set, with act done on a
+   click. */
+function fieldButton(icon, title, act) {
+  const button = iconButton(icon, title);
+  button.classList.add('field-button');
+  button.addEventListener('click', act);
+  return button;
 }
 
-/* createLocalizedTitleField renders one collapsed-to-one-line title input
-   bound to StudioLanguage.get(), plus a 🔍 button (hidden when the project
-   has only one language — nothing to expand) that opens every configured
-   language as its own input in a small dialog.
-   languages: [{code,title}], getValue(code)=>string, setValue(code,value),
-   onChange() called after every edit (collapsed or expanded). */
-/* titleTranslationInput is the input of one translation of a title, alike in
-   the field and in its dialog of every language. The single line and the
-   limit of 512 are not the model's: BLOCKS, block 18, «переводимые тексты в
-   Studio многострочны и без предела длины». */
-function titleTranslationInput(value, apply) { return textInput(value, apply, {maxLength: 512}); }
+/* fieldWithButtons puts the buttons of a field inside its frame at the right
+   edge, as the prototype's fields keep them: the field gives them room
+   inside itself, so its outer width does not depend on how many buttons it
+   has, and the fields of a window and of the palette stand on one grid
+   (ML-STUDIO.md, «кнопки поля — внутри поля справа»). control is the input,
+   the text area or the list; buttons are made by fieldButton. The control
+   fills the field, and the field is as wide as the editor makes its plain
+   controls: the editor's rule of width names .field-with-buttons beside
+   them. */
+function fieldWithButtons(control, buttons) {
+  const field = node('span', undefined, 'field-with-buttons'), tray = node('span', undefined, 'field-buttons');
+  control.classList.add('field-control');
+  if (buttons.length) control.style.paddingRight = `calc(${buttons.length} * var(--field-button-width) + 4px)`;
+  tray.append(...buttons);
+  field.append(control, tray);
+  return field;
+}
 
-function createLocalizedTitleField(languages, getValue, setValue, onChange) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'localized-title-field';
-  function currentLanguage() { return StudioLanguage.get() || languages[0]?.code || ''; }
-  function caption(code) { return languages.find(item => item.code === code)?.title || code; }
-  const input = titleTranslationInput('', value => { setValue(currentLanguage(), value); onChange(); });
-  function refresh() { input.value = getValue(currentLanguage()) || ''; input.title = caption(currentLanguage()); }
-  wrapper.append(input);
+/* createLocalizedField is the one field of a text written in every language
+   of the project - a synonym, a title, an information, an explanation - as
+   the prototype has it: the translation in the language Studio edits in
+   (StudioLanguage, the project's default language until switched) and the
+   magnifier inside the field at the right, which opens «Строки на разных
+   языках» with a string for every language of the project (ML-STUDIO.md,
+   «многоязычное поле»). The magnifier stands while the project has more than
+   one language (the owner's decision of 19.10.2026). The translations are
+   never spread out in the window of an object. project holds languages -
+   every language of the project, as the configuration writes them - and
+   defaultLanguage; getValue(code) reads a translation, setValue(code, value)
+   writes one; onChange() is called after every edit, in the field or in the
+   window; options go to textInput - kind 'area', maxLength, disabled.
+   destroy() stops following the language of Studio. */
+/* titleTextOptions are the options of a localized title of an object. The
+   single line and the limit of 512 are not the model's: BLOCKS, block 18,
+   «переводимые тексты в Studio многострочны и без предела длины». */
+const titleTextOptions = Object.freeze({maxLength: 512});
+
+function createLocalizedField(project, getValue, setValue, onChange, options = {}) {
+  const languages = project.languages || [];
+  const current = () => StudioLanguage.get() || project.defaultLanguage || languages[0]?.code || '';
+  const input = textInput('', value => { setValue(current(), value); onChange(); }, options);
+  const refresh = () => { input.value = getValue(current()) || ''; };
+  const buttons = [];
   if (languages.length > 1) {
-    const expand = document.createElement('button');
-    expand.type = 'button';
-    expand.className = 'localized-title-expand';
-    expand.title = 'Заголовки на всех языках проекта';
-    expand.textContent = '🔍';
-    expand.addEventListener('click', () => openLocalizedTitleDialog(languages, getValue, setValue, () => { refresh(); onChange(); }));
-    wrapper.append(expand);
+    const open = fieldButton('field-translations', 'Строки на разных языках', async () => {
+      if (await openLocalizedTextDialog(project, getValue, setValue, options)) { refresh(); onChange(); }
+    });
+    open.disabled = !!options.disabled;
+    buttons.push(open);
   }
-  const unsubscribe = StudioLanguage.onChange(refresh);
-  wrapper.dataset.localizedTitleField = 'true';
-  wrapper.destroy = unsubscribe;
+  const field = fieldWithButtons(input, buttons);
+  field.destroy = StudioLanguage.onChange(refresh);
   refresh();
-  return wrapper;
+  return field;
 }
 
-function openLocalizedTitleDialog(languages, getValue, setValue, onChange) {
-  const content = document.createDocumentFragment();
+/* openLocalizedTextDialog is the prototype's window «Строки на разных
+   языках» (the owner's snapshot of 19.10.2026, block-00 konfiguraciya):
+   the caption of each language above its string, named by languageTitle,
+   ОК and «Отмена» in a column to the right, no «Справка». The strings are written on ОК alone; «Отмена»
+   and Escape leave the text as it was. The string of the language Studio
+   edits in is focused, its text selected. Answers whether anything was
+   written. */
+async function openLocalizedTextDialog(project, getValue, setValue, options) {
+  const content = document.createDocumentFragment(), strings = [], languages = project.languages;
   for (const language of languages) {
+    const input = textInput(getValue(language.code) || '', () => {}, {...options, disabled: false});
     const label = node('label');
-    label.append(document.createTextNode(language.title || language.code),
-      titleTranslationInput(getValue(language.code) || '', value => { setValue(language.code, value); onChange(); }));
+    label.append(node('span', languageTitle(language, project.defaultLanguage)), input);
     content.append(label);
+    strings.push([language.code, input]);
   }
-  return showDialog({title: 'Заголовок на языках проекта', content, answers: [['done', 'Готово']]});
+  const answer = showDialog({title: 'Строки на разных языках', content, side: true, answers: [['ok', 'ОК'], [null, 'Отмена']]});
+  const focused = strings.find(([code]) => code === StudioLanguage.get())?.[1] || strings[0]?.[1];
+  focused?.focus();
+  focused?.select();
+  if (await answer !== 'ok') return false;
+  let written = false;
+  for (const [code, input] of strings) {
+    if (input.value === (getValue(code) || '')) continue;
+    setValue(code, input.value);
+    written = true;
+  }
+  return written;
 }
 
 /* roleObjectRight is a right of a role on an object as the prototype reads

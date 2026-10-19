@@ -1,6 +1,12 @@
-.localized-title-field{display:flex;align-items:center;gap:6px}
-.localized-title-field input{flex:1;min-width:0}
-.localized-title-expand{flex:none;padding:5px 8px;font-size:13px;line-height:1}
+/* Поле с кнопками внутри рамки у правого края (fieldWithButtons): ширину
+   поля задаёт редактор тем же правилом, что и простым полям, элемент
+   заполняет поле, кнопки лежат поверх его правого отступа. */
+.field-with-buttons{--field-button-width:22px;position:relative;display:block;min-width:0}
+.field-with-buttons>.field-control{display:block;width:100%;max-width:none;box-sizing:border-box;margin:0}
+.field-buttons{position:absolute;top:1px;right:1px;bottom:1px;display:flex;align-items:center}
+.field-with-buttons>textarea+.field-buttons{align-items:flex-start;padding-top:3px}
+.field-buttons>button.field-button{width:var(--field-button-width);height:22px;padding:0;border:0;border-radius:3px;background:transparent}
+.field-buttons>button.field-button:hover:not(:disabled){background:#ffffff1f}
 #studio-language{margin-left:auto;padding:4px 8px;border:1px solid #4a4d54;border-radius:5px;background:#2b2d30;color:#dfe1e5}
 .localized-title-dialog{width:min(480px,calc(100% - 40px));height:fit-content;max-height:calc(100% - 40px);padding:20px;border:1px solid #4a4d54;border-radius:10px;background:#25262a;color:#dfe1e5;box-shadow:0 24px 90px #000b}
 .localized-title-dialog::backdrop{background:#0009}
