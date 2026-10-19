@@ -1827,7 +1827,8 @@ type descriptionHead struct {
 }
 
 // headOf reads the head of a description. Every type a description is read
-// into has the four fields (TestEverySourceKindIsChecked).
+// into has the four fields, and every list of the catalog keeps descriptions
+// of that type (TestEverySourceKindIsChecked).
 func headOf(value any) descriptionHead {
 	item := reflect.ValueOf(value)
 	return descriptionHead{
@@ -1836,6 +1837,11 @@ func headOf(value any) descriptionHead {
 		name:   item.FieldByName("Name").String(),
 		title:  item.FieldByName("Title").Interface().(LocalizedText),
 	}
+}
+
+// object is the head of a description as the catalog gives it out.
+func (head descriptionHead) object() ObjectHead {
+	return ObjectHead{ID: head.id, Name: head.name, Title: head.title}
 }
 
 func validateBase(head descriptionHead, configuration project.Project) []string {

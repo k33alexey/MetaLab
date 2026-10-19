@@ -1463,7 +1463,9 @@ func holderOf(value reflect.Value, where string, object noteObject) (noteHolder,
 	return holder, true
 }
 
-// nameOf is the name a struct of the model goes by, or nothing.
+// nameOf is the name a struct of the model goes by, or nothing: any value a
+// walk of the model reaches, which may be a pointer or have no name. The head
+// of a description - its identifier, name and synonym - is read by headOf.
 func nameOf(value reflect.Value) string {
 	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {

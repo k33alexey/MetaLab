@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"reflect"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -43,7 +42,7 @@ func (catalog *Catalog) ObjectHeads(kind Kind) []ObjectHead {
 	}
 	result := make([]ObjectHead, 0, list.Len())
 	for index := range list.Len() {
-		result = append(result, objectHead(list.Index(index)))
+		result = append(result, headOf(list.Index(index).Interface()).object())
 	}
 	return result
 }
@@ -57,23 +56,9 @@ func (catalog *Catalog) ObjectHead(kind Kind, name string) (ObjectHead, bool) {
 	}
 	wanted := strings.ToLower(name)
 	for index := range list.Len() {
-		if head := objectHead(list.Index(index)); strings.ToLower(head.Name) == wanted {
+		if head := headOf(list.Index(index).Interface()).object(); strings.ToLower(head.Name) == wanted {
 			return head, true
 		}
 	}
 	return ObjectHead{}, false
-}
-
-// objectHead reads the identifier, the name and the synonym every
-// description of an object has (kindInfo.described: a test requires ID and
-// Name of each).
-func objectHead(object reflect.Value) ObjectHead {
-	head := ObjectHead{Name: nameOf(object)}
-	if id, ok := object.FieldByName("ID").Interface().(uuid.UUID); ok {
-		head.ID = id
-	}
-	if title := object.FieldByName("Title"); title.IsValid() {
-		head.Title, _ = title.Interface().(LocalizedText)
-	}
-	return head
 }

@@ -17,7 +17,9 @@ import (
 // a kind missing from the table (read by nobody, saved as bare YAML), a
 // subordinate kind given a list of its own (read twice), and a decoded type -
 // a form among them - without the head every description has: a Format, an
-// ID, a Name and a Title (headOf would panic on the first file).
+// ID, a Name and a Title (headOf would panic on the first file); a list of
+// the catalog keeping something other than what its kind is read into, whose
+// heads ObjectHeads would then fail to read.
 func TestEverySourceKindIsChecked(t *testing.T) {
 	t.Parallel()
 	// Read otherwise, each for a reason: a common form is a form, read by
@@ -55,6 +57,13 @@ func TestEverySourceKindIsChecked(t *testing.T) {
 		seen[item.kind] = true
 		if item.decode != nil {
 			checkDescriptionHead(t, string(item.kind), item.described)
+		}
+		// The catalog gives out the head of an object read off its list
+		// (ObjectHeads), so the list keeps what the description is read into.
+		if item.objects != nil {
+			if kept := item.objects(&Catalog{}).Type().Elem(); kept != item.described {
+				t.Errorf("%s is read into %s and kept as %s", item.kind, item.described, kept)
+			}
 		}
 	}
 	checkDescriptionHead(t, "a form", reflect.TypeFor[ManagedForm]())
