@@ -209,17 +209,6 @@ func accountingResourceAttributes(resources []AccountingRegisterResource) []Attr
 	return result
 }
 
-// accountingRegisterFields is every field of an entry that carries a value of
-// its own, dimensions and resources alike, as plain attributes - which is what
-// they are to everything that does not care about double entry.
-func accountingRegisterFields(item AccountingRegisterDefinition) []Attribute {
-	fields := make([]Attribute, 0, len(item.Dimensions)+len(item.Resources))
-	for _, field := range append(RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources)...) {
-		fields = append(fields, cloneAttribute(field))
-	}
-	return fields
-}
-
 // AccountingRegister returns one accounting register by name, folded case.
 func (catalog *Catalog) AccountingRegister(name string) (AccountingRegisterDefinition, bool) {
 	index, ok := catalog.accountingRegisterByName[strings.ToLower(name)]

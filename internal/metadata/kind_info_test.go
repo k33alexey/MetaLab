@@ -274,7 +274,10 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			case use == "parts" && !slices.Contains(partsUnshown, item.Kind):
 				expected = absent
 			}
-			if got != expected {
+			switch {
+			case got == unsaid:
+				t.Errorf("%s says nothing of its %s: every kind says whether the prototype has it", item.Kind, use)
+			case got != expected:
 				t.Errorf("%s of %s is %d, the prototype's %d", use, item.Kind, got, expected)
 			}
 		}

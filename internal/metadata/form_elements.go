@@ -376,7 +376,6 @@ var formGroupKinds = []FormElementKind{FormElementUsualGroup, FormElementPages, 
 	FormElementPopup, FormElementButtonGroup, FormElementCommandBar}
 
 var (
-	button               = []FormElementKind{FormElementButton}
 	tableKind            = []FormElementKind{FormElementTable}
 	buttonAndTable       = []FormElementKind{FormElementButton, FormElementTable}
 	groupsAndTable       = append([]FormElementKind{FormElementTable}, formGroupKinds...)
