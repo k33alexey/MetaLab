@@ -46,3 +46,4 @@
 .role-bulk-top{align-items:center;gap:2px}
 .role-bulk-top>button.icon-only{background:transparent;border-color:transparent}.role-bulk-top>button.icon-only:hover:not(:disabled){background:#ffffff1f}
 .role-bulk-separator{width:1px;height:18px;margin:0 4px;background:#4a4d54}
+.role-rights-head{display:flex;align-items:center;gap:4px;margin:4px 0 2px}.role-rights-caption{flex:1;font-size:13px}

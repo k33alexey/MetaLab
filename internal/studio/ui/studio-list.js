@@ -286,11 +286,7 @@ async function chooseListSettings(list, settings, applied) {
   bar.append(up, down, standard);
   const columnList = node('div', undefined, 'list-settings-columns'), side = node('div', undefined, 'list-settings-side');
   const marks = node('div', undefined, 'list-settings-marks');
-  for (const [icon, text, visible] of [['check-all', 'Отметить все элементы', true], ['uncheck-all', 'Снять отметки со всех элементов', false]]) {
-    const button = iconButton(icon, text);
-    button.addEventListener('click', () => { for (const column of draft.columns) column.visible = visible; fill(); });
-    marks.append(button);
-  }
+  marks.append(...markAllButtons(visible => { for (const column of draft.columns) column.visible = visible; fill(); }));
   const group = node('fieldset', undefined, 'list-settings-column');
   side.append(marks, group);
   const body = node('div', undefined, 'list-settings-body');

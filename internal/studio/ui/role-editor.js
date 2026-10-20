@@ -1019,8 +1019,11 @@ function createRoleEditor(host, onChange) {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));describe(null);return;}
     const {members,rights,fixed,heading,restricted=null,empty}=chosenNode();
-    const bulk=node('div',undefined,'role-bulk');
-    for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{for(const right of rights)model.setGroup(members,right,enabled);changed();renderPanel();});bulk.append(button);}
+    // Over the list, as the prototype's: «Права:» and the two buttons that
+    // mark or clear every right of the node chosen, and nothing beside it.
+    const head=node('div',undefined,'role-rights-head');
+    head.append(node('span','Права:','role-rights-caption'),...markAllButtons(enabled=>{for(const right of rights)model.setGroup(members,right,enabled);changed();renderPanel();panel.querySelector('.check-list')?.focus();}));
+    for(const button of head.querySelectorAll('button'))button.disabled=fixed||!rights.length;
     // The current right stays current on the next node that has it, as the
     // prototype's does; elsewhere the first right is.
     if(!rights.includes(restriction.right)){restriction.right=rights[0]||null;restriction.row=-1;}
@@ -1028,10 +1031,7 @@ function createRoleEditor(host, onChange) {
     const choose=right=>{restriction.right=right;restriction.row=-1;renderPanel();panel.querySelector('.check-list')?.focus();};
     panel.append(...heading);
     if(empty)panel.append(node('p',empty,'muted'));
-    else{
-      panel.append(checkList(rights.map(right=>{const state=model.groupMark(members,right);return{key:right,caption:caption(right),checked:state==='all',mixed:state==='some',disabled:fixed};}),restriction.right,mark,choose));
-      if(rights.length&&!fixed)panel.append(bulk);
-    }
+    else panel.append(head,checkList(rights.map(right=>{const state=model.groupMark(members,right);return{key:right,caption:caption(right),checked:state==='all',mixed:state==='some',disabled:fixed};}),restriction.right,mark,choose));
     panel.append(roleRestrictionSection({model,object:restricted,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
     describe(restriction.right);
   }
