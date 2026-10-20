@@ -278,6 +278,16 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	ExternalFunctionKind: {PermissionUse, PermissionView},
 }
 
+// kindPrerequisitesNotTakenOf is, for a kind whose window of a role does not
+// follow rightPrerequisites whole, the prerequisites it leaves out by right:
+// a register of information marks the update of the history of missing data
+// without the reading of the history of missing data, which a catalog marks
+// with it (pass of 20.10.2026, prava/zapis.md «Карта зависимостей прав»,
+// snapshots prava/38 and 39).
+var kindPrerequisitesNotTakenOf = map[Kind]map[PermissionOperation][]PermissionOperation{
+	InformationRegisterKind: {PermissionUpdateDataHistoryOfMissingData: {PermissionReadDataHistoryOfMissingData}},
+}
+
 // kindPartRightsOf is, for a kind whose parts the window of a role offers
 // other rights than their sort's, those rights by the sort: the dimensions
 // and the resources of a cube are only viewed (pass of 20.10.2026,

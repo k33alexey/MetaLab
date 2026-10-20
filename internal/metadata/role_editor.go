@@ -40,6 +40,11 @@ type PermissionSchema struct {
 	// RestrictionRules are how each right a restriction may be on is
 	// restricted: the editor offers by them what saving keeps.
 	RestrictionRules []RestrictionRule `json:"restrictionRules"`
+	// Requires are, by the kind of an object - "" for the configuration -
+	// and by a right of it or of its parts, the rights the window marks
+	// together with that right, and clears it with (rightsRequired): a node
+	// takes of them the rights it has.
+	Requires map[Kind]map[PermissionOperation][]PermissionOperation `json:"requires"`
 }
 
 // PermissionRight is a right as the window of a role lists it: its caption,
@@ -212,6 +217,23 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		}
 		for _, item := range catalog.objectsToShow(descriptor.Kind, formTitles) {
 			appendObject(descriptor.Kind, item.ID, item.Name, item.Title)
+		}
+	}
+	result.Requires = map[Kind]map[PermissionOperation][]PermissionOperation{}
+	for _, object := range result.Objects {
+		required := result.Requires[object.Kind]
+		if required == nil {
+			required = map[PermissionOperation][]PermissionOperation{}
+			result.Requires[object.Kind] = required
+		}
+		rights := slices.Clone(object.Rights)
+		for _, field := range object.Fields {
+			rights = append(rights, field.Operations...)
+		}
+		for _, right := range rights {
+			if _, done := required[right]; !done {
+				required[right] = rightsRequired(object.Kind, right)
+			}
 		}
 	}
 	result.Subsystems = catalog.subsystemMembers()

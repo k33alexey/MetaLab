@@ -271,6 +271,81 @@ var knownRights = func() map[PermissionOperation]bool {
 	return known
 }()
 
+// rightPrerequisites are, by right, the rights the window of a role marks
+// together with it, and the right it clears together with any of them
+// (pass of 20.10.2026 with the owner, block-00/rol «Права зависят друг от
+// друга», materials/configurator-2026-10-20/prava/zapis.md «Карта
+// зависимостей прав», snapshots prava/20-25 and 33-41): only the rights
+// right before it, the window following them through - an interactive
+// right needs its plain one and the editing, the editing needs the update
+// and the viewing, which need the reading. One map for every kind: a node
+// takes, of what a right needs through it, the rights the node has
+// (rightsRequired) - the viewing needs the reading of a catalog and the use
+// of a report, a part's editing needs its viewing alone, and the
+// configuration's administration needs the administration of data. A kind
+// may leave a prerequisite out (kindPrerequisitesNotTakenOf). The kinds the
+// pass did not open take the map by the owner's word of 20.10.2026: a kind
+// with the rights of one it opened behaves as that one, a sequence and a
+// recalculation need the reading for the update, a table of an external
+// source the catalog's, the source itself none. The help names no such
+// tie of rights at run time (ПравоДоступа, «Редактирование роли»): the
+// window keeps a role whole, and the platform checks each right as given.
+var rightPrerequisites = map[PermissionOperation][]PermissionOperation{
+	PermissionAdministration: {PermissionDataAdministration},
+	PermissionInsert:         {PermissionRead}, PermissionUpdate: {PermissionRead}, PermissionDelete: {PermissionRead},
+	PermissionView:              {PermissionRead, PermissionUse},
+	PermissionEdit:              {PermissionUpdate, PermissionView},
+	PermissionInteractiveInsert: {PermissionInsert, PermissionEdit},
+	PermissionInteractiveDelete: {PermissionDelete, PermissionEdit}, PermissionInteractiveDeleteMarked: {PermissionDelete, PermissionEdit},
+	PermissionInteractiveSetDeletionMark: {PermissionEdit}, PermissionInteractiveClearDeletionMark: {PermissionEdit},
+	PermissionInputByString:                              {PermissionView},
+	PermissionInteractiveDeletePredefinedData:            {PermissionInteractiveDelete},
+	PermissionInteractiveSetDeletionMarkPredefinedData:   {PermissionInteractiveSetDeletionMark},
+	PermissionInteractiveClearDeletionMarkPredefinedData: {PermissionInteractiveClearDeletionMark},
+	PermissionInteractiveDeleteMarkedPredefinedData:      {PermissionInteractiveDeleteMarked},
+	PermissionPosting:                                    {PermissionUpdate}, PermissionUndoPosting: {PermissionUpdate},
+	PermissionInteractivePosting:        {PermissionPosting, PermissionEdit},
+	PermissionInteractivePostingRegular: {PermissionInteractivePosting},
+	PermissionInteractiveUndoPosting:    {PermissionUndoPosting, PermissionEdit},
+	PermissionInteractiveChangeOfPosted: {PermissionEdit},
+	PermissionInteractiveActivate:       {PermissionUpdate},
+	PermissionStart:                     {PermissionUpdate}, PermissionInteractiveStart: {PermissionStart},
+	PermissionExecute: {PermissionUpdate}, PermissionInteractiveExecute: {PermissionExecute},
+	PermissionReadDataHistory:                 {PermissionRead},
+	PermissionReadDataHistoryOfMissingData:    {PermissionReadDataHistory},
+	PermissionUpdateDataHistory:               {PermissionReadDataHistory},
+	PermissionUpdateDataHistoryOfMissingData:  {PermissionUpdateDataHistory, PermissionReadDataHistoryOfMissingData},
+	PermissionUpdateDataHistoryVersionComment: {PermissionReadDataHistory},
+	PermissionViewDataHistory:                 {PermissionView, PermissionReadDataHistory},
+	PermissionEditDataHistoryVersionComment:   {PermissionView, PermissionUpdateDataHistoryVersionComment},
+	PermissionSwitchToDataHistoryVersion:      {PermissionView},
+}
+
+// rightsRequired is every right the window of a role marks together with
+// operation on an object of the kind, "" for the configuration, in the
+// prototype's order: rightPrerequisites followed through, but for what the
+// kind leaves out. A node takes of them the rights it has; the window
+// clears operation with any of them.
+func rightsRequired(kind Kind, operation PermissionOperation) []PermissionOperation {
+	notTaken := kindPrerequisitesNotTakenOf[kind]
+	seen := map[PermissionOperation]bool{}
+	var follow func(PermissionOperation)
+	follow = func(right PermissionOperation) {
+		for _, required := range rightPrerequisites[right] {
+			if !seen[required] && !slices.Contains(notTaken[right], required) {
+				seen[required] = true
+				follow(required)
+			}
+		}
+	}
+	follow(operation)
+	result := make([]PermissionOperation, 0, len(seen))
+	for right := range seen {
+		result = append(result, right)
+	}
+	return inPrototypeOrder(result)
+}
+
 // rightIndex is the place of every right in the prototype's order.
 var rightIndex = func() map[PermissionOperation]int {
 	result := make(map[PermissionOperation]int, len(roleRights))

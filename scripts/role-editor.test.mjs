@@ -423,3 +423,38 @@ test('a folder and a kind give their rights over what lies right in them, marked
   assert.equal(model.hasField('goods','part','view'),true);assert.equal(model.hasField('goods','column','view'),false);assert.equal(model.hasField('goods','name','view'),false);
   assert.equal(context.roleGroupMembers(schema,{common:true}).length,0);
 });
+// Права зависят друг от друга (опись rol.md, «Права зависят друг от друга»;
+// ожидание выписано здесь со снимков prava/20-25, а карта requires — малая,
+// своя: что окно берёт из неё, проверяет тест Go). Дефекты: отметка права не
+// ставила нужных ему прав; снятие не снимало зависящих; часть получала права
+// объекта или объект - права части; вид брал зависимости без своих прав;
+// снятие права снимало то, что от него не зависит.
+test('marking a right marks the rights it needs, clearing it clears those needing it, each member taking what it has',()=>{
+  const source=fixture();
+  source.schema.objects=source.schema.objects.map(item=>({...item,kind:item.root?'':'catalogs'}));
+  source.schema.requires={'':{administration:['data-administration']},catalogs:{read:[],insert:['read'],update:['read'],delete:['read'],view:['read'],edit:['read','update','view'],'input-by-string':['read','view']}};
+  const model=create(source),schema=source.schema,goods=schema.objects.find(item=>item.id==='goods'),other=schema.objects.find(item=>item.id==='other');
+  const rights=id=>['read','insert','update','delete','view','edit','input-by-string'].filter(right=>model.hasObject(id,right));
+  model.setGroup([{object:goods}],'input-by-string',true);
+  assert.deepEqual(rights('goods'),['read','view','input-by-string']);
+  model.setGroup([{object:goods}],'edit',true);
+  assert.deepEqual(rights('goods'),['read','update','view','edit','input-by-string']);
+  model.setGroup([{object:goods}],'insert',true);
+  model.setGroup([{object:goods}],'view',false);
+  assert.deepEqual(rights('goods'),['read','insert','update']);
+  model.setGroup([{object:goods}],'read',false);
+  assert.deepEqual(rights('goods'),[]);
+  // Часть берёт из нужного праву только свои права: редактирование - просмотр.
+  const name=goods.fields.find(field=>field.key==='name');
+  model.setGroup([{object:goods,part:name}],'edit',true);
+  assert.equal(model.hasField('goods','name','view'),true);assert.deepEqual(rights('goods'),[]);
+  const written=model.value().objects.find(item=>item.object==='goods').fields.find(field=>field.field==='name');
+  assert.deepEqual([...written.operations].sort(),['edit','view']);
+  model.setGroup([{object:goods,part:name}],'view',false);
+  assert.equal(model.hasField('goods','name','edit'),false);
+  // Вид: у каждого объекта - свои права; у «other» нет редактирования.
+  model.setGroup([{object:goods},{object:other}],'view',true);
+  assert.deepEqual(rights('goods'),['read','view']);assert.deepEqual(rights('other'),['read','view']);
+  model.setGroup([{object:goods},{object:other}],'read',false);
+  assert.deepEqual(rights('goods'),[]);assert.deepEqual(rights('other'),[]);
+});

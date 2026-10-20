@@ -293,13 +293,22 @@ function createRoleModel(source) {
     setAll(id, enabled) { for(const operation of definitions.get(id)?.rights || [])setObject(id, operation, enabled); },
     // A right over many - the parts of a folder, the objects of a kind
     // (members, roleGroupMembers): of those that have it, marked at all,
-    // at none or at some; setting it sets it at every one of them.
+    // at none or at some; setting it sets it at every one of them. As the
+    // prototype's window, marking a right marks the rights it needs and
+    // clearing it clears the rights needing it, each member taking of them
+    // the rights it has, as setObject and setField take no other
+    // (schema.requires; block-00/rol «Права зависят друг от друга»).
     groupMark(members, operation) {
       return markOfMany(members.filter(member => roleMemberRights(member).includes(operation))
         .map(({object, part}) => part ? partRight(object.id, part.key, operation) : objectRight(object.id, operation)));
     },
     setGroup(members, operation, enabled) {
-      for (const {object, part} of members) if (part) setField(object.id, part.key, operation, enabled); else setObject(object.id, operation, enabled);
+      for (const member of members) {
+        const {object, part} = member, own = roleMemberRights(member), required = value.schema.requires?.[object.kind || ''] || {};
+        const tied = enabled ? required[operation] || [] : own.filter(right => required[right]?.includes(operation));
+        for (const right of [operation, ...tied])
+          if (part) setField(object.id, part.key, right, enabled); else setObject(object.id, right, enabled);
+      }
     },
     setAllOfPart(id, key, enabled) { for(const operation of fields.get(id)?.get(key)?.operations || [])setField(id, key, operation, enabled); },
     // «Установить все права», «Снять все права» (help, «Редактирование

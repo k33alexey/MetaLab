@@ -65,9 +65,10 @@ const roleGroupRightsWalk = `(async () => {
 // naming its group; the summary not grey where the parts differ; the grey
 // box clearing rather than setting; a click on the folder setting one part;
 // the box of a branch unavailable, or setting the right at the object
-// chosen last rather than at every object of the kind; a click on one right
-// of a branch touching another; the folder «Реквизиты» taking in the
-// attributes of the table parts.
+// chosen last rather than at every object of the kind; marking «Чтение» on a
+// branch touching another right, or clearing it leaving «Изменение», which
+// needs it, marked; the folder «Реквизиты» taking in the attributes of the
+// table parts.
 func TestFoldersAndBranchesOfTheTreeOfRightsShowTheRightsOfWhatTheyHold(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
@@ -124,7 +125,8 @@ func TestFoldersAndBranchesOfTheTreeOfRightsShowTheRightsOfWhatTheyHold(t *testi
 		t.Errorf("the catalog chosen: headed %q", counterparties.Heading)
 	}
 	summary("Контрагенты after the click on the branch", counterparties, map[string]bool{"Чтение": true}, nil)
-	summary("the branch after a click on the marked «Чтение»", branchCleared, nil, map[string]bool{"Изменение": true})
+	// Clearing «Чтение» clears «Изменение», which needs it (prava/23).
+	summary("the branch after a click on the marked «Чтение»", branchCleared, nil, nil)
 	if common.Heading != "Общие" || len(common.Rights) != 0 || common.Description != "Описание:" {
 		t.Errorf("«Общие»: headed %q with rights %v, described %q; want none and no description", common.Heading, common.Rights, common.Description)
 	}
