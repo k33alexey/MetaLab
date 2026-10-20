@@ -583,6 +583,34 @@ function menuButton(text, items, className) {
   return button;
 }
 
+/* treeNode is a row of a tree of Studio with what lies beneath it, every
+   tree drawn as the project tree is and as the prototype's are (inventory of
+   block 00, derevo; snapshot configurator-2026-10-14/rol-otbor-kassa): the
+   sign of unfolding, or its empty place on a row with nothing beneath, so a
+   row stands one step right of the row it lies under whatever it holds; the
+   icon of what the row is; the caption - a text, or an element such as the
+   button that chooses the row. A row with children opens and closes; open is
+   how it stands first, toggled(open) is told each time it is opened or
+   closed. Answers {element, row}: the element to put in the tree and the
+   row to hang clicks and the menu on. Every tree of Studio is made of these;
+   the trees of marks - the filter by subsystems, the fields of a
+   restriction - are rows of restrictionTreeRow. */
+function treeNode({icon, caption, children = [], open = false, toggled}) {
+  const row = node(children.length ? 'summary' : 'div', undefined, 'studio-tree-row');
+  row.append(iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
+  if (!children.length) {
+    row.classList.add('studio-tree-leaf');
+    return {element: row, row};
+  }
+  const element = node('details', undefined, 'studio-tree-node');
+  element.open = open;
+  if (toggled) element.addEventListener('toggle', () => toggled(element.open));
+  const inside = node('div', undefined, 'studio-tree-children');
+  inside.append(...children);
+  element.append(row, inside);
+  return {element, row};
+}
+
 /* tabStrip is a strip of tabs, drawn as the prototype's (the owner's
    decision of 20.10.2026, STUDIO-SHELL.md «Закладки — одним обликом
    везде»; snapshots configurator-2026-10-18/shabl-01,

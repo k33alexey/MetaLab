@@ -116,3 +116,7 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .studio-tabs .studio-tab:focus-visible{outline:1px solid #589df6;outline-offset:-3px}
 .localized-title-dialog .studio-tabs{padding:0 6px}
 .studio-tab-page{padding:10px 12px;border:1px solid var(--tab-border);border-top:0;border-radius:0 0 4px 4px}
+/* Every tree of Studio (treeNode): the sign of unfolding or its place on every row, the icon, one step per level. */
+.studio-tree-node{margin:1px 0}.studio-tree-row{min-height:27px;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:5px;cursor:pointer;user-select:none;font-size:13px;list-style:none}.studio-tree-row::-webkit-details-marker{display:none}
+.studio-tree-row::before{content:'›';width:10px;flex:none;color:#8c9098}.studio-tree-leaf::before{content:''}.studio-tree-node[open]>.studio-tree-row::before{transform:rotate(90deg)}.studio-tree-row>.tree-icon{flex:none}
+.studio-tree-row:hover,.studio-tree-row.selected{background:#3c3f45}.studio-tree-children{margin-left:15px}

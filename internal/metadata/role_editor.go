@@ -94,10 +94,12 @@ type PermissionField struct {
 	Operations []PermissionOperation `json:"operations"`
 }
 
-// PermissionPartGroup is a folder of parts, by its caption.
+// PermissionPartGroup is a folder of parts, by its caption and the icon the
+// folder and its parts are drawn with, as in the configuration tree.
 type PermissionPartGroup struct {
 	Key   PartGroup `json:"key"`
 	Title string    `json:"title"`
+	Icon  string    `json:"icon"`
 }
 
 // LoadPermissionSchema deliberately ignores existing role references so a
@@ -193,7 +195,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	}
 	result.Subsystems = catalog.subsystemMembers()
 	for _, item := range partGroups {
-		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title})
+		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title, Icon: item.icon})
 	}
 	return result, nil
 }

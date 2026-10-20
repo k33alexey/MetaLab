@@ -229,17 +229,12 @@ function createCatalogEditor(host, onChange) {
     objectButton.classList.toggle('selected', selected.kind === 'catalog');
     objectButton.addEventListener('click', () => { selected = {kind: 'catalog'}; rerender(); });
     sidebar.append(objectButton);
-    const attributes = node('details', undefined, 'catalog-group');
-    attributes.open = true;
-    attributes.append(node('summary', 'Реквизиты'));
-    attributes.append(renderAttributeList('catalog', source.catalog.attributes));
-    sidebar.append(attributes);
-    const tableParts = node('details', undefined, 'catalog-group');
-    tableParts.open = true;
-    tableParts.append(node('summary', 'Табличные части'));
+    // The two folders stand as the project tree's do, with their icons.
     const partChoice = part => ({kind: 'tablepart', id: part.id});
-    tableParts.append(choiceList(source.catalog.tableParts, partChoice, '+ Табличная часть', () => partChoice(model.addTablePart())));
-    sidebar.append(tableParts);
+    sidebar.append(
+      treeNode({icon: 'attribute', caption: 'Реквизиты', open: true, children: [renderAttributeList('catalog', source.catalog.attributes)]}).element,
+      treeNode({icon: 'tabular-section', caption: 'Табличные части', open: true,
+        children: [choiceList(source.catalog.tableParts, partChoice, '+ Табличная часть', () => partChoice(model.addTablePart()))]}).element);
     return sidebar;
   }
   function renderObjectPanel() {

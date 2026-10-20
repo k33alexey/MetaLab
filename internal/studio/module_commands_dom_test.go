@@ -21,7 +21,7 @@ import (
 // the table of no objects Остатки of the source Склад.
 const moduleCommandsWalk = `(async () => {
   const studio = window.__studio, answer = {};
-  const rows = () => [...document.querySelectorAll('#tree summary, #tree .leaf')];
+  const rows = () => [...document.querySelectorAll('#tree .studio-tree-row')];
   const row = text => rows().find(item => item.querySelector(':scope > span')?.textContent === text);
   const menu = item => {
     item.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
@@ -121,7 +121,7 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	if err := json.Unmarshal(result, &got); err != nil {
 		t.Fatalf("%v: %s", err, result)
 	}
-	if got.CommonRow != "leaf" || len(got.ModuleRows) != 0 {
+	if !strings.Contains(got.CommonRow, "studio-tree-leaf") || len(got.ModuleRows) != 0 {
 		t.Errorf("the common module is drawn as %q, rows of modules %v; want a row with nothing beneath and no module rows", got.CommonRow, got.ModuleRows)
 	}
 	if len(got.CommonMenu) == 0 || got.CommonMenu[0] != "#icon-open-module Открыть модуль 600" {

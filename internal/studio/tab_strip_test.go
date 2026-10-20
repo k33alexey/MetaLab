@@ -56,7 +56,7 @@ const tabStripWalk = `(async () => {
     await studio.settle();
     return {chosen: strip.querySelector('.studio-tab[aria-selected="true"]').textContent, focus: document.activeElement.textContent};
   };
-  const tree = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
+  const tree = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   tree('Кладовщик').click(); await studio.settle();
   const role = document.querySelector('#role-editor'), roleStrip = role.querySelector('.studio-tabs');
   answer.role = read(roleStrip, role);

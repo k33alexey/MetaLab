@@ -313,17 +313,20 @@ function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item
    role's editor and «Все роли»: the configuration itself at the top, then
    the objects kind by kind in the order the server lists them, each with its
    parts in folders and the objects inside it under their kind - a
-   recalculation under its register, a table under its source. A choice is
+   recalculation under its register, a table under its source. Every row is
+   drawn as the project tree's (treeNode), with the icon the project tree
+   gives the same thing: the kind's, the folder's of parts. A choice is
    {object} or {object, part};
    selection() answers the one made, choose(next) makes one. expanded keeps
    the keys of the nodes left open, so a redraw keeps them open. subsystems()
    answers the filter by subsystems the tree is under, or null: the
    configuration itself stays, a subsystem not passing stays only on the way
    to one that does. */
-function createRoleTree({schema, kindTitles, title, expanded, selection, choose, subsystems = () => null}) {
+function createRoleTree({schema, kindTitles, kindIcons, title, expanded, selection, choose, subsystems = () => null}) {
   const element = node('div', undefined, 'role-tree');
   const kindTitle = kind => kindTitles?.[kind] || kind;
   const partGroupTitle = group => rolePartGroupTitle(schema, group);
+  const partGroupIcon = group => schema.partGroups?.find(item => item.key === group)?.icon || '';
   let filter = '';
   function treeButton(text, hint, className, isSelected, next) {
     const button = node('button', text, className + (isSelected ? ' selected' : ''));
@@ -334,18 +337,8 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
   // A node with something beneath it opens and closes and stays as it was
   // left across redraws, by its key in expanded. A branch's caption is the
   // button that chooses it; a folder's caption only names it.
-  function foldable(key, className, summary, children, open) {
-    const block = node('details', undefined, className);
-    block.open = open || expanded.has(key);
-    block.addEventListener('toggle', () => { if (block.open) expanded.add(key); else expanded.delete(key); });
-    block.append(summary, ...children);
-    return block;
-  }
-  function branch(key, caption, children, open) {
-    const summary = node('summary'); summary.append(caption);
-    return foldable(key, 'role-tree-branch', summary, children, open);
-  }
-  const folder = (key, caption, children, open) => foldable(key, 'role-tree-folder', node('summary', caption), children, open);
+  const foldable = (key, icon, caption, children, open) => treeNode({icon, caption, children, open: open || expanded.has(key),
+    toggled: opened => { if (opened) expanded.add(key); else expanded.delete(key); }}).element;
   const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
   // The nodes of one object: its parts in folders, then the objects inside it.
   // Null when neither the object nor anything in it matches the filter.
@@ -362,26 +355,25 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
     const partNode = (part, groupKey) => {
       const nested = (parts.get(part.key) || []).filter(child => own || matches(part, needle) || matches(child, needle));
       const caption = treeButton(title(part) || part.name, part.name, 'role-tree-item', isPart(part), {object: item, part});
-      if (!(parts.get(part.key) || []).length) return caption;
-      const children = nested.map(child => treeButton(title(child) || child.name, child.name, 'role-tree-item', isPart(child), {object: item, part: child}));
-      return branch(`${item.id} ${groupKey} ${part.key}`, caption, children, !!needle);
+      const children = nested.map(child => treeNode({icon: partGroupIcon(child.group || groupKey),
+        caption: treeButton(title(child) || child.name, child.name, 'role-tree-item', isPart(child), {object: item, part: child})}).element);
+      return foldable(`${item.id} ${groupKey} ${part.key}`, partGroupIcon(groupKey), caption, children, !!needle);
     };
     const folders = [];
     for (const group of schema.partGroups || []) {
       const list = (parts.get('') || []).filter(part => part.group === group.key)
         .filter(part => own || matches(part, needle) || (parts.get(part.key) || []).some(child => matches(child, needle)));
-      if (list.length) folders.push(folder(`${item.id} ${group.key}`, partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!needle));
+      if (list.length) folders.push(foldable(`${item.id} ${group.key}`, partGroupIcon(group.key), partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!needle));
     }
     for (const [kind, list] of inside.get(item.id) || []) {
       // What lies inside an object that matches is shown whole, as its parts are.
       const nodes = list.map(child => objectNode(child, inside, own ? '' : needle, shown)).filter(Boolean);
-      if (nodes.length) folders.push(folder(`${item.id} ${kind}`, kindTitle(kind), nodes, !!needle || !passes));
+      if (nodes.length) folders.push(foldable(`${item.id} ${kind}`, kindIcons?.[kind], kindTitle(kind), nodes, !!needle || !passes));
     }
     if (!own && !folders.length) return null;
     const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', selected?.object?.id === item.id && !selected.part, {object: item});
     caption.dataset.object = item.id;
-    if (!folders.length) return caption;
-    return branch(item.id, caption, folders, (!!needle && !own) || !passes);
+    return foldable(item.id, kindIcons?.[item.kind], caption, folders, (!!needle && !own) || !passes);
   }
   function render(next = filter) {
     filter = next;
@@ -396,16 +388,16 @@ function createRoleTree({schema, kindTitles, title, expanded, selection, choose,
     }
     for (const item of schema.objects) {
       if (item.root) {
-        if (matches(item, needle)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selection()?.object?.id === item.id, {object: item}); button.dataset.object = item.id; element.append(button); }
+        if (matches(item, needle)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selection()?.object?.id === item.id, {object: item}); button.dataset.object = item.id; element.append(treeNode({icon: 'configuration', caption: button}).element); }
         continue;
       }
       if (item.owner) continue;
       const entry = objectNode(item, inside, needle, shown);
       if (!entry) continue;
-      let group = groups.get(item.kind);
-      if (!group) { group = node('details'); group.open = true; group.append(node('summary', kindTitle(item.kind))); groups.set(item.kind, group); element.append(group); }
-      group.append(entry);
+      if (!groups.has(item.kind)) groups.set(item.kind, []);
+      groups.get(item.kind).push(entry);
     }
+    for (const [kind, entries] of groups) element.append(treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: entries, open: true}).element);
     if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
   return {
@@ -958,7 +950,7 @@ function createRoleEditor(host, onChange) {
       // templates of restrictions.
       viewTabs=tabStrip([['rights','Права'],['templates','Шаблоны ограничений']],view,showView);
       host.append(viewTabs);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,kindIcons:source.kindIcons,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));

@@ -120,7 +120,7 @@ const studioPageWalk = `(async () => {
   }
   const languageSelect = document.querySelector('#studio-language');
   const languages = [...languageSelect.options].map(option => option.value);
-  const tree = () => [...document.querySelectorAll('#tree summary, #tree .leaf')];
+  const tree = () => [...document.querySelectorAll('#tree .studio-tree-row')];
   if (!tree().length) problems.push('the configuration tree is empty');
   // Every node is drawn with its icon, and the icon is in the sprite: a
   // node named an icon the set does not draw, or a sprite that never came,
@@ -367,7 +367,7 @@ func openStudioInBrowser(t *testing.T, root string, prepare func(*Workspace)) (c
 		t.Fatal(err)
 	}
 	if _, err := browser.evaluate(ctx, page, `(async () => {
-		while (!document.querySelector('#tree summary, #tree .leaf') || window.__studio.pending) await new Promise(resolve => setTimeout(resolve, 20));
+		while (!document.querySelector('#tree .studio-tree-row') || window.__studio.pending) await new Promise(resolve => setTimeout(resolve, 20));
 	})()`); err != nil {
 		t.Fatal(err)
 	}

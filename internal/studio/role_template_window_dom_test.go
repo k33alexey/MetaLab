@@ -12,7 +12,7 @@ import (
 // are set, its buttons and whether they stand to the right of the content.
 const roleTemplateWindow = `(async () => {
   const studio = window.__studio;
-  const roles = [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Роли');
+  const roles = [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Роли');
   roles.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Все ограничения доступа').click();
   await studio.settle();

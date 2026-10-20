@@ -29,9 +29,10 @@ type RoleSource struct {
 	Schema          metadata.PermissionSchema `json:"schema"`
 	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
-	// KindTitles are the captions of the kinds of metadata, from the one
-	// list Studio names them by.
+	// KindTitles and KindIcons are the captions and the icons of the kinds
+	// of metadata, from the one list Studio names and draws them by.
 	KindTitles map[string]string `json:"kindTitles"`
+	KindIcons  map[string]string `json:"kindIcons"`
 }
 
 func validateRolePath(relative string) error {
@@ -80,7 +81,7 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
+	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}, nil
 }
 
 // roleFiles is a role as it lies on disk: its description, and the grid of
@@ -255,6 +256,7 @@ type RoleOverview struct {
 	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
 	KindTitles      map[string]string         `json:"kindTitles"`
+	KindIcons       map[string]string         `json:"kindIcons"`
 }
 
 type RoleOverviewEntry struct {
@@ -283,7 +285,7 @@ func (workspace *Workspace) readAllRolesLocked() (RoleOverview, error) {
 	if err != nil {
 		return RoleOverview{}, err
 	}
-	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}
+	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}
 	for _, relative := range descriptions {
 		role, revision, err := workspace.decodeRoleLocked(relative, configuration)
 		if err != nil {
@@ -483,7 +485,7 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles}, nil
+	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

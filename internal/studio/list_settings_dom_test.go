@@ -12,7 +12,7 @@ import (
 // openAllRestrictions opens «Все ограничения доступа» from the branch «Роли».
 const openAllRestrictions = `
   const studio = window.__studio;
-  const roles = [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Роли');
+  const roles = [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Роли');
   roles.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Все ограничения доступа').click();
   await studio.settle();
@@ -225,7 +225,7 @@ func TestTheListOfAllRestrictionsIsSetUpAsThePrototypes(t *testing.T) {
 		if ctx.Err() != nil {
 			t.Fatal("the page loaded anew never drew its tree")
 		}
-		answer, err := browser.evaluate(ctx, page, `!window.__beforeReload && !!document.querySelector('#tree summary, #tree .leaf') && !window.__studio.pending`)
+		answer, err := browser.evaluate(ctx, page, `!window.__beforeReload && !!document.querySelector('#tree .studio-tree-row') && !window.__studio.pending`)
 		loaded = err == nil && string(answer) == "true"
 		if !loaded {
 			time.Sleep(20 * time.Millisecond)

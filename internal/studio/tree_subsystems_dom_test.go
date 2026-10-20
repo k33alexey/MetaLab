@@ -169,7 +169,7 @@ func TestNestedSubsystemStandsUnderItsParent(t *testing.T) {
 const treeFilterWalk = `(async () => {
   const studio = window.__studio, steps = {};
   const caption = item => (item.querySelector(':scope > summary') || item).textContent.trim();
-  const branch = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
+  const branch = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   // A branch the tree does not show at all answers null, one shown empty [].
   const children = text => { const item = branch(text); return !item ? null : item.tagName === 'SUMMARY' ? [...item.nextElementSibling.children].map(caption) : []; };
   const state = () => ({catalogs: children('Справочники'), documents: children('Документы'), subsystems: children('Подсистемы'), sales: children('Продажи'),
@@ -312,7 +312,7 @@ const subsystemFilterWindow = `(async () => {
   steps.folded = rows();
   buttons().find(item => item.textContent === 'Установить').click(); await studio.settle();
   steps.emptySet = {open: !!dialog(), pressed: document.querySelector('#tree-subsystems').getAttribute('aria-pressed')};
-  [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click(); await studio.settle();
+  [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click(); await studio.settle();
   [...document.querySelectorAll('#role-editor button')].find(item => item.textContent === 'Действия').click();
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Снять по подсистемам...').click();
   await studio.settle();
@@ -431,7 +431,7 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 const treePathWalk = `(async () => {
   const studio = window.__studio, steps = {};
   const caption = item => (item.querySelector(':scope > summary') || item).textContent.trim();
-  const branch = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
+  const branch = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   const children = text => { const item = branch(text); return !item ? null : item.tagName === 'SUMMARY' ? [...item.nextElementSibling.children].map(caption) : []; };
   const state = () => ({catalogs: children('Справочники'), documents: children('Документы'), subsystems: children('Подсистемы'), sales: children('Продажи')});
   const dialog = () => document.querySelector('dialog[open]');

@@ -43,10 +43,10 @@ const menuButtonWalk = `(async () => {
       answer.push({where, text: button.textContent, sign: getComputedStyle(button, '::after').content});
     }
   };
-  [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click();
   await studio.settle();
   read('role');
-  const roles = [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Роли');
+  const roles = [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Роли');
   roles.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Все ограничения доступа').click();
   await studio.settle();

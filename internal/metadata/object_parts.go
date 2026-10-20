@@ -55,7 +55,7 @@ type partGroupInfo struct {
 // service. A template of an HTTP service has no rights: the exports write
 // them on its methods only.
 var partGroups = []partGroupInfo{
-	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights, "", ""},
+	{StandardAttributesPart, "StandardAttribute", "Стандартные реквизиты", fieldRights, "", "standard-attribute"},
 	{DimensionsPart, "Dimension", "Измерения", fieldRights, "Dimensions", "dimension"},
 	{ResourcesPart, "Resource", "Ресурсы", fieldRights, "Resources", "resource"},
 	{AttributesPart, "Attribute", "Реквизиты", fieldRights, "Attributes", "attribute"},
@@ -63,9 +63,9 @@ var partGroups = []partGroupInfo{
 	{AccountingFlagsPart, "AccountingFlag", "Признаки учета", fieldRights, "AccountingFlags", "accounting-flag"},
 	{ExtDimensionAccountingFlagsPart, "ExtDimensionAccountingFlag", "Признаки учета субконто", fieldRights, "ExtDimensionAccountingFlags", "ext-dimension-accounting-flag"},
 	{TablePartsPart, "TabularSection", "Табличные части", fieldRights, "TableParts", "tabular-section"},
-	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights, "", ""},
+	{StandardTablePartsPart, "StandardTabularSection", "Стандартные табличные части", fieldRights, "", "standard-tabular-section"},
 	{FieldsPart, "Field", "Поля", fieldRights, "Fields", "attribute"},
-	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}, "Commands", ""},
+	{CommandsPart, "Command", "Команды", []PermissionOperation{PermissionView}, "Commands", "command"},
 	{OperationsPart, "Operation", "Операции", []PermissionOperation{PermissionUse}, "", "web-service-operation"},
 	{URLTemplatesPart, "URLTemplate", "Шаблоны URL", nil, "", "url-template"},
 	{MethodsPart, "Method", "Методы", []PermissionOperation{PermissionUse}, "", "http-method"},
@@ -607,7 +607,9 @@ func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPar
 // read off its description, every sort whose field its description keeps and
 // the tree shows (inventory of block 00, «Ветки под объектом», snapshots
 // derevo/); for another, what its composition says. A branch stands whether
-// it holds anything or not, as in the prototype's tree.
+// it holds anything or not, as in the prototype's tree. The commands of an
+// object are no branch read off its description: the tree shows them from
+// their folders (studio, objectCommandNodes).
 func branchesOf(kind Kind) []PartGroup {
 	composition := kindCompositionOf[kind]
 	if !composition.described {
@@ -616,7 +618,7 @@ func branchesOf(kind Kind) []PartGroup {
 	info, _ := kindInfoOf(kind)
 	var result []PartGroup
 	for _, sort := range partGroups {
-		if sort.icon == "" || sort.field == "" || info.described == nil {
+		if sort.group == CommandsPart || sort.field == "" || info.described == nil {
 			continue
 		}
 		if _, ok := info.described.FieldByName(sort.field); ok {

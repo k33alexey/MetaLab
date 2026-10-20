@@ -82,7 +82,7 @@ func TestRoleEditorRepairsClientsMLDoesNotKeep(t *testing.T) {
 	})
 	result, err := browser.evaluate(ctx, page, `(async () => {
   const studio = window.__studio;
-  [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  [...document.querySelectorAll('#tree .studio-tree-leaf')].find(item => item.textContent.trim() === 'Кладовщик').click();
   await studio.settle();
   const warning = document.querySelector('#role-editor .role-warning');
   const shown = !!warning && !warning.hidden;
@@ -145,7 +145,7 @@ func TestRoleEditorTakesAwayCommandsOfForms(t *testing.T) {
 	})
 	result, err := browser.evaluate(ctx, page, `(async () => {
   const studio = window.__studio;
-  [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  [...document.querySelectorAll('#tree .studio-tree-leaf')].find(item => item.textContent.trim() === 'Кладовщик').click();
   await studio.settle();
   const warning = document.querySelector('#role-editor .role-warning');
   const shown = !!warning && !warning.hidden;

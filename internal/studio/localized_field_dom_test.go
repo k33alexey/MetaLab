@@ -47,7 +47,7 @@ func addGermanLanguage(t *testing.T, root string) {
 const localizedFieldWalk = `(async () => {
   const studio = window.__studio, steps = {};
   const dialog = () => document.querySelector('dialog[open]');
-  const node = text => [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === text);
+  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   const open = async text => { node(text).click(); await studio.settle(); };
   const field = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .role-identity label')]
     .find(label => label.firstChild.textContent === caption);

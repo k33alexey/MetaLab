@@ -929,7 +929,7 @@ function createRoleOverview(host, openRole, onChange) {
       const sidebar = node('div', undefined, 'overview-sidebar'), search = node('input');
       search.type = 'search'; search.placeholder = 'Поиск объекта'; search.setAttribute('aria-label', 'Поиск объекта');
       search.value = filter;
-      tree = createRoleTree({schema: source.schema, kindTitles: source.kindTitles, title, expanded, selection: () => selected, choose: next => { selected = next; renderPanel(); }});
+      tree = createRoleTree({schema: source.schema, kindTitles: source.kindTitles, kindIcons: source.kindIcons, title, expanded, selection: () => selected, choose: next => { selected = next; renderPanel(); }});
       search.addEventListener('input', () => { filter = search.value; tree.render(filter); });
       sidebar.append(search, tree.element);
       panel = node('section', undefined, 'overview-panel');

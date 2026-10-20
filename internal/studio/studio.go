@@ -107,14 +107,17 @@ type Property struct {
 	Value string `json:"value"`
 }
 
-// metadataTitles are the captions of the kinds, for the editors that show
-// objects of many kinds side by side.
-var metadataTitles = func() map[string]string {
-	result := map[string]string{}
+// metadataTitles and metadataIcons are the captions and the icons of the
+// kinds, for the editors that show objects of many kinds side by side: the
+// trees of the windows of rights draw an object with its kind's icon, as the
+// project tree does.
+var metadataTitles, metadataIcons = func() (map[string]string, map[string]string) {
+	titles, icons := map[string]string{}, map[string]string{}
 	for _, descriptor := range kinds.All() {
-		result[string(descriptor.Kind)] = descriptor.Titles
+		titles[string(descriptor.Kind)] = descriptor.Titles
+		icons[string(descriptor.Kind)] = descriptor.Icon
 	}
-	return result
+	return titles, icons
 }()
 
 // Open validates and opens an ML Project without mutating its files.
