@@ -55,6 +55,8 @@ const (
 	PermissionEventLog                                   PermissionOperation = "event-log"
 	PermissionExternalConnection                         PermissionOperation = "external-connection"
 	PermissionAutomation                                 PermissionOperation = "automation"
+	PermissionInteractiveOpenExtDataProcessors           PermissionOperation = "interactive-open-ext-data-processors"
+	PermissionInteractiveOpenExtReports                  PermissionOperation = "interactive-open-ext-reports"
 	PermissionGet                                        PermissionOperation = "get"
 	PermissionSet                                        PermissionOperation = "set"
 	PermissionInteractiveActivate                        PermissionOperation = "interactive-activate"
@@ -139,6 +141,8 @@ var roleRights = []roleRight{
 	{PermissionEventLog, "EventLog", "ЖурналРегистрации"},
 	{PermissionExternalConnection, "ExternalConnection", "ВнешнееСоединение"},
 	{PermissionAutomation, "Automation", "Automation"},
+	{PermissionInteractiveOpenExtDataProcessors, "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"},
+	{PermissionInteractiveOpenExtReports, "InteractiveOpenExtReports", "ИнтерактивноеОткрытиеВнешнихОтчетов"},
 	{PermissionGet, "Get", "Получение"},
 	{PermissionSet, "Set", "Установка"},
 	{PermissionInteractiveActivate, "InteractiveActivate", "ИнтерактивнаяАктивация"},
@@ -200,9 +204,6 @@ var droppedRights = []droppedRight{
 	{roleRight{"web-client", "WebClient", "ВебКлиент"}, PermissionRunApplication, "the thin and the web client are the one right run-application in ML"},
 	{roleRight{"thick-client", "ThickClient", "ТолстыйКлиент"}, "", "ML has no thick client"},
 	{roleRight{"mobile-client", "MobileClient", "МобильныйКлиент"}, "", "ML has no mobile client"},
-	{roleRight{"interactive-open-ext-data-processors", "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"}, "",
-		"ML has no external data processors"},
-	{roleRight{"interactive-open-ext-reports", "InteractiveOpenExtReports", "ИнтерактивноеОткрытиеВнешнихОтчетов"}, "", "ML has no external reports"},
 	{roleRight{"configuration-extensions-administration", "ConfigurationExtensionsAdministration", "АдминистрированиеРасширенийКонфигурации"}, "",
 		"ML has no configuration extensions"},
 	{roleRight{"collaboration-system-info-base-registration", "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"}, "",

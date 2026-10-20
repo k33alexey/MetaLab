@@ -32,9 +32,9 @@ func fullRole() RoleDefinition {
 }
 
 // A role written as its two files and read back is the same role: every one
-// of the sixty-two rights it carries - the prototype's sixty-nine but its four
-// clients and the four rights on mechanisms ML refused, and the start of the
-// application - a denial apart from a grant, a part only denied,
+// of the sixty-four rights it carries - the prototype's sixty-nine but its
+// four clients and the two rights on mechanisms ML refused, and the start of
+// the application - a denial apart from a grant, a part only denied,
 // a dotted key, a restriction on an object the role only denies (235 such in
 // the exports), the flags and the commands.
 //
@@ -67,7 +67,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if err != nil || !bytes.Equal(again, description) || !bytes.Equal(againGrid, grid) {
 		t.Fatalf("a second writing differs from the first (%v):\n%s\n%s", err, again, againGrid)
 	}
-	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 62 {
+	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 64 {
 		t.Fatalf("rights carried: %d of %d", len(decoded.Objects[0].Operations), len(RoleRights()))
 	}
 	if !decoded.IndependentChildRights || len(decoded.Objects[1].Restrictions) != 2 || len(decoded.RestrictionTemplates) != 1 || len(decoded.Commands) != 1 {
@@ -142,6 +142,11 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 		"ВебКлиент":        "run-application",
 		"RunApplication":   "run-application",
 		"ЗапускПриложения": "run-application",
+		// The interactive opening of external data processors and reports is
+		// carried again (the owner's decision of 20.10.2026,
+		// METADATA-OBJECTS, «Внешние отчёты и обработки — свои у ML»).
+		"InteractiveOpenExtDataProcessors":    "interactive-open-ext-data-processors",
+		"ИнтерактивноеОткрытиеВнешнихОтчетов": "interactive-open-ext-reports",
 	} {
 		if got, ok := RightByPrototypeName(name); !ok || got != want {
 			t.Errorf("%s found as %q, %v", name, got, ok)
@@ -151,8 +156,7 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 	// on the mechanisms ML refused are rights of the prototype nothing stands
 	// for in ML.
 	for _, name := range []string{"FullAccess", "ThickClient", "ТолстыйКлиент", "MobileClient", "МобильныйКлиент",
-		"InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОтчетов", "ConfigurationExtensionsAdministration",
-		"РегистрацияИнформационнойБазыСистемыВзаимодействия"} {
+		"ConfigurationExtensionsAdministration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"} {
 		if got, ok := RightByPrototypeName(name); ok {
 			t.Errorf("%s found as %q", name, got)
 		}
@@ -175,8 +179,7 @@ func TestRolesWithClientsMLDoesNotKeepAreReadAndNotRun(t *testing.T) {
 		right  PermissionOperation
 		denied bool
 	}{{"thin-client", false}, {"web-client", false}, {"thick-client", false}, {"mobile-client", false}, {"web-client", true},
-		{"interactive-open-ext-data-processors", false}, {"interactive-open-ext-reports", true},
-		{"configuration-extensions-administration", false}, {"collaboration-system-info-base-registration", false}} {
+		{"configuration-extensions-administration", true}, {"collaboration-system-info-base-registration", false}} {
 		verb := "gives"
 		if item.denied {
 			verb = "denies"

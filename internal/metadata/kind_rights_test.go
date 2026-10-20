@@ -125,9 +125,10 @@ var expectedConfigurationRights = []string{"Administration", "DataAdministration
 // thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно право»)
 // and the rights on the mechanisms ML refused (ACCESS-RIGHTS, «Права на
 // механизмы, от которых ML отказался, не переносятся»). The thin and the web
-// client are the start of the application.
-var rightsNotKept = []string{"ThickClient", "MobileClient", "InteractiveOpenExtDataProcessors", "InteractiveOpenExtReports",
-	"ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration"}
+// client are the start of the application. The interactive opening of
+// external data processors and reports is kept again: the mechanism comes
+// back as ML's own (the owner's decision of 20.10.2026).
+var rightsNotKept = []string{"ThickClient", "MobileClient", "ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration"}
 
 // rightsByNames reads prototype names as rights, in the order of the help,
 // each once: the thin and the web client are one right in ML, and the
