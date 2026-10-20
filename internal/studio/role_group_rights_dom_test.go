@@ -9,7 +9,9 @@ import (
 // roleGroupRightsWalk opens the window of the role Кладовщик, marks «Просмотр»
 // of the standard attribute Код of the catalog Товары, then chooses its folder
 // «Стандартные реквизиты» and presses the box of «Просмотр» twice; then the
-// branch «Справочники», where it presses the space, and «Общие»; then marks
+// branch «Справочники», where it presses the grey box of «Чтение», chooses
+// the catalog Контрагенты, comes back to the branch and presses the box of
+// «Чтение» again; then «Общие»; then marks
 // «Просмотр» on the folder «Реквизиты» of the document ПродажаТоваров and
 // chooses the attribute Количество of its table part. After each
 // step it reads the rights listed: caption, marked, grey, unavailable.
@@ -37,7 +39,10 @@ const roleGroupRightsWalk = `(async () => {
   box('Просмотр').click(); await studio.settle(); read();
   box('Просмотр').click(); await studio.settle(); read();
   group('Справочники').click(); await studio.settle(); read();
-  editor.querySelector('.role-permissions .check-list').dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true})); await studio.settle(); read();
+  box('Чтение').click(); await studio.settle(); read();
+  editor.querySelector('.role-tree-item[title="Контрагенты"]').click(); await studio.settle(); read();
+  group('Справочники').click(); await studio.settle();
+  box('Чтение').click(); await studio.settle(); read();
   group('Общие').click(); await studio.settle(); read();
   const sale = editor.querySelector('[data-group="10000000-0000-4000-8000-000000000202 attributes"]');
   sale.click(); await studio.settle();
@@ -52,14 +57,17 @@ const roleGroupRightsWalk = `(async () => {
 // block-00/rol «Права папки и ветви вида», snapshots prava/06-11): a right
 // marked at every one is marked, at none cleared, at some grey; the box of a
 // folder sets the right at every part and clears it, the grey one setting
-// it. The branch of a kind shows its objects' rights so, its boxes
-// unavailable while what a click does there is unknown; «Общие» has no
-// rights and no description. The expected marks are written from the role
-// the test makes, not read from the code. Defects caught: a folder or a
-// branch only naming its group; the summary not grey where the parts differ;
-// the grey box clearing rather than setting; a click on the folder setting
-// one part; a branch rewriting the rights of every object of its kind; the
-// folder «Реквизиты» taking in the attributes of the table parts.
+// it. The branch of a kind shows its objects' rights so and its box does
+// at every object of the kind what a folder's does at every part (pass
+// after the series of 2.413, prava/20-23); «Общие» has no rights and no
+// description. The expected marks are written from the role the test
+// makes, not read from the code. Defects caught: a folder or a branch only
+// naming its group; the summary not grey where the parts differ; the grey
+// box clearing rather than setting; a click on the folder setting one part;
+// the box of a branch unavailable, or setting the right at the object
+// chosen last rather than at every object of the kind; a click on one right
+// of a branch touching another; the folder «Реквизиты» taking in the
+// attributes of the table parts.
 func TestFoldersAndBranchesOfTheTreeOfRightsShowTheRightsOfWhatTheyHold(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
@@ -78,10 +86,11 @@ func TestFoldersAndBranchesOfTheTreeOfRightsShowTheRightsOfWhatTheyHold(t *testi
 		Rights                       []right
 	}
 	var steps []step
-	if err := json.Unmarshal(result, &steps); err != nil || len(steps) != 8 {
+	if err := json.Unmarshal(result, &steps); err != nil || len(steps) != 10 {
 		t.Fatalf("%v: %s", err, result)
 	}
-	folder, set, cleared, catalogs, space, common, attributes, quantity := steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6], steps[7]
+	folder, set, cleared, catalogs, branchSet, counterparties, branchCleared, common, attributes, quantity :=
+		steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6], steps[7], steps[8], steps[9]
 	want := func(name string, got step, rights ...right) {
 		t.Helper()
 		if !slices.Equal(got.Rights, rights) {
@@ -101,15 +110,21 @@ func TestFoldersAndBranchesOfTheTreeOfRightsShowTheRightsOfWhatTheyHold(t *testi
 		t.Fatalf("the branch «Справочники»: headed %q with rights %v", catalogs.Heading, catalogs.Rights)
 	}
 	// Товары has «Чтение» and «Изменение», Контрагенты has neither.
-	for _, got := range catalogs.Rights {
-		grey := got.Caption == "Чтение" || got.Caption == "Изменение"
-		if got.Checked || got.Mixed != grey || !got.Disabled {
-			t.Errorf("the branch «Справочники»: %+v, want grey %v and unavailable", got, grey)
+	summary := func(name string, got step, marked, grey map[string]bool) {
+		t.Helper()
+		for _, right := range got.Rights {
+			if right.Checked != marked[right.Caption] || right.Mixed != grey[right.Caption] || right.Disabled {
+				t.Errorf("%s: %+v, want marked %v, grey %v, available", name, right, marked[right.Caption], grey[right.Caption])
+			}
 		}
 	}
-	if !slices.Equal(space.Rights, catalogs.Rights) {
-		t.Errorf("the space on the branch changed its rights: %+v, were %+v", space.Rights, catalogs.Rights)
+	summary("the branch «Справочники»", catalogs, nil, map[string]bool{"Чтение": true, "Изменение": true})
+	summary("the branch after a click on the grey «Чтение»", branchSet, map[string]bool{"Чтение": true}, map[string]bool{"Изменение": true})
+	if counterparties.Heading != "Контрагенты" {
+		t.Errorf("the catalog chosen: headed %q", counterparties.Heading)
 	}
+	summary("Контрагенты after the click on the branch", counterparties, map[string]bool{"Чтение": true}, nil)
+	summary("the branch after a click on the marked «Чтение»", branchCleared, nil, map[string]bool{"Изменение": true})
 	if common.Heading != "Общие" || len(common.Rights) != 0 || common.Description != "Описание:" {
 		t.Errorf("«Общие»: headed %q with rights %v, described %q; want none and no description", common.Heading, common.Rights, common.Description)
 	}

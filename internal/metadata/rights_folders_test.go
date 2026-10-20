@@ -30,11 +30,13 @@ func folderNames(folders []rightsFolder) []string {
 // prototype's window of a role does, in its order, empty ones too (pass of
 // 20.10.2026 with the owner, block-00/rol «Папки частей»,
 // materials/configurator-2026-10-20/prava/zapis.md «Дерево прав»): written
-// out here from the pass, not read off the descriptors. The kinds the pass
-// did not open - a chart of characteristic types, of calculation types, a
-// data processor, a plan of exchange, a journal, a table of dimensions, a
-// criterion of filter - are written by the nearest kind it opened and stand
-// apart, as the question of the series of 2.413 says. Defects caught: one
+// out here from the pass, not read off the descriptors. A chart of
+// characteristic types, of calculation types, a data processor, a plan of
+// exchange, a journal and a criterion of filter were opened by the pass
+// after the series of 2.413 (snapshots prava/26-32); the table of
+// dimensions of a cube was not - the copy has no external source - and is
+// written by the nearest kind, a table of a source, standing apart until
+// it is seen. Defects caught: one
 // order for every kind (the standard attributes of a register of
 // information after its attributes, the tables of dimensions of a cube
 // last); the standard attributes or the commands missing; the recalculations
@@ -56,15 +58,13 @@ func TestTheTreeOfRightsShowsThePrototypesFolders(t *testing.T) {
 		ExternalDataSourceTableKind: {"fields", "commands"},
 		ExternalCubeKind:            {"kind:external-data-source-dimension-tables", "dimensions", "resources", "commands"},
 		WebServiceKind:              {"operations"}, HTTPServiceKind: {"url-templates"},
-	}
-	unseen := map[Kind][]string{
 		ChartOfCharacteristicTypesKind: reference, ExchangePlanKind: reference,
 		ChartOfCalculationTypesKind: {"attributes", "table-parts", "standard-attributes", "standard-table-parts", "commands"},
 		DataProcessorKind:           {"attributes", "table-parts", "commands"},
 		DocumentJournalKind:         {"standard-attributes", "commands"},
-		ExternalDimensionTableKind:  {"fields", "commands"},
 		FilterCriterionKind:         {"commands"},
 	}
+	unseen := map[Kind][]string{ExternalDimensionTableKind: {"fields", "commands"}}
 	for _, item := range kindInfos {
 		want, ok := seen[item.kind]
 		if !ok {

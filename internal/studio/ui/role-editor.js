@@ -455,7 +455,7 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
     caption.dataset.object = item.id;
     return foldable(item.id, kindIcons?.[item.kind], caption, folders, (!!needle && !own) || !passes);
   }
-  const branch = (kind, children) => foldable(branchKey(kind), kindIcons?.[kind], groupCaption(kindTitle(kind), {key: branchKey(kind), kind, branch: true}), children, !!filter.trim());
+  const branch = (kind, children) => foldable(branchKey(kind), kindIcons?.[kind], groupCaption(kindTitle(kind), {key: branchKey(kind), kind}), children, !!filter.trim());
   function render(next = filter) {
     filter = next;
     const needle = filter.toLocaleLowerCase().trim(), shown = subsystemFilterPasses(schema, subsystems());
@@ -999,16 +999,15 @@ function createRoleEditor(host, onChange) {
   /* What the node chosen gives rights over, as the prototype's window
      shows it (pass of 20.10.2026, block-00/rol): an object or a part over
      itself alone; a folder or a branch over what it holds, a right marked at
-     every one, cleared at none, grey at some, the box of a folder setting or
-     clearing the right at every part, the grey one setting it. What a click
-     on the box of a branch of a kind does was not seen - it would rewrite the
-     rights of hundreds of objects - so the branch only shows them. Only an
-     object takes restrictions of access to data. */
+     every one, cleared at none, grey at some; the box of a folder or of a
+     branch sets or clears the right at everything it holds, the grey one
+     setting it (the branch: pass after the series of 2.413, prava/20-23).
+     Only an object takes restrictions of access to data. */
   function chosenNode(){
     const {object,part,group}=selected;
     if(group){
       const members=roleGroupMembers(source.schema,group),owner=group.object&&source.schema.objects.find(item=>item.id===group.object);
-      return {members,rights:roleGroupRights(source.schema,members,group),fixed:!!group.branch,heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
+      return {members,rights:roleGroupRights(source.schema,members,group),heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
     }
     const member={object,part},rights=roleMemberRights(member);
     return {members:[member],rights,restricted:part?null:object,
@@ -1018,12 +1017,12 @@ function createRoleEditor(host, onChange) {
   function renderPanel() {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));describe(null);return;}
-    const {members,rights,fixed,heading,restricted=null,empty}=chosenNode();
+    const {members,rights,heading,restricted=null,empty}=chosenNode();
     // Over the list, as the prototype's: «Права:» and the two buttons that
     // mark or clear every right of the node chosen, and nothing beside it.
     const head=node('div',undefined,'role-rights-head');
     head.append(node('span','Права:','role-rights-caption'),...markAllButtons(enabled=>{for(const right of rights)model.setGroup(members,right,enabled);changed();renderPanel();panel.querySelector('.check-list')?.focus();}));
-    for(const button of head.querySelectorAll('button'))button.disabled=fixed||!rights.length;
+    for(const button of head.querySelectorAll('button'))button.disabled=!rights.length;
     // The current right stays current on the next node that has it, as the
     // prototype's does; elsewhere the first right is.
     if(!rights.includes(restriction.right)){restriction.right=rights[0]||null;restriction.row=-1;}
@@ -1031,7 +1030,7 @@ function createRoleEditor(host, onChange) {
     const choose=right=>{restriction.right=right;restriction.row=-1;renderPanel();panel.querySelector('.check-list')?.focus();};
     panel.append(...heading);
     if(empty)panel.append(node('p',empty,'muted'));
-    else panel.append(head,checkList(rights.map(right=>{const state=model.groupMark(members,right);return{key:right,caption:caption(right),checked:state==='all',mixed:state==='some',disabled:fixed};}),restriction.right,mark,choose));
+    else panel.append(head,checkList(rights.map(right=>{const state=model.groupMark(members,right);return{key:right,caption:caption(right),checked:state==='all',mixed:state==='some'};}),restriction.right,mark,choose));
     panel.append(roleRestrictionSection({model,object:restricted,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
     describe(restriction.right);
   }
