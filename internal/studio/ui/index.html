@@ -163,12 +163,14 @@
     function renderNode(node){if(node.children&&node.children.length){const details=document.createElement('details');details.open=node.id==='project'||node.id==='metadata';const summary=document.createElement('summary');const icon=iconElement(node.icon);const title=document.createElement('span');title.textContent=node.title;summary.append(icon,title);summary.addEventListener('click',event=>{event.stopPropagation();selectNode(node,summary)});offerTreeCommands(node,summary);const children=document.createElement('div');children.className='children';for(const child of node.children)children.append(renderNode(child));details.append(summary,children);return details}const leaf=document.createElement('div');leaf.className='leaf';const icon=iconElement(node.icon);const title=document.createElement('span');title.textContent=node.title;leaf.append(icon,title);leaf.addEventListener('click',async()=>{await selectNode(node,leaf);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,leaf);return leaf}
     // Контекстное меню узла дерева. Модуль — не строка дерева, а команда
     // меню его владельца: «Открыть модуль» общего модуля, «Открыть модуль
-    // приложения / сеанса / внешнего соединения» корня — первыми, как у
-    // прототипа (опись блока 00, obshchij-modul.md, konfiguraciya.md);
+    // приложения / сеанса / внешнего соединения» корня, «Открыть модуль
+    // объекта / менеджера / набора записей …» объекта — первыми, как у
+    // прототипа (опись блока 00, obshchij-modul.md, konfiguraciya.md, меню
+    // каждого вида); модуль, которого объект не держит, — недоступен;
     // команда — действие самого объекта (жирным) — исполняется и двойным
     // щелчком. «Все роли» и «Все ограничения доступа» — команды ветви «Роли»
     // и корня конфигурации (справка, «Все роли», «Все ограничения доступа»).
-    function treeCommands(node){const commands=(node.modules||[]).map(module=>[module.command,()=>openModule(module),true,undefined,'open-module',module.main]);const overview=node.id==='project'||node.id==='metadata/roles'?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
+    function treeCommands(node){const commands=(node.modules||[]).map(module=>[module.command,()=>openModule(module),!module.disabled,undefined,'open-module',module.main]);const overview=node.id==='project'||node.id==='metadata/roles'?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
     function offerTreeCommands(node,element){const commands=treeCommands(node);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)});const main=(node.modules||[]).find(module=>module.main);if(main)element.addEventListener('dblclick',async event=>{event.stopPropagation();await selecting;openModule(main)})}
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
@@ -184,17 +186,17 @@
     function showProjectEditor(value){closeEditors(projectEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
     function showLanguagesEditor(value){closeEditors(languagesEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
     async function loadRole(path){const response=await fetch(`/api/role?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showRoleEditor(value);currentFile=value}
-    // Модуль, открытый командой меню объекта. Модуль корня в проекте ровно
-    // один, поэтому открытие его же и создаёт: выбирать «создавать ли» не из
-    // чего, выбирают только содержимое.
+    // Модуль, открытый командой меню объекта. Меню предлагает модуль, есть у
+    // него текст или нет, как у прототипа, поэтому открытие его же и
+    // создаёт: выбирать «создавать ли» не из чего, выбирают только
+    // содержимое.
     async function openModule(module){
-      if(!module.root)return openFile(module.path);
       if(loadingFile)return false;
       if(currentFile?.path===module.path)return true;
       if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;
       loadingFile=true;status.className='';status.textContent='Открытие файла…';
       try{
-        const response=await studioRequest(`/api/root-module/${encodeURIComponent(module.root)}`);
+        const response=await studioRequest(`/api/module?path=${encodeURIComponent(module.path)}`);
         if(!response.ok)throw new Error(await response.text());
         currentFile=await response.json();currentFile.isForm=false;
         showSourceEditor(currentFile);

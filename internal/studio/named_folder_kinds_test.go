@@ -3,9 +3,11 @@ package studio
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
@@ -22,10 +24,11 @@ func writeProjectFile(t *testing.T, root, relative, content string) {
 }
 
 // A WS reference, a WebSocket client and an HTTP service each keep a folder,
-// and the tree shows each of them in its branch with what it holds. Catches a
-// kind that moved to a folder and fell out of the tree, a module hanging under
-// its object without a name to click on, and a service description shown as
-// if it were source.
+// and the tree shows each of them in its branch with what it holds, the
+// module opened from its menu by «Открыть модуль» (inventory of block 00,
+// http-servis.md, websocket-klient.md). Catches a kind that moved to a folder
+// and fell out of the tree, a module that no menu opens, and a service
+// description shown as if it were source.
 func TestNamedFolderKindsStandInTheTreeWithTheirModules(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
@@ -56,13 +59,16 @@ func TestNamedFolderKindsStandInTheTreeWithTheirModules(t *testing.T) {
 	if len(reference.Children) != 0 {
 		t.Fatalf("the service description hangs under the reference as source: %+v", reference.Children)
 	}
-	for path, title := range map[string]string{
-		"metadata/websocket-clients/Биржа/" + project.ClientModuleFile: "Модуль клиента",
-		"metadata/http-services/Обмен/" + project.ServiceModuleFile:    "Модуль сервиса",
+	for path, owner := range map[string]string{
+		"metadata/websocket-clients/Биржа/" + project.ClientModuleFile: "Биржа",
+		"metadata/http-services/Обмен/" + project.ServiceModuleFile:    "Обмен",
 	} {
-		module, ok := findNodeByID(snapshot.Tree, path)
-		if !ok || module.Title != title {
-			t.Fatalf("the module %s stands in the tree as %+v", path, module)
+		module, node, ok := findModuleCommand(snapshot.Tree, path)
+		if !ok || module.Command != "Открыть модуль" || module.Main || module.Disabled || node.Title != owner {
+			t.Fatalf("the module %s is offered as %+v by %q", path, module, node.Title)
+		}
+		if _, ok := findNodeByID(snapshot.Tree, path); ok {
+			t.Fatalf("the module %s is a row of the tree", path)
 		}
 		if _, err := workspace.ReadSource(path); err != nil {
 			t.Fatalf("the module %s does not open: %v", path, err)
@@ -73,17 +79,19 @@ func TestNamedFolderKindsStandInTheTreeWithTheirModules(t *testing.T) {
 	}
 }
 
-// Every module a kind with a named folder may keep has a name in the tree.
-// Catches the next kind that gains a module and hangs it under its object as
-// a node with no title - which is how the modules of HTTP and web services
-// stood until a WebSocket client made the gap visible.
+// Every module a kind with a named folder may keep is opened from the menu
+// of its object, or - the module of a common form, which opens inside its
+// form - stands under it by a name. Catches the next kind that gains a module
+// neither offered nor named - which is how the modules of HTTP and web
+// services stood until a WebSocket client made the gap visible.
 func TestEveryNamedFolderModuleHasATitle(t *testing.T) {
 	t.Parallel()
 	for _, kind := range project.NamedFolderKinds() {
 		files, _ := project.NamedFolderFiles(kind)
 		for _, file := range files {
-			if filepath.Ext(file) == ".bsl" && moduleTitle(file) == "" {
-				t.Errorf("%s keeps %s, and the tree has no name for it", kind, file)
+			module, _ := kinds.ModuleOfFile(file)
+			if filepath.Ext(file) == ".bsl" && module.Command() == "" && moduleTitle(file) == "" {
+				t.Errorf("%s keeps %s, and the tree neither offers nor names it", kind, file)
 			}
 		}
 	}
@@ -126,6 +134,24 @@ func TestExternalDataSourceTablesStandInTheTreeAndOpen(t *testing.T) {
 		if !groups[group] {
 			t.Errorf("the table has no %s group: %+v", group, tables.Children[0].Children)
 		}
+	}
+	// A table of no objects keeps the module of its record set, not of an
+	// object: its menu offers the object module unavailable, as the
+	// prototype's does (inventory of block 00, vneshnij-istochnik.md), and
+	// opening it makes nothing the loader would then refuse.
+	wantModules := []NodeModule{
+		{Command: "Открыть модуль объекта", Path: table + "/МодульОбъекта.bsl", Disabled: true},
+		{Command: "Открыть модуль набора записей", Path: table + "/МодульНабораЗаписей.bsl"},
+		{Command: "Открыть модуль менеджера", Path: table + "/МодульМенеджера.bsl"},
+	}
+	if !reflect.DeepEqual(tables.Children[0].Modules, wantModules) {
+		t.Errorf("the table of no objects offers %+v, want %+v", tables.Children[0].Modules, wantModules)
+	}
+	if _, err := workspace.OpenModule(table + "/МодульОбъекта.bsl"); err == nil {
+		t.Error("the object module of a table of no objects was made")
+	}
+	if _, err := workspace.OpenModule(table + "/МодульНабораЗаписей.bsl"); err != nil {
+		t.Errorf("the record set module of the table does not open: %v", err)
 	}
 	// A source with no tables still shows the branch, empty.
 	if empty, ok := findNodeByID(snapshot.Tree, "metadata/external-data-sources/Пустой/tables"); !ok || len(empty.Children) != 0 {
@@ -186,8 +212,8 @@ func TestExternalDataSourceCubesStandInTheTree(t *testing.T) {
 		dimensions.Children[0].Path != cube+"/dimension-tables/Товары/object.yaml" {
 		t.Fatalf("the dimension tables of the cube stand in the tree as %+v", dimensions)
 	}
-	if module, ok := findNodeByID(snapshot.Tree, cube+"/МодульМенеджера.bsl"); !ok || module.Title != "Модуль менеджера" {
-		t.Fatalf("the cube's module stands in the tree as %+v", module)
+	if module, _, ok := findModuleCommand(snapshot.Tree, cube+"/МодульМенеджера.bsl"); !ok || module.Command != "Открыть модуль менеджера" {
+		t.Fatalf("the cube's module is offered as %+v", module)
 	}
 	opened, err := workspace.ReadSource(cube + "/object.yaml")
 	if err != nil {
@@ -265,7 +291,7 @@ func TestAnHTTPServiceShowsItsTemplatesAndMethodsUnderIt(t *testing.T) {
 		}
 		shown = append(shown, line)
 	}
-	want := []string{"ХранилищеИИдентификатор url-template [GET http-method] [POST http-method]", "Получить url-template", "Модуль сервиса module"}
+	want := []string{"ХранилищеИИдентификатор url-template [GET http-method] [POST http-method]", "Получить url-template"}
 	if strings.Join(shown, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the service shows\n%s\nwant\n%s", strings.Join(shown, "\n"), strings.Join(want, "\n"))
 	}

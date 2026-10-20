@@ -86,15 +86,19 @@ type Node struct {
 }
 
 // NodeModule is one command of the menu of an object that opens a module of
-// it: its words, the file, and for a module of the root the address it is
-// opened, and made the first time, by. Main is the action of the object
-// itself - bold in its menu and done by a double click, as «Открыть модуль»
-// of a common module is (inventory of block 00, obshchij-modul.md).
+// it: its words and the file, opened - and made the first time - by
+// OpenModule. Main is the action of the object itself - bold in its menu and
+// done by a double click, as «Открыть модуль» of a common module and
+// «Открыть модуль команды» of a command are (inventory of block 00,
+// obshchij-modul.md, komanda.md). Disabled is a module the object does not
+// keep by its description: it stands in the menu unavailable, as the
+// prototype's object module of a table of no objects does
+// (vneshnij-istochnik.md).
 type NodeModule struct {
-	Command string `json:"command"`
-	Path    string `json:"path"`
-	Root    string `json:"root,omitempty"`
-	Main    bool   `json:"main,omitempty"`
+	Command  string `json:"command"`
+	Path     string `json:"path"`
+	Main     bool   `json:"main,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
 }
 
 // Property is one ordered value displayed in the properties panel.
@@ -723,11 +727,11 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 				var buildErr error
 				if slices.Contains(project.ObjectFolderKinds(), kind) {
 					node.Children, buildErr = workspace.objectFolderNodes(path, filepath.ToSlash(relative), "metadata", kind, loaded)
-				} else if named, ok := project.NamedFolderFiles(kind); ok {
+				} else if _, ok := project.NamedFolderFiles(kind); ok {
 					// A kind that keeps only files still keeps them in a folder
 					// named after the object: its description, and the modules
 					// that run it.
-					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, named, loaded)
+					node.Children, buildErr = namedFolderNodes(path, filepath.ToSlash(relative), kind, loaded)
 					if buildErr == nil {
 						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, loaded)
 					}
@@ -969,10 +973,10 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 		if layout.Templates {
 			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Icon: templateIcon, Title: "Макеты"})
 		}
-		children = append(children, owned.modules...)
 		nodes = append(nodes, Node{
 			ID: id.String(), Kind: nodeKind, Icon: kindIcon(kind), Title: title, Path: descriptionPath, Children: children,
 			Properties: []Property{{Name: "UUID", Value: id.String()}, {Name: "Путь", Value: descriptionPath}, {Name: "Размер", Value: fmt.Sprintf("%d байт", info.Size())}},
+			Modules:    moduleCommands(kind, loaded.ObjectModules(kinds.Kind(kind), id), objectRelative),
 		})
 	}
 	sortNodesByTitle(nodes)
@@ -986,17 +990,17 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 
 // objectOwnedNodes are the tree nodes for what one object keeps in its folder,
 // kept apart because each goes to a different place in the tree: forms and
-// commands under groups of their own, modules as flat leaves beside them -
-// which is how the prototype shows an object's own modules too.
+// commands under groups of their own. Its modules are no rows - the object
+// opens them from its menu (moduleCommands).
 type objectOwnedNodes struct {
-	modules, forms, commands []Node
+	forms, commands []Node
 	// inner are the groups of what the object describes inside itself and
 	// keeps the modules of: the recalculations of a calculation register.
 	inner []Node
 }
 
-// objectOwnedFileNodes lists one object's own modules, managed forms and
-// commands, physically stored alongside its object.yaml.
+// objectOwnedFileNodes lists one object's managed forms and commands,
+// physically stored alongside its object.yaml, and checks its modules there.
 //
 // A module is recognised by its name, because the name is the whole of its
 // identity: МодульОбъекта.bsl is the object module of whatever object's folder
@@ -1049,11 +1053,7 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 		if !project.KeepsModule(kind, entry.Name()) {
 			return objectOwnedNodes{}, unexpected(entry.Name())
 		}
-		title := moduleTitle(entry.Name())
-		path := filepath.ToSlash(filepath.Join(objectRelative, entry.Name()))
-		owned.modules = append(owned.modules, moduleNode(path, title))
 	}
-	sort.Slice(owned.modules, func(left, right int) bool { return owned.modules[left].Path < owned.modules[right].Path })
 	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
 	sort.Slice(owned.commands, func(left, right int) bool { return owned.commands[left].Title < owned.commands[right].Title })
 	return owned, nil
@@ -1061,7 +1061,7 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 
 // innerObjectNodes is the group of what an object describes inside itself
 // and keeps only the modules of, a folder each: the recalculations of a
-// calculation register, each showing its record set module.
+// calculation register, each opening its record set module from its menu.
 func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Node, error) {
 	relative := filepath.ToSlash(filepath.Join(objectRelative, folder))
 	group := Node{ID: relative, Kind: "group", Icon: kindIcon(kind), Title: metadataTitle(kind)}
@@ -1082,9 +1082,8 @@ func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Nod
 			if file.IsDir() || file.Type()&os.ModeSymlink != 0 || !project.KeepsModule(kind, file.Name()) {
 				return Node{}, fmt.Errorf("unexpected source path %q", node.ID+"/"+file.Name())
 			}
-			path := node.ID + "/" + file.Name()
-			node.Children = append(node.Children, moduleNode(path, moduleTitle(file.Name())))
 		}
+		node.Modules = moduleCommands(kind, kinds.Must(kinds.Kind(kind)).Layout().Modules, node.ID)
 		group.Children = append(group.Children, node)
 	}
 	return group, nil
@@ -1190,6 +1189,24 @@ func kindIcon(kind string) string {
 	return descriptor.Icon
 }
 
+// moduleCommands are the commands of the menu of an object that open its
+// modules: one for each module its kind has and a menu opens, in the order of
+// the kind, which is the prototype's order of its menu (inventory of block 00,
+// the menu of each kind). Each is offered whether or not it has text yet, as
+// the prototype's is, and opening it makes it the first time (OpenModule). A
+// module the object does not keep stands unavailable.
+func moduleCommands(kind string, kept []kinds.Module, directory string) []NodeModule {
+	var commands []NodeModule
+	for _, module := range kinds.Must(kinds.Kind(kind)).Layout().Modules {
+		if module.Command() == "" {
+			continue
+		}
+		commands = append(commands, NodeModule{Command: module.Command(), Path: directory + "/" + module.File(),
+			Main: module.OwnAction(), Disabled: !slices.Contains(kept, module)})
+	}
+	return commands
+}
+
 // moduleNode is the leaf of a module file, which opens it.
 func moduleNode(path, title string) Node {
 	return Node{ID: path, Kind: "modules", Icon: moduleIcon, Title: title, Path: path, Properties: []Property{{Name: "Путь", Value: path}}}
@@ -1197,11 +1214,14 @@ func moduleNode(path, title string) Node {
 
 // namedFolderNodes lists the objects of a kind that keeps only files: each in a
 // folder named after it, holding its description and the modules that run it.
-// The node opens the description; the branches of what the object holds
-// (objectBranches) and then the modules hang beneath. A description that
-// does not read gives no identifier, and the branches stand empty: the loader
-// names the fault, the tree still shows the object.
-func namedFolderNodes(directory, relative, kind string, named []string, loaded *metadata.Catalog) ([]Node, error) {
+// The node opens the description, the branches of what the object holds
+// (objectBranches) hang beneath, and the modules open from its menu
+// (moduleCommands); the module of a common form still hangs under it - a form
+// opens by «Открыть форму», its module inside it, and the designer has no
+// page of the module yet. A description that does not read gives no
+// identifier, and the branches stand empty: the loader names the fault, the
+// tree still shows the object.
+func namedFolderNodes(directory, relative, kind string, loaded *metadata.Catalog) ([]Node, error) {
 	description := project.DescriptionFile(kind)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -1222,16 +1242,14 @@ func namedFolderNodes(directory, relative, kind string, named []string, loaded *
 		}
 		head, _ := yamlSourceHead(filepath.Join(directory, entry.Name(), description), path, entry.Name())
 		node.Children = objectBranches(loaded, kind)(head.id, path)
-		for _, file := range named {
-			if file == description {
+		folder := filepath.ToSlash(filepath.Join(relative, entry.Name()))
+		node.Modules = moduleCommands(kind, loaded.ObjectModules(kinds.Kind(kind), head.id), folder)
+		for _, module := range kinds.Must(kinds.Kind(kind)).Layout().Modules {
+			info, err := os.Lstat(filepath.Join(directory, entry.Name(), module.File()))
+			if module.Command() != "" || err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			info, err := os.Lstat(filepath.Join(directory, entry.Name(), file))
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-			modulePath := filepath.ToSlash(filepath.Join(relative, entry.Name(), file))
-			node.Children = append(node.Children, moduleNode(modulePath, moduleTitle(file)))
+			node.Children = append(node.Children, moduleNode(folder+"/"+module.File(), module.Title()))
 		}
 		nodes = append(nodes, node)
 	}
@@ -1256,6 +1274,7 @@ func objectCommandNodes(objectDirectory, objectRelative string) ([]Node, error) 
 		nodes = append(nodes, Node{
 			ID: path, Kind: "commands", Icon: commandIcon, Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
+			Modules:    []NodeModule{{Command: kinds.CommandModule.Command(), Path: path, Main: kinds.CommandModule.OwnAction()}},
 		})
 	}
 	return nodes, nil

@@ -639,6 +639,23 @@ type ObjectBranch struct {
 	Parts  []BranchPart
 }
 
+// ObjectModules are the modules an object of the kind keeps by its own
+// description, in the order of its kind (kinds.Layout.Modules): a table of a
+// source keeps the module of data of its type alone - an object table its
+// object module, a table of no objects its record set module. A catalog that
+// is not there - a project that does not load - or an object it does not
+// have gives every module of the kind.
+func (catalog *Catalog) ObjectModules(kind Kind, id uuid.UUID) []kinds.Module {
+	modules := kinds.Must(kind).Layout().Modules
+	if catalog == nil || !catalog.hasObject(kind, id) || kindCompositionOf[kind].files == nil {
+		return modules
+	}
+	if kept := kindCompositionOf[kind].files(catalog, id).modules; kept != nil {
+		return kept
+	}
+	return modules
+}
+
 // BranchPart is a part of an object in a branch, or an item of a held list,
 // with the icon it is shown by and what lies in it: the fields of a table
 // part, the methods of a template, the parameters of an operation.

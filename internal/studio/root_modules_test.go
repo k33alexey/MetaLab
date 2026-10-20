@@ -226,21 +226,21 @@ func TestRootKeepsThreeModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []NodeModule{
-		{Command: "Открыть модуль приложения", Path: project.ApplicationModuleFile, Root: "application-module"},
-		{Command: "Открыть модуль сеанса", Path: project.SessionModuleFile, Root: "session-module"},
-		{Command: "Открыть модуль внешнего соединения", Path: project.ExternalConnectionModuleFile, Root: "external-connection-module"},
+		{Command: "Открыть модуль приложения", Path: project.ApplicationModuleFile},
+		{Command: "Открыть модуль сеанса", Path: project.SessionModuleFile},
+		{Command: "Открыть модуль внешнего соединения", Path: project.ExternalConnectionModuleFile},
 	}
 	if !reflect.DeepEqual(snapshot.Tree.Modules, want) {
 		t.Fatalf("the root offers %+v, want %+v", snapshot.Tree.Modules, want)
 	}
 	for _, module := range want {
 		for _, node := range snapshot.Tree.Children {
-			if node.Path == module.Path || node.ID == module.Root {
-				t.Fatalf("module %s is a row of the tree: %+v", module.Root, node)
+			if node.Path == module.Path || strings.HasSuffix(node.ID, "-module") {
+				t.Fatalf("module %s is a row of the tree: %+v", module.Path, node)
 			}
 		}
-		if _, err := workspace.OpenRootModule(module.Root); err != nil {
-			t.Fatalf("module %s does not open: %v", module.Root, err)
+		if _, err := workspace.OpenModule(module.Path); err != nil {
+			t.Fatalf("module %s does not open: %v", module.Path, err)
 		}
 	}
 }
@@ -270,7 +270,7 @@ func TestOrdinaryApplicationModuleIsNotCarried(t *testing.T) {
 		}
 	}
 	for _, module := range snapshot.Tree.Modules {
-		if module.Root == "ordinary-application-module" || module.Path == file {
+		if module.Path == file {
 			t.Fatalf("the ordinary application module is offered by the root: %+v", module)
 		}
 	}

@@ -401,6 +401,22 @@ func findNodeByID(node Node, id string) (Node, bool) {
 	return Node{}, false
 }
 
+// findModuleCommand finds the command of a menu of the tree that opens the
+// module at path, and the node whose menu it stands in.
+func findModuleCommand(node Node, path string) (NodeModule, Node, bool) {
+	for _, module := range node.Modules {
+		if module.Path == path {
+			return module, node, true
+		}
+	}
+	for _, child := range node.Children {
+		if found, owner, ok := findModuleCommand(child, path); ok {
+			return found, owner, true
+		}
+	}
+	return NodeModule{}, Node{}, false
+}
+
 func TestMetadataTreeAlwaysShowsFixedObjectGroupsEvenWhenEmpty(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)

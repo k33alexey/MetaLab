@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
@@ -70,7 +74,7 @@ func rootModuleByID(id string) (rootModule, bool) {
 func rootModuleCommands() []NodeModule {
 	commands := make([]NodeModule, 0, len(rootModules))
 	for _, module := range rootModules {
-		commands = append(commands, NodeModule{Command: module.command, Path: module.file, Root: module.id})
+		commands = append(commands, NodeModule{Command: module.command, Path: module.file})
 	}
 	return commands
 }
@@ -102,32 +106,49 @@ func (workspace *Workspace) rootPictureNodesLocked() []Node {
 	return nodes
 }
 
-// OpenRootModule returns one module of the configuration root, creating it with
-// its empty predefined routines the first time it is opened. Creation is part
-// of opening on purpose: in the configuration there is exactly one of each and
-// it always exists, so "create it" is not a decision to put to the developer -
-// only its contents are.
+// OpenRootModule returns one module of the configuration root by its address
+// (rootModules), made the first time it is opened (OpenModule).
 func (workspace *Workspace) OpenRootModule(id string) (SourceFile, error) {
 	module, ok := rootModuleByID(id)
 	if !ok {
 		return SourceFile{}, fmt.Errorf("%q is not a module of the configuration root", id)
+	}
+	return workspace.OpenModule(module.file)
+}
+
+// OpenModule returns a module the menu of its owner opens, making it the first
+// time it is opened. Creation is part of opening on purpose: the prototype's
+// menu offers every module its owner has - the root's, an object's, a
+// constant's, a service's - whether or not it has text, so "create it" is not
+// a decision to put to the developer, only its contents are. A module of the
+// root starts as its empty predefined routines, any other empty. Only a
+// module some menu offers is made (moduleStubLocked); any other missing file
+// stays missing.
+func (workspace *Workspace) OpenModule(relative string) (SourceFile, error) {
+	relative, language, err := validateEditablePath(relative)
+	if err != nil {
+		return SourceFile{}, err
+	}
+	if language != "bsl" {
+		return SourceFile{}, ErrInvalidSourcePath
 	}
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	if _, err := project.ValidateLayout(workspace.root); err != nil {
 		return SourceFile{}, err
 	}
-	file, err := workspace.readSource(module.file)
-	if err == nil {
-		return file, nil
-	}
+	file, err := workspace.readSource(relative)
 	if err != ErrSourceNotFound {
-		return SourceFile{}, err
+		return file, err
 	}
-	target := filepath.Join(workspace.root, module.file)
+	stub, ok := workspace.moduleStubLocked(relative)
+	if !ok {
+		return SourceFile{}, ErrSourceNotFound
+	}
+	target := filepath.Join(workspace.root, filepath.FromSlash(relative))
 	created, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return SourceFile{}, fmt.Errorf("create %s: %w", module.file, err)
+		return SourceFile{}, fmt.Errorf("create %s: %w", relative, err)
 	}
 	failed := true
 	defer func() {
@@ -136,18 +157,60 @@ func (workspace *Workspace) OpenRootModule(id string) (SourceFile, error) {
 			_ = os.Remove(target)
 		}
 	}()
-	if _, err := created.WriteString(module.stub); err != nil {
-		return SourceFile{}, fmt.Errorf("write %s: %w", module.file, err)
+	if _, err := created.WriteString(stub); err != nil {
+		return SourceFile{}, fmt.Errorf("write %s: %w", relative, err)
 	}
 	if err := created.Sync(); err != nil {
-		return SourceFile{}, fmt.Errorf("sync %s: %w", module.file, err)
+		return SourceFile{}, fmt.Errorf("sync %s: %w", relative, err)
 	}
 	if err := created.Close(); err != nil {
-		return SourceFile{}, fmt.Errorf("close %s: %w", module.file, err)
+		return SourceFile{}, fmt.Errorf("close %s: %w", relative, err)
 	}
 	failed = false
 	workspace.invalidateStudioIndexesLocked()
-	return sourceFile(module.file, "bsl", []byte(module.stub)), nil
+	return sourceFile(relative, language, []byte(stub)), nil
+}
+
+// moduleStubLocked is what a missing module starts as when its owner's menu
+// opens it, and whether the menu offers it at all: a module of the root, or a
+// module of an object that is there, which its kind opens from the menu
+// (kinds.Module.Command) and the object keeps by its description
+// (metadata.Catalog.ObjectModules) - the object module of a table of no
+// objects is not made. An object of the kind described inside its owner - a
+// recalculation - has no description of its own: its folder is what says it
+// is there. While the project does not load, what the object keeps by its
+// description is not known, and every module of its kind is made.
+func (workspace *Workspace) moduleStubLocked(relative string) (string, bool) {
+	for _, module := range rootModules {
+		if module.file == relative {
+			return module.stub, true
+		}
+	}
+	kind, _, rest, ok := project.SplitObjectPath(relative)
+	if !ok || len(rest) == 0 {
+		return "", false
+	}
+	file := rest[len(rest)-1]
+	module, ok := kinds.ModuleOfFile(file)
+	if !ok || module.Command() == "" {
+		return "", false
+	}
+	folder := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
+	if len(rest) == 3 {
+		inner, ok := project.InnerKind(kind, rest[0])
+		info, err := os.Lstat(folder)
+		return "", ok && project.KeepsModule(inner, file) && err == nil && info.IsDir()
+	}
+	if len(rest) != 1 || !project.KeepsModule(kind, file) {
+		return "", false
+	}
+	description := path.Join(path.Dir(relative), project.DescriptionFile(kind))
+	head, err := yamlSourceHead(filepath.Join(folder, project.DescriptionFile(kind)), description, "")
+	if err != nil {
+		return "", false
+	}
+	catalog, _ := metadata.Load(workspace.root)
+	return "", slices.Contains(catalog.ObjectModules(kinds.Kind(kind), head.id), module)
 }
 
 // OpenSessionModule opens the session module, the module the root has had
@@ -157,6 +220,9 @@ func (workspace *Workspace) OpenSessionModule() (SourceFile, error) {
 }
 
 func registerRootModuleRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("POST /api/module", answerMarked(writeSourceError, func(request *http.Request) (any, error) {
+		return workspace.OpenModule(request.URL.Query().Get("path"))
+	}))
 	routes.HandleFunc("POST /api/root-module/{id}", answerMarked(writeSourceError, func(request *http.Request) (any, error) {
 		return workspace.OpenRootModule(request.PathValue("id"))
 	}))

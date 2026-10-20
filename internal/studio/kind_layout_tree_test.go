@@ -13,7 +13,7 @@ import (
 // object stood with Формы, Команды and Макеты, a sequence's too. The
 // expectation is the help's (ОбъектМетаданных: <Вид>.Формы, .Команды, .Макеты)
 // and the configurator's tree, where the recalculations stand under their
-// register with their modules.
+// register, each opening its module from its menu (pereraschet.md).
 func TestTreeShowsWhatEachKindKeeps(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
@@ -33,9 +33,9 @@ func TestTreeShowsWhatEachKindKeeps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the tree is not built: %v", err)
 	}
-	module, ok := findNodeByID(snapshot.Tree, recalculation+"/МодульНабораЗаписей.bsl")
-	if !ok || module.Title != "Модуль набора записей" {
-		t.Fatalf("the module of the recalculation stands in the tree as %+v", module)
+	module, owner, ok := findModuleCommand(snapshot.Tree, recalculation+"/МодульНабораЗаписей.bsl")
+	if !ok || module.Command != "Открыть модуль набора записей" || owner.ID != recalculation {
+		t.Fatalf("the module of the recalculation is offered as %+v by %s", module, owner.ID)
 	}
 	if _, err := workspace.ReadSource(module.Path); err != nil {
 		t.Fatalf("the module of the recalculation does not open: %v", err)
@@ -109,19 +109,18 @@ func TestTreeDrawsEveryNodeWithItsIcon(t *testing.T) {
 		"metadata/common":              "common",
 		"metadata/catalogs":            "catalog",
 		ids["catalogs/Банки"].String(): "catalog",
-		ids["catalogs/Банки"].String() + ":forms":                                                     "form",
-		ids["catalogs/Банки"].String() + ":commands":                                                  "command",
-		ids["catalogs/Банки"].String() + ":templates":                                                 "template",
-		ids["catalogs/Банки"].String() + ":attributes":                                                "attribute",
-		ids["catalogs/Банки"].String() + ":table-parts":                                               "tabular-section",
-		ids["information-registers/Курсы"].String():                                                   "information-register",
-		ids["information-registers/Курсы"].String() + ":dimensions":                                   "dimension",
-		ids["information-registers/Курсы"].String() + ":resources":                                    "resource",
-		"metadata/calculation-registers/Начисления/recalculations":                                    "recalculation",
-		"metadata/calculation-registers/Начисления/recalculations/Перерасчет":                         "recalculation",
-		"metadata/calculation-registers/Начисления/recalculations/Перерасчет/МодульНабораЗаписей.bsl": "module",
-		ids["sequences/Партии"].String():                                                              "sequence",
-		"metadata/document-numerators":                                                                "numerator",
+		ids["catalogs/Банки"].String() + ":forms":                             "form",
+		ids["catalogs/Банки"].String() + ":commands":                          "command",
+		ids["catalogs/Банки"].String() + ":templates":                         "template",
+		ids["catalogs/Банки"].String() + ":attributes":                        "attribute",
+		ids["catalogs/Банки"].String() + ":table-parts":                       "tabular-section",
+		ids["information-registers/Курсы"].String():                           "information-register",
+		ids["information-registers/Курсы"].String() + ":dimensions":           "dimension",
+		ids["information-registers/Курсы"].String() + ":resources":            "resource",
+		"metadata/calculation-registers/Начисления/recalculations":            "recalculation",
+		"metadata/calculation-registers/Начисления/recalculations/Перерасчет": "recalculation",
+		ids["sequences/Партии"].String():                                      "sequence",
+		"metadata/document-numerators":                                        "numerator",
 	} {
 		node, ok := findNodeByID(snapshot.Tree, id)
 		if !ok {

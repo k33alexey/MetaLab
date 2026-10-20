@@ -73,6 +73,29 @@ var moduleTitles = map[Module]string{
 	ClientModule: "Модуль клиента", FormModule: "Модуль формы",
 }
 
+// moduleCommands are the words of the command of its owner's menu that
+// opens the module, as the prototype's menu of each kind names it (inventory
+// of block 00: spravochnik.md, konstanta.md, registr-svedenij.md,
+// http-servis.md, websocket-klient.md, obshchaya-komanda.md and the rest): a
+// constant's module of value is its «модуль менеджера значения», the one
+// module of a service or a client is «Открыть модуль». A form's module has
+// none - a form opens by «Открыть форму», its module inside it.
+var moduleCommands = map[Module]string{
+	ObjectModule: "Открыть модуль объекта", ManagerModule: "Открыть модуль менеджера",
+	RecordSetModule: "Открыть модуль набора записей", ValueModule: "Открыть модуль менеджера значения",
+	CommandModule: "Открыть модуль команды", ServiceModule: "Открыть модуль", ClientModule: "Открыть модуль",
+}
+
+// Command is the words of the command of its owner's menu that opens the
+// module; empty for a module no menu opens.
+func (module Module) Command() string { return moduleCommands[module] }
+
+// OwnAction says opening the module is the action of its owner itself - bold
+// in its menu and done by a double click: a command is the module that runs
+// it («Открыть модуль команды» bold, inventory of block 00, komanda.md,
+// obshchaya-komanda.md); every other owner's own action is «Изменить».
+func (module Module) OwnAction() bool { return module == CommandModule }
+
 // File is the name of the module's file.
 func (module Module) File() string { return string(module) + ".bsl" }
 
