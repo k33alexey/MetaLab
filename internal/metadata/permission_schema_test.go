@@ -151,6 +151,23 @@ func TestPermissionSchemaShowsEveryPartWhereTheTreeShowsIt(t *testing.T) {
 	if got := folder(CatalogKind, func(item PermissionFolder) bool { return item.Group == TablePartsPart }); got.Inline || !slices.Equal(got.Rights, fieldRights) {
 		t.Errorf("the table parts of a catalog: %+v, want a folder with %v", got, fieldRights)
 	}
+	// A function of a source lies in it with «Использование» and
+	// «Просмотр», in a folder of its own; a dimension and a resource of a
+	// cube are only viewed (block-00/rol, «Права частей внешнего
+	// источника»).
+	if function := objects[cmpExternalFunction]; function.Owner == nil || function.Owner.String() != warehouseSource ||
+		!slices.Equal(function.Rights, []PermissionOperation{PermissionUse, PermissionView}) {
+		t.Errorf("the function of the source: in %v with %v, want in the source with use and view", function.Owner, function.Rights)
+	}
+	if got := folder(ExternalDataSourceKind, func(item PermissionFolder) bool { return item.Kind == ExternalFunctionKind }); !slices.Equal(got.Rights, []PermissionOperation{PermissionUse, PermissionView}) {
+		t.Errorf("the functions of a source give %v, want use and view", got.Rights)
+	}
+	for _, key := range []string{goodsDimension, quantityResource} {
+		index := slices.IndexFunc(objects[salesCube].Fields, func(field PermissionField) bool { return field.Key == key })
+		if index < 0 || !slices.Equal(objects[salesCube].Fields[index].Operations, view) {
+			t.Errorf("the part %s of the cube offers %v, want view alone", key, objects[salesCube].Fields)
+		}
+	}
 	if got := folder(CalculationRegisterKind, func(item PermissionFolder) bool { return item.Kind == RecalculationKind }); !slices.Equal(got.Rights, objects[cmpRecalculation].Rights) {
 		t.Errorf("the recalculations of a register give %v, a recalculation has %v", got.Rights, objects[cmpRecalculation].Rights)
 	}

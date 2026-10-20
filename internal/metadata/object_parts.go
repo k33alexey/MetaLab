@@ -91,10 +91,15 @@ func partRightsOf(group PartGroup) []PermissionOperation {
 }
 
 // offeredPartRights is the rights the configurator offers on a part of the
-// group in an object of the kind: those of the group where the exports give
-// rights on the parts of the kind, and none where they never do - a right
-// given there all the same is carried and noted (NoteRightWithoutSample).
+// group in an object of the kind: those the window of a role was seen to
+// offer on the kind's parts (kindPartRightsOf), those of the group where the
+// exports give rights on the parts of the kind, and none where they never do
+// - a right given there all the same is carried and noted
+// (NoteRightWithoutSample).
 func offeredPartRights(kind Kind, group PartGroup) []PermissionOperation {
+	if offered := usesOf(kind).partsOffered; offered != nil {
+		return offered[group]
+	}
 	if usesOf(kind).parts != present {
 		return nil
 	}
@@ -399,7 +404,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	ExternalDataSourceKind: {held: []heldList{{"functions", kinds.Must(ExternalFunctionKind).Collection.Russian, kinds.Must(ExternalFunctionKind).Icon,
 		func(c *Catalog, id uuid.UUID) []heldIdentity {
 			return identitiesOf("", c.ExternalDataSources[c.externalDataSourceByID[id]].Functions)
-		}}}, rightsFolders: []rightsFolder{{kind: ExternalDataSourceTableKind}, {kind: ExternalCubeKind}}},
+		}}}, rightsFolders: []rightsFolder{{kind: ExternalDataSourceTableKind}, {kind: ExternalCubeKind}, {kind: ExternalFunctionKind}}},
 	ExternalDataSourceTableKind: {described: true, rightsFolders: tableFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		files := declaredFilesOf(c, id)
 		// The kind has both modules of data; a table keeps the one of its

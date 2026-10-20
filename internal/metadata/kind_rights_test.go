@@ -118,6 +118,13 @@ func TestEveryKindSaysWhatItHolds(t *testing.T) {
 	}
 }
 
+// rightsSeenInTheWindow are the rights the window of a role offers on an
+// object of a kind no export gives rights on (pass of 20.10.2026 with the
+// owner, block-00/rol, «Права частей внешнего источника»: a function of a
+// source, «Использование» and «Просмотр»). Written out here, not read off
+// kindRightsOf.
+var rightsSeenInTheWindow = map[Kind][]string{ExternalFunctionKind: {"Use", "View"}}
+
 // expectedConfigurationRights is what the same exports write on the
 // configuration itself, in their order, the window's (block-00/rol/03…06).
 var expectedConfigurationRights = []string{"Administration", "DataAdministration", "UpdateDataBaseConfiguration",
@@ -173,6 +180,17 @@ func TestEveryKindOffersThePrototypesRights(t *testing.T) {
 	for _, item := range kinds.All() {
 		info, ok := kindInfoOf(item.Kind)
 		if !ok {
+			continue
+		}
+		// A kind the window of a role offers rights on and no export gives
+		// any on: offered, and unproven, so every role naming it is noted.
+		if names, seen := rightsSeenInTheWindow[item.Kind]; seen {
+			if want := rightsByNames(t, names); !slices.Equal(info.uses.offered, want) || info.uses.rights != unproven {
+				t.Errorf("%s offers %v (rights %v), the window %v, unproven", item.Kind, info.uses.offered, info.uses.rights, want)
+			}
+			for _, right := range info.uses.offered {
+				offered[right] = true
+			}
 			continue
 		}
 		names, expected := expectedKindRights[item.Kind]

@@ -552,8 +552,10 @@ func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) 
 				if part.parent != "" {
 					name = target.parts[part.parent].name + "." + name
 				}
+				// A right on a part of a kind no export gives rights on parts
+				// of is noted though the window offers it: a cube's.
 				for _, right := range slices.Concat(field.Operations, field.Denied) {
-					if !slices.Contains(offeredPartRights(kind, part.group), right) {
+					if usesOf(kind).parts == unproven || !slices.Contains(offeredPartRights(kind, part.group), right) {
 						note(where, object+"."+name+" "+string(right))
 					}
 				}

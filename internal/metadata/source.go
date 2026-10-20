@@ -107,6 +107,10 @@ type kindUses struct {
 	// unproven where the kind has parts and no export writes rights on any
 	// (offeredPartRights), absent where it has no part rights are given on.
 	parts presence
+	// partsOffered are the rights the window of a role offers on the parts
+	// of an object of the kind by their sort, where they are not the sort's
+	// (kindPartRightsOf); nil elsewhere.
+	partsOffered map[PartGroup][]PermissionOperation
 }
 
 // usesOf is what may name an object of the kind; an unknown kind has no use.
@@ -267,6 +271,22 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	// the configurator's samples in mdclasses write these two on both.
 	ExternalCubeKind:           {PermissionRead, PermissionView},
 	ExternalDimensionTableKind: {PermissionRead, PermissionView},
+	// A function of a source is offered its use and its viewing by the
+	// window of a role (pass of 20.10.2026, block-00/rol, «Права частей
+	// внешнего источника»); no export gives rights on one, so the rights
+	// stay unproven and every role naming a function is noted.
+	ExternalFunctionKind: {PermissionUse, PermissionView},
+}
+
+// kindPartRightsOf is, for a kind whose parts the window of a role offers
+// other rights than their sort's, those rights by the sort: the dimensions
+// and the resources of a cube are only viewed (pass of 20.10.2026,
+// block-00/rol, «Права частей внешнего источника»; the fields of a register
+// are viewed and edited). No export gives rights on a part of a cube, so
+// they stay unproven and every one a role gives is noted
+// (NoteRightWithoutSample).
+var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
+	ExternalCubeKind: {DimensionsPart: {PermissionView}, ResourcesPart: {PermissionView}},
 }
 
 // configurationRights are the rights the configurator offers on the
@@ -555,6 +575,7 @@ func init() {
 		if offered, ok := kindRightsOf[kindInfos[index].kind]; ok {
 			kindInfos[index].uses.offered = inPrototypeOrder(offered)
 		}
+		kindInfos[index].uses.partsOffered = kindPartRightsOf[kindInfos[index].kind]
 	}
 	for _, item := range kindInfos {
 		owned := slices.Concat(item.objectTypes, item.namedBy)

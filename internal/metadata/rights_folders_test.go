@@ -52,7 +52,7 @@ func TestTheTreeOfRightsShowsThePrototypesFolders(t *testing.T) {
 		InformationRegisterKind:  {"dimensions", "resources", "standard-attributes", "attributes", "commands"},
 		AccumulationRegisterKind: register, AccountingRegisterKind: register,
 		CalculationRegisterKind:     {"dimensions", "resources", "attributes", "standard-attributes", "kind:recalculations", "commands"},
-		ExternalDataSourceKind:      {"kind:external-data-source-tables", "kind:external-data-source-cubes"},
+		ExternalDataSourceKind:      {"kind:external-data-source-tables", "kind:external-data-source-cubes", "kind:external-data-source-functions"},
 		ExternalDataSourceTableKind: {"fields", "commands"},
 		ExternalCubeKind:            {"kind:external-data-source-dimension-tables", "dimensions", "resources", "commands"},
 		WebServiceKind:              {"operations"}, HTTPServiceKind: {"url-templates"},

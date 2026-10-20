@@ -388,6 +388,8 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"a role":          grant(cmpRole, PermissionView),
 		"a defined type":  grant(cmpDefinedType, PermissionView),
 		"an enumeration":  grant(cmpEnumeration, PermissionView),
+		// Offered by the window of a role, written by no export (block-00/rol).
+		"a function of a source": grant(cmpExternalFunction, PermissionUse, PermissionView),
 	}
 	deny := func(permission ObjectPermission, rights ...PermissionOperation) ObjectPermission {
 		permission.Denied = append(permission.Denied, rights...)
@@ -404,6 +406,7 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"use on a field of a standard table part": {part(grant(cmpAccounts, PermissionRead),
 			"extdimensiontypes.turnoversonly", PermissionView, PermissionUse),
 			"charts-of-accounts Хозрасчетный.ВидыСубконто.ТолькоОбороты use"},
+		// The window offers it (block-00/rol), no export writes it.
 		"view on a dimension of a cube": {part(grant(salesCube, PermissionRead), goodsDimension, PermissionView),
 			"external-data-source-cubes Склад.Продажи.Товар view"},
 		"view on a field of a dimension table": {part(grant(goodsDimTable, PermissionRead), goodsDimTableCode, PermissionView),
