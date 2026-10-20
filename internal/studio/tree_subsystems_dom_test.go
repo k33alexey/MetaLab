@@ -182,8 +182,8 @@ const treeFilterWalk = `(async () => {
   branch('Справочники').click(); await studio.settle();
   steps.before = state();
   await open();
-  steps.window = [...dialog().querySelectorAll('label')].map(label => label.textContent + '=' + label.querySelector('input').checked);
-  for (const text of ['Склад', '<Не входящие в подсистемы>', 'Включать объекты подчиненных подсистем']) box(text).click();
+  steps.window = [...dialog().querySelectorAll('label')].map(label => { const input = label.querySelector('input'); return label.textContent + '=' + (input.checked ? 'x' : input.indeterminate ? '~' : '-'); });
+  for (const text of ['Продажи', 'Включать объекты подчиненных подсистем']) box(text).click();
   await press('Установить');
   steps.sales = state();
   await open();
@@ -202,8 +202,8 @@ const treeFilterWalk = `(async () => {
 // The tree of the configuration filtered by subsystems in a real browser
 // (ТЗ ACCESS-RIGHTS, «Дерево конфигурации»; help, «Отбор по подсистемам»).
 // Defects caught: the button opens no window, or a window not as the
-// prototype's (every subsystem marked, the nested one beneath, the
-// subordinate flag set); the filter leaves an object of an unmarked subsystem,
+// prototype's (the root marked, every subsystem beneath it in the third
+// state, the nested one beneath, the subordinate flag set); the filter leaves an object of an unmarked subsystem,
 // of none, or a subsystem not marked, or hides one marked; «Включать объекты
 // подчиненных подсистем» does not take in the nested subsystem and what it
 // holds; the nested subsystem, which stands under its parent, left in the
@@ -256,7 +256,7 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 			t.Errorf("%s the tree shows %+v, want %+v", check.name, got, want)
 		}
 	}
-	window := []string{"ПродажиИСклад=true", "Продажи=true", "Склад=true", "<Не входящие в подсистемы>=true", "Включать объекты подчиненных подсистем=true", "Включать объекты родительских подсистем=false"}
+	window := []string{"ПродажиИСклад=x", "Продажи=~", "Склад=~", "<Не входящие в подсистемы>=~", "Включать объекты подчиненных подсистем=x", "Включать объекты родительских подсистем=-"}
 	if !slices.Equal(steps.Window, window) {
 		t.Errorf("the window opens as %v, want %v", steps.Window, window)
 	}
@@ -288,10 +288,13 @@ const subsystemFilterWindow = `(async () => {
   steps.buttons = buttons().map(item => item.textContent);
   steps.beside = dialog().querySelector('.localized-title-actions').getBoundingClientRect().left >= dialog().querySelector('.role-subsystem-tree').getBoundingClientRect().right;
   steps.flags = [...dialog().querySelectorAll('.role-subsystem-flag')].map(label => label.querySelector('input').getBoundingClientRect().left > label.querySelector('span').getBoundingClientRect().right);
-  await click('ПродажиИСклад', 'rootOff');
-  await click('Склад', 'nested');
-  await click('ПродажиИСклад', 'rootSome');
+  await click('Склад', 'nestedAlone');
+  await click('Склад', 'nestedOff');
   await click('Продажи', 'parent');
+  await click('<Не входящие в подсистемы>', 'parentAndNone');
+  await click('Склад', 'alone');
+  await click('ПродажиИСклад', 'rootMarked');
+  await click('ПродажиИСклад', 'rootOff');
   row('Продажи').querySelector('button').click(); await studio.settle();
   steps.folded = rows();
   buttons().find(item => item.textContent === 'Отмена').click(); await studio.settle();
@@ -306,14 +309,19 @@ const subsystemFilterWindow = `(async () => {
 
 // The window of the filter by subsystems is the prototype's (snapshots
 // obolochka/32, derevo/21, configurator-2026-10-14/rol-snyat-po-podsistemam-
-// okno; help, form_subsystemchoicedlg; the owner's decision of 19.10.2026 on
-// the clicks). Defects caught: no row of the configuration at the root, or the
-// subsystems not beneath it, the nested one not beneath its parent or the
-// parent not folding; a parent left unmarked with a nested one marked shown
-// empty, or the root shown empty or marked while not every row is; a click at
-// the root that does not take every mark away while any row is marked, or
-// does not mark every row while none is; a parent marked taking in the
-// subsystem beneath it; folding that leaves the nested row shown; the
+// okno, derevo/24, 27, 28; help, form_subsystemchoicedlg; the owner's
+// decision of 19.10.2026 on the root). Defects caught: no row of the
+// configuration at the root, or the subsystems not beneath it, the nested one
+// not beneath its parent or the parent not folding; the window opened
+// without a filter with every row marked rather than the root alone and the
+// rows beneath in the third state; a row under a marked one - the root or a
+// parent - shown empty rather than in the third state, or marked by it; a
+// parent left unmarked with a nested one marked shown empty; a click at a
+// row in the third state under a marked one that leaves another mark - the
+// parent's or one elsewhere - beside it; a click at a marked row that does
+// not take its mark away; a click at the root that marks the rows beneath
+// rather than itself alone, or at the root marked that leaves any mark;
+// folding that leaves the nested row shown; the
 // buttons in a row under the tree, or the flags' boxes before their words;
 // «Снять по подсистемам...» closing up the place of «Отключить».
 func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
@@ -325,11 +333,11 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var steps struct {
-		Opened, RootOff, Nested, RootSome, Parent, Folded []string
-		Buttons                                           []string
-		Beside                                            bool
-		Flags                                             []bool
-		Apply                                             []struct {
+		Opened, NestedAlone, NestedOff, Parent, ParentAndNone, Alone, RootMarked, RootOff, Folded []string
+		Buttons                                                                                   []string
+		Beside                                                                                    bool
+		Flags                                                                                     []bool
+		Apply                                                                                     []struct {
 			Text string
 			Top  float64
 		}
@@ -344,12 +352,15 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		name      string
 		got, want []string
 	}{
-		{"as opened", steps.Opened, tree("x", "x", "x", "x", "shown")},
-		{"after a click at the root marked whole", steps.RootOff, tree("-", "-", "-", "-", "shown")},
-		{"with the nested one marked", steps.Nested, tree("~", "~", "x", "-", "shown")},
-		{"after a click at the root marked in part", steps.RootSome, tree("-", "-", "-", "-", "shown")},
-		{"with the parent marked", steps.Parent, tree("~", "x", "-", "-", "shown")},
-		{"with the parent folded", steps.Folded, tree("~", "x", "-", "-", "hidden")},
+		{"as opened", steps.Opened, tree("x", "~", "~", "~", "shown")},
+		{"after a click at the nested one under the root", steps.NestedAlone, tree("~", "~", "x", "-", "shown")},
+		{"after a click at the nested one marked", steps.NestedOff, tree("-", "-", "-", "-", "shown")},
+		{"with the parent marked", steps.Parent, tree("~", "x", "~", "-", "shown")},
+		{"with the parent and the row of none marked", steps.ParentAndNone, tree("~", "x", "~", "x", "shown")},
+		{"after a click at the nested one under the parent", steps.Alone, tree("~", "~", "x", "-", "shown")},
+		{"after a click at the root in part", steps.RootMarked, tree("x", "~", "~", "~", "shown")},
+		{"after a click at the root marked", steps.RootOff, tree("-", "-", "-", "-", "shown")},
+		{"with the parent folded", steps.Folded, tree("-", "-", "-", "-", "hidden")},
 	} {
 		if !slices.Equal(check.got, check.want) {
 			t.Errorf("%s the window shows %q, want %q", check.name, check.got, check.want)
@@ -387,7 +398,7 @@ const treePathWalk = `(async () => {
   const press = async text => { [...dialog().querySelectorAll('button')].find(button => button.textContent === text).click(); await studio.settle(); };
   const open = async () => { document.querySelector('#tree-subsystems').click(); await studio.settle(); };
   await open();
-  for (const text of ['Продажи', 'Доставка', '<Не входящие в подсистемы>']) box(text).click();
+  box('Склад').click();
   await press('Установить');
   steps.nested = state();
   await open();

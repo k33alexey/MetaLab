@@ -479,14 +479,19 @@ function configurationName(schema) { return schema.objects?.find(item => item.ro
    «<Не входящие в подсистемы>» last at the top; the two flags under the
    tree, their boxes at the right; the buttons in a column to the right of
    it. A subsystem is marked by itself, without those beneath it: the help
-   takes them in by the flag «Включать объекты подчиненных подсистем». One
-   not marked with one marked beneath it shows the third state, as the root
-   does while not every row is marked; a click at the root marks every row,
-   or takes every mark away when any row is marked (the owner's decision of
-   19.10.2026, as the objects of the wizard). One window for every place
+   takes them in by the flag «Включать объекты подчиненных подсистем». A row
+   not marked shows the third state when one above it is marked - every row
+   under the marked root too - or one beneath it, whatever the flags
+   (snapshots derevo/24, 27); a click at a row shown so under a marked one
+   leaves it alone marked, every other mark taken away (derevo/28). The
+   root is marked as a subsystem is: a click marks it alone, every row
+   beneath in the third state, and a click at it marked takes every mark
+   away (the owner's decision of 19.10.2026); it shows marked too when every
+   row is, and the third state while some are. One window for every place
    that filters by subsystems; root is the name of the configuration.
-   Without a filter in force it opens with everything marked and the
-   subsystems beneath taken in, as the prototype's does. As a filter it is
+   Without a filter in force, or with one taking in every row, it opens with
+   the root marked and the subsystems beneath taken in, as the prototype's
+   does (derevo/27). As a filter it is
    set with «Установить» or turned off; given apply - «Установить» or
    «Снять» of the role's rights by subsystems - it only chooses, and the
    place of «Отключить» stays empty (snapshot rol-snyat-po-podsistemam-okno).
@@ -494,25 +499,36 @@ function configurationName(schema) { return schema.objects?.find(item => item.ro
    without either. */
 async function chooseSubsystemFilter({schema, root, current, apply}) {
   const subsystems = schema.subsystems || {}, every = [...Object.keys(subsystems), ''];
-  const chosen = new Set(current ? current.chosen : every);
+  // The rows marked each by itself, and whether the root is: marked, it
+  // stands for every row and no row is marked beside it.
+  let top = !current || every.every(id => current.chosen.has(id));
+  const chosen = new Set(top ? [] : every.filter(id => current.chosen.has(id)));
   const flags = current ? {children: !!current.children, parents: !!current.parents} : {children: true, parents: false};
-  const beneath = new Map();
+  const beneath = new Map(), parentOf = new Map();
   for (const item of schema.objects) {
     if (!(item.id in subsystems)) continue;
     const parent = item.owner in subsystems ? item.owner : '';
     if (!beneath.has(parent)) beneath.set(parent, []);
     beneath.get(parent).push(item);
+    parentOf.set(item.id, parent);
   }
+  // Whether a subsystem above id, at any height, is marked; a ring of
+  // parents is walked once.
+  const markedAbove = id => { const seen = new Set(); for (let up = parentOf.get(id); up && !seen.has(up); up = parentOf.get(up)) { if (chosen.has(up)) return true; seen.add(up); } return false; };
   const tree = node('div', undefined, 'role-restriction-fields role-fields-tree role-subsystem-tree'), boxes = [];
   // The marks are put on the boxes in place: a tree drawn anew would take
   // the focus away from the box just pressed.
   function sync() {
-    for (const [input, id, under] of boxes) { input.checked = chosen.has(id); input.indeterminate = !input.checked && under.some(other => chosen.has(other)); }
-    const marked = every.filter(id => chosen.has(id)).length;
-    rootInput.checked = marked === every.length; rootInput.indeterminate = marked > 0 && marked < every.length;
+    for (const [input, id, under] of boxes) { input.checked = chosen.has(id); input.indeterminate = !input.checked && (top || markedAbove(id) || under.some(other => chosen.has(other))); }
+    rootInput.checked = top || every.every(id => chosen.has(id)); rootInput.indeterminate = !rootInput.checked && chosen.size > 0;
   }
   function choice(host, id, caption, depth, toggle, under = []) {
-    const box = checkboxField(caption, false, enabled => { if (enabled) chosen.add(id); else chosen.delete(id); sync(); }, 'role-check');
+    const box = checkboxField(caption, false, enabled => {
+      if (!enabled) chosen.delete(id);
+      else if (top || markedAbove(id)) { top = false; chosen.clear(); chosen.add(id); }
+      else chosen.add(id);
+      sync();
+    }, 'role-check');
     host.append(restrictionTreeRow(depth, toggle, box));
     boxes.push([box.querySelector('input'), id, under]);
   }
@@ -530,11 +546,7 @@ async function chooseSubsystemFilter({schema, root, current, apply}) {
     }
     return all;
   }
-  const rootBox = checkboxField(root, false, () => {
-    const any = every.some(id => chosen.has(id));
-    for (const id of every) if (any) chosen.delete(id); else chosen.add(id);
-    sync();
-  }, 'role-check'), rootInput = rootBox.querySelector('input');
+  const rootBox = checkboxField(root, false, enabled => { chosen.clear(); top = enabled; sync(); }, 'role-check'), rootInput = rootBox.querySelector('input');
   tree.append(restrictionTreeRow(0, null, rootBox));
   add(tree, '', 1);
   choice(tree, '', '<Не входящие в подсистемы>', 1);
@@ -545,9 +557,9 @@ async function chooseSubsystemFilter({schema, root, current, apply}) {
     checkboxField('Включать объекты родительских подсистем', flags.parents, enabled => { flags.parents = enabled; }, 'role-check role-subsystem-flag'));
   const answer = await showDialog({title: 'Отбор по подсистемам', content, className: 'role-restriction-dialog role-subsystem-dialog', help: 'subsystem-filter', side: true,
     answers: apply ? [['ok', apply], null, [null, 'Отмена']] : [['ok', 'Установить'], ['off', 'Отключить'], [null, 'Отмена']],
-    check: key => key === 'ok' && !chosen.size ? (apply ? 'Отметьте подсистемы.' : 'Отметьте подсистемы или нажмите «Отключить».') : ''});
+    check: key => key === 'ok' && !top && !chosen.size ? (apply ? 'Отметьте подсистемы.' : 'Отметьте подсистемы или нажмите «Отключить».') : ''});
   if (answer === 'off') return null;
-  return answer === 'ok' ? {chosen, ...flags} : undefined;
+  return answer === 'ok' ? {chosen: top ? new Set(every) : chosen, ...flags} : undefined;
 }
 
 /* The button of the filter by subsystems: it opens the window and stays
