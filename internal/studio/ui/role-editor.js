@@ -310,8 +310,13 @@ function createRoleModel(source) {
 function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item => item.key === group)?.title || group; }
 
 /* The tree of the configuration as both windows of rights show it - the
-   role's editor and «Все роли»: the configuration itself at the top, then
-   the objects kind by kind in the order the server lists them, each with its
+   role's editor and «Все роли» - laid out as the project tree is and as the
+   prototype's (inventory of block 00, rol.md; snapshot
+   configurator-2026-10-14/rol-otbor-kassa): the configuration itself at the
+   top with everything beneath it, «Общие» holding the common kinds, the
+   branches of the kinds in the order the server lists them, each in the
+   place it gives them (kindPlaces: «Общие» - common.place -, the branch of another kind -
+   sequences before the documents - or under the root), each object with its
    parts in folders and the objects inside it under their kind - a
    recalculation under its register, a table under its source. Every row is
    drawn as the project tree's (treeNode), with the icon the project tree
@@ -321,8 +326,11 @@ function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item
    the keys of the nodes left open, so a redraw keeps them open. subsystems()
    answers the filter by subsystems the tree is under, or null: the
    configuration itself stays, a subsystem not passing stays only on the way
-   to one that does. */
-function createRoleTree({schema, kindTitles, kindIcons, title, expanded, selection, choose, subsystems = () => null}) {
+   to one that does. source is the window's: the schema of rights, the
+   captions, icons and places of the kinds, the branch «Общие». */
+function createRoleTree({source, title, expanded, selection, choose, subsystems = () => null}) {
+  // What the tree is drawn from comes with the source of either window.
+  const {schema, kindTitles, kindIcons, kindPlaces, common: commonBranch} = source;
   const element = node('div', undefined, 'role-tree');
   const kindTitle = kind => kindTitles?.[kind] || kind;
   const partGroupTitle = group => rolePartGroupTitle(schema, group);
@@ -386,18 +394,37 @@ function createRoleTree({schema, kindTitles, kindIcons, title, expanded, selecti
       if (!byKind.has(item.kind)) byKind.set(item.kind, []);
       byKind.get(item.kind).push(item);
     }
+    let root = null;
     for (const item of schema.objects) {
-      if (item.root) {
-        if (matches(item, needle)) { const button = treeButton(title(item) || item.name, item.name, 'role-tree-item role-tree-root', selection()?.object?.id === item.id, {object: item}); button.dataset.object = item.id; element.append(treeNode({icon: 'configuration', caption: button}).element); }
-        continue;
-      }
+      if (item.root) { root = item; continue; }
       if (item.owner) continue;
       const entry = objectNode(item, inside, needle, shown);
       if (!entry) continue;
       if (!groups.has(item.kind)) groups.set(item.kind, []);
       groups.get(item.kind).push(entry);
     }
-    for (const [kind, entries] of groups) element.append(treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: entries, open: true}).element);
+    // The branches in their places: those standing in another's first in it,
+    // then «Общие», then the rest under the root.
+    const within = new Map(), common = [], top = [];
+    for (const [kind, entries] of groups) {
+      const place = kindPlaces?.[kind] || '';
+      if (place && place !== commonBranch?.place) {
+        if (!within.has(place)) within.set(place, []);
+        within.get(place).push(treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: entries, open: true}).element);
+      }
+    }
+    for (const [kind, entries] of [...groups, ...[...within.keys()].filter(kind => !groups.has(kind)).map(kind => [kind, []])]) {
+      const place = kindPlaces?.[kind] || '';
+      if (place && place !== commonBranch?.place) continue;
+      const branch = treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: [...(within.get(kind) || []), ...entries], open: true}).element;
+      (place && place === commonBranch?.place ? common : top).push(branch);
+    }
+    if (common.length) top.unshift(treeNode({icon: commonBranch.icon, caption: commonBranch.title, children: common, open: true}).element);
+    if (root && (top.length || matches(root, needle))) {
+      const button = treeButton(title(root) || root.name, root.name, 'role-tree-item role-tree-root', selection()?.object?.id === root.id, {object: root});
+      button.dataset.object = root.id;
+      element.append(treeNode({icon: 'configuration', caption: button, children: top, open: true}).element);
+    } else element.append(...top);
     if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
   return {
@@ -950,7 +977,7 @@ function createRoleEditor(host, onChange) {
       // templates of restrictions.
       viewTabs=tabStrip([['rights','Права'],['templates','Шаблоны ограничений']],view,showView);
       host.append(viewTabs);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,kindIcons:source.kindIcons,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({source,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));

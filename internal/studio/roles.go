@@ -29,11 +29,21 @@ type RoleSource struct {
 	Schema          metadata.PermissionSchema `json:"schema"`
 	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
-	// KindTitles and KindIcons are the captions and the icons of the kinds
-	// of metadata, from the one list Studio names and draws them by.
+	roleTreeSource
+}
+
+// roleTreeSource is what the tree of rights of either window is drawn by
+// beside the schema: the captions and the icons of the kinds of metadata and
+// the places of their branches, with the branch «Общие» - from the one list
+// Studio names, draws and places them by in the project tree.
+type roleTreeSource struct {
 	KindTitles map[string]string `json:"kindTitles"`
 	KindIcons  map[string]string `json:"kindIcons"`
+	KindPlaces map[string]string `json:"kindPlaces"`
+	Common     CommonBranch      `json:"common"`
 }
+
+var roleTree = roleTreeSource{KindTitles: metadataTitles, KindIcons: metadataIcons, KindPlaces: branchPlaces, Common: commonBranch}
 
 func validateRolePath(relative string) error {
 	canonical, language, err := validateEditablePath(relative)
@@ -81,7 +91,7 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}, nil
+	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 
 // roleFiles is a role as it lies on disk: its description, and the grid of
@@ -255,8 +265,7 @@ type RoleOverview struct {
 	Schema          metadata.PermissionSchema `json:"schema"`
 	Languages       []project.Language        `json:"languages"`
 	DefaultLanguage string                    `json:"defaultLanguage"`
-	KindTitles      map[string]string         `json:"kindTitles"`
-	KindIcons       map[string]string         `json:"kindIcons"`
+	roleTreeSource
 }
 
 type RoleOverviewEntry struct {
@@ -285,7 +294,7 @@ func (workspace *Workspace) readAllRolesLocked() (RoleOverview, error) {
 	if err != nil {
 		return RoleOverview{}, err
 	}
-	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}
+	result := RoleOverview{Roles: []RoleOverviewEntry{}, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}
 	for _, relative := range descriptions {
 		role, revision, err := workspace.decodeRoleLocked(relative, configuration)
 		if err != nil {
@@ -485,7 +494,7 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, KindTitles: metadataTitles, KindIcons: metadataIcons}, nil
+	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

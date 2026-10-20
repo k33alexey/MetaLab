@@ -759,29 +759,65 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 	// живут в корне «Документов», рядом с самими документами - там же, где
 	// создаются их виды. Счётчик у «Документов» уже посчитан и остаётся
 	// числом документов: вложенные ветви - не документы.
-	common := Node{ID: "metadata/common", Kind: "group", Icon: commonIcon, Title: "Общие", Path: "metadata"}
+	common := Node{ID: "metadata/common", Kind: "group", Icon: commonIcon, Title: commonTitle, Path: "metadata"}
 	branches := []Node{{}}
-	var nested []Node
+	nested := map[string][]Node{}
 	for _, item := range kinds.Branches() {
 		node := built[string(item.Kind)]
-		switch item.Layout().Branch {
-		case kinds.CommonBranch:
+		switch place := branchPlaces[string(item.Kind)]; place {
+		case commonPlace:
 			common.Children = append(common.Children, node)
-		case kinds.DocumentsBranch:
-			nested = append(nested, node)
-		default:
+		case "":
 			branches = append(branches, node)
+		default:
+			nested[place] = append(nested[place], node)
 		}
 	}
 	common.Properties = countProperties(common.Path, countDescendants(common))
 	branches[0] = common
 	for index := range branches {
-		if branches[index].ID == "metadata/"+string(kinds.Document) {
-			branches[index].Children = append(nested, branches[index].Children...)
+		if within := nested[strings.TrimPrefix(branches[index].ID, "metadata/")]; within != nil {
+			branches[index].Children = append(within, branches[index].Children...)
 		}
 	}
 	return branches, nil
 }
+
+// commonTitle is the caption of the branch «Общие», and commonPlace its place
+// in branchPlaces.
+const (
+	commonTitle = "Общие"
+	commonPlace = "common"
+)
+
+// CommonBranch is the branch «Общие» as the trees of the windows of rights
+// draw it: its place in the places of the kinds, its caption and its icon,
+// the project tree's.
+type CommonBranch struct {
+	Place string `json:"place"`
+	Title string `json:"title"`
+	Icon  string `json:"icon"`
+}
+
+var commonBranch = CommonBranch{Place: commonPlace, Title: commonTitle, Icon: commonIcon}
+
+// branchPlaces says where the branch of each kind stands in a tree of the
+// configuration - the project tree and the trees of the windows of rights
+// alike: commonPlace in «Общие», the kind in whose branch it stands before
+// its objects (kinds.Layout.Within: numerators and sequences in
+// «Документы»), or nothing, beside «Общие» under the root.
+var branchPlaces = func() map[string]string {
+	result := map[string]string{}
+	for _, item := range kinds.Branches() {
+		switch layout := item.Layout(); {
+		case layout.Branch == kinds.CommonBranch:
+			result[string(item.Kind)] = commonPlace
+		case layout.Within() != "":
+			result[string(item.Kind)] = string(layout.Within())
+		}
+	}
+	return result
+}()
 
 // offerCommonModuleSources gives each common module the command that opens
 // its BSL file, «Открыть модуль», its own action: the common module is a row

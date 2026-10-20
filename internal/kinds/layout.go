@@ -259,6 +259,16 @@ func (descriptor Descriptor) Layout() Layout {
 	return layout
 }
 
+// Within is the kind in whose branch the branch of the kind stands, before
+// its objects: the documents for numerators and sequences, as the
+// prototype's tree shows them; none for any other kind.
+func (layout Layout) Within() Kind {
+	if layout.Branch == DocumentsBranch {
+		return Document
+	}
+	return ""
+}
+
 // KeepsFolder says an object of the kind keeps a folder named after it.
 func (layout Layout) KeepsFolder() bool {
 	return layout.Storage == InFolder || layout.Storage == InFilesFolder || layout.Storage == InFormFolder
