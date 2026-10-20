@@ -79,3 +79,162 @@ func TestTheTreeOfRightsStandsAsTheProjectTree(t *testing.T) {
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// roleTreeOpeningWalk opens the window of the role Кладовщик and «Все роли»
+// and reads how each tree of rights stands: the captions of the nodes open,
+// the row chosen, the head of the panel. In the window of the role it opens
+// «Справочники», chooses Товары and reads again; from «Все роли», with Товары
+// chosen and the role's column, it opens the role on Товары; then it opens
+// «Все роли» again, opens «Справочники», leaves for the role and comes back.
+const roleTreeOpeningWalk = `(async () => {
+  const studio = window.__studio, answer = {};
+  const caption = details => details.querySelector(':scope > .studio-tree-row').textContent.trim();
+  const state = host => ({open: [...host.querySelectorAll('.role-tree details')].filter(item => item.open).map(caption),
+    chosen: [...host.querySelectorAll('.role-tree .role-tree-item.selected')].map(item => item.textContent.trim()),
+    panel: host.querySelector('h3')?.textContent.trim() || ''});
+  const branch = (host, text) => [...host.querySelectorAll('.role-tree details')].find(item => caption(item) === text);
+  const item = (host, text) => [...host.querySelectorAll('.role-tree .role-tree-item')].find(button => button.textContent.trim() === text);
+  const tree = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(row => row.textContent.trim() === text);
+  const allRoles = async () => {
+    tree('Роли').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+    [...document.querySelectorAll('.context-menu .context-menu-item')].find(entry => entry.textContent === 'Все роли').click();
+    await studio.settle();
+  };
+  const role = document.querySelector('#role-editor'), roles = document.querySelector('#role-overview');
+  tree('Кладовщик').click(); await studio.settle();
+  answer.role = state(role);
+  const catalogs = branch(role, 'Справочники'); catalogs.open = true;
+  await new Promise(done => catalogs.addEventListener('toggle', done, {once: true}));
+  item(role, 'Товары').click(); await studio.settle();
+  answer.roleAfterChoice = state(role);
+  await allRoles();
+  answer.roles = state(roles);
+  let overviewCatalogs = branch(roles, 'Справочники'); overviewCatalogs.open = true;
+  await new Promise(done => overviewCatalogs.addEventListener('toggle', done, {once: true}));
+  item(roles, 'Товары').click(); await studio.settle();
+  [...roles.querySelectorAll('thead button.overview-role')].find(button => button.textContent.trim() === 'Кладовщик')?.click();
+  await studio.settle();
+  const open = [...roles.querySelectorAll('button.overview-role')].find(button => button.textContent === 'Открыть роль');
+  answer.link = !!open;
+  open?.click(); await studio.settle();
+  answer.revealed = state(role);
+  await allRoles();
+  overviewCatalogs = branch(roles, 'Справочники'); overviewCatalogs.open = true;
+  await new Promise(done => overviewCatalogs.addEventListener('toggle', done, {once: true}));
+  tree('Кладовщик').click(); await studio.settle();
+  await allRoles();
+  answer.rolesAgain = state(roles);
+  return answer;
+})()`
+
+// The tree of rights opens as the prototype's: in the window of a role and in
+// «Все роли» only the configuration is open and it is chosen, its rights
+// shown; «Общие» and the branches of the kinds are closed (опись rol.md,
+// snapshots configurator-2026-10-20/menyu-01, -02; written out here). What
+// is opened stays open while the window is, and the window opened again
+// stands as at first; a role opened from «Все роли» on an object shows the
+// object, the branch of its kind open. Defects caught: the branches drawn
+// open always; nothing chosen when the window opens; a branch opened by hand
+// closing at the next choice; what was opened kept into the next opening;
+// the role opened on an object it hides in a closed branch.
+func TestTheTreeOfRightsOpensWithTheConfigurationAlone(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
+		addRestrictedRole(t, opened, root)
+	})
+	result, err := browser.evaluate(ctx, page, roleTreeOpeningWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type state struct {
+		Open, Chosen []string
+		Panel        string
+	}
+	var got struct {
+		Role, RoleAfterChoice, Roles, Revealed, RolesAgain state
+		Link                                               bool
+	}
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("%v: %s", err, result)
+	}
+	for name, opened := range map[string]state{"role": got.Role, "all roles": got.Roles, "all roles again": got.RolesAgain} {
+		if len(opened.Open) != 1 || len(opened.Chosen) != 1 || opened.Chosen[0] != opened.Open[0] || opened.Panel != opened.Chosen[0] {
+			t.Errorf("%s: opened with %v open, %v chosen, the panel of %q; want the configuration alone open, chosen and shown", name, opened.Open, opened.Chosen, opened.Panel)
+		}
+	}
+	if !slices.Equal(got.RoleAfterChoice.Open, []string{got.Role.Open[0], "Справочники"}) || !slices.Equal(got.RoleAfterChoice.Chosen, []string{"Товары"}) {
+		t.Errorf("after opening «Справочники» and choosing Товары: %v open, %v chosen; want the branch kept open", got.RoleAfterChoice.Open, got.RoleAfterChoice.Chosen)
+	}
+	if !got.Link {
+		t.Fatal("«Все роли» gave no «Открыть роль» for Товары and the role Кладовщик")
+	}
+	if !slices.Contains(got.Revealed.Open, "Справочники") || !slices.Equal(got.Revealed.Chosen, []string{"Товары"}) {
+		t.Errorf("the role opened from «Все роли» on Товары: %v open, %v chosen; want Товары shown in its open branch", got.Revealed.Open, got.Revealed.Chosen)
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
+
+// roleTreeRevealWalk chooses the recalculation Перерасчет in «Все роли» with
+// the role Кладовщик and opens the role on it, and reads where the role
+// window stands: the row chosen and whether every node above it is open.
+const roleTreeRevealWalk = `(async () => {
+  const studio = window.__studio;
+  const tree = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(row => row.textContent.trim() === text);
+  const item = (host, text) => [...host.querySelectorAll('.role-tree .role-tree-item')].find(button => button.textContent.trim() === text);
+  const role = document.querySelector('#role-editor'), roles = document.querySelector('#role-overview');
+  tree('Роли').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(entry => entry.textContent === 'Все роли').click();
+  await studio.settle();
+  item(roles, 'Перерасчет').click(); await studio.settle();
+  [...roles.querySelectorAll('thead button.overview-role')].find(button => button.textContent.trim() === 'Кладовщик')?.click();
+  await studio.settle();
+  const open = [...roles.querySelectorAll('button.overview-role')].find(button => button.textContent === 'Открыть роль');
+  if (!open) return {link: false};
+  open.click(); await studio.settle();
+  const chosen = role.querySelector('.role-tree .role-tree-item.selected'), closed = [];
+  for (let details = chosen?.parentElement.closest('details'); details; details = details.parentElement.closest('details'))
+    if (!details.open) closed.push(details.querySelector(':scope > .studio-tree-row').textContent.trim());
+  return {link: true, chosen: chosen?.textContent.trim() || '', closed};
+})()`
+
+// A role opened from «Все роли» on an object inside another shows it: the
+// configuration, the branch of the owner's kind, the owner and its folder of
+// the recalculations are opened, the recalculation chosen. Defect caught:
+// the folder of the objects inside an owner left closed, the object chosen
+// out of sight.
+func TestTheRoleOpenedOnAnObjectInsideAnotherShowsIt(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	chart := uuid.MustNew().String()
+	writeProjectFile(t, root, "metadata/charts-of-calculation-types/Начисления/object.yaml", "format: 1\nid: "+chart+
+		"\nname: Начисления\ntitle: {ru: Начисления}\ncode: {type: string, length: 9, auto: false}\ndescription_length: 100\n")
+	writeProjectFile(t, root, "metadata/calculation-registers/Начисления/object.yaml", "format: 1\nid: "+uuid.MustNew().String()+
+		"\nname: Начисления\ntitle: {ru: Начисления}\nchart_of_calculation_types: "+chart+"\nperiodicity: month\nresources:\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+		"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчет}}\n")
+	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
+		addRestrictedRole(t, opened, root)
+	})
+	result, err := browser.evaluate(ctx, page, roleTreeRevealWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Link   bool
+		Chosen string
+		Closed []string
+	}
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("%v: %s", err, result)
+	}
+	if !got.Link {
+		t.Fatal("«Все роли» gave no «Открыть роль» for Перерасчет and the role Кладовщик")
+	}
+	if got.Chosen != "Перерасчет" || len(got.Closed) > 0 {
+		t.Errorf("the role opened on Перерасчет: %q chosen, %v closed above it; want Перерасчет chosen and everything above it open", got.Chosen, got.Closed)
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}

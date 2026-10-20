@@ -968,8 +968,8 @@ function createRoleOverview(host, openRole, onChange) {
       source = structuredClone(value); model = createRoleOverviewModel(source);
       if (!keep || next !== view) listFilter = noFilters();
       if (next !== view) { view = next; filter = ''; }
-      selected = reselect();
-      if (!keep) { expanded.clear(); restriction.right = null; restriction.row = -1; }
+      selected = keep ? reselect() : openRoleTree(source.schema, expanded);
+      if (!keep) { restriction.right = null; restriction.row = -1; }
       if (!model.roles().some(role => role.path === chosenRole)) chosenRole = null;
       host.hidden = false;
       drawWindow();

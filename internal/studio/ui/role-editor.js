@@ -343,8 +343,11 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
     return button;
   }
   // A node with something beneath it opens and closes and stays as it was
-  // left across redraws, by its key in expanded. A branch's caption is the
-  // button that chooses it; a folder's caption only names it.
+  // left across redraws, by its key in expanded: an object by its id, a
+  // folder by the object's and its own, a branch by branchKey. An object's
+  // caption is the button that chooses it; a folder's or a branch's only
+  // names it. A filter by text opens what holds a match.
+  const branchKey = kind => `branch ${kind}`;
   const foldable = (key, icon, caption, children, open) => treeNode({icon, caption, children, open: open || expanded.has(key),
     toggled: opened => { if (opened) expanded.add(key); else expanded.delete(key); }}).element;
   const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
@@ -410,28 +413,54 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
       const place = kindPlaces?.[kind] || '';
       if (place && place !== commonBranch?.place) {
         if (!within.has(place)) within.set(place, []);
-        within.get(place).push(treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: entries, open: true}).element);
+        within.get(place).push(foldable(branchKey(kind), kindIcons?.[kind], kindTitle(kind), entries, !!needle));
       }
     }
     for (const [kind, entries] of [...groups, ...[...within.keys()].filter(kind => !groups.has(kind)).map(kind => [kind, []])]) {
       const place = kindPlaces?.[kind] || '';
       if (place && place !== commonBranch?.place) continue;
-      const branch = treeNode({icon: kindIcons?.[kind], caption: kindTitle(kind), children: [...(within.get(kind) || []), ...entries], open: true}).element;
+      const branch = foldable(branchKey(kind), kindIcons?.[kind], kindTitle(kind), [...(within.get(kind) || []), ...entries], !!needle);
       (place && place === commonBranch?.place ? common : top).push(branch);
     }
-    if (common.length) top.unshift(treeNode({icon: commonBranch.icon, caption: commonBranch.title, children: common, open: true}).element);
+    if (common.length) top.unshift(foldable(branchKey(commonBranch.place), commonBranch.icon, commonBranch.title, common, !!needle));
     if (root && (top.length || matches(root, needle))) {
       const button = treeButton(title(root) || root.name, root.name, 'role-tree-item role-tree-root', selection()?.object?.id === root.id, {object: root});
       button.dataset.object = root.id;
-      element.append(treeNode({icon: 'configuration', caption: button, children: top, open: true}).element);
+      element.append(foldable(root.id, 'configuration', button, top, !!needle));
     } else element.append(...top);
     if (!element.childElementCount) element.append(node('p', 'Нет подходящих объектов', 'muted'));
   }
   return {
     element, render,
-    // Opens the objects an object lies inside, so choosing it shows it.
-    reveal(object) { for (let owner = object.owner; owner; owner = schema.objects.find(item => item.id === owner)?.owner) expanded.add(owner); },
+    // Opens everything an object lies inside, so choosing it shows it: the
+    // objects and their folders, the branch of its kind and the one that
+    // branch stands in, the configuration.
+    reveal(object) {
+      let top = object;
+      for (let owner = object.owner; owner; owner = top.owner) {
+        expanded.add(owner); expanded.add(`${owner} ${top.kind}`);
+        top = schema.objects.find(item => item.id === owner);
+        if (!top) return;
+      }
+      expanded.add(branchKey(top.kind));
+      if (kindPlaces?.[top.kind]) expanded.add(branchKey(kindPlaces[top.kind]));
+      const root = schema.objects.find(item => item.root);
+      if (root) expanded.add(root.id);
+    },
   };
+}
+
+/* openRoleTree sets the tree of rights as it stands when its window opens,
+   as the prototype's (snapshots configurator-2026-10-20/menyu-01, -02, опись
+   rol.md): only the configuration open and chosen, «Общие» and the
+   branches of the kinds closed. It forgets what was left open in expanded
+   and answers the choice to make. */
+function openRoleTree(schema, expanded) {
+  expanded.clear();
+  const root = schema.objects.find(item => item.root);
+  if (!root) return null;
+  expanded.add(root.id);
+  return {object: root};
 }
 
 /* The filter by subsystems (help, «Отбор по подсистемам»): chosen holds the
@@ -954,7 +983,7 @@ function createRoleEditor(host, onChange) {
   return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
     open(value, preserveSelection=false) {
       clearTitleField();
-      const previous=preserveSelection?selected:null;if(!preserveSelection)expanded.clear();source=structuredClone(value);model=createRoleModel(source);selected=null;if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
+      const previous=preserveSelection?selected:null;source=structuredClone(value);model=createRoleModel(source);selected=preserveSelection?null:openRoleTree(source.schema,expanded);if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
       const titleLabel=node('label','Заголовок'),titleField=createLocalizedField(source,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed,titleTextOptions);
       titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
