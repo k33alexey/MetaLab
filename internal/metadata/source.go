@@ -90,7 +90,7 @@ type kindUses struct {
 	// rights is a role giving rights on the object.
 	rights presence
 	// offered are the rights the configurator offers on an object of the
-	// kind, in the order of the help (kindRightsOf); nil for a kind no
+	// kind, in the prototype's order (kindRightsOf); nil for a kind no
 	// export gives rights on.
 	offered []PermissionOperation
 	// registration is an exchange plan registering the object's changes.
@@ -277,7 +277,7 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 // mode of the technical specialist is written under its old name too
 // (renamedRights); ending exclusive mode at the start of a session only the
 // configurator's samples write.
-var configurationRights = inHelpOrder([]PermissionOperation{
+var configurationRights = inPrototypeOrder([]PermissionOperation{
 	PermissionAdministration, PermissionDataAdministration, PermissionUpdateDataBaseConfiguration,
 	PermissionExclusiveMode, PermissionActiveUsers, PermissionEventLog, PermissionRunApplication,
 	PermissionExternalConnection, PermissionAutomation,
@@ -288,9 +288,9 @@ var configurationRights = inHelpOrder([]PermissionOperation{
 	PermissionExclusiveModeTerminationAtSessionStart, PermissionAnalyticsSystemClient,
 })
 
-// inHelpOrder puts rights in the order of the help, the order the editor
-// shows them in.
-func inHelpOrder(rights []PermissionOperation) []PermissionOperation {
+// inPrototypeOrder puts rights in the prototype's order (roleRights), the
+// order the editor shows them in.
+func inPrototypeOrder(rights []PermissionOperation) []PermissionOperation {
 	result := slices.Clone(rights)
 	slices.SortFunc(result, func(a, b PermissionOperation) int { return rightIndex[a] - rightIndex[b] })
 	return result
@@ -553,7 +553,7 @@ func init() {
 	for index := range kindInfos {
 		kindInfos[index].uses = kindUsesOf[kindInfos[index].kind]
 		if offered, ok := kindRightsOf[kindInfos[index].kind]; ok {
-			kindInfos[index].uses.offered = inHelpOrder(offered)
+			kindInfos[index].uses.offered = inPrototypeOrder(offered)
 		}
 	}
 	for _, item := range kindInfos {

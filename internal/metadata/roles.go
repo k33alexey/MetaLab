@@ -106,13 +106,22 @@ type roleRight struct {
 	russian   string
 }
 
-// roleRights is every right a role carries, in the order of the help of
-// ПравоДоступа (8.3.27): the prototype's, but for those ML does not keep
-// (droppedRights), and the start of the application where the help lists
-// the thin client, the first of the clients. The four exports use
-// sixty-eight of the prototype's rights: the one they do not, ending
-// exclusive mode at the start of a session, the configurator writes in its
-// own samples of 3.25 and 3.27.
+// roleRights is every right a role carries - those of the help of
+// ПравоДоступа (8.3.27), but for those ML does not keep (droppedRights), and
+// the start of the application where the prototype lists the thin client,
+// the first of the clients. The four exports use sixty-eight of the
+// prototype's rights: the one they do not, ending exclusive mode at the
+// start of a session, the configurator writes in its own samples of 3.25
+// and 3.27.
+//
+// The order is the prototype's, not the help's: the window of a role lists
+// the rights of an object in it (block-00/rol), and the Rights.xml of every
+// role of the exports writes them so, the 2526 roles never disagreeing.
+// What the help orders otherwise is the configuration's rights, from the
+// administration to the output, the use of a report or a data processor,
+// before its viewing, and the viewing of the history of data, after the
+// update of the comment of a version. A kind takes in this order the rights
+// it offers (inPrototypeOrder).
 var roleRights = []roleRight{
 	{PermissionRead, "Read", "Чтение"},
 	{PermissionInsert, "Insert", "Добавление"},
@@ -120,6 +129,7 @@ var roleRights = []roleRight{
 	{PermissionDelete, "Delete", "Удаление"},
 	{PermissionPosting, "Posting", "Проведение"},
 	{PermissionUndoPosting, "UndoPosting", "ОтменаПроведения"},
+	{PermissionUse, "Use", "Использование"},
 	{PermissionView, "View", "Просмотр"},
 	{PermissionInteractiveInsert, "InteractiveInsert", "ИнтерактивноеДобавление"},
 	{PermissionEdit, "Edit", "Редактирование"},
@@ -133,16 +143,27 @@ var roleRights = []roleRight{
 	{PermissionInteractiveChangeOfPosted, "InteractiveChangeOfPosted", "ИнтерактивноеИзменениеПроведенных"},
 	{PermissionInputByString, "InputByString", "ВводПоСтроке"},
 	{PermissionTotalsControl, "TotalsControl", "УправлениеИтогами"},
-	{PermissionUse, "Use", "Использование"},
 	{PermissionAdministration, "Administration", "Администрирование"},
 	{PermissionDataAdministration, "DataAdministration", "АдминистрированиеДанных"},
+	{PermissionUpdateDataBaseConfiguration, "UpdateDataBaseConfiguration", "ОбновлениеКонфигурацииБазыДанных"},
 	{PermissionExclusiveMode, "ExclusiveMode", "МонопольныйРежим"},
 	{PermissionActiveUsers, "ActiveUsers", "АктивныеПользователи"},
 	{PermissionEventLog, "EventLog", "ЖурналРегистрации"},
+	{PermissionRunApplication, "RunApplication", "ЗапускПриложения"},
 	{PermissionExternalConnection, "ExternalConnection", "ВнешнееСоединение"},
 	{PermissionAutomation, "Automation", "Automation"},
+	{PermissionTechnicalSpecialistMode, "TechnicalSpecialistMode", "РежимТехническогоСпециалиста"},
+	{PermissionMainWindowModeNormal, "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"},
+	{PermissionMainWindowModeWorkplace, "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"},
+	{PermissionMainWindowModeEmbeddedWorkplace, "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"},
+	{PermissionMainWindowModeFullscreenWorkplace, "MainWindowModeFullscreenWorkplace", "РежимОсновногоОкнаПолноэкранноеРабочееМесто"},
+	{PermissionMainWindowModeKiosk, "MainWindowModeKiosk", "РежимОсновногоОкнаКиоск"},
+	{PermissionAnalyticsSystemClient, "AnalyticsSystemClient", "КлиентСистемыАналитики"},
+	{PermissionExclusiveModeTerminationAtSessionStart, "ExclusiveModeTerminationAtSessionStart", "ЗавершениеМонопольногоРежимаПриНачалеСеанса"},
+	{PermissionSaveUserData, "SaveUserData", "СохранениеДанныхПользователя"},
 	{PermissionInteractiveOpenExtDataProcessors, "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"},
 	{PermissionInteractiveOpenExtReports, "InteractiveOpenExtReports", "ИнтерактивноеОткрытиеВнешнихОтчетов"},
+	{PermissionOutput, "Output", "Вывод"},
 	{PermissionGet, "Get", "Получение"},
 	{PermissionSet, "Set", "Установка"},
 	{PermissionInteractiveActivate, "InteractiveActivate", "ИнтерактивнаяАктивация"},
@@ -150,10 +171,6 @@ var roleRights = []roleRight{
 	{PermissionInteractiveStart, "InteractiveStart", "ИнтерактивныйСтарт"},
 	{PermissionExecute, "Execute", "Выполнение"},
 	{PermissionInteractiveExecute, "InteractiveExecute", "ИнтерактивноеВыполнение"},
-	{PermissionOutput, "Output", "Вывод"},
-	{PermissionUpdateDataBaseConfiguration, "UpdateDataBaseConfiguration", "ОбновлениеКонфигурацииБазыДанных"},
-	{PermissionRunApplication, "RunApplication", "ЗапускПриложения"},
-	{PermissionSaveUserData, "SaveUserData", "СохранениеДанныхПользователя"},
 	{PermissionStandardAuthenticationChange, "StandardAuthenticationChange", "ИзменениеСтандартнойАутентификации"},
 	{PermissionSessionStandardAuthenticationChange, "SessionStandardAuthenticationChange", "ИзменениеСтандартнойАутентификацииСеанса"},
 	{PermissionSessionOSAuthenticationChange, "SessionOSAuthenticationChange", "ИзменениеАутентификацииОССеанса"},
@@ -162,22 +179,14 @@ var roleRights = []roleRight{
 	{PermissionInteractiveClearDeletionMarkPredefinedData, "InteractiveClearDeletionMarkPredefinedData", "ИнтерактивноеСнятиеПометкиУдаленияПредопределенныхДанных"},
 	{PermissionInteractiveDeleteMarkedPredefinedData, "InteractiveDeleteMarkedPredefinedData", "ИнтерактивноеУдалениеПомеченныхПредопределенныхДанных"},
 	{PermissionReadDataHistory, "ReadDataHistory", "ЧтениеИсторииДанных"},
-	{PermissionViewDataHistory, "ViewDataHistory", "ПросмотрИсторииДанных"},
 	{PermissionReadDataHistoryOfMissingData, "ReadDataHistoryOfMissingData", "ЧтениеИсторииДанныхОтсутствующихДанных"},
 	{PermissionUpdateDataHistory, "UpdateDataHistory", "ИзменениеИсторииДанных"},
 	{PermissionUpdateDataHistoryOfMissingData, "UpdateDataHistoryOfMissingData", "ИзменениеИсторииДанныхОтсутствующихДанных"},
 	{PermissionUpdateDataHistorySettings, "UpdateDataHistorySettings", "ИзменениеНастроекИсторииДанных"},
 	{PermissionUpdateDataHistoryVersionComment, "UpdateDataHistoryVersionComment", "ИзменениеКомментарияВерсииИсторииДанных"},
+	{PermissionViewDataHistory, "ViewDataHistory", "ПросмотрИсторииДанных"},
 	{PermissionEditDataHistoryVersionComment, "EditDataHistoryVersionComment", "РедактированиеКомментарияВерсииИсторииДанных"},
 	{PermissionSwitchToDataHistoryVersion, "SwitchToDataHistoryVersion", "ПереходНаВерсиюИсторииДанных"},
-	{PermissionMainWindowModeNormal, "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"},
-	{PermissionMainWindowModeWorkplace, "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"},
-	{PermissionMainWindowModeEmbeddedWorkplace, "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"},
-	{PermissionMainWindowModeFullscreenWorkplace, "MainWindowModeFullscreenWorkplace", "РежимОсновногоОкнаПолноэкранноеРабочееМесто"},
-	{PermissionMainWindowModeKiosk, "MainWindowModeKiosk", "РежимОсновногоОкнаКиоск"},
-	{PermissionTechnicalSpecialistMode, "TechnicalSpecialistMode", "РежимТехническогоСпециалиста"},
-	{PermissionExclusiveModeTerminationAtSessionStart, "ExclusiveModeTerminationAtSessionStart", "ЗавершениеМонопольногоРежимаПриНачалеСеанса"},
-	{PermissionAnalyticsSystemClient, "AnalyticsSystemClient", "КлиентСистемыАналитики"},
 }
 
 // droppedRight is a right of the prototype ML does not keep, under the names
@@ -247,7 +256,7 @@ var knownRights = func() map[PermissionOperation]bool {
 	return known
 }()
 
-// rightIndex is the place of every right in the order of the help.
+// rightIndex is the place of every right in the prototype's order.
 var rightIndex = func() map[PermissionOperation]int {
 	result := make(map[PermissionOperation]int, len(roleRights))
 	for index, right := range roleRights {
@@ -256,7 +265,7 @@ var rightIndex = func() map[PermissionOperation]int {
 	return result
 }()
 
-// RoleRights lists every right a role can carry, in the order of the help.
+// RoleRights lists every right a role can carry, in the prototype's order.
 func RoleRights() []PermissionOperation {
 	result := make([]PermissionOperation, len(roleRights))
 	for index, right := range roleRights {

@@ -12,7 +12,7 @@ import (
 
 // PermissionSchema is editor data, not an authenticated runtime catalog.
 type PermissionSchema struct {
-	// Rights names every right a role can carry, in the order of the help,
+	// Rights names every right a role can carry, in the prototype's order,
 	// as the configurator writes them: the one place the editors take their
 	// captions from.
 	Rights  []PermissionRight  `json:"rights"`
@@ -67,7 +67,7 @@ type PermissionObject struct {
 	Name  string        `json:"name"`
 	Title LocalizedText `json:"title"`
 	// Rights are the rights the configurator offers on the object, in the
-	// order of the help: what the editor shows.
+	// prototype's order: what the editor shows.
 	Rights []PermissionOperation `json:"rights"`
 	// Operations are those of them this platform acts on.
 	Operations []PermissionOperation `json:"operations"`

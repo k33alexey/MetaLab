@@ -16,38 +16,45 @@ import (
 // expectedKindRights is what the configurator writes on an object of each
 // kind, by the prototype's names, from the Rights.xml of every role of the
 // four exports checked, demo-base, energy, ssl and the configurator's samples
-// in mdclasses (survey of 12.10.2026). Written out here, not read from
-// kindRightsOf.
+// in mdclasses (survey of 12.10.2026), in the order every one of them writes
+// them, the order of the window of a role (survey of 20.10.2026). Written out
+// here, not read from kindRightsOf or roleRights.
 var expectedKindRights = func() map[Kind][]string {
-	history := []string{"ReadDataHistory", "ViewDataHistory", "UpdateDataHistory", "UpdateDataHistorySettings",
-		"UpdateDataHistoryVersionComment", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion"}
-	missing := []string{"ReadDataHistoryOfMissingData", "UpdateDataHistoryOfMissingData"}
+	history := []string{"ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory",
+		"UpdateDataHistoryOfMissingData", "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment",
+		"ViewDataHistory", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion"}
+	// A constant always has its value: no history of missing data.
+	constantHistory := []string{"ReadDataHistory", "UpdateDataHistory", "UpdateDataHistorySettings",
+		"UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"}
 	reference := []string{"Read", "Insert", "Update", "Delete", "View", "InteractiveInsert", "Edit",
 		"InteractiveDelete", "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked",
 		"InputByString"}
 	predefined := []string{"InteractiveDeletePredefinedData", "InteractiveSetDeletionMarkPredefinedData",
 		"InteractiveClearDeletionMarkPredefinedData", "InteractiveDeleteMarkedPredefinedData"}
-	chart := slices.Concat(reference, predefined, history, missing)
+	chart := slices.Concat(reference, predefined, history)
 	return map[Kind][]string{
 		SubsystemKind: {"View"}, SessionParameterKind: {"Get", "Set"}, CommonAttributeKind: {"View", "Edit"},
-		ExchangePlanKind: slices.Concat(reference, history, missing), FilterCriterionKind: {"View"},
+		ExchangePlanKind: slices.Concat(reference, history), FilterCriterionKind: {"View"},
 		CommonCommandKind: {"View"}, CommonFormKind: {"View"}, WebServiceKind: {}, HTTPServiceKind: {},
-		ConstantKind: slices.Concat([]string{"Read", "Update", "View", "Edit"}, history),
+		ConstantKind: slices.Concat([]string{"Read", "Update", "View", "Edit"}, constantHistory),
 		CatalogKind:  chart,
-		DocumentKind: slices.Concat(reference, []string{"Posting", "UndoPosting", "InteractivePosting",
-			"InteractivePostingRegular", "InteractiveUndoPosting", "InteractiveChangeOfPosted"}, history, missing),
+		DocumentKind: slices.Concat([]string{"Read", "Insert", "Update", "Delete", "Posting", "UndoPosting", "View",
+			"InteractiveInsert", "Edit", "InteractiveDelete", "InteractiveSetDeletionMark", "InteractiveClearDeletionMark",
+			"InteractiveDeleteMarked", "InteractivePosting", "InteractivePostingRegular", "InteractiveUndoPosting",
+			"InteractiveChangeOfPosted", "InputByString"}, history),
 		SequenceKind: {"Read", "Update"}, DocumentJournalKind: {"Read", "View"},
 		ReportKind: {"Use", "View"}, DataProcessorKind: {"Use", "View"},
 		ChartOfCharacteristicTypesKind: chart, ChartOfAccountsKind: chart, ChartOfCalculationTypesKind: chart,
-		InformationRegisterKind:  slices.Concat([]string{"Read", "Update", "View", "Edit", "TotalsControl"}, history, missing),
+		InformationRegisterKind:  slices.Concat([]string{"Read", "Update", "View", "Edit", "TotalsControl"}, history),
 		AccumulationRegisterKind: {"Read", "Update", "View", "Edit", "TotalsControl"},
 		AccountingRegisterKind:   {"Read", "Update", "View", "Edit", "TotalsControl"},
 		CalculationRegisterKind:  {"Read", "Update", "View", "Edit"},
 		RecalculationKind:        {"Read", "Update"},
 		BusinessProcessKind: slices.Concat(reference, []string{"InteractiveActivate", "Start", "InteractiveStart"},
-			history, missing),
+			history),
 		TaskKind: slices.Concat(reference, []string{"InteractiveActivate", "Execute", "InteractiveExecute"},
-			history, missing),
+			history),
 		ExternalDataSourceKind: {"Use", "Administration", "StandardAuthenticationChange",
 			"SessionStandardAuthenticationChange", "SessionOSAuthenticationChange"},
 		ExternalDataSourceTableKind: {"Read", "Insert", "Update", "Delete", "View", "InteractiveInsert", "Edit",
@@ -112,14 +119,14 @@ func TestEveryKindSaysWhatItHolds(t *testing.T) {
 }
 
 // expectedConfigurationRights is what the same exports write on the
-// configuration itself.
+// configuration itself, in their order, the window's (block-00/rol/03…06).
 var expectedConfigurationRights = []string{"Administration", "DataAdministration", "UpdateDataBaseConfiguration",
 	"ExclusiveMode", "ActiveUsers", "EventLog", "ThinClient", "WebClient", "MobileClient", "ThickClient",
-	"ExternalConnection", "Automation", "TechnicalSpecialistMode", "SaveUserData", "InteractiveOpenExtDataProcessors",
-	"InteractiveOpenExtReports", "Output", "ConfigurationExtensionsAdministration",
-	"CollaborationSystemInfoBaseRegistration", "MainWindowModeNormal", "MainWindowModeWorkplace",
-	"MainWindowModeEmbeddedWorkplace", "MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk",
-	"ExclusiveModeTerminationAtSessionStart", "AnalyticsSystemClient"}
+	"ExternalConnection", "Automation", "TechnicalSpecialistMode", "CollaborationSystemInfoBaseRegistration",
+	"MainWindowModeNormal", "MainWindowModeWorkplace", "MainWindowModeEmbeddedWorkplace",
+	"MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk", "AnalyticsSystemClient",
+	"ExclusiveModeTerminationAtSessionStart", "SaveUserData", "ConfigurationExtensionsAdministration",
+	"InteractiveOpenExtDataProcessors", "InteractiveOpenExtReports", "Output"}
 
 // rightsNotKept are the rights of the prototype nothing stands for in ML: its
 // thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно право»)
@@ -130,9 +137,9 @@ var expectedConfigurationRights = []string{"Administration", "DataAdministration
 // back as ML's own (the owner's decision of 20.10.2026).
 var rightsNotKept = []string{"ThickClient", "MobileClient", "ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration"}
 
-// rightsByNames reads prototype names as rights, in the order of the help,
-// each once: the thin and the web client are one right in ML, and the
-// rights ML does not keep are no right of it.
+// rightsByNames reads prototype names as rights, in their order, each once:
+// the thin and the web client are one right in ML, standing where the thin
+// client does, and the rights ML does not keep are no right of it.
 func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 	t.Helper()
 	result := []PermissionOperation{}
@@ -148,9 +155,6 @@ func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 			result = append(result, right)
 		}
 	}
-	slices.SortFunc(result, func(a, b PermissionOperation) int {
-		return slices.Index(RoleRights(), a) - slices.Index(RoleRights(), b)
-	})
 	return result
 }
 
@@ -160,7 +164,9 @@ func rightsByNames(t *testing.T, names []string) []PermissionOperation {
 // constant with input by string, a register without the management of its
 // totals, a kind a role may name with no list at all, or a kind no export
 // gives rights on offered some. It also catches a right a role carries the editor
-// offers nowhere, and rights out of the order of the help.
+// offers nowhere, and rights out of the prototype's order: the history of
+// data viewed second, as the help lists it, or the modes of the main window
+// after the output.
 func TestEveryKindOffersThePrototypesRights(t *testing.T) {
 	t.Parallel()
 	offered := map[PermissionOperation]bool{}
@@ -204,7 +210,8 @@ func TestEveryKindOffersThePrototypesRights(t *testing.T) {
 
 // TestKindRightsAgreeWithTheExports catches a pair of kind and right an
 // export of the configurator writes on an object and the editor does not
-// offer, reading the Rights.xml of every role under docs/. The exports lie
+// offer, and rights the editor offers in an order other than the one an
+// export writes them in, reading the Rights.xml of every role under docs/. The exports lie
 // outside the repository; without them the test is skipped with the reason.
 // The interfaces of the ordinary application and the integration services are
 // left out by the owner's decisions of 30.09 and 12.10.2026.
@@ -272,14 +279,23 @@ func TestKindRightsAgreeWithTheExports(t *testing.T) {
 				}
 				allowed = usesOf(kind).offered
 			}
+			last := -1
 			for _, right := range object.Rights {
 				if slices.Contains(rightsNotKept, right.Name) {
 					continue
 				}
 				operation, ok := RightByPrototypeName(right.Name)
-				if !ok || !slices.Contains(allowed, operation) {
+				place := slices.Index(allowed, operation)
+				if !ok || place < 0 {
 					t.Errorf("%s: %s on %s is not offered", path, right.Name, object.Name)
+					continue
 				}
+				// The thin and the web client both stand for the start of
+				// the application, one place.
+				if place < last {
+					t.Errorf("%s: %s on %s is offered before %s", path, right.Name, object.Name, allowed[last])
+				}
+				last = place
 			}
 		}
 		return nil
