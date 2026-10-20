@@ -128,6 +128,32 @@ func TestPermissionSchemaShowsEveryPartWhereTheTreeShowsIt(t *testing.T) {
 	if len(schema.PartGroups) != len(partGroups) {
 		t.Errorf("the schema names %d folders of parts, the model %d", len(schema.PartGroups), len(partGroups))
 	}
+	// The folders of the tree of rights (block-00/rol, «Папки частей»): the
+	// operations of a web service and the templates of an HTTP service stand
+	// right under it; a folder gives its rights while empty too - the parts'
+	// to a folder of parts, the inner kind's to a folder of objects.
+	for kind, want := range map[Kind]PermissionFolder{
+		WebServiceKind:  {Group: OperationsPart, Inline: true, Rights: use},
+		HTTPServiceKind: {Group: URLTemplatesPart, Inline: true, Rights: []PermissionOperation{}},
+	} {
+		if got := schema.Folders[kind]; len(got) != 1 || got[0].Group != want.Group || got[0].Inline != want.Inline || !slices.Equal(got[0].Rights, want.Rights) {
+			t.Errorf("%s: the folders %+v, want %+v alone", kind, got, want)
+		}
+	}
+	folder := func(kind Kind, match func(PermissionFolder) bool) PermissionFolder {
+		index := slices.IndexFunc(schema.Folders[kind], match)
+		if index < 0 {
+			t.Errorf("%s: no such folder among %+v", kind, schema.Folders[kind])
+			return PermissionFolder{}
+		}
+		return schema.Folders[kind][index]
+	}
+	if got := folder(CatalogKind, func(item PermissionFolder) bool { return item.Group == TablePartsPart }); got.Inline || !slices.Equal(got.Rights, fieldRights) {
+		t.Errorf("the table parts of a catalog: %+v, want a folder with %v", got, fieldRights)
+	}
+	if got := folder(CalculationRegisterKind, func(item PermissionFolder) bool { return item.Kind == RecalculationKind }); !slices.Equal(got.Rights, objects[cmpRecalculation].Rights) {
+		t.Errorf("the recalculations of a register give %v, a recalculation has %v", got.Rights, objects[cmpRecalculation].Rights)
+	}
 }
 
 func writeModuleFile(t *testing.T, path, text string) {

@@ -25,6 +25,10 @@ type PermissionSchema struct {
 	// PartGroups are the folders of parts in the order of the tree, with
 	// their captions.
 	PartGroups []PermissionPartGroup `json:"partGroups"`
+	// Folders are the folders the tree of rights shows under an object, by
+	// its kind, in their order, every one even when empty
+	// (kindComposition.rightsFolders).
+	Folders map[Kind][]PermissionFolder `json:"folders"`
 	// Subsystems are the objects every subsystem holds, as it lists them, by
 	// the subsystem: the filter by subsystems of the windows of rights
 	// selects by them (help, «Отбор по подсистемам»; subsystemMembers).
@@ -97,6 +101,18 @@ type PermissionField struct {
 	Parent     string                `json:"parent,omitempty"`
 	Group      PartGroup             `json:"group,omitempty"`
 	Operations []PermissionOperation `json:"operations"`
+}
+
+// PermissionFolder is one folder of the tree of rights under an object: the
+// parts of the sort Group - standing right under the object where Inline,
+// the operations of a web service - or the objects of Kind lying inside it.
+// Rights are the rights it gives over what it holds, shown while it holds
+// nothing too.
+type PermissionFolder struct {
+	Group  PartGroup             `json:"group,omitempty"`
+	Kind   Kind                  `json:"kind,omitempty"`
+	Inline bool                  `json:"inline,omitempty"`
+	Rights []PermissionOperation `json:"rights"`
 }
 
 // PermissionPartGroup is a folder of parts, by its caption and the icon the
@@ -199,6 +215,23 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		}
 	}
 	result.Subsystems = catalog.subsystemMembers()
+	result.Folders = map[Kind][]PermissionFolder{}
+	for _, descriptor := range shown {
+		composition := kindCompositionOf[descriptor.Kind]
+		if usesOf(descriptor.Kind).offered == nil || composition.rightsFolders == nil {
+			continue
+		}
+		var folders []PermissionFolder
+		for _, folder := range composition.rightsFolders {
+			rights := offeredPartRights(descriptor.Kind, folder.group)
+			if folder.kind != "" {
+				rights = usesOf(folder.kind).offered
+			}
+			folders = append(folders, PermissionFolder{Group: folder.group, Kind: folder.kind, Inline: composition.inline,
+				Rights: append([]PermissionOperation{}, rights...)})
+		}
+		result.Folders[descriptor.Kind] = folders
+	}
 	for _, item := range partGroups {
 		result.PartGroups = append(result.PartGroups, PermissionPartGroup{Key: item.group, Title: item.title, Icon: item.icon})
 	}

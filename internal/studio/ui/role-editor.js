@@ -344,8 +344,11 @@ function roleGroupMembers(schema, group) {
 }
 
 /* The rights a group shows: every right one of its members has, in the
-   order of the list of rights. */
-function roleGroupRights(schema, members) {
+   order of the list of rights; an empty folder shows the rights it gives
+   over what it would hold, as the prototype's (group.rights,
+   schema.folders). */
+function roleGroupRights(schema, members, group) {
+  if (!members.length) return group.rights || [];
   return schema.rights.map(right => right.key).filter(key => members.some(member => roleMemberRights(member).includes(key)));
 }
 
@@ -422,19 +425,31 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
         caption: treeButton(title(child) || child.name, child.name, 'role-tree-item', isPart(child), {object: item, part: child})}).element);
       return foldable(`${item.id} ${groupKey} ${part.key}`, partGroupIcon(groupKey), caption, children, !!needle);
     };
-    const folders = [];
-    for (const group of schema.partGroups || []) {
-      const list = (parts.get('') || []).filter(part => part.group === group.key)
-        .filter(part => own || matches(part, needle) || (parts.get(part.key) || []).some(child => matches(child, needle)));
-      const key = `${item.id} ${group.key}`;
-      if (list.length) folders.push(foldable(key, partGroupIcon(group.key), groupCaption(partGroupTitle(group.key), {key, object: item.id, partGroup: group.key}), list.map(part => partNode(part, group.key)), !!needle));
-    }
-    for (const [kind, list] of inside.get(item.id) || []) {
+    // The folders of the kind in its order, every one even when empty, as
+    // the prototype's (schema.folders); the parts of an inline one stand
+    // right under the object. Under a filter by text only a folder holding a
+    // match stays, unless the object matches itself. Objects inside of a
+    // kind the folders do not name - a subsystem's - stand after them, in a
+    // folder of their kind while there are any.
+    const folders = [], named = new Set();
+    const insideFolder = (kind, rights) => {
+      named.add(kind);
       // What lies inside an object that matches is shown whole, as its parts are.
-      const nodes = list.map(child => objectNode(child, inside, own ? '' : needle, shown)).filter(Boolean);
+      const nodes = (inside.get(item.id)?.get(kind) || []).map(child => objectNode(child, inside, own ? '' : needle, shown)).filter(Boolean);
       const key = `${item.id} ${kind}`;
-      if (nodes.length) folders.push(foldable(key, kindIcons?.[kind], groupCaption(kindTitle(kind), {key, object: item.id, kind}), nodes, !!needle || !passes));
+      if ((own && rights) || nodes.length) folders.push(foldable(key, kindIcons?.[kind], groupCaption(kindTitle(kind), {key, object: item.id, kind, rights: rights || []}), nodes, !!needle || !passes));
+    };
+    for (const folder of schema.folders?.[item.kind] || []) {
+      if (folder.kind) { insideFolder(folder.kind, folder.rights); continue; }
+      if (!passes) continue;
+      const nodes = (parts.get('') || []).filter(part => part.group === folder.group)
+        .filter(part => own || matches(part, needle) || (parts.get(part.key) || []).some(child => matches(child, needle)))
+        .map(part => partNode(part, folder.group));
+      const key = `${item.id} ${folder.group}`;
+      if (folder.inline) folders.push(...nodes);
+      else if (own || nodes.length) folders.push(foldable(key, partGroupIcon(folder.group), groupCaption(partGroupTitle(folder.group), {key, object: item.id, partGroup: folder.group, rights: folder.rights}), nodes, !!needle));
     }
+    for (const kind of (inside.get(item.id) || new Map()).keys()) if (!named.has(kind)) insideFolder(kind, null);
     if (!own && !folders.length) return null;
     const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', selected?.object?.id === item.id && !selected.part, {object: item});
     caption.dataset.object = item.id;
@@ -993,7 +1008,7 @@ function createRoleEditor(host, onChange) {
     const {object,part,group}=selected;
     if(group){
       const members=roleGroupMembers(source.schema,group),owner=group.object&&source.schema.objects.find(item=>item.id===group.object);
-      return {members,rights:roleGroupRights(source.schema,members),fixed:!!group.branch,heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
+      return {members,rights:roleGroupRights(source.schema,members,group),fixed:!!group.branch,heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
     }
     const member={object,part},rights=roleMemberRights(member);
     return {members:[member],rights,restricted:part?null:object,

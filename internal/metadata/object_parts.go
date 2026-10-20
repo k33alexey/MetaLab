@@ -175,7 +175,42 @@ type kindComposition struct {
 	// rest (validateObjectsAsLoaded). Nil is a kind whose objects keep no
 	// such folder, or whose files are checked by code of their own.
 	files func(catalog *Catalog, id uuid.UUID) objectFiles
+	// rightsFolders are the folders the tree of rights of the window of a
+	// role shows under an object of the kind, in its order, every one even
+	// when empty (pass of 20.10.2026, block-00/rol, «Папки частей»): its own
+	// order, not the configuration tree's - the standard attributes stand
+	// after the attributes and before the commands, a register of
+	// information has them before its attributes, a cube its tables of
+	// dimensions first. A folder holds the parts of a sort or the objects of
+	// a kind lying inside the object. Nil is a kind whose objects show none.
+	rightsFolders []rightsFolder
 }
+
+// rightsFolder is one folder of the tree of rights: the parts of the sort
+// group, or the objects of the kind lying inside the object.
+type rightsFolder struct {
+	group PartGroup
+	kind  Kind
+}
+
+// partFolders are the folders of the parts of the sorts, in their order.
+func partFolders(groups ...PartGroup) []rightsFolder {
+	result := make([]rightsFolder, len(groups))
+	for index, group := range groups {
+		result[index] = rightsFolder{group: group}
+	}
+	return result
+}
+
+// The folders of the tree of rights the kinds share (block-00/rol, «Папки
+// частей»): a catalog, a document, a business process; a report; the
+// registers of accumulation and of accounting.
+var (
+	referenceFolders = partFolders(AttributesPart, TablePartsPart, StandardAttributesPart, CommandsPart)
+	reportFolders    = partFolders(AttributesPart, TablePartsPart, CommandsPart)
+	registerFolders  = partFolders(DimensionsPart, ResourcesPart, AttributesPart, StandardAttributesPart, CommandsPart)
+	tableFolders     = partFolders(FieldsPart, CommandsPart)
+)
 
 // heldList is one list of what an object keeps beside its parts, as the tree
 // shows it: the key, caption and icon of its branch - the icon its items are
@@ -342,7 +377,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	CommonFormKind:     {},
 	CommonTemplateKind: {},
 	XDTOPackageKind:    {},
-	WebServiceKind: {branches: []PartGroup{OperationsPart}, inline: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	WebServiceKind: {branches: []PartGroup{OperationsPart}, inline: true, rightsFolders: partFolders(OperationsPart), parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
 		for _, operation := range c.WebServices[c.webServiceByID[id]].Operations {
 			parts = append(parts, objectPart{key: operation.ID.String(), name: operation.Name, title: operation.Title, group: OperationsPart})
@@ -364,8 +399,8 @@ var kindCompositionOf = map[Kind]kindComposition{
 	ExternalDataSourceKind: {held: []heldList{{"functions", kinds.Must(ExternalFunctionKind).Collection.Russian, kinds.Must(ExternalFunctionKind).Icon,
 		func(c *Catalog, id uuid.UUID) []heldIdentity {
 			return identitiesOf("", c.ExternalDataSources[c.externalDataSourceByID[id]].Functions)
-		}}}},
-	ExternalDataSourceTableKind: {described: true, files: func(c *Catalog, id uuid.UUID) objectFiles {
+		}}}, rightsFolders: []rightsFolder{{kind: ExternalDataSourceTableKind}, {kind: ExternalCubeKind}}},
+	ExternalDataSourceTableKind: {described: true, rightsFolders: tableFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		files := declaredFilesOf(c, id)
 		// The kind has both modules of data; a table keeps the one of its
 		// type.
@@ -379,12 +414,13 @@ var kindCompositionOf = map[Kind]kindComposition{
 	// A cube is read as a register is: its dimensions and resources are the
 	// fields of its records (help: ВнешнийИсточникДанныхКубЗапись.<Имя
 	// измерения>, <Имя ресурса>).
-	ExternalCubeKind: {described: true, files: declaredFilesOf},
+	ExternalCubeKind: {described: true, files: declaredFilesOf,
+		rightsFolders: append([]rightsFolder{{kind: ExternalDimensionTableKind}}, partFolders(DimensionsPart, ResourcesPart, CommandsPart)...)},
 	// A dimension table holds fields as a table of a source does (help:
 	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект.<Имя поля>).
-	ExternalDimensionTableKind: {described: true, files: declaredFilesOf},
+	ExternalDimensionTableKind: {described: true, files: declaredFilesOf, rightsFolders: tableFolders},
 	ExternalFunctionKind:       {},
-	HTTPServiceKind: {branches: []PartGroup{URLTemplatesPart}, inline: true, parts: func(c *Catalog, id uuid.UUID) []objectPart {
+	HTTPServiceKind: {branches: []PartGroup{URLTemplatesPart}, inline: true, rightsFolders: partFolders(URLTemplatesPart), parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		var parts []objectPart
 		for _, template := range c.HTTPServices[c.httpServiceByID[id]].Templates {
 			parts = append(parts, objectPart{key: template.ID.String(), name: template.Name, title: template.Title, group: URLTemplatesPart})
@@ -405,44 +441,48 @@ var kindCompositionOf = map[Kind]kindComposition{
 	// own: only its commands are.
 	FilterCriterionKind: {parts: func(c *Catalog, id uuid.UUID) []objectPart {
 		return declaredParts(nil, nil, c.FilterCriteria[c.filterCriterionByID[id]].Commands)
-	}, files: declaredFilesOf},
+	}, files: declaredFilesOf, rightsFolders: partFolders(CommandsPart)},
 	DefinedTypeKind: {types: func(c *Catalog, id uuid.UUID) []Type {
 		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
 	LanguageKind:                   {},
-	CatalogKind:                    referenceKind(CatalogKind),
-	ChartOfCharacteristicTypesKind: referenceKind(ChartOfCharacteristicTypesKind),
-	ChartOfAccountsKind:            referenceKind(ChartOfAccountsKind),
-	ChartOfCalculationTypesKind:    referenceKind(ChartOfCalculationTypesKind),
+	CatalogKind:                    referenceKind(CatalogKind, referenceFolders),
+	ChartOfCharacteristicTypesKind: referenceKind(ChartOfCharacteristicTypesKind, referenceFolders),
+	ChartOfAccountsKind: referenceKind(ChartOfAccountsKind, partFolders(AttributesPart, AccountingFlagsPart, ExtDimensionAccountingFlagsPart,
+		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)),
+	ChartOfCalculationTypesKind: referenceKind(ChartOfCalculationTypesKind, partFolders(AttributesPart, TablePartsPart, StandardAttributesPart,
+		StandardTablePartsPart, CommandsPart)),
 	// The addressing attributes of a task are no fields of its own sort:
 	// they stand between its attributes and its table parts.
-	TaskKind: {dataVersion: true, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart}, parts: func(c *Catalog, id uuid.UUID) []objectPart {
-		item := c.Tasks[c.taskByID[id]]
-		parts := declaredParts(item.Attributes, nil, nil)
-		for _, attribute := range addressingAsAttributes(item) {
-			parts = append(parts, fieldPart(&attribute, AddressingAttributesPart, ""))
-		}
-		return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
-	}, files: declaredFilesOf},
-	AccountingRegisterKind:  {described: true, files: declaredFilesOf},
-	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf},
+	TaskKind: {dataVersion: true, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
+		rightsFolders: partFolders(AddressingAttributesPart, AttributesPart, TablePartsPart, StandardAttributesPart, CommandsPart), parts: func(c *Catalog, id uuid.UUID) []objectPart {
+			item := c.Tasks[c.taskByID[id]]
+			parts := declaredParts(item.Attributes, nil, nil)
+			for _, attribute := range addressingAsAttributes(item) {
+				parts = append(parts, fieldPart(&attribute, AddressingAttributesPart, ""))
+			}
+			return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
+		}, files: declaredFilesOf},
+	AccountingRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders},
+	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: []rightsFolder{{group: DimensionsPart},
+		{group: ResourcesPart}, {group: AttributesPart}, {group: StandardAttributesPart}, {kind: RecalculationKind}, {group: CommandsPart}}},
 	RecalculationKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		recalculation, _ := c.recalculationOf(id)
 		return identitiesOf("dimension", recalculation.Dimensions)
 	}},
-	ReportKind:        {described: true, files: declaredFilesOf},
-	DataProcessorKind: {described: true, files: declaredFilesOf},
+	ReportKind:        {described: true, files: declaredFilesOf, rightsFolders: reportFolders},
+	DataProcessorKind: {described: true, files: declaredFilesOf, rightsFolders: reportFolders},
 	NumeratorKind:     {},
 	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
 	}, files: declaredFilesOf},
 	DocumentJournalKind: {described: true, held: []heldList{{"columns", "Графы", "journal-column", func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
-	}}}, files: declaredFilesOf},
-	ExchangePlanKind: {dataVersion: true, described: true, files: declaredFilesOf},
+	}}}, files: declaredFilesOf, rightsFolders: partFolders(StandardAttributesPart, CommandsPart)},
+	ExchangePlanKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: referenceFolders},
 	BusinessProcessKind: {dataVersion: true, described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
-	}, files: func(c *Catalog, id uuid.UUID) objectFiles {
+	}, rightsFolders: referenceFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		// The route map keeps the pictures its items draw in a folder of
 		// the process.
 		files := declaredFilesOf(c, id)
@@ -450,16 +490,18 @@ var kindCompositionOf = map[Kind]kindComposition{
 		files.route = &c.BusinessProcesses[c.businessProcessByID[id]].Route
 		return files
 	}},
-	DocumentKind:             {dataVersion: true, described: true, files: declaredFilesOf},
-	InformationRegisterKind:  {described: true, files: declaredFilesOf},
-	AccumulationRegisterKind: {described: true, files: declaredFilesOf},
+	DocumentKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: referenceFolders},
+	InformationRegisterKind: {described: true, files: declaredFilesOf,
+		rightsFolders: partFolders(DimensionsPart, ResourcesPart, StandardAttributesPart, AttributesPart, CommandsPart)},
+	AccumulationRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders},
 }
 
 // referenceKind is the composition of a kind of reference with predefined
 // items - a catalog, the three charts: its parts read off its description,
-// the version of its data, its predefined items and the files it declares.
-func referenceKind(kind Kind) kindComposition {
-	return kindComposition{dataVersion: true, described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+// the version of its data, its predefined items and the files it declares,
+// with the folders of its tree of rights.
+func referenceKind(kind Kind, folders []rightsFolder) kindComposition {
+	return kindComposition{dataVersion: true, described: true, rightsFolders: folders, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		description, _ := descriptionOf(c, kind, id)
 		return identitiesIn("predefined item", description.FieldByName("Predefined"))
 	}, files: declaredFilesOf}
