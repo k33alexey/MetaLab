@@ -29,6 +29,13 @@ type PermissionSchema struct {
 	// its kind, in their order, every one even when empty
 	// (kindComposition.rightsFolders).
 	Folders map[Kind][]PermissionFolder `json:"folders"`
+	// Branches are the branches of kinds the tree of rights shows, in the
+	// order of the tree, every one even when no object of the kind is made,
+	// with the rights of the kind, which an empty branch shows as the
+	// prototype's (pass of 20.10.2026, prava/zapis.md «Дерево прав»: the
+	// empty «Последовательности»; snapshot prava/19: «Внешние источники
+	// данных» without objects).
+	Branches []PermissionBranch `json:"branches"`
 	// Subsystems are the objects every subsystem holds, as it lists them, by
 	// the subsystem: the filter by subsystems of the windows of rights
 	// selects by them (help, «Отбор по подсистемам»; subsystemMembers).
@@ -117,6 +124,13 @@ type PermissionFolder struct {
 	Group  PartGroup             `json:"group,omitempty"`
 	Kind   Kind                  `json:"kind,omitempty"`
 	Inline bool                  `json:"inline,omitempty"`
+	Rights []PermissionOperation `json:"rights"`
+}
+
+// PermissionBranch is the branch of a kind in the tree of rights and the
+// rights an object of the kind is offered.
+type PermissionBranch struct {
+	Kind   Kind                  `json:"kind"`
 	Rights []PermissionOperation `json:"rights"`
 }
 
@@ -234,6 +248,12 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			if _, done := required[right]; !done {
 				required[right] = rightsRequired(object.Kind, right)
 			}
+		}
+	}
+	result.Branches = []PermissionBranch{}
+	for _, descriptor := range kinds.Branches() {
+		if offered := usesOf(descriptor.Kind).offered; offered != nil {
+			result.Branches = append(result.Branches, PermissionBranch{Kind: descriptor.Kind, Rights: append([]PermissionOperation{}, offered...)})
 		}
 	}
 	result.Subsystems = catalog.subsystemMembers()

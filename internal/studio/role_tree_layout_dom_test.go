@@ -38,10 +38,16 @@ const roleTreeLayoutWalk = `(async () => {
 // the sequences inside «Документы» before the documents (inventory of block
 // 00, rol.md - «корень конфигурации, «Общие», виды»; snapshots
 // configurator-2026-10-14/rol-otbor-kassa, derevo/27 for the order; written
-// out here, not read from the descriptors). Defects caught: the root a row
+// out here, not read from the descriptors). Every kind rights are given on
+// has its branch, the empty ones too - the project has no constant, no
+// journal, no external source (snapshots configurator-2026-10-20/prava/19 and 30; zapis.md
+// «Дерево прав»): ML has no branch of the enumerations yet, which the
+// prototype's tree shows (a question of the series of 2.417), and none of
+// the integration services the owner refused. Defects caught: the root a row
 // of its own above the branches; no «Общие», a common form standing beside
-// the catalogs; the sequences beside the documents rather
-// than in them; the order of the branches not the prototype's.
+// the catalogs; the sequences beside the documents rather than in them; the
+// order of the branches not the prototype's; a branch without objects left
+// out.
 func TestTheTreeOfRightsStandsAsTheProjectTree(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	writeProjectFile(t, root, "metadata/sequences/Партии/object.yaml",
@@ -65,11 +71,14 @@ func TestTheTreeOfRightsStandsAsTheProjectTree(t *testing.T) {
 		if len(tree.Top) != 1 || tree.Icon != "#icon-configuration" {
 			t.Errorf("%s: the tree begins %v (icon %s), want the configuration alone", name, tree.Top, tree.Icon)
 		}
-		if want := []string{"Общие", "Справочники", "Документы", "Регистры накопления"}; !slices.Equal(tree.Root, want) {
+		if want := []string{"Общие", "Константы", "Справочники", "Документы", "Журналы документов", "Отчёты", "Обработки",
+			"Планы видов характеристик", "Планы счетов", "Планы видов расчёта", "Регистры сведений", "Регистры накопления",
+			"Регистры бухгалтерии", "Регистры расчёта", "Бизнес-процессы", "Задачи", "Внешние источники данных"}; !slices.Equal(tree.Root, want) {
 			t.Errorf("%s: beneath the root %v, want %v", name, tree.Root, want)
 		}
-		if !slices.Equal(tree.Common, []string{"Общие формы"}) {
-			t.Errorf("%s: «Общие» holds %v, want the common forms - the one common kind of the project with rights", name, tree.Common)
+		if want := []string{"Подсистемы", "Параметры сеанса", "Общие реквизиты", "Планы обмена", "Критерии отбора", "Общие команды",
+			"Общие формы", "Web-сервисы", "HTTP-сервисы"}; !slices.Equal(tree.Common, want) {
+			t.Errorf("%s: «Общие» holds %v, want %v", name, tree.Common, want)
 		}
 		if len(tree.Documents) < 2 || tree.Documents[0] != "Последовательности" || !strings.Contains(strings.Join(tree.Documents[1:], " "), "Продажа") {
 			t.Errorf("%s: «Документы» holds %v, want the sequences, then the documents", name, tree.Documents)
@@ -233,6 +242,61 @@ func TestTheRoleOpenedOnAnObjectInsideAnotherShowsIt(t *testing.T) {
 	}
 	if got.Chosen != "Перерасчет" || len(got.Closed) > 0 {
 		t.Errorf("the role opened on Перерасчет: %q chosen, %v closed above it; want Перерасчет chosen and everything above it open", got.Chosen, got.Closed)
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
+
+// roleEmptyBranchWalk opens the window of the role Кладовщик, chooses the
+// branch «Константы», which holds nothing, reads the rights listed, presses
+// the box of «Чтение» and reads them again.
+const roleEmptyBranchWalk = `(async () => {
+  const studio = window.__studio, editor = document.querySelector('#role-editor'), answer = {};
+  const rights = () => [...editor.querySelectorAll('.role-permissions .check-list-row')].map(row => ({caption: row.textContent.trim(), checked: row.querySelector('input').checked}));
+  [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  await studio.settle();
+  [...editor.querySelectorAll('.role-tree-group')].find(item => item.textContent.trim() === 'Константы').click(); await studio.settle();
+  answer.listed = rights();
+  [...editor.querySelectorAll('.role-permissions .check-list-row')].find(row => row.textContent.trim() === 'Чтение').querySelector('input').click(); await studio.settle();
+  answer.pressed = rights();
+  return answer;
+})()`
+
+// An empty branch shows the rights of its kind, as the prototype's
+// «Константы» and «Последовательности» (pass of 20.10.2026, zapis.md «Дерево
+// прав», snapshot prava/10): the rights of a constant, written out here from
+// the pass; a click marks nothing, there being nothing to mark. Defects
+// caught: an empty branch with no rights or with another kind's; a click on
+// it marking the box with nothing behind it.
+func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
+		addRestrictedRole(t, opened, root)
+	})
+	result, err := browser.evaluate(ctx, page, roleEmptyBranchWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type right struct {
+		Caption string
+		Checked bool
+	}
+	var got struct{ Listed, Pressed []right }
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("%v: %s", err, result)
+	}
+	var want []right
+	for _, caption := range []string{"Чтение", "Изменение", "Просмотр", "Редактирование", "Чтение истории данных",
+		"Изменение истории данных", "Изменение настроек истории данных", "Изменение комментария версии истории данных",
+		"Просмотр истории данных", "Редактирование комментария версии истории данных", "Переход на версию истории данных"} {
+		want = append(want, right{Caption: caption})
+	}
+	if !slices.Equal(got.Listed, want) {
+		t.Errorf("the empty branch «Константы» lists %v, want %v", got.Listed, want)
+	}
+	if !slices.Equal(got.Pressed, want) {
+		t.Errorf("after a click on «Чтение» there: %v, want nothing marked", got.Pressed)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)

@@ -464,7 +464,10 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
     caption.dataset.object = item.id;
     return foldable(item.id, kindIcons?.[item.kind], caption, folders, (!!needle && !own) || !passes);
   }
-  const branch = (kind, children) => foldable(branchKey(kind), kindIcons?.[kind], groupCaption(kindTitle(kind), {key: branchKey(kind), kind}), children, !!filter.trim());
+  // The branch of a kind, with the kind's rights for a branch holding no
+  // object (schema.branches).
+  const branchRights = new Map((schema.branches || []).map(item => [item.kind, item.rights]));
+  const branch = (kind, children) => foldable(branchKey(kind), kindIcons?.[kind], groupCaption(kindTitle(kind), {key: branchKey(kind), kind, rights: branchRights.get(kind) || []}), children, !!filter.trim());
   function render(next = filter) {
     filter = next;
     const needle = filter.toLocaleLowerCase().trim(), shown = subsystemFilterPasses(schema, subsystems());
@@ -486,19 +489,24 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
       groups.get(item.kind).push(entry);
     }
     // The branches in their places: those standing in another's first in it,
-    // then «Общие», then the rest under the root.
+    // then «Общие», then the rest under the root. Every kind rights are given
+    // on has its branch, the empty ones too, as the prototype's (zapis.md
+    // «Дерево прав», snapshot prava/19), while nothing filters the tree; a
+    // filter keeps only the branches holding what passes it.
+    const listed = (schema.branches || []).map(item => item.kind), showEmpty = !needle && !subsystems();
+    const kinds = [...listed, ...[...groups.keys()].filter(kind => !listed.includes(kind))];
+    const placeOf = kind => kindPlaces?.[kind] || '', inAnother = kind => placeOf(kind) && placeOf(kind) !== commonBranch?.place;
     const within = new Map(), common = [], top = [];
-    for (const [kind, entries] of groups) {
-      const place = kindPlaces?.[kind] || '';
-      if (place && place !== commonBranch?.place) {
-        if (!within.has(place)) within.set(place, []);
-        within.get(place).push(branch(kind, entries));
-      }
+    for (const kind of kinds) {
+      if (!inAnother(kind) || !(groups.has(kind) || showEmpty)) continue;
+      if (!within.has(placeOf(kind))) within.set(placeOf(kind), []);
+      within.get(placeOf(kind)).push(branch(kind, groups.get(kind) || []));
     }
-    for (const [kind, entries] of [...groups, ...[...within.keys()].filter(kind => !groups.has(kind)).map(kind => [kind, []])]) {
-      const place = kindPlaces?.[kind] || '';
-      if (place && place !== commonBranch?.place) continue;
-      (place && place === commonBranch?.place ? common : top).push(branch(kind, [...(within.get(kind) || []), ...entries]));
+    for (const kind of [...kinds, ...[...within.keys()].filter(kind => !kinds.includes(kind))]) {
+      if (inAnother(kind)) continue;
+      const children = [...(within.get(kind) || []), ...(groups.get(kind) || [])];
+      if (!children.length && !showEmpty) continue;
+      (placeOf(kind) && placeOf(kind) === commonBranch?.place ? common : top).push(branch(kind, children));
     }
     const commonKey = branchKey(commonBranch?.place);
     if (common.length) top.unshift(foldable(commonKey, commonBranch.icon, groupCaption(commonBranch.title, {key: commonKey, common: true}), common, !!needle));
