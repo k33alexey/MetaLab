@@ -984,13 +984,14 @@ function createRoleOverview(host, openRole, onChange) {
       tab = view === 'roles' ? 'roles' : tab === 'templates' ? 'templates' : 'restrictions';
       host.dataset.view = view;
       host.replaceChildren();
-      const header = node('div', undefined, 'overview-header');
+      // The head of the window holds the tabs of «Все ограничения доступа»
+      // alone: the prototype's windows count no roles (snapshot
+      // configurator-2026-10-18/shabl-01), and «Все роли» has no head.
       if (view !== 'roles') {
-        header.classList.add('with-tabs');
+        const header = node('div', undefined, 'overview-header');
         header.append(tabStrip([['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']], tab, key => { tab = key; renderBody(); }));
+        host.append(header);
       }
-      header.append(node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));
-      host.append(header);
       body = node('div'); host.append(body);
       renderBody();
   }
