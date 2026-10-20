@@ -842,28 +842,22 @@ function restrictionWindowContent({fields, editor, change, group}) {
   return content;
 }
 
-/* The restrictions of access to data a role puts on the rights of an object,
-   as the prototype lists them under the rights (help, «Ограничение доступа к
-   данным»): the field or «Прочие поля», and the condition. A right restricted
-   by fields takes one per set of fields, the others one each. model is the role's
-   (createRoleModel); state keeps the right shown and the row chosen across
-   redraws; changed() is called after the role changed, to redraw. */
+/* The restrictions of access to data a role puts on the right current in
+   the list of rights, as the prototype lists them under it (help,
+   «Ограничение доступа к данным»; block-00/rol): the field or «Прочие поля»,
+   and the condition. A right restricted by fields takes one per set of
+   fields, the others one each; a right no restriction may be put on, or a
+   part, shows the list empty with its commands unavailable. model is the
+   role's (createRoleModel); object is null for a part; state keeps the
+   current right and the row chosen across redraws; changed() is called
+   after the role changed, to redraw. */
 function roleRestrictionSection({model, object, caption, title, state, changed}) {
   const section=node('section',undefined,'role-restrictions');
-  section.append(node('h4','Ограничение доступа к данным'));
-  if(!object.restrictedRights.includes(state.right)){state.right=object.restrictedRights[0];state.row=-1;}
-  const tabs=node('div',undefined,'role-restriction-rights');
-  for(const right of object.restrictedRights){
-    const count=model.restrictions(object.id,right).length,button=node('button',count?`${caption(right)} (${count})`:caption(right),right===state.right?'selected':undefined);
-    button.type='button';button.setAttribute('aria-pressed',String(right===state.right));
-    button.addEventListener('click',()=>{state.right=right;state.row=-1;changed();});
-    tabs.append(button);
-  }
-  section.append(tabs);
-  const right=state.right,list=model.restrictions(object.id,right);
+  section.append(node('h4','Ограничения доступа к данным'));
+  const right=object?.restrictedRights.includes(state.right)?state.right:null,list=right?model.restrictions(object.id,right):[];
   if(state.row>=list.length)state.row=-1;
   const others=list.some(item=>!item.fields?.length);
-  const canAdd=()=>model.restrictedByFields(right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length;
+  const canAdd=()=>!!right&&(model.restrictedByFields(right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length);
   const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
   section.append(roleListTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
     ['add','Добавить',()=>open(list.length),canAdd],
@@ -900,9 +894,10 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
 }
 
 function createRoleEditor(host, onChange) {
-  let source, model, selected, panel, tree, warning, titleFieldCleanup = null;
+  let source, model, selected, panel, tree, warning, description, titleFieldCleanup = null;
   // The tab shown - the rights or the templates of restrictions - and the
-  // right whose restrictions are listed, with the row chosen in each list.
+  // right current in the list of rights, described under the tree and with
+  // its restrictions listed, with the row chosen in each list.
   let view = 'rights', templateRow = -1, rightsBody, templatesBody, viewTabs;
   const restriction = {right: null, row: -1};
   // The filter by subsystems of the tree of objects, while the role is open.
@@ -923,27 +918,34 @@ function createRoleEditor(host, onChange) {
     const label=checkboxField(text,checked,enabled=>{const focus=label.firstChild.getAttribute('aria-label')||text;action(enabled);changed();renderPanel();for(const candidate of panel.querySelectorAll('input'))if((candidate.getAttribute('aria-label')||candidate.parentElement.textContent)===focus){candidate.focus();break;}},'role-check',disabled);
     return label;
   }
+  /* The description of the current right under the tree, as the prototype
+     shows it: what the right allows, and its name in the language in
+     brackets; empty while the node chosen has no rights. */
+  function describe(right){
+    const known=right&&source.schema.rights.find(item=>item.key===right);
+    description.replaceChildren(node('span','Описание:','role-description-caption'));
+    if(known)description.append(node('span',`${known.description}\n(${known.name})`,'role-description-text'));
+  }
   function renderPanel() {
     panel.replaceChildren();
-    if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));return;}
-    const object=selected.object;
+    if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));describe(null);return;}
+    const object=selected.object,part=selected.part;
     const bulk=(set)=>{const all=node('div',undefined,'role-bulk');for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{set(enabled);changed();renderPanel();});all.append(button);}return all;};
-    if(selected.part){
-      const part=selected.part;
-      panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${rolePartGroupTitle(source.schema,part.group)}`,'muted'));
-      if(!part.operations.length){panel.append(node('p','Своих прав у этого узла нет: права даются на то, что в нём.','muted'));return;}
-      const actions=node('div',undefined,'role-operation-list');
-      for(const operation of part.operations)actions.append(checkbox(caption(operation),model.hasField(object.id,part.key,operation),enabled=>model.setField(object.id,part.key,operation,enabled)));
-      panel.append(actions,bulk(enabled=>model.setAllOfPart(object.id,part.key,enabled)));
-      return;
-    }
-    panel.append(node('h3',title(object)||object.name));
-    if(object.rights.length){
-      const actions=node('div',undefined,'role-operation-list');
-      for(const operation of object.rights)actions.append(checkbox(caption(operation),model.hasObject(object.id,operation),enabled=>model.setObject(object.id,operation,enabled)));
-      panel.append(actions,bulk(enabled=>model.setAll(object.id,enabled)));
-    } else panel.append(node('p','Своих прав у объекта нет: права даются на его части.','muted'));
-    if(object.restrictedRights?.length)panel.append(roleRestrictionSection({model,object,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
+    // The current right stays current on the next node that has it, as the
+    // prototype's does; elsewhere the first right is.
+    const rights=part?part.operations:object.rights;
+    if(!rights.includes(restriction.right)){restriction.right=rights[0]||null;restriction.row=-1;}
+    const has=right=>part?model.hasField(object.id,part.key,right):model.hasObject(object.id,right);
+    const mark=(right,enabled)=>{if(part)model.setField(object.id,part.key,right,enabled);else model.setObject(object.id,right,enabled);changed();renderPanel();panel.querySelector('.check-list')?.focus();};
+    const choose=right=>{restriction.right=right;restriction.row=-1;renderPanel();panel.querySelector('.check-list')?.focus();};
+    if(part)panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${rolePartGroupTitle(source.schema,part.group)}`,'muted'));
+    else panel.append(node('h3',title(object)||object.name));
+    if(rights.length){
+      panel.append(checkList(rights.map(right=>({key:right,caption:caption(right),checked:has(right)})),restriction.right,mark,choose));
+      panel.append(bulk(enabled=>part?model.setAllOfPart(object.id,part.key,enabled):model.setAll(object.id,enabled)));
+    } else panel.append(node('p',part?'Своих прав у этого узла нет: права даются на то, что в нём.':'Своих прав у объекта нет: права даются на его части.','muted'));
+    panel.append(roleRestrictionSection({model,object:part?null:object,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
+    describe(restriction.right);
   }
   // The templates of the role's restrictions (help, «Редактирование роли»,
   // «Шаблоны ограничений»): a name, with its parameters in brackets, and a
@@ -1010,7 +1012,7 @@ function createRoleEditor(host, onChange) {
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));
-      sidebar.append(bar,search,tree.element);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
+      description=node('div',undefined,'role-description');sidebar.append(bar,search,tree.element,description);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
       tree.render();renderPanel();showView(view);
     },

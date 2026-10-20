@@ -369,3 +369,80 @@ func TestADescribedKindKeepsPartsWhereItsPartsAreRead(t *testing.T) {
 		}
 	}
 }
+
+// prototypeCaptions are the captions the window of a role lists the rights
+// under in the configurator 8.3.27, written out from the pass of 20.10.2026
+// over the configuration and an object of every kind (block-00/rol), not
+// read from roleRights: «Запуск приложения» is ML's own right.
+var prototypeCaptions = map[string]string{
+	"Read": "Чтение", "Insert": "Добавление", "Update": "Изменение", "Delete": "Удаление", "Posting": "Проведение",
+	"UndoPosting": "Отмена проведения", "Use": "Использование", "View": "Просмотр",
+	"InteractiveInsert": "Интерактивное добавление", "Edit": "Редактирование",
+	"InteractiveDelete": "Интерактивное удаление", "InteractiveSetDeletionMark": "Интерактивная пометка на удаление",
+	"InteractiveClearDeletionMark": "Интерактивное снятие пометки удаления",
+	"InteractiveDeleteMarked":      "Интерактивное удаление помеченных", "InteractivePosting": "Интерактивное проведение",
+	"InteractivePostingRegular": "Интерактивное проведение неоперативное",
+	"InteractiveUndoPosting":    "Интерактивная отмена проведения", "InteractiveChangeOfPosted": "Интерактивное изменение проведенных",
+	"InputByString": "Ввод по строке", "TotalsControl": "Управление итогами", "Administration": "Администрирование",
+	"DataAdministration": "Администрирование данных", "UpdateDataBaseConfiguration": "Обновление конфигурации базы данных",
+	"ExclusiveMode": "Монопольный режим", "ActiveUsers": "Активные пользователи", "EventLog": "Журнал регистрации",
+	"RunApplication": "Запуск приложения", "ExternalConnection": "Внешнее соединение", "Automation": "Automation",
+	"TechnicalSpecialistMode":                "Режим технического специалиста",
+	"MainWindowModeNormal":                   `Режим основного окна "Обычный"`,
+	"MainWindowModeWorkplace":                `Режим основного окна "Рабочее место"`,
+	"MainWindowModeEmbeddedWorkplace":        `Режим основного окна "Встроенное рабочее место"`,
+	"MainWindowModeFullscreenWorkplace":      `Режим основного окна "Полноэкранное рабочее место"`,
+	"MainWindowModeKiosk":                    `Режим основного окна "Киоск"`,
+	"AnalyticsSystemClient":                  "Клиент системы аналитики",
+	"ExclusiveModeTerminationAtSessionStart": "Завершение монопольного режима при начале сеанса",
+	"SaveUserData":                           "Сохранение данных пользователя",
+	"InteractiveOpenExtDataProcessors":       "Интерактивное открытие внешних обработок",
+	"InteractiveOpenExtReports":              "Интерактивное открытие внешних отчетов", "Output": "Вывод",
+	"Get": "Получение", "Set": "Установка", "InteractiveActivate": "Интерактивная активация", "Start": "Старт",
+	"InteractiveStart": "Интерактивный старт", "Execute": "Выполнение", "InteractiveExecute": "Интерактивное выполнение",
+	"StandardAuthenticationChange":               "Изменение стандартной аутентификации текущего пользователя",
+	"SessionStandardAuthenticationChange":        "Изменение стандартной аутентификации сеанса",
+	"SessionOSAuthenticationChange":              "Изменение аутентификации операционной системы сеанса",
+	"InteractiveDeletePredefinedData":            "Интерактивное удаление предопределенных",
+	"InteractiveSetDeletionMarkPredefinedData":   "Интерактивная пометка на удаление предопределенных",
+	"InteractiveClearDeletionMarkPredefinedData": "Интерактивное снятие пометки удаления предопределенных",
+	"InteractiveDeleteMarkedPredefinedData":      "Интерактивное удаление помеченных предопределенных",
+	"ReadDataHistory":                            "Чтение истории данных",
+	"ReadDataHistoryOfMissingData":               "Чтение истории данных отсутствующих данных",
+	"UpdateDataHistory":                          "Изменение истории данных",
+	"UpdateDataHistoryOfMissingData":             "Изменение истории данных отсутствующих данных",
+	"UpdateDataHistorySettings":                  "Изменение настроек истории данных",
+	"UpdateDataHistoryVersionComment":            "Изменение комментария версии истории данных",
+	"ViewDataHistory":                            "Просмотр истории данных",
+	"EditDataHistoryVersionComment":              "Редактирование комментария версии истории данных",
+	"SwitchToDataHistoryVersion":                 "Переход на версию истории данных",
+}
+
+// TestRightsAreCaptionedAsThePrototype catches a right the editor lists
+// under a caption of its own making - the name in words, as before 2.412,
+// gave «Интерактивная пометка удаления» and «Режим основного окна обычный» -
+// and a right shown with no description under the tree.
+func TestRightsAreCaptionedAsThePrototype(t *testing.T) {
+	t.Parallel()
+	schema, err := LoadPermissionSchema(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(schema.Rights) != len(prototypeCaptions) {
+		t.Errorf("the editor lists %d rights, the prototype's pass %d", len(schema.Rights), len(prototypeCaptions))
+	}
+	for _, right := range schema.Rights {
+		var english string
+		for _, kept := range roleRights {
+			if kept.operation == right.Key {
+				english = kept.english
+			}
+		}
+		if want, ok := prototypeCaptions[english]; !ok || right.Title != want {
+			t.Errorf("%s is listed as %q, the prototype %q", right.Key, right.Title, want)
+		}
+		if strings.TrimSpace(right.Description) == "" || right.Name == "" {
+			t.Errorf("%s has no description or no name to show under the tree: %+v", right.Key, right)
+		}
+	}
+}

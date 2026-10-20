@@ -120,3 +120,6 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .studio-tree-node{margin:1px 0}.studio-tree-row{min-height:27px;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:5px;cursor:pointer;user-select:none;font-size:13px;list-style:none}.studio-tree-row::-webkit-details-marker{display:none}
 .studio-tree-row::before{content:'›';width:10px;flex:none;color:#8c9098}.studio-tree-leaf::before{content:''}.studio-tree-node[open]>.studio-tree-row::before{transform:rotate(90deg)}.studio-tree-row>.tree-icon{flex:none}
 .studio-tree-row:hover,.studio-tree-row.selected{background:#3c3f45}.studio-tree-children{margin-left:15px}
+/* A list of boxes with a current row (checkList), as the prototype's list of rights. */
+.check-list{display:flex;flex-direction:column;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 0;outline:none}.check-list:focus-visible{outline:1px solid #589df6;outline-offset:-1px}
+.check-list-row{display:flex;align-items:center;gap:7px;padding:3px 8px;font-size:13px;cursor:default;user-select:none}.check-list-row input{accent-color:#589df6;margin:0}.check-list-row:hover{background:#ffffff12}.check-list-row.current{background:#2f4a6d}

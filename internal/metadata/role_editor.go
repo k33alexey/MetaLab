@@ -38,9 +38,14 @@ type PermissionSchema struct {
 	RestrictionRules []RestrictionRule `json:"restrictionRules"`
 }
 
+// PermissionRight is a right as the window of a role lists it: its caption,
+// and, for the right chosen in the list, its description with the name of
+// the right in the language under it.
 type PermissionRight struct {
-	Key   PermissionOperation `json:"key"`
-	Title string              `json:"title"`
+	Key         PermissionOperation `json:"key"`
+	Title       string              `json:"title"`
+	Description string              `json:"description"`
+	Name        string              `json:"name"`
 }
 
 // nameInWords turns an identifier into words, the way the configurator
@@ -111,7 +116,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	}
 	result := PermissionSchema{Objects: []PermissionObject{}, RestrictionRules: slices.Clone(restrictionRules), DroppedRights: DroppedRights()}
 	for _, right := range roleRights {
-		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: nameInWords(right.russian)})
+		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: right.title, Description: right.description, Name: right.russian})
 	}
 	result.Parts = map[uuid.UUID][]string{}
 	for _, id := range append(slices.Collect(maps.Keys(catalog.objects)), catalog.Project.ID) {

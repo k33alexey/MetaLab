@@ -142,6 +142,43 @@ function checkboxField(label, checked, apply, className = 'catalog-check', disab
   return wrapper;
 }
 
+/* checkList is a list of boxes with a current row, as the prototype's list
+   of rights: a click on a caption makes its row current, a click on a box
+   marks it; the arrows move the current row and the space marks it. items
+   are {key, caption, checked}; mark(key, checked) marks one, choose(key)
+   makes one current. */
+function checkList(items, current, mark, choose) {
+  const list = node('div', undefined, 'check-list');
+  list.tabIndex = 0;
+  list.setAttribute('role', 'listbox');
+  for (const item of items) {
+    const row = node('div', undefined, 'check-list-row' + (item.key === current ? ' current' : '')), input = node('input');
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(item.key === current));
+    row.dataset.key = item.key;
+    input.type = 'checkbox';
+    input.checked = item.checked;
+    input.tabIndex = -1;
+    input.setAttribute('aria-label', item.caption);
+    input.addEventListener('change', () => mark(item.key, input.checked));
+    row.addEventListener('click', event => { if (event.target !== input) choose(item.key); });
+    row.append(input, node('span', item.caption));
+    list.append(row);
+  }
+  list.addEventListener('keydown', event => {
+    const at = items.findIndex(item => item.key === current);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = items[Math.min(items.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+      if (next) choose(next.key);
+    } else if (event.key === ' ' && at >= 0) {
+      event.preventDefault();
+      mark(current, !items[at].checked);
+    }
+  });
+  return list;
+}
+
 /* fieldButton is a button of a field - the magnifier, the opening, the
    clearing, the choice - drawn by its icon of the set, with act done on a
    click. */

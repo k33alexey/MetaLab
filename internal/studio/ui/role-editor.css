@@ -6,18 +6,19 @@
 .role-identity label{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
 #role-editor input:not([type=checkbox]){padding:6px 8px;max-width:100%;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
 .role-body{display:grid;grid-template-columns:minmax(180px,28%) minmax(0,1fr);min-height:0;flex:1}
-.role-sidebar{overflow:auto;border-right:1px solid var(--border,#393b40);padding:10px}.role-sidebar>input{width:100%;margin-bottom:10px}
+.role-sidebar{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-right:1px solid var(--border,#393b40);padding:10px}.role-sidebar>input{width:100%;margin-bottom:10px}.role-sidebar>.role-tree{flex:1;min-height:0;overflow:auto}
+/* The description of the current right under the tree: the caption, then the words and the name in brackets on the next line. */
+.role-description{display:flex;gap:8px;flex:none;min-height:34px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,#393b40);font-size:12px;line-height:1.4}.role-description-caption{flex:none;color:#8c9098}.role-description-text{white-space:pre-line}
 /* The rows are the project tree's (treeNode); an object or a part is chosen by the button of its caption. */
 .role-tree .studio-tree-row{padding-top:1px;padding-bottom:1px}.role-tree-item{flex:1;min-width:0;text-align:left;margin:0;padding:3px 4px!important;background:transparent!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.role-tree-item:focus,.role-tree-item:hover{background:#365880!important}.role-tree-root{font-weight:600}.role-tree-item.selected{background:#2f4a6d!important}
 .role-permissions{overflow:auto;padding:12px 18px}.role-permissions h3{margin:0 0 14px;font-size:15px}.role-permissions p{font-size:12px;line-height:1.5;white-space:normal;overflow:visible}
-.role-operation-list{display:grid;grid-template-columns:repeat(2,minmax(135px,1fr));gap:10px}.role-check{display:flex;align-items:center;gap:7px;font-size:13px}.role-check input{accent-color:#589df6;margin:0}.role-bulk{display:flex;gap:8px;margin-top:16px}.role-bulk-top{margin:0 0 10px;flex-wrap:wrap}
+.role-check{display:flex;align-items:center;gap:7px;font-size:13px}.role-check input{accent-color:#589df6;margin:0}.role-bulk{display:flex;gap:8px;margin-top:16px}.role-bulk-top{margin:0 0 10px;flex-wrap:wrap}
 .role-warning{padding:10px 12px;background:#553f26;color:#f6cf8b;font-size:12px}
 #role-editor select{padding:6px 8px;max-width:100%;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit;font-size:12px}
-@media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}.role-operation-list{grid-template-columns:1fr}.role-identity{flex-wrap:wrap}}
+@media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}.role-identity{flex-wrap:wrap}}
 .role-body[hidden],.role-templates[hidden]{display:none}
 .role-templates{overflow:auto;padding:12px 18px;flex:1}.role-templates p{font-size:12px;line-height:1.5;white-space:normal}
 .role-restrictions{margin-top:22px;padding-top:14px;border-top:1px solid var(--border,#393b40)}.role-restrictions h4{margin:0 0 10px;font-size:13px}
-.role-restriction-rights{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.role-restriction-rights button{font-size:12px}.role-restriction-rights button.selected{background:#2f4a6d!important;border-color:#589df6}
 .role-list{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
 .role-list th{text-align:left;font-weight:600;color:#aeb1b8;padding:6px 8px;border-bottom:1px solid var(--border,#393b40)}.role-list th:first-child{width:32%}
 .role-list td{padding:6px 8px;border-bottom:1px solid #2f3136;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top}
