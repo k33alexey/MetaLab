@@ -266,24 +266,10 @@ function listLayout(list, settings, {onSort, onSettings}) {
 async function chooseListSettings(list, settings, applied) {
   let draft = structuredClone(settings), given = structuredClone(settings), chosen = 0;
   const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-  const columnsPage = node('div', undefined, 'list-settings-page'), otherPage = node('div', undefined, 'list-settings-page');
-  const tabs = node('div', undefined, 'list-settings-tabs');
-  tabs.setAttribute('role', 'tablist');
-  for (const [page, text] of [[columnsPage, 'Колонки'], [otherPage, 'Прочее']]) {
-    const tab = node('button', text, 'list-settings-tab');
-    tab.type = 'button'; tab.setAttribute('role', 'tab');
-    // The tab opened takes the focus, as the prototype's does (snapshot
-    // vse-ogr-16): the frame of the focus stays on the tab shown, though
-    // a click on a button does not move the focus in every browser.
-    tab.addEventListener('click', () => { show(page); tab.focus(); });
-    tabs.append(tab);
-  }
-  function show(page) {
-    for (const [index, item] of [columnsPage, otherPage].entries()) {
-      item.hidden = item !== page;
-      tabs.children[index].setAttribute('aria-selected', String(item === page));
-    }
-  }
+  const columnsPage = node('div', undefined, 'list-settings-page studio-tab-page'), otherPage = node('div', undefined, 'list-settings-page studio-tab-page');
+  const pages = {columns: columnsPage, other: otherPage};
+  const show = key => { for (const [name, page] of Object.entries(pages)) page.hidden = name !== key; };
+  const tabs = tabStrip([['columns', 'Колонки'], ['other', 'Прочее']], 'columns', show);
   const bar = node('div', undefined, 'list-settings-bar');
   const up = iconButton('move-up', 'Переместить вверх'), down = iconButton('move-down', 'Переместить вниз'), standard = node('button', 'Стандартная настройка');
   standard.type = 'button';
@@ -355,7 +341,7 @@ async function chooseListSettings(list, settings, applied) {
     opening.value = draft.opening;
   }
   fill();
-  show(columnsPage);
+  show('columns');
   const content = node('div', undefined, 'list-settings');
   content.append(tabs, columnsPage, otherPage);
   const answer = await showDialog({title: 'Настройка списка', content, className: 'list-settings-dialog', help: 'list-settings',

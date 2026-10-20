@@ -46,7 +46,7 @@ const listSettingsWalk = `(async () => {` + openAllRestrictions + `
   await studio.settle();
   const dialog = document.querySelector('dialog[open]');
   const buttons = () => [...dialog.querySelectorAll('.localized-title-actions button')];
-  answer.window = {title: dialog.querySelector('h3').textContent, tabs: [...dialog.querySelectorAll('.list-settings-tab')].map(item => item.textContent),
+  answer.window = {title: dialog.querySelector('h3').textContent, tabs: [...dialog.querySelectorAll('.studio-tab')].map(item => item.textContent),
     columns: [...dialog.querySelectorAll('.list-settings-item')].map(item => item.textContent), buttons: buttons().map(item => item.textContent),
     applyBefore: buttons().find(item => item.textContent === 'Применить').disabled};
   const right = [...dialog.querySelectorAll('.list-settings-item')].find(item => item.textContent === 'Право');
@@ -54,7 +54,7 @@ const listSettingsWalk = `(async () => {` + openAllRestrictions + `
   answer.window.captionChooses = right.classList.contains('selected') && right.querySelector('input').checked;
   // The tab opened holds the focus: a click on «Прочее» moves it there
   // from «Колонки», which had it when the window opened.
-  const other = [...dialog.querySelectorAll('.list-settings-tab')][1], columnsTab = [...dialog.querySelectorAll('.list-settings-tab')][0];
+  const other = [...dialog.querySelectorAll('.studio-tab')][1], columnsTab = [...dialog.querySelectorAll('.studio-tab')][0];
   other.click();
   answer.window.focusOnOther = document.activeElement === other && other.getAttribute('aria-selected') === 'true';
   columnsTab.click();
@@ -379,14 +379,14 @@ const templateListWalk = `(async () => {` + openAllRestrictions + `
     auto: [...dialog.querySelectorAll('.list-settings-check input')][0].checked});
   const choose = (dialog, title) => [...dialog.querySelectorAll('.list-settings-item')].find(item => item.textContent === title).querySelector('span').click();
   const press = (dialog, text) => [...dialog.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === text).click();
-  [...document.querySelectorAll('.overview-tab')].find(item => item.textContent === 'Шаблоны ограничений').click();
+  [...document.querySelectorAll('.studio-tab')].find(item => item.textContent === 'Шаблоны ограничений').click();
   await studio.settle();
   let dialog = await settings();
   answer.templates = {};
   for (const title of ['Роль', 'Наименование', 'Текст шаблона']) { choose(dialog, title); answer.templates[title] = columnOf(dialog); }
   press(dialog, 'Отмена');
   await studio.settle();
-  [...document.querySelectorAll('.overview-tab')].find(item => item.textContent === 'Ограничения доступа').click();
+  [...document.querySelectorAll('.studio-tab')].find(item => item.textContent === 'Ограничения доступа').click();
   await studio.settle();
   dialog = await settings();
   choose(dialog, 'Ограничение доступа');

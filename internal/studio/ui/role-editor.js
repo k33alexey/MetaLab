@@ -857,7 +857,7 @@ function createRoleEditor(host, onChange) {
   let source, model, selected, panel, tree, warning, titleFieldCleanup = null;
   // The tab shown - the rights or the templates of restrictions - and the
   // right whose restrictions are listed, with the row chosen in each list.
-  let view = 'rights', templateRow = -1, rightsBody, templatesBody;
+  let view = 'rights', templateRow = -1, rightsBody, templatesBody, viewTabs;
   const restriction = {right: null, row: -1};
   // The filter by subsystems of the tree of objects, while the role is open.
   const treeFilter = {subsystems: null};
@@ -933,7 +933,7 @@ function createRoleEditor(host, onChange) {
     for(const item of source.schema.objects)if(!item.root&&passes(item.id))model.setAll(item.id,enabled);
     changed();renderPanel();
   }
-  function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';for(const button of host.querySelectorAll('.role-tabs button'))button.setAttribute('aria-selected',String(button.dataset.view===view));if(view==='templates')renderTemplates();}
+  function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';viewTabs.choose(view);if(view==='templates')renderTemplates();}
   return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
     open(value, preserveSelection=false) {
       clearTitleField();
@@ -958,9 +958,8 @@ function createRoleEditor(host, onChange) {
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты или права, которых в ML нет. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       // The prototype's role window has two tabs: the rights and the
       // templates of restrictions.
-      const tabs=node('div',undefined,'role-tabs');tabs.setAttribute('role','tablist');
-      for(const [key,text] of [['rights','Права'],['templates','Шаблоны ограничений']]){const button=node('button',text);button.type='button';button.dataset.view=key;button.setAttribute('role','tab');button.addEventListener('click',()=>showView(key));tabs.append(button);}
-      host.append(tabs);
+      viewTabs=tabStrip([['rights','Права'],['templates','Шаблоны ограничений']],view,showView);
+      host.append(viewTabs);
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({schema:source.schema,kindTitles:source.kindTitles,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);

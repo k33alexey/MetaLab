@@ -566,8 +566,6 @@ function iconElement(name) {
   return svg;
 }
 
-// iconButton is a button drawn by its icon alone, the command named in its
-// tooltip and for a screen reader.
 /* menuButton is a button that holds more than one action - «Действия» - and
    opens them as a menu under itself (showContextMenu), drawn with the sign
    of a menu after its text, as every such button of the prototype is (the
@@ -583,6 +581,55 @@ function menuButton(text, items, className) {
   return button;
 }
 
+/* tabStrip is a strip of tabs, drawn as the prototype's (the owner's
+   decision of 20.10.2026, STUDIO-SHELL.md «Закладки — одним обликом
+   везде»; snapshots configurator-2026-10-18/shabl-01,
+   configurator-2026-10-19/shabl-19): the tab chosen stands higher than the
+   others and merges with its page beneath. tabs are [key, text] in their
+   order; chosen is the key shown chosen; choose(key) is called when another
+   tab is chosen, by a click or by ← and → along the strip. The tab chosen
+   takes the focus, as the prototype's does (snapshot vse-ogr-16), and is the
+   one the focus comes to from outside the strip. The strip's choose(key)
+   shows another tab chosen without calling it. Every strip of tabs of
+   Studio is made here; a page of tabs in a dialog takes the class
+   studio-tab-page, which frames it as the prototype's. */
+function tabStrip(tabs, chosen, choose) {
+  const strip = node('div', undefined, 'studio-tabs');
+  strip.setAttribute('role', 'tablist');
+  let current = chosen;
+  const buttons = tabs.map(([key, text]) => {
+    const tab = node('button', text, 'studio-tab');
+    tab.type = 'button'; tab.dataset.tab = key;
+    tab.setAttribute('role', 'tab');
+    tab.addEventListener('click', () => pick(key));
+    return tab;
+  });
+  function show() {
+    for (const tab of buttons) {
+      const on = tab.dataset.tab === current;
+      tab.setAttribute('aria-selected', String(on)); tab.tabIndex = on ? 0 : -1;
+    }
+  }
+  function pick(key) {
+    buttons.find(tab => tab.dataset.tab === key).focus();
+    if (key === current) return;
+    current = key; show(); choose(key);
+  }
+  strip.addEventListener('keydown', event => {
+    const by = {ArrowLeft: -1, ArrowRight: 1}[event.key];
+    if (!by) return;
+    event.preventDefault();
+    const next = buttons[buttons.findIndex(tab => tab.dataset.tab === current) + by];
+    if (next) pick(next.dataset.tab);
+  });
+  strip.append(...buttons);
+  strip.choose = key => { current = key; show(); };
+  show();
+  return strip;
+}
+
+// iconButton is a button drawn by its icon alone, the command named in its
+// tooltip and for a screen reader.
 function iconButton(name, title) {
   const button = document.createElement('button');
   button.type = 'button';

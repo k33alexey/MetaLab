@@ -14,9 +14,6 @@
 .role-warning{padding:10px 12px;background:#553f26;color:#f6cf8b;font-size:12px}
 #role-editor select{padding:6px 8px;max-width:100%;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit;font-size:12px}
 @media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}.role-operation-list{grid-template-columns:1fr}.role-identity{flex-wrap:wrap}}
-.role-tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--border,#393b40)}
-.role-tabs button{background:transparent!important;border:0;border-bottom:2px solid transparent;border-radius:0;padding:8px 12px;color:#aeb1b8}
-.role-tabs button[aria-selected=true]{color:#dfe1e5;border-bottom-color:#589df6}
 .role-body[hidden],.role-templates[hidden]{display:none}
 .role-templates{overflow:auto;padding:12px 18px;flex:1}.role-templates p{font-size:12px;line-height:1.5;white-space:normal}
 .role-restrictions{margin-top:22px;padding-top:14px;border-top:1px solid var(--border,#393b40)}.role-restrictions h4{margin:0 0 10px;font-size:13px}

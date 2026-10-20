@@ -88,10 +88,7 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 /* Окно «Настройка списка» (снимки vse-ogr-12…16): закладки «Колонки» и
    «Прочее»; список колонок слева, группа «Колонка» справа. */
 .localized-title-dialog.list-settings-dialog{width:min(560px,calc(100% - 40px))}
-.list-settings-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border,#393b40)}
-.list-settings-tabs button{background:transparent!important;border:0;border-bottom:2px solid transparent;border-radius:0;padding:6px 12px;color:#aeb1b8}
-.list-settings-tabs button[aria-selected=true]{color:#dfe1e5;border-bottom-color:#589df6}
-.list-settings-page{display:grid;align-content:start;gap:8px;min-height:310px;padding-top:8px}.list-settings-page[hidden]{display:none}
+.list-settings-page{display:grid;align-content:start;gap:8px;min-height:310px}.list-settings-page[hidden]{display:none}
 .list-settings-bar{display:flex;align-items:center;gap:6px}
 .list-settings-body{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:12px}
 .list-settings-columns{height:260px;overflow:auto;border:1px solid #4a4d54;border-radius:4px;background:#1e1f22}
@@ -104,3 +101,17 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .list-settings-column input[type=number]{width:70px}
 .localized-title-dialog .list-settings-check{display:flex;align-items:center;gap:6px}
 .localized-title-dialog .list-settings-inline{display:flex;align-items:center;gap:10px}
+/* Закладки — одним обликом везде (STUDIO-SHELL.md; tabStrip,
+   studio-common.js): ярлычки прототипа в цветах темы. Выбранный выше
+   соседних и сливается со страницей — его фон и есть фон страницы
+   (--tab-page), у остальных рамка и фон темнее; страница закладки в
+   диалоге — в рамке. */
+:root{--tab-border:#4a4d54;--tab-page:var(--editor-bg,#1e1f22)}
+.localized-title-dialog{--tab-page:#25262a}
+.studio-tabs{display:flex;align-items:flex-end;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--tab-border)}
+.studio-tabs .studio-tab{position:relative;margin-bottom:-1px;padding:3px 11px 4px;border:1px solid var(--tab-border);border-radius:4px 4px 0 0;background:color-mix(in srgb,var(--tab-page) 82%,#000)!important;color:#aeb1b8;font-size:12.5px;line-height:1.3;cursor:default}
+.studio-tabs .studio-tab:hover{color:#dfe1e5}
+.studio-tabs .studio-tab[aria-selected=true]{padding-top:5px;padding-bottom:5px;border-bottom-color:var(--tab-page);background:var(--tab-page)!important;color:#dfe1e5}
+.studio-tabs .studio-tab:focus-visible{outline:1px solid #589df6;outline-offset:-3px}
+.localized-title-dialog .studio-tabs{padding:0 6px}
+.studio-tab-page{padding:10px 12px;border:1px solid var(--tab-border);border-top:0;border-radius:0 0 4px 4px}

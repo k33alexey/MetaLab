@@ -16,7 +16,7 @@ const roleTemplateWindow = `(async () => {
   roles.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Все ограничения доступа').click();
   await studio.settle();
-  [...document.querySelectorAll('.overview-tab')].find(item => item.textContent === 'Шаблоны ограничений').click();
+  [...document.querySelectorAll('.studio-tab')].find(item => item.textContent === 'Шаблоны ограничений').click();
   await studio.settle();
   document.querySelector('.overview-block .role-list tbody tr[tabindex]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
   await studio.settle();

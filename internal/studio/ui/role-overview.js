@@ -985,28 +985,14 @@ function createRoleOverview(host, openRole, onChange) {
       host.dataset.view = view;
       host.replaceChildren();
       const header = node('div', undefined, 'overview-header');
-      const strip = node('div', undefined, 'overview-tabs');
-      for (const [key, text] of view === 'roles' ? [] : [['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']]) {
-        const button = node('button', text, 'overview-tab');
-        button.type = 'button';
-        if (tab === key) button.classList.add('selected');
-        button.setAttribute('aria-pressed', String(tab === key));
-        button.dataset.tab = key;
-        button.addEventListener('click', () => { if (tab === key) return; tab = key; drawFrame(); });
-        strip.append(button);
+      if (view !== 'roles') {
+        header.classList.add('with-tabs');
+        header.append(tabStrip([['restrictions', 'Ограничения доступа'], ['templates', 'Шаблоны ограничений']], tab, key => { tab = key; renderBody(); }));
       }
-      header.append(strip, node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));
+      header.append(node('span', `Ролей в проекте: ${model.roleCount()}`, 'muted'));
       host.append(header);
       body = node('div'); host.append(body);
       renderBody();
-  }
-  // Смена закладки перерисовывает окно, не трогая правок: модели ролей остаются.
-  function drawFrame() {
-    for (const button of host.querySelectorAll('.overview-tab')) {
-      const on = button.dataset.tab === tab;
-      button.classList.toggle('selected', on); button.setAttribute('aria-pressed', String(on));
-    }
-    renderBody();
   }
   return hostedEditor(host, () => { source = null; model = null; }, {
     open,
