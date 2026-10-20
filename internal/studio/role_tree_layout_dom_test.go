@@ -265,7 +265,7 @@ const roleEmptyBranchWalk = `(async () => {
 
 // An empty branch shows the rights of its kind, as the prototype's
 // «Константы» and «Последовательности» (pass of 20.10.2026, zapis.md «Дерево
-// прав», snapshot prava/10): the rights of a constant, written out here from
+// прав», snapshot prava/10): the rights of a constant ML keeps, written out here from
 // the pass; a click marks nothing, there being nothing to mark. Defects
 // caught: an empty branch with no rights or with another kind's; a click on
 // it marking the box with nothing behind it.
@@ -287,9 +287,9 @@ func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
 		t.Fatalf("%v: %s", err, result)
 	}
 	var want []right
-	for _, caption := range []string{"Чтение", "Изменение", "Просмотр", "Редактирование", "Чтение истории данных",
-		"Изменение истории данных", "Изменение настроек истории данных", "Изменение комментария версии истории данных",
-		"Просмотр истории данных", "Редактирование комментария версии истории данных", "Переход на версию истории данных"} {
+	// The pass showed seven rights of the history of data besides, which ML
+	// does not keep (ACCESS-RIGHTS, «Права истории данных»).
+	for _, caption := range []string{"Чтение", "Изменение", "Просмотр", "Редактирование"} {
 		want = append(want, right{Caption: caption})
 	}
 	if !slices.Equal(got.Listed, want) {

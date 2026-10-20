@@ -73,7 +73,10 @@ func TestTheListOfRightsHasACurrentRightDescribedUnderTheTree(t *testing.T) {
 		t.Fatalf("%v: %s", err, result)
 	}
 	opened, output, goods, view, sale, down, space := steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6]
-	if !slices.Contains(opened.Rights, `Режим основного окна "Обычный"`) || opened.Current != "Администрирование" ||
+	// The modes of the main window ML does not keep; the developer tools and
+	// the change history are ML's own (ACCESS-RIGHTS, 20.10.2026).
+	if slices.Contains(opened.Rights, `Режим основного окна "Обычный"`) || !slices.Contains(opened.Rights, "Инструменты разработчика") ||
+		!slices.Contains(opened.Rights, "История изменений") || opened.Current != "Администрирование" ||
 		opened.Description != "Описание:Право выполнять административные функции\n(Администрирование)" {
 		t.Errorf("as it opens: the current right %q, described %q, among %v", opened.Current, opened.Description, opened.Rights)
 	}

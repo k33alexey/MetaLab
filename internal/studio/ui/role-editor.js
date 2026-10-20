@@ -304,7 +304,7 @@ function createRoleModel(source) {
     },
     setGroup(members, operation, enabled) {
       for (const member of members) {
-        const {object, part} = member, own = roleMemberRights(member), required = value.schema.requires?.[object.kind || ''] || {};
+        const {object, part} = member, own = roleMemberRights(member), required = value.schema.requires || {};
         const tied = enabled ? required[operation] || [] : own.filter(right => required[right]?.includes(operation));
         for (const right of [operation, ...tied])
           if (part) setField(object.id, part.key, right, enabled); else setObject(object.id, right, enabled);

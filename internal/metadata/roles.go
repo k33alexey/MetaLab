@@ -53,8 +53,6 @@ const (
 	PermissionExclusiveMode                              PermissionOperation = "exclusive-mode"
 	PermissionActiveUsers                                PermissionOperation = "active-users"
 	PermissionEventLog                                   PermissionOperation = "event-log"
-	PermissionExternalConnection                         PermissionOperation = "external-connection"
-	PermissionAutomation                                 PermissionOperation = "automation"
 	PermissionInteractiveOpenExtDataProcessors           PermissionOperation = "interactive-open-ext-data-processors"
 	PermissionInteractiveOpenExtReports                  PermissionOperation = "interactive-open-ext-reports"
 	PermissionGet                                        PermissionOperation = "get"
@@ -67,30 +65,11 @@ const (
 	PermissionOutput                                     PermissionOperation = "output"
 	PermissionUpdateDataBaseConfiguration                PermissionOperation = "update-database-configuration"
 	PermissionSaveUserData                               PermissionOperation = "save-user-data"
-	PermissionStandardAuthenticationChange               PermissionOperation = "standard-authentication-change"
-	PermissionSessionStandardAuthenticationChange        PermissionOperation = "session-standard-authentication-change"
-	PermissionSessionOSAuthenticationChange              PermissionOperation = "session-os-authentication-change"
 	PermissionInteractiveDeletePredefinedData            PermissionOperation = "interactive-delete-predefined-data"
 	PermissionInteractiveSetDeletionMarkPredefinedData   PermissionOperation = "interactive-set-deletion-mark-predefined-data"
 	PermissionInteractiveClearDeletionMarkPredefinedData PermissionOperation = "interactive-clear-deletion-mark-predefined-data"
 	PermissionInteractiveDeleteMarkedPredefinedData      PermissionOperation = "interactive-delete-marked-predefined-data"
-	PermissionReadDataHistory                            PermissionOperation = "read-data-history"
-	PermissionViewDataHistory                            PermissionOperation = "view-data-history"
-	PermissionReadDataHistoryOfMissingData               PermissionOperation = "read-data-history-of-missing-data"
-	PermissionUpdateDataHistory                          PermissionOperation = "update-data-history"
-	PermissionUpdateDataHistoryOfMissingData             PermissionOperation = "update-data-history-of-missing-data"
-	PermissionUpdateDataHistorySettings                  PermissionOperation = "update-data-history-settings"
-	PermissionUpdateDataHistoryVersionComment            PermissionOperation = "update-data-history-version-comment"
-	PermissionEditDataHistoryVersionComment              PermissionOperation = "edit-data-history-version-comment"
-	PermissionSwitchToDataHistoryVersion                 PermissionOperation = "switch-to-data-history-version"
-	PermissionMainWindowModeNormal                       PermissionOperation = "main-window-mode-normal"
-	PermissionMainWindowModeWorkplace                    PermissionOperation = "main-window-mode-workplace"
-	PermissionMainWindowModeEmbeddedWorkplace            PermissionOperation = "main-window-mode-embedded-workplace"
-	PermissionMainWindowModeFullscreenWorkplace          PermissionOperation = "main-window-mode-fullscreen-workplace"
-	PermissionMainWindowModeKiosk                        PermissionOperation = "main-window-mode-kiosk"
-	PermissionTechnicalSpecialistMode                    PermissionOperation = "technical-specialist-mode"
 	PermissionExclusiveModeTerminationAtSessionStart     PermissionOperation = "exclusive-mode-termination-at-session-start"
-	PermissionAnalyticsSystemClient                      PermissionOperation = "analytics-system-client"
 )
 
 // PermissionRunApplication is the one right of starting the application
@@ -98,6 +77,18 @@ const (
 // client, and ML has one client, the browser. It is ML's own right, named
 // by no name of the prototype, so it stands apart from theirs.
 const PermissionRunApplication PermissionOperation = "run-application"
+
+// ML's own rights of the configuration beside the start of the application
+// (ACCESS-RIGHTS, «Своих прав у ML три»): the developer tools, standing for
+// the prototype's mode of the technical specialist and in its place, open
+// the section of the tools of a developer in the application
+// (ML-DEV-TOOLS); the change history opens ML's own history of changes, which
+// nothing of the prototype stands for (ML-PORTAL-APP, «История изменений»),
+// and comes right after them.
+const (
+	PermissionDeveloperTools PermissionOperation = "developer-tools"
+	PermissionChangeHistory  PermissionOperation = "change-history"
+)
 
 // roleRight is one right under the names the prototype knows it by.
 type roleRight struct {
@@ -123,8 +114,10 @@ type keptRight struct {
 
 // roleRights is every right a role carries - those of the help of
 // ПравоДоступа (8.3.27), but for those ML does not keep (droppedRights), and
-// the start of the application where the prototype lists the thin client,
-// the first of the clients. The four exports use sixty-eight of the
+// ML's own: the start of the application where the prototype lists the thin
+// client, the first of the clients, the developer tools where it lists the
+// mode of the technical specialist and the change history after them. The
+// four exports use sixty-eight of the
 // prototype's rights: the one they do not, ending exclusive mode at the
 // start of a session, the configurator writes in its own samples of 3.25
 // and 3.27.
@@ -134,9 +127,8 @@ type keptRight struct {
 // role of the exports writes them so, the 2526 roles never disagreeing.
 // What the help orders otherwise is the configuration's rights, from the
 // administration to the output, the use of a report or a data processor,
-// before its viewing, and the viewing of the history of data, after the
-// update of the comment of a version. A kind takes in this order the rights
-// it offers (inPrototypeOrder).
+// before its viewing. A kind takes in this order the rights it offers
+// (inPrototypeOrder).
 var roleRights = []keptRight{
 	{roleRight{PermissionRead, "Read", "Чтение"}, `Чтение`, `Право читать данные`},
 	{roleRight{PermissionInsert, "Insert", "Добавление"}, `Добавление`, `Право добавлять данные`},
@@ -165,15 +157,8 @@ var roleRights = []keptRight{
 	{roleRight{PermissionActiveUsers, "ActiveUsers", "АктивныеПользователи"}, `Активные пользователи`, `Право получать список активных пользователей`},
 	{roleRight{PermissionEventLog, "EventLog", "ЖурналРегистрации"}, `Журнал регистрации`, `Право просматривать журнал регистрации`},
 	{roleRight{PermissionRunApplication, "RunApplication", "ЗапускПриложения"}, `Запуск приложения`, `Право запускать приложение`},
-	{roleRight{PermissionExternalConnection, "ExternalConnection", "ВнешнееСоединение"}, `Внешнее соединение`, `Право подключаться внешним соединением`},
-	{roleRight{PermissionAutomation, "Automation", "Automation"}, `Automation`, `Право подключаться через Automation`},
-	{roleRight{PermissionTechnicalSpecialistMode, "TechnicalSpecialistMode", "РежимТехническогоСпециалиста"}, `Режим технического специалиста`, `Право на функции технического специалиста`},
-	{roleRight{PermissionMainWindowModeNormal, "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"}, `Режим основного окна "Обычный"`, `Право запускать приложение с основным окном в режиме "Обычный"`},
-	{roleRight{PermissionMainWindowModeWorkplace, "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"}, `Режим основного окна "Рабочее место"`, `Право запускать приложение с основным окном в режиме "Рабочее место"`},
-	{roleRight{PermissionMainWindowModeEmbeddedWorkplace, "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"}, `Режим основного окна "Встроенное рабочее место"`, `Право запускать приложение с основным окном в режиме "Встроенное рабочее место"`},
-	{roleRight{PermissionMainWindowModeFullscreenWorkplace, "MainWindowModeFullscreenWorkplace", "РежимОсновногоОкнаПолноэкранноеРабочееМесто"}, `Режим основного окна "Полноэкранное рабочее место"`, `Право запускать приложение с основным окном в режиме "Полноэкранное рабочее место"`},
-	{roleRight{PermissionMainWindowModeKiosk, "MainWindowModeKiosk", "РежимОсновногоОкнаКиоск"}, `Режим основного окна "Киоск"`, `Право запускать приложение с основным окном в режиме "Киоск"`},
-	{roleRight{PermissionAnalyticsSystemClient, "AnalyticsSystemClient", "КлиентСистемыАналитики"}, `Клиент системы аналитики`, `Право запускать клиент системы аналитики`},
+	{roleRight{PermissionDeveloperTools, "DeveloperTools", "ИнструментыРазработчика"}, `Инструменты разработчика`, `Право открывать инструменты разработчика`},
+	{roleRight{PermissionChangeHistory, "ChangeHistory", "ИсторияИзменений"}, `История изменений`, `Право открывать историю изменений`},
 	{roleRight{PermissionExclusiveModeTerminationAtSessionStart, "ExclusiveModeTerminationAtSessionStart", "ЗавершениеМонопольногоРежимаПриНачалеСеанса"}, `Завершение монопольного режима при начале сеанса`, `Право, начиная сеанс, завершить сеанс, установивший монопольный режим`},
 	{roleRight{PermissionSaveUserData, "SaveUserData", "СохранениеДанныхПользователя"}, `Сохранение данных пользователя`, `Право сохранять данные пользователя`},
 	{roleRight{PermissionInteractiveOpenExtDataProcessors, "InteractiveOpenExtDataProcessors", "ИнтерактивноеОткрытиеВнешнихОбработок"}, `Интерактивное открытие внешних обработок`, `Право открывать внешние обработки в интерфейсе`},
@@ -186,22 +171,10 @@ var roleRights = []keptRight{
 	{roleRight{PermissionInteractiveStart, "InteractiveStart", "ИнтерактивныйСтарт"}, `Интерактивный старт`, `Право стартовать бизнес-процесс в интерфейсе`},
 	{roleRight{PermissionExecute, "Execute", "Выполнение"}, `Выполнение`, `Право выполнять задачу`},
 	{roleRight{PermissionInteractiveExecute, "InteractiveExecute", "ИнтерактивноеВыполнение"}, `Интерактивное выполнение`, `Право выполнять задачу в интерфейсе`},
-	{roleRight{PermissionStandardAuthenticationChange, "StandardAuthenticationChange", "ИзменениеСтандартнойАутентификации"}, `Изменение стандартной аутентификации текущего пользователя`, `Право менять стандартную аутентификацию текущего пользователя`},
-	{roleRight{PermissionSessionStandardAuthenticationChange, "SessionStandardAuthenticationChange", "ИзменениеСтандартнойАутентификацииСеанса"}, `Изменение стандартной аутентификации сеанса`, `Право менять стандартную аутентификацию сеанса`},
-	{roleRight{PermissionSessionOSAuthenticationChange, "SessionOSAuthenticationChange", "ИзменениеАутентификацииОССеанса"}, `Изменение аутентификации операционной системы сеанса`, `Право менять аутентификацию операционной системы сеанса`},
 	{roleRight{PermissionInteractiveDeletePredefinedData, "InteractiveDeletePredefinedData", "ИнтерактивноеУдалениеПредопределенныхДанных"}, `Интерактивное удаление предопределенных`, `Право удалять предопределенные в интерфейсе`},
 	{roleRight{PermissionInteractiveSetDeletionMarkPredefinedData, "InteractiveSetDeletionMarkPredefinedData", "ИнтерактивнаяПометкаУдаленияПредопределенныхДанных"}, `Интерактивная пометка на удаление предопределенных`, `Право помечать предопределенные на удаление в интерфейсе`},
 	{roleRight{PermissionInteractiveClearDeletionMarkPredefinedData, "InteractiveClearDeletionMarkPredefinedData", "ИнтерактивноеСнятиеПометкиУдаленияПредопределенныхДанных"}, `Интерактивное снятие пометки удаления предопределенных`, `Право снимать пометку удаления с предопределенных в интерфейсе`},
 	{roleRight{PermissionInteractiveDeleteMarkedPredefinedData, "InteractiveDeleteMarkedPredefinedData", "ИнтерактивноеУдалениеПомеченныхПредопределенныхДанных"}, `Интерактивное удаление помеченных предопределенных`, `Право удалять помеченные предопределенные в интерфейсе`},
-	{roleRight{PermissionReadDataHistory, "ReadDataHistory", "ЧтениеИсторииДанных"}, `Чтение истории данных`, `Право читать историю данных`},
-	{roleRight{PermissionReadDataHistoryOfMissingData, "ReadDataHistoryOfMissingData", "ЧтениеИсторииДанныхОтсутствующихДанных"}, `Чтение истории данных отсутствующих данных`, `Право читать историю данных, которых уже нет`},
-	{roleRight{PermissionUpdateDataHistory, "UpdateDataHistory", "ИзменениеИсторииДанных"}, `Изменение истории данных`, `Право изменять историю данных`},
-	{roleRight{PermissionUpdateDataHistoryOfMissingData, "UpdateDataHistoryOfMissingData", "ИзменениеИсторииДанныхОтсутствующихДанных"}, `Изменение истории данных отсутствующих данных`, `Право изменять историю данных, которых уже нет`},
-	{roleRight{PermissionUpdateDataHistorySettings, "UpdateDataHistorySettings", "ИзменениеНастроекИсторииДанных"}, `Изменение настроек истории данных`, `Право изменять настройки истории данных`},
-	{roleRight{PermissionUpdateDataHistoryVersionComment, "UpdateDataHistoryVersionComment", "ИзменениеКомментарияВерсииИсторииДанных"}, `Изменение комментария версии истории данных`, `Право изменять комментарий версии истории данных`},
-	{roleRight{PermissionViewDataHistory, "ViewDataHistory", "ПросмотрИсторииДанных"}, `Просмотр истории данных`, `Право просматривать историю данных`},
-	{roleRight{PermissionEditDataHistoryVersionComment, "EditDataHistoryVersionComment", "РедактированиеКомментарияВерсииИсторииДанных"}, `Редактирование комментария версии истории данных`, `Право редактировать комментарий версии истории данных в интерфейсе`},
-	{roleRight{PermissionSwitchToDataHistoryVersion, "SwitchToDataHistoryVersion", "ПереходНаВерсиюИсторииДанных"}, `Переход на версию истории данных`, `Право переходить на версию истории данных`},
 }
 
 // droppedRight is a right of the prototype ML does not keep, under the names
@@ -217,8 +190,10 @@ type droppedRight struct {
 // and the web client are «Запуск приложения» in ML, the thick and the mobile
 // client ML does not have (ACCESS-RIGHTS, «Запуск клиента — одно право»),
 // and nothing stands for a right on a mechanism ML refused (ACCESS-RIGHTS,
-// «Права на механизмы, от которых ML отказался, не переносятся»). Taking a
-// right away later is one more line here. A role
+// «Права на механизмы, от которых ML отказался, не переносятся»), nor for the
+// rights that would change nothing in ML, those of the history of data and
+// of authentication on an external source (the owner's decisions of
+// 20.10.2026). Taking a right away later is one more line here. A role
 // naming one is read for Studio to repair, and refused by every load that
 // runs it: the project is not saved into a database, an application whose
 // configuration gives one does not open (ACCESS-RIGHTS, «Роли, сохранённые
@@ -232,7 +207,45 @@ var droppedRights = []droppedRight{
 		"ML has no configuration extensions"},
 	{roleRight{"collaboration-system-info-base-registration", "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"}, "",
 		"ML has no collaboration system"},
+	// The rights of the configuration that would change nothing in ML
+	// (ACCESS-RIGHTS, «Права корня, которые ни на что не влияли бы, не
+	// переносятся»), and the mode of the technical specialist, which the
+	// developer tools stand for («Своих прав у ML три»).
+	{roleRight{"technical-specialist-mode", "TechnicalSpecialistMode", "РежимТехническогоСпециалиста"}, PermissionDeveloperTools,
+		"the mode of the technical specialist is the developer tools in ML"},
+	{roleRight{"external-connection", "ExternalConnection", "ВнешнееСоединение"}, "", "ML runs no COM connector"},
+	{roleRight{"automation", "Automation", "Automation"}, "", "ML runs no Automation server"},
+	{roleRight{"main-window-mode-normal", "MainWindowModeNormal", "РежимОсновногоОкнаОбычный"}, "", mainWindowModes},
+	{roleRight{"main-window-mode-workplace", "MainWindowModeWorkplace", "РежимОсновногоОкнаРабочееМесто"}, "", mainWindowModes},
+	{roleRight{"main-window-mode-embedded-workplace", "MainWindowModeEmbeddedWorkplace", "РежимОсновногоОкнаВстроенноеРабочееМесто"}, "", mainWindowModes},
+	{roleRight{"main-window-mode-fullscreen-workplace", "MainWindowModeFullscreenWorkplace", "РежимОсновногоОкнаПолноэкранноеРабочееМесто"}, "", mainWindowModes},
+	{roleRight{"main-window-mode-kiosk", "MainWindowModeKiosk", "РежимОсновногоОкнаКиоск"}, "", mainWindowModes},
+	{roleRight{"analytics-system-client", "AnalyticsSystemClient", "КлиентСистемыАналитики"}, "", "ML has no client of the analytics system"},
+	// The rights of the history of data (ACCESS-RIGHTS, «Права истории
+	// данных»): ML keeps its own change history, under a right of its own.
+	{roleRight{"read-data-history", "ReadDataHistory", "ЧтениеИсторииДанных"}, "", dataHistory},
+	{roleRight{"read-data-history-of-missing-data", "ReadDataHistoryOfMissingData", "ЧтениеИсторииДанныхОтсутствующихДанных"}, "", dataHistory},
+	{roleRight{"update-data-history", "UpdateDataHistory", "ИзменениеИсторииДанных"}, "", dataHistory},
+	{roleRight{"update-data-history-of-missing-data", "UpdateDataHistoryOfMissingData", "ИзменениеИсторииДанныхОтсутствующихДанных"}, "", dataHistory},
+	{roleRight{"update-data-history-settings", "UpdateDataHistorySettings", "ИзменениеНастроекИсторииДанных"}, "", dataHistory},
+	{roleRight{"update-data-history-version-comment", "UpdateDataHistoryVersionComment", "ИзменениеКомментарияВерсииИсторииДанных"}, "", dataHistory},
+	{roleRight{"view-data-history", "ViewDataHistory", "ПросмотрИсторииДанных"}, "", dataHistory},
+	{roleRight{"edit-data-history-version-comment", "EditDataHistoryVersionComment", "РедактированиеКомментарияВерсииИсторииДанных"}, "", dataHistory},
+	{roleRight{"switch-to-data-history-version", "SwitchToDataHistoryVersion", "ПереходНаВерсиюИсторииДанных"}, "", dataHistory},
+	// The rights of authentication on an external source of data
+	// (ACCESS-RIGHTS, «Права аутентификации внешнего источника не
+	// переносятся»).
+	{roleRight{"standard-authentication-change", "StandardAuthenticationChange", "ИзменениеСтандартнойАутентификации"}, "", sourceAuthentication},
+	{roleRight{"session-standard-authentication-change", "SessionStandardAuthenticationChange", "ИзменениеСтандартнойАутентификацииСеанса"}, "", sourceAuthentication},
+	{roleRight{"session-os-authentication-change", "SessionOSAuthenticationChange", "ИзменениеАутентификацииОССеанса"}, "", sourceAuthentication},
 }
+
+// Why groups of rights ML does not keep are dropped.
+const (
+	mainWindowModes      = "ML's one client, the browser, has no modes of the main window"
+	dataHistory          = "ML keeps no history of data of the prototype; its change history has a right of its own"
+	sourceAuthentication = "ML logs no user on to an external source of data"
+)
 
 // droppedRightOf finds a right ML does not keep by the name a role keeps it
 // under.
@@ -259,8 +272,9 @@ func DroppedRights() map[PermissionOperation]PermissionOperation {
 // renamedRights are the names a right was known by before. The help says the
 // mode of the technical specialist was called the mode of all functions
 // before 8.3.16, and a configuration kept in compatibility with an earlier
-// version writes it under the old name and never under the new one.
-var renamedRights = map[string]PermissionOperation{"AllFunctionsMode": PermissionTechnicalSpecialistMode}
+// version writes it under the old name and never under the new one: it is
+// found as the developer tools, which stand for it in ML (droppedRights).
+var renamedRights = map[string]PermissionOperation{"AllFunctionsMode": PermissionDeveloperTools}
 
 // knownRights answers by name what roleRights lists in order.
 var knownRights = func() map[PermissionOperation]bool {
@@ -282,8 +296,9 @@ var knownRights = func() map[PermissionOperation]bool {
 // takes, of what a right needs through it, the rights the node has
 // (rightsRequired) - the viewing needs the reading of a catalog and the use
 // of a report, a part's editing needs its viewing alone, and the
-// configuration's administration needs the administration of data. A kind
-// may leave a prerequisite out (kindPrerequisitesNotTakenOf). The kinds the
+// configuration's administration needs the administration of data. The
+// rights of the history of data the pass tied too - a register of
+// information otherwise than a catalog - ML does not keep. The kinds the
 // pass did not open take the map by the owner's word of 20.10.2026: a kind
 // with the rights of one it opened behaves as that one, a sequence and a
 // recalculation need the reading for the update, a table of an external
@@ -311,28 +326,18 @@ var rightPrerequisites = map[PermissionOperation][]PermissionOperation{
 	PermissionInteractiveActivate:       {PermissionUpdate},
 	PermissionStart:                     {PermissionUpdate}, PermissionInteractiveStart: {PermissionStart},
 	PermissionExecute: {PermissionUpdate}, PermissionInteractiveExecute: {PermissionExecute},
-	PermissionReadDataHistory:                 {PermissionRead},
-	PermissionReadDataHistoryOfMissingData:    {PermissionReadDataHistory},
-	PermissionUpdateDataHistory:               {PermissionReadDataHistory},
-	PermissionUpdateDataHistoryOfMissingData:  {PermissionUpdateDataHistory, PermissionReadDataHistoryOfMissingData},
-	PermissionUpdateDataHistoryVersionComment: {PermissionReadDataHistory},
-	PermissionViewDataHistory:                 {PermissionView, PermissionReadDataHistory},
-	PermissionEditDataHistoryVersionComment:   {PermissionView, PermissionUpdateDataHistoryVersionComment},
-	PermissionSwitchToDataHistoryVersion:      {PermissionView},
 }
 
 // rightsRequired is every right the window of a role marks together with
-// operation on an object of the kind, "" for the configuration, in the
-// prototype's order: rightPrerequisites followed through, but for what the
-// kind leaves out. A node takes of them the rights it has; the window
-// clears operation with any of them.
-func rightsRequired(kind Kind, operation PermissionOperation) []PermissionOperation {
-	notTaken := kindPrerequisitesNotTakenOf[kind]
+// operation, in the prototype's order: rightPrerequisites followed through.
+// A node takes of them the rights it has; the window clears operation with
+// any of them.
+func rightsRequired(operation PermissionOperation) []PermissionOperation {
 	seen := map[PermissionOperation]bool{}
 	var follow func(PermissionOperation)
 	follow = func(right PermissionOperation) {
 		for _, required := range rightPrerequisites[right] {
-			if !seen[required] && !slices.Contains(notTaken[right], required) {
+			if !seen[required] {
 				seen[required] = true
 				follow(required)
 			}

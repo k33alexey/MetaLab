@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,7 +43,12 @@ func TestStudioOpensARoleWithClientsMLDoesNotKeep(t *testing.T) {
 	}
 	for right, want := range map[metadata.PermissionOperation]metadata.PermissionOperation{"thin-client": "run-application", "web-client": "run-application", "thick-client": "", "mobile-client": "",
 		"configuration-extensions-administration":     "",
-		"collaboration-system-info-base-registration": ""} {
+		"collaboration-system-info-base-registration": "",
+		// By the owner's decisions of 20.10.2026 (ACCESS-RIGHTS): the mode
+		// of the technical specialist is the developer tools; the rest
+		// nothing stands for.
+		"technical-specialist-mode": "developer-tools", "external-connection": "", "main-window-mode-kiosk": "",
+		"read-data-history": "", "session-os-authentication-change": ""} {
 		if got, ok := opened.Schema.DroppedRights[right]; !ok || got != want {
 			t.Errorf("the editor takes %s for %q (%v), want %q", right, got, ok, want)
 		}
@@ -58,9 +64,12 @@ func TestStudioOpensARoleWithClientsMLDoesNotKeep(t *testing.T) {
 }
 
 // The same role walked in the browser: the editor warns, «Убрать недоступные
-// права» puts «Запуск приложения» in place of the clients, and «Сохранить»
-// writes it. Defects caught: no warning on such a role, a repair that leaves
-// a client, a save the page cannot make.
+// права» puts «Запуск приложения» in place of the clients and «Инструменты
+// разработчика» in place of the mode of the technical specialist, takes a
+// mode of the main window away, and «Сохранить» writes it. Defects caught:
+// no warning on such a role, a repair that leaves a client or a right ML no
+// longer keeps, the developer tools not given for the mode, a save the page
+// cannot make.
 func TestRoleEditorRepairsClientsMLDoesNotKeep(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	var path string
@@ -74,7 +83,8 @@ func TestRoleEditorRepairsClientsMLDoesNotKeep(t *testing.T) {
 			t.Fatal(err)
 		}
 		old := created.Role
-		old.Objects = []metadata.ObjectPermission{{Object: snapshot.Configuration.ID, Operations: []metadata.PermissionOperation{"thin-client", "web-client", "mobile-client"}}}
+		old.Objects = []metadata.ObjectPermission{{Object: snapshot.Configuration.ID, Operations: []metadata.PermissionOperation{"thin-client", "web-client", "mobile-client",
+			"technical-specialist-mode", "main-window-mode-normal"}}}
 		if err := metadata.WriteRole(root, old); err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +117,7 @@ func TestRoleEditorRepairsClientsMLDoesNotKeep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.Role.Objects) != 1 || len(saved.Role.Objects[0].Operations) != 1 || saved.Role.Objects[0].Operations[0] != "run-application" {
+	if len(saved.Role.Objects) != 1 || !slices.Equal(saved.Role.Objects[0].Operations, []metadata.PermissionOperation{"run-application", "developer-tools"}) {
 		t.Fatalf("the role saved as %+v (%s)", saved.Role.Objects, result)
 	}
 	for _, problem := range browser.problems() {

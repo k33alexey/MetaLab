@@ -431,8 +431,7 @@ test('a folder and a kind give their rights over what lies right in them, marked
 // снятие права снимало то, что от него не зависит.
 test('marking a right marks the rights it needs, clearing it clears those needing it, each member taking what it has',()=>{
   const source=fixture();
-  source.schema.objects=source.schema.objects.map(item=>({...item,kind:item.root?'':'catalogs'}));
-  source.schema.requires={'':{administration:['data-administration']},catalogs:{read:[],insert:['read'],update:['read'],delete:['read'],view:['read'],edit:['read','update','view'],'input-by-string':['read','view']}};
+  source.schema.requires={administration:['data-administration'],insert:['read'],update:['read'],delete:['read'],view:['read','use'],edit:['read','update','view'],'input-by-string':['read','view']};
   const model=create(source),schema=source.schema,goods=schema.objects.find(item=>item.id==='goods'),other=schema.objects.find(item=>item.id==='other');
   const rights=id=>['read','insert','update','delete','view','edit','input-by-string'].filter(right=>model.hasObject(id,right));
   model.setGroup([{object:goods}],'input-by-string',true);

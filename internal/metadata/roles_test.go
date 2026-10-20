@@ -533,8 +533,8 @@ func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 	for index, rights := range map[int][]PermissionOperation{
 		0: {PermissionAdministration, PermissionDataAdministration, PermissionExclusiveMode},
 		1: {PermissionGet, PermissionSet},
-		2: {PermissionRead, PermissionUpdate, PermissionView, PermissionEdit, PermissionReadDataHistory},
-		3: {PermissionInputByString, PermissionInteractiveDeletePredefinedData, PermissionReadDataHistoryOfMissingData},
+		2: {PermissionRead, PermissionUpdate, PermissionView, PermissionEdit},
+		3: {PermissionInputByString, PermissionInteractiveDeletePredefinedData},
 		5: {PermissionPosting, PermissionInteractiveChangeOfPosted},
 	} {
 		object := schema.Objects[index]
@@ -547,7 +547,10 @@ func TestPermissionSchemaShowsStandardFieldsInOrder(t *testing.T) {
 			t.Errorf("%s %s is root: %v", object.Kind, object.Name, object.Root)
 		}
 	}
-	if slices.Contains(schema.Objects[2].Rights, PermissionInputByString) || slices.Contains(schema.Objects[0].Rights, PermissionRead) {
+	// The rights of the history of data ML does not keep (ACCESS-RIGHTS,
+	// «Права истории данных»).
+	if slices.Contains(schema.Objects[2].Rights, PermissionInputByString) || slices.Contains(schema.Objects[0].Rights, PermissionRead) ||
+		slices.Contains(schema.Objects[3].Rights, "read-data-history") {
 		t.Errorf("a right is offered where the configurator offers none: %v, %v", schema.Objects[2].Rights, schema.Objects[0].Rights)
 	}
 	var keys []string

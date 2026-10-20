@@ -32,9 +32,12 @@ func fullRole() RoleDefinition {
 }
 
 // A role written as its two files and read back is the same role: every one
-// of the sixty-four rights it carries - the prototype's sixty-nine but its
-// four clients and the two rights on mechanisms ML refused, and the start of
-// the application - a denial apart from a grant, a part only denied,
+// of the forty-five rights it carries - the prototype's sixty-nine but its
+// four clients, the two rights on mechanisms ML refused and the twenty-one
+// the owner did not carry on 20.10.2026 (eight of the configuration, the mode
+// of the technical specialist, nine of the history of data, three of
+// authentication on a source), and ML's three own: the start of the
+// application, the developer tools, the change history - a denial apart from a grant, a part only denied,
 // a dotted key, a restriction on an object the role only denies (235 such in
 // the exports), the flags and the commands.
 //
@@ -67,7 +70,7 @@ func TestRoleSurvivesItsTwoFiles(t *testing.T) {
 	if err != nil || !bytes.Equal(again, description) || !bytes.Equal(againGrid, grid) {
 		t.Fatalf("a second writing differs from the first (%v):\n%s\n%s", err, again, againGrid)
 	}
-	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 64 {
+	if !slices.Equal(decoded.Objects[0].Operations, RoleRights()) || len(RoleRights()) != 45 {
 		t.Fatalf("rights carried: %d of %d", len(decoded.Objects[0].Operations), len(RoleRights()))
 	}
 	if !decoded.IndependentChildRights || len(decoded.Objects[1].Restrictions) != 2 || len(decoded.RestrictionTemplates) != 1 || len(decoded.Commands) != 1 {
@@ -132,8 +135,12 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 	for name, want := range map[string]PermissionOperation{
 		"InteractiveDeleteMarkedPredefinedData": PermissionInteractiveDeleteMarkedPredefinedData,
 		"ИнтерактивноеУдалениеПомеченныхПредопределенныхДанных": PermissionInteractiveDeleteMarkedPredefinedData,
-		"AllFunctionsMode": PermissionTechnicalSpecialistMode,
-		"РежимТехническогоСпециалиста":           PermissionTechnicalSpecialistMode,
+		// The mode of the technical specialist, under either name, is the
+		// developer tools in ML (ACCESS-RIGHTS, «Своих прав у ML три»).
+		"AllFunctionsMode": "developer-tools",
+		"РежимТехническогоСпециалиста": "developer-tools",
+		"DeveloperTools":                         "developer-tools",
+		"ИсторияИзменений":                       "change-history",
 		"ExclusiveModeTerminationAtSessionStart": PermissionExclusiveModeTerminationAtSessionStart,
 		"insert":                                 PermissionInsert,
 		// The thin and the web client are the start of the application in ML
@@ -156,7 +163,12 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 	// on the mechanisms ML refused are rights of the prototype nothing stands
 	// for in ML.
 	for _, name := range []string{"FullAccess", "ThickClient", "ТолстыйКлиент", "MobileClient", "МобильныйКлиент",
-		"ConfigurationExtensionsAdministration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"} {
+		"ConfigurationExtensionsAdministration", "РегистрацияИнформационнойБазыСистемыВзаимодействия",
+		// The rights that would change nothing in ML, of the history of data
+		// and of authentication on a source (the owner's decisions of
+		// 20.10.2026).
+		"ExternalConnection", "Automation", "MainWindowModeKiosk", "РежимОсновногоОкнаОбычный", "AnalyticsSystemClient",
+		"ReadDataHistory", "ПереходНаВерсиюИсторииДанных", "StandardAuthenticationChange", "ИзменениеАутентификацииОССеанса"} {
 		if got, ok := RightByPrototypeName(name); ok {
 			t.Errorf("%s found as %q", name, got)
 		}
@@ -179,7 +191,9 @@ func TestRolesWithClientsMLDoesNotKeepAreReadAndNotRun(t *testing.T) {
 		right  PermissionOperation
 		denied bool
 	}{{"thin-client", false}, {"web-client", false}, {"thick-client", false}, {"mobile-client", false}, {"web-client", true},
-		{"configuration-extensions-administration", true}, {"collaboration-system-info-base-registration", false}} {
+		{"configuration-extensions-administration", true}, {"collaboration-system-info-base-registration", false},
+		{"technical-specialist-mode", false}, {"external-connection", false}, {"main-window-mode-kiosk", true},
+		{"analytics-system-client", false}} {
 		verb := "gives"
 		if item.denied {
 			verb = "denies"

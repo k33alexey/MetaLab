@@ -9,8 +9,7 @@ import (
 // roleRightsDependenciesWalk opens the window of the role Кладовщик on the
 // catalog Контрагенты, which it gives nothing, presses the box of
 // «Интерактивное удаление» and reads the rights marked; then presses
-// «Изменение настроек истории данных» and the marked «Чтение» and reads them
-// again; then marks «Редактирование» of the attribute Количество of the
+// «Ввод по строке» and the marked «Чтение» and reads them again; then marks «Редактирование» of the attribute Количество of the
 // table part of ПродажаТоваров and reads its rights and the document's.
 const roleRightsDependenciesWalk = `(async () => {
   const studio = window.__studio, editor = document.querySelector('#role-editor'), answer = {};
@@ -20,7 +19,7 @@ const roleRightsDependenciesWalk = `(async () => {
   await studio.settle();
   editor.querySelector('.role-tree-item[title="Контрагенты"]').click(); await studio.settle();
   box('Интерактивное удаление').click(); await studio.settle(); answer.deletion = marked();
-  box('Изменение настроек истории данных').click(); await studio.settle();
+  box('Ввод по строке').click(); await studio.settle();
   box('Чтение').click(); await studio.settle(); answer.reading = marked();
   editor.querySelector('[data-group="10000000-0000-4000-8000-000000000202 table-parts"]').closest('details').querySelector('.role-tree-item[title="Количество"]').click();
   await studio.settle();
@@ -34,7 +33,8 @@ const roleRightsDependenciesWalk = `(async () => {
 // snapshots prava/20-25 and 33-41), through the map the server gives:
 // marking «Интерактивное удаление» of a catalog marks «Чтение»,
 // «Изменение», «Удаление», «Просмотр» and «Редактирование»; clearing
-// «Чтение» clears everything but «Изменение настроек истории данных»; the
+// «Чтение» clears every right of a catalog ML keeps (the pass kept «Изменение
+// настроек истории данных», a right ML does not keep); the
 // editing of an attribute marks its viewing and nothing of its object.
 // Written out from the snapshots. Defects caught: the window marking a right
 // alone; the server's map not reaching the window, or read under another
@@ -55,8 +55,8 @@ func TestTheWindowOfARoleTiesTheRightsAsThePrototypes(t *testing.T) {
 	if want := []string{"Чтение", "Изменение", "Удаление", "Просмотр", "Редактирование", "Интерактивное удаление"}; !slices.Equal(got.Deletion, want) {
 		t.Errorf("after «Интерактивное удаление»: %v, want %v", got.Deletion, want)
 	}
-	if want := []string{"Изменение настроек истории данных"}; !slices.Equal(got.Reading, want) {
-		t.Errorf("after «Чтение» cleared: %v, want %v", got.Reading, want)
+	if len(got.Reading) != 0 {
+		t.Errorf("after «Ввод по строке» and «Чтение» cleared: %v, want nothing", got.Reading)
 	}
 	if want := []string{"Просмотр", "Редактирование"}; !slices.Equal(got.Part, want) {
 		t.Errorf("the attribute after «Редактирование»: %v, want %v", got.Part, want)

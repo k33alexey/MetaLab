@@ -198,14 +198,10 @@ var kindUsesOf = map[Kind]kindUses{
 	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven, parts: absent},
 }
 
-// The rights of the history of data: nine on a kind whose data keeps
-// versions that may be missing, seven on a constant, which always has its
-// value.
+// The rights a role gives on the data of a kind. The prototype's rights of
+// the history of data - nine on a kind whose data keeps versions that may be
+// missing, seven on a constant - ML does not keep (droppedRights).
 var (
-	historyRights = []PermissionOperation{PermissionReadDataHistory, PermissionViewDataHistory,
-		PermissionUpdateDataHistory, PermissionUpdateDataHistorySettings, PermissionUpdateDataHistoryVersionComment,
-		PermissionEditDataHistoryVersionComment, PermissionSwitchToDataHistoryVersion}
-	missingHistoryRights = []PermissionOperation{PermissionReadDataHistoryOfMissingData, PermissionUpdateDataHistoryOfMissingData}
 	// referenceRights are the rights on the data of an object with a
 	// reference: a catalog, a node of an exchange plan, a process, a task.
 	referenceRights = []PermissionOperation{PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete,
@@ -235,36 +231,36 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	SubsystemKind:        {PermissionView},
 	SessionParameterKind: {PermissionGet, PermissionSet},
 	CommonAttributeKind:  {PermissionView, PermissionEdit},
-	ExchangePlanKind:     slices.Concat(referenceRights, historyRights, missingHistoryRights),
+	ExchangePlanKind:     referenceRights,
 	FilterCriterionKind:  {PermissionView},
 	CommonCommandKind:    {PermissionView},
 	CommonFormKind:       {PermissionView},
 	WebServiceKind:       {},
 	HTTPServiceKind:      {},
-	ConstantKind:         slices.Concat(registerRights, historyRights),
-	CatalogKind:          slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
+	ConstantKind:         registerRights,
+	CatalogKind:          slices.Concat(referenceRights, predefinedRights),
 	DocumentKind: slices.Concat(referenceRights, []PermissionOperation{PermissionPosting, PermissionUndoPosting,
 		PermissionInteractivePosting, PermissionInteractivePostingRegular, PermissionInteractiveUndoPosting,
-		PermissionInteractiveChangeOfPosted}, historyRights, missingHistoryRights),
+		PermissionInteractiveChangeOfPosted}),
 	SequenceKind:                   {PermissionRead, PermissionUpdate},
 	DocumentJournalKind:            {PermissionRead, PermissionView},
 	ReportKind:                     {PermissionUse, PermissionView},
 	DataProcessorKind:              {PermissionUse, PermissionView},
-	ChartOfCharacteristicTypesKind: slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
-	ChartOfAccountsKind:            slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
-	ChartOfCalculationTypesKind:    slices.Concat(referenceRights, predefinedRights, historyRights, missingHistoryRights),
-	InformationRegisterKind: slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl},
-		historyRights, missingHistoryRights),
-	AccumulationRegisterKind: slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
-	AccountingRegisterKind:   slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
-	CalculationRegisterKind:  registerRights,
-	RecalculationKind:        {PermissionRead, PermissionUpdate},
+	ChartOfCharacteristicTypesKind: slices.Concat(referenceRights, predefinedRights),
+	ChartOfAccountsKind:            slices.Concat(referenceRights, predefinedRights),
+	ChartOfCalculationTypesKind:    slices.Concat(referenceRights, predefinedRights),
+	InformationRegisterKind:        slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
+	AccumulationRegisterKind:       slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
+	AccountingRegisterKind:         slices.Concat(registerRights, []PermissionOperation{PermissionTotalsControl}),
+	CalculationRegisterKind:        registerRights,
+	RecalculationKind:              {PermissionRead, PermissionUpdate},
 	BusinessProcessKind: slices.Concat(referenceRights, []PermissionOperation{PermissionInteractiveActivate,
-		PermissionStart, PermissionInteractiveStart}, historyRights, missingHistoryRights),
+		PermissionStart, PermissionInteractiveStart}),
 	TaskKind: slices.Concat(referenceRights, []PermissionOperation{PermissionInteractiveActivate,
-		PermissionExecute, PermissionInteractiveExecute}, historyRights, missingHistoryRights),
-	ExternalDataSourceKind: {PermissionUse, PermissionAdministration, PermissionStandardAuthenticationChange,
-		PermissionSessionStandardAuthenticationChange, PermissionSessionOSAuthenticationChange},
+		PermissionExecute, PermissionInteractiveExecute}),
+	// A source keeps its use and its administration; ML does not keep the
+	// rights of authentication on it (droppedRights).
+	ExternalDataSourceKind: {PermissionUse, PermissionAdministration},
 	ExternalDataSourceTableKind: {PermissionRead, PermissionInsert, PermissionUpdate, PermissionDelete, PermissionView,
 		PermissionInteractiveInsert, PermissionEdit, PermissionInteractiveDelete, PermissionInputByString},
 	// A cube and a table of its dimension are read and shown, nothing more:
@@ -276,16 +272,6 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	// внешнего источника»); no export gives rights on one, so the rights
 	// stay unproven and every role naming a function is noted.
 	ExternalFunctionKind: {PermissionUse, PermissionView},
-}
-
-// kindPrerequisitesNotTakenOf is, for a kind whose window of a role does not
-// follow rightPrerequisites whole, the prerequisites it leaves out by right:
-// a register of information marks the update of the history of missing data
-// without the reading of the history of missing data, which a catalog marks
-// with it (pass of 20.10.2026, prava/zapis.md «Карта зависимостей прав»,
-// snapshots prava/38 and 39).
-var kindPrerequisitesNotTakenOf = map[Kind]map[PermissionOperation][]PermissionOperation{
-	InformationRegisterKind: {PermissionUpdateDataHistoryOfMissingData: {PermissionReadDataHistoryOfMissingData}},
 }
 
 // kindPartRightsOf is, for a kind whose parts the window of a role offers
@@ -301,21 +287,18 @@ var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
 
 // configurationRights are the rights the configurator offers on the
 // configuration itself, from the same exports: everything a user may do with
-// the infobase as a whole, the start of the application in place of the
-// clients and the modes of the main window; not the rights ML does not keep
-// (droppedRights). The
-// mode of the technical specialist is written under its old name too
-// (renamedRights); ending exclusive mode at the start of a session only the
-// configurator's samples write.
+// the infobase as a whole; not the rights ML does not keep (droppedRights),
+// and ML's own in place of theirs - the start of the application for the
+// clients, the developer tools for the mode of the technical specialist,
+// which is written under its old name too (renamedRights) - and beside them,
+// the change history. Ending exclusive mode at the start of a session only
+// the configurator's samples write.
 var configurationRights = inPrototypeOrder([]PermissionOperation{
 	PermissionAdministration, PermissionDataAdministration, PermissionUpdateDataBaseConfiguration,
 	PermissionExclusiveMode, PermissionActiveUsers, PermissionEventLog, PermissionRunApplication,
-	PermissionExternalConnection, PermissionAutomation,
-	PermissionTechnicalSpecialistMode, PermissionSaveUserData, PermissionInteractiveOpenExtDataProcessors,
-	PermissionInteractiveOpenExtReports, PermissionOutput, PermissionMainWindowModeNormal,
-	PermissionMainWindowModeWorkplace, PermissionMainWindowModeEmbeddedWorkplace,
-	PermissionMainWindowModeFullscreenWorkplace, PermissionMainWindowModeKiosk,
-	PermissionExclusiveModeTerminationAtSessionStart, PermissionAnalyticsSystemClient,
+	PermissionDeveloperTools, PermissionChangeHistory, PermissionSaveUserData,
+	PermissionInteractiveOpenExtDataProcessors, PermissionInteractiveOpenExtReports, PermissionOutput,
+	PermissionExclusiveModeTerminationAtSessionStart,
 })
 
 // inPrototypeOrder puts rights in the prototype's order (roleRights), the

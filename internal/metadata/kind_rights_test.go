@@ -136,13 +136,28 @@ var expectedConfigurationRights = []string{"Administration", "DataAdministration
 	"InteractiveOpenExtDataProcessors", "InteractiveOpenExtReports", "Output"}
 
 // rightsNotKept are the rights of the prototype nothing stands for in ML: its
-// thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно право»)
-// and the rights on the mechanisms ML refused (ACCESS-RIGHTS, «Права на
-// механизмы, от которых ML отказался, не переносятся»). The thin and the web
-// client are the start of the application. The interactive opening of
-// external data processors and reports is kept again: the mechanism comes
-// back as ML's own (the owner's decision of 20.10.2026).
-var rightsNotKept = []string{"ThickClient", "MobileClient", "ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration"}
+// thick and mobile clients (ACCESS-RIGHTS, «Запуск клиента — одно право»),
+// the rights on the mechanisms ML refused (ACCESS-RIGHTS, «Права на
+// механизмы, от которых ML отказался, не переносятся»), and by the owner's
+// decisions of 20.10.2026 the rights of the configuration that would change
+// nothing in ML, the rights of the history of data and those of
+// authentication on an external source. The thin and the web client are the
+// start of the application, the mode of the technical specialist the
+// developer tools. The interactive opening of external data processors and
+// reports is kept again: the mechanism comes back as ML's own (the owner's
+// decision of 20.10.2026).
+var rightsNotKept = []string{"ThickClient", "MobileClient", "ConfigurationExtensionsAdministration", "CollaborationSystemInfoBaseRegistration",
+	"ExternalConnection", "Automation", "MainWindowModeNormal", "MainWindowModeWorkplace", "MainWindowModeEmbeddedWorkplace",
+	"MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk", "AnalyticsSystemClient",
+	"ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+	"UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+	"SwitchToDataHistoryVersion",
+	"StandardAuthenticationChange", "SessionStandardAuthenticationChange", "SessionOSAuthenticationChange"}
+
+// mlConfigurationRights are ML's own rights of the configuration no right of
+// the prototype stands for, which no export writes: the change history,
+// right after the developer tools (ACCESS-RIGHTS, «Своих прав у ML три»).
+var mlConfigurationRights = []PermissionOperation{"change-history"}
 
 // rightsByNames reads prototype names as rights, in their order, each once:
 // the thin and the web client are one right in ML, standing where the thin
@@ -213,7 +228,9 @@ func TestEveryKindOffersThePrototypesRights(t *testing.T) {
 			offered[right] = true
 		}
 	}
-	if want := rightsByNames(t, expectedConfigurationRights); !slices.Equal(configurationRights, want) {
+	want := rightsByNames(t, expectedConfigurationRights)
+	at := slices.Index(want, "developer-tools") + 1
+	if want = slices.Insert(want, at, mlConfigurationRights...); !slices.Equal(configurationRights, want) {
 		t.Errorf("the configuration offers %v, the prototype %v", configurationRights, want)
 	}
 	for _, right := range configurationRights {
@@ -391,7 +408,9 @@ func TestADescribedKindKeepsPartsWhereItsPartsAreRead(t *testing.T) {
 // prototypeCaptions are the captions the window of a role lists the rights
 // under in the configurator 8.3.27, written out from the pass of 20.10.2026
 // over the configuration and an object of every kind (block-00/rol), not
-// read from roleRights: «Запуск приложения» is ML's own right.
+// read from roleRights: «Запуск приложения», «Инструменты разработчика» and
+// «История изменений» are ML's own rights; the rights ML does not keep are
+// not listed.
 var prototypeCaptions = map[string]string{
 	"Read": "Чтение", "Insert": "Добавление", "Update": "Изменение", "Delete": "Удаление", "Posting": "Проведение",
 	"UndoPosting": "Отмена проведения", "Use": "Использование", "View": "Просмотр",
@@ -404,36 +423,17 @@ var prototypeCaptions = map[string]string{
 	"InputByString": "Ввод по строке", "TotalsControl": "Управление итогами", "Administration": "Администрирование",
 	"DataAdministration": "Администрирование данных", "UpdateDataBaseConfiguration": "Обновление конфигурации базы данных",
 	"ExclusiveMode": "Монопольный режим", "ActiveUsers": "Активные пользователи", "EventLog": "Журнал регистрации",
-	"RunApplication": "Запуск приложения", "ExternalConnection": "Внешнее соединение", "Automation": "Automation",
-	"TechnicalSpecialistMode":                "Режим технического специалиста",
-	"MainWindowModeNormal":                   `Режим основного окна "Обычный"`,
-	"MainWindowModeWorkplace":                `Режим основного окна "Рабочее место"`,
-	"MainWindowModeEmbeddedWorkplace":        `Режим основного окна "Встроенное рабочее место"`,
-	"MainWindowModeFullscreenWorkplace":      `Режим основного окна "Полноэкранное рабочее место"`,
-	"MainWindowModeKiosk":                    `Режим основного окна "Киоск"`,
-	"AnalyticsSystemClient":                  "Клиент системы аналитики",
+	"RunApplication": "Запуск приложения", "DeveloperTools": "Инструменты разработчика", "ChangeHistory": "История изменений",
 	"ExclusiveModeTerminationAtSessionStart": "Завершение монопольного режима при начале сеанса",
 	"SaveUserData":                           "Сохранение данных пользователя",
 	"InteractiveOpenExtDataProcessors":       "Интерактивное открытие внешних обработок",
 	"InteractiveOpenExtReports":              "Интерактивное открытие внешних отчетов", "Output": "Вывод",
 	"Get": "Получение", "Set": "Установка", "InteractiveActivate": "Интерактивная активация", "Start": "Старт",
 	"InteractiveStart": "Интерактивный старт", "Execute": "Выполнение", "InteractiveExecute": "Интерактивное выполнение",
-	"StandardAuthenticationChange":               "Изменение стандартной аутентификации текущего пользователя",
-	"SessionStandardAuthenticationChange":        "Изменение стандартной аутентификации сеанса",
-	"SessionOSAuthenticationChange":              "Изменение аутентификации операционной системы сеанса",
 	"InteractiveDeletePredefinedData":            "Интерактивное удаление предопределенных",
 	"InteractiveSetDeletionMarkPredefinedData":   "Интерактивная пометка на удаление предопределенных",
 	"InteractiveClearDeletionMarkPredefinedData": "Интерактивное снятие пометки удаления предопределенных",
 	"InteractiveDeleteMarkedPredefinedData":      "Интерактивное удаление помеченных предопределенных",
-	"ReadDataHistory":                            "Чтение истории данных",
-	"ReadDataHistoryOfMissingData":               "Чтение истории данных отсутствующих данных",
-	"UpdateDataHistory":                          "Изменение истории данных",
-	"UpdateDataHistoryOfMissingData":             "Изменение истории данных отсутствующих данных",
-	"UpdateDataHistorySettings":                  "Изменение настроек истории данных",
-	"UpdateDataHistoryVersionComment":            "Изменение комментария версии истории данных",
-	"ViewDataHistory":                            "Просмотр истории данных",
-	"EditDataHistoryVersionComment":              "Редактирование комментария версии истории данных",
-	"SwitchToDataHistoryVersion":                 "Переход на версию истории данных",
 }
 
 // TestRightsAreCaptionedAsThePrototype catches a right the editor lists

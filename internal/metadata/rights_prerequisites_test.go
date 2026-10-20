@@ -10,7 +10,9 @@ import (
 // together with it on an object of a kind, written out from the pass of
 // 20.10.2026 with the owner (materials/configurator-2026-10-20/prava/zapis.md,
 // «Карта зависимостей прав», snapshots prava/33-41), not read off
-// rightPrerequisites: what the window marked, not the steps it took.
+// rightPrerequisites: what the window marked, not the steps it took. The
+// rights of the history of data the pass tied too ML does not keep
+// (ACCESS-RIGHTS, «Права истории данных»).
 type rightsMarkedWith map[PermissionOperation][]PermissionOperation
 
 // with is the map and more beside it.
@@ -41,17 +43,6 @@ var (
 			PermissionInteractiveClearDeletionMark},
 		PermissionInteractiveDeleteMarkedPredefinedData: {PermissionRead, PermissionUpdate, PermissionDelete, PermissionView,
 			PermissionEdit, PermissionInteractiveDeleteMarked},
-	}.with(historyMarked)
-	historyMarked = rightsMarkedWith{
-		PermissionReadDataHistory:                 {PermissionRead},
-		PermissionReadDataHistoryOfMissingData:    {PermissionRead, PermissionReadDataHistory},
-		PermissionUpdateDataHistory:               {PermissionRead, PermissionReadDataHistory},
-		PermissionUpdateDataHistoryOfMissingData:  {PermissionRead, PermissionReadDataHistory, PermissionReadDataHistoryOfMissingData, PermissionUpdateDataHistory},
-		PermissionUpdateDataHistoryVersionComment: {PermissionRead, PermissionReadDataHistory},
-		PermissionViewDataHistory:                 {PermissionRead, PermissionView, PermissionReadDataHistory},
-		PermissionEditDataHistoryVersionComment: {PermissionRead, PermissionView, PermissionReadDataHistory,
-			PermissionUpdateDataHistoryVersionComment},
-		PermissionSwitchToDataHistoryVersion: {PermissionRead, PermissionView},
 	}
 	// A document (АвансовыйОтчет, prava/40): the catalog's and the posting.
 	documentMarked = catalogMarked.with(rightsMarkedWith{
@@ -66,12 +57,7 @@ var (
 	registerMarked = rightsMarkedWith{
 		PermissionUpdate: {PermissionRead}, PermissionView: {PermissionRead},
 		PermissionEdit: {PermissionRead, PermissionUpdate, PermissionView},
-	}.with(historyMarked)
-	// A register of information marks the update of the history of missing
-	// data without the reading of it (prava/39).
-	informationRegisterMarked = registerMarked.with(rightsMarkedWith{
-		PermissionUpdateDataHistoryOfMissingData: {PermissionRead, PermissionReadDataHistory, PermissionUpdateDataHistory},
-	})
+	}
 	usedMarked = rightsMarkedWith{PermissionView: {PermissionUse}}
 	readMarked = rightsMarkedWith{PermissionView: {PermissionRead}}
 	// A table of an external source, by the owner's word of 20.10.2026: the
@@ -87,8 +73,7 @@ var (
 // catalog, the source itself nothing. Every kind a role gives rights on is
 // named here, a kind gaining rights failing until it is. Defects caught: a
 // right missing from what another marks or one too many; the viewing of a
-// report marking the reading; the reading of the history of missing data
-// marked in a register of information; a kind left without its map.
+// report marking the reading; a kind left without its map.
 func TestTheWindowOfARoleMarksTheRightsARightNeeds(t *testing.T) {
 	t.Parallel()
 	byKind := map[Kind]rightsMarkedWith{
@@ -103,7 +88,7 @@ func TestTheWindowOfARoleMarksTheRightsARightNeeds(t *testing.T) {
 			PermissionInteractiveExecute: {PermissionRead, PermissionUpdate, PermissionExecute}}),
 		ChartOfAccountsKind:            catalogMarked,
 		ChartOfCharacteristicTypesKind: catalogMarked, ChartOfCalculationTypesKind: catalogMarked, ExchangePlanKind: catalogMarked,
-		InformationRegisterKind:  informationRegisterMarked,
+		InformationRegisterKind:  registerMarked,
 		AccumulationRegisterKind: registerMarked, AccountingRegisterKind: registerMarked, CalculationRegisterKind: registerMarked,
 		ConstantKind: registerMarked,
 		ReportKind:   usedMarked, DataProcessorKind: usedMarked, ExternalFunctionKind: usedMarked,
@@ -128,7 +113,7 @@ func TestTheWindowOfARoleMarksTheRightsARightNeeds(t *testing.T) {
 			continue
 		}
 		for _, right := range rights {
-			got := slices.DeleteFunc(rightsRequired(kind, right), func(other PermissionOperation) bool { return !slices.Contains(rights, other) })
+			got := slices.DeleteFunc(rightsRequired(right), func(other PermissionOperation) bool { return !slices.Contains(rights, other) })
 			expected := slices.DeleteFunc(slices.Clone(want[right]), func(other PermissionOperation) bool { return !slices.Contains(rights, other) })
 			if !slices.Equal(got, inPrototypeOrder(expected)) {
 				t.Errorf("%q: %s marks %v, want %v", kind, right, got, inPrototypeOrder(expected))
@@ -148,7 +133,7 @@ func TestTheEditingOfAPartMarksItsViewing(t *testing.T) {
 		for _, group := range partGroups {
 			rights := offeredPartRights(item.kind, group.group)
 			for _, right := range rights {
-				got := slices.DeleteFunc(rightsRequired(item.kind, right), func(other PermissionOperation) bool { return !slices.Contains(rights, other) })
+				got := slices.DeleteFunc(rightsRequired(right), func(other PermissionOperation) bool { return !slices.Contains(rights, other) })
 				var want []PermissionOperation
 				if right == PermissionEdit && slices.Contains(rights, PermissionView) {
 					want = []PermissionOperation{PermissionView}
@@ -164,7 +149,8 @@ func TestTheEditingOfAPartMarksItsViewing(t *testing.T) {
 // Clearing a right clears every right needing it, as the window of the
 // prototype did (prava/41: «Изменение» cleared on a chart of accounts with
 // every right marked; prava/23: «Чтение» cleared on the branch of catalogs),
-// written out from the snapshots: what stays marked is the rest. Defects
+// written out from the snapshots: what stays marked is the rest, the rights
+// of the history of data aside. Defects
 // caught: a right needing the cleared one left marked; one needing it not
 // cleared through another (the predefined through their plain right).
 func TestClearingARightClearsTheRightsNeedingIt(t *testing.T) {
@@ -172,7 +158,7 @@ func TestClearingARightClearsTheRightsNeedingIt(t *testing.T) {
 	needing := func(kind Kind, cleared PermissionOperation) []PermissionOperation {
 		var result []PermissionOperation
 		for _, right := range usesOf(kind).offered {
-			if slices.Contains(rightsRequired(kind, right), cleared) {
+			if slices.Contains(rightsRequired(right), cleared) {
 				result = append(result, right)
 			}
 		}
@@ -185,7 +171,9 @@ func TestClearingARightClearsTheRightsNeedingIt(t *testing.T) {
 	if got := needing(ChartOfAccountsKind, PermissionUpdate); !slices.Equal(got, inPrototypeOrder(updateNeeded)) {
 		t.Errorf("«Изменение» cleared on a chart of accounts clears %v, want %v", got, inPrototypeOrder(updateNeeded))
 	}
-	kept := []PermissionOperation{PermissionRead, PermissionUpdateDataHistorySettings}
+	// The pass kept «Изменение настроек истории данных», which ML does not
+	// keep.
+	kept := []PermissionOperation{PermissionRead}
 	for _, right := range usesOf(CatalogKind).offered {
 		if cleared := slices.Contains(needing(CatalogKind, PermissionRead), right); cleared == slices.Contains(kept, right) {
 			t.Errorf("«Чтение» cleared on a catalog: %s cleared %v", right, cleared)
