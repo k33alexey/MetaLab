@@ -416,7 +416,9 @@ function showHelp(key) {
    the right, as «Ins» of «Добавить»; a fifth element names the icon of the
    command, drawn before its text, and once one item has an icon every item
    keeps the place of one, so the texts stand in a column, as in the
-   prototype's menus; null is a line between groups. */
+   prototype's menus; a sixth, true, marks the action of the object itself,
+   done by a double click, bold, as the prototype's «Открыть модуль» of a
+   common module; null is a line between groups. */
 function showContextMenu(event, items) {
   event.preventDefault();
   closeContextMenu();
@@ -425,8 +427,8 @@ function showContextMenu(event, items) {
   const icons = items.some(item => item?.[4]);
   for (const item of items) {
     if (!item) { menu.append(node('div', undefined, 'context-menu-separator')); continue; }
-    const [text, act, enabled = true, key, icon] = item;
-    const button = node('button', text, 'context-menu-item');
+    const [text, act, enabled = true, key, icon, main] = item;
+    const button = node('button', text, main ? 'context-menu-item context-menu-main' : 'context-menu-item');
     button.type = 'button';
     if (icons) button.prepend(iconElement(icon));
     if (key) button.append(node('span', key, 'context-menu-key'));

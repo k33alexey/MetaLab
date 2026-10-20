@@ -60,11 +60,11 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The top level is the configuration itself: the session module, the
-	// "Общие" group, then the object kinds. Storage directories are not
-	// branches - a module or a form is reached through the object owning it.
+	// The top level is the configuration itself: the "Общие" group, then the
+	// object kinds; the modules of the root open from its menu. Storage
+	// directories are not branches - a module or a form is reached through the
+	// object owning it.
 	wantTop := []string{
-		"session-module", "application-module", "external-connection-module",
 		"metadata/common", "metadata/constants", "metadata/catalogs",
 		"metadata/documents", "metadata/document-journals", "metadata/enumerations",
 		"metadata/reports", "metadata/data-processors", "metadata/charts-of-characteristic-types",
@@ -80,16 +80,17 @@ func TestWorkspaceSnapshotBuildsCanonicalTree(t *testing.T) {
 	if snapshot.Configuration.Name != "SalesDemo" || !reflect.DeepEqual(top, wantTop) {
 		t.Fatalf("top level = %v, want %v", top, wantTop)
 	}
-	if first := snapshot.Tree.Children[0]; first.Path != project.SessionModuleFile {
-		t.Fatalf("session module node = %+v", first)
-	}
 	if !treeContains(snapshot.Tree, metadataPath) || !treeContains(snapshot.Tree, commonModulePath) {
 		t.Fatalf("tree does not contain created sources: %+v", snapshot.Tree)
 	}
-	// The common module's own BSL hangs under the common module, which is the
-	// only thing that can lead a developer to it.
+	// The common module is a row with nothing beneath it; its BSL opens by
+	// its own action, «Открыть модуль», as the prototype's (inventory of
+	// block 00, obshchij-modul.md). Defects caught: the module left a row of
+	// the tree under the common module; the command missing, pointing at
+	// another file, or not the action of the common module itself.
 	commonModuleNode, ok := findNodeByID(snapshot.Tree, commonModuleID.String())
-	if !ok || len(commonModuleNode.Children) != 1 || commonModuleNode.Children[0].Path != modulePath {
+	if !ok || len(commonModuleNode.Children) != 0 ||
+		!reflect.DeepEqual(commonModuleNode.Modules, []NodeModule{{Command: "Открыть модуль", Path: modulePath, Main: true}}) {
 		t.Fatalf("common module node = %+v found=%v", commonModuleNode, ok)
 	}
 	// Нумераторы и последовательности ветвями верхнего уровня не стоят: обе

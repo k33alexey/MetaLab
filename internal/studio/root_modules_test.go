@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -48,39 +49,6 @@ func TestOpenSessionModuleCreatesItOnceAndKeepsEdits(t *testing.T) {
 	}
 	if again.Content != edited || again.Revision != saved.Revision {
 		t.Fatalf("opening an existing session module replaced it: %+v", again)
-	}
-}
-
-// The tree always shows the node, and says whether the file is there yet -
-// otherwise "нет узла" and "модуль пустой" would look the same.
-func TestSessionModuleNodeReportsWhetherItExists(t *testing.T) {
-	t.Parallel()
-	root := createProject(t)
-	workspace, err := Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := func() string {
-		snapshot, err := workspace.Snapshot()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, property := range snapshot.Tree.Children[0].Properties {
-			if property.Name == "Состояние" {
-				return property.Value
-			}
-		}
-		t.Fatal("session module node has no state property")
-		return ""
-	}
-	if state() != "не создан" {
-		t.Fatalf("state before creation = %q", state())
-	}
-	if _, err := workspace.OpenSessionModule(); err != nil {
-		t.Fatal(err)
-	}
-	if state() != "создан" {
-		t.Fatalf("state after creation = %q", state())
 	}
 }
 
@@ -165,40 +133,24 @@ func TestRootModulesUI(t *testing.T) {
 	}
 }
 
-// The root owns two modules, and both stand in the tree whether or not their
-// file exists: a developer looking for "where does the application start" must
-// find it there instead of having to know it can be created.
-func TestBothRootModulesStandInTheTreeAndAreCreatedOnOpen(t *testing.T) {
+// The root's modules are offered whether or not their file exists: a
+// developer looking for "where does the application start" must find it in
+// the root's menu instead of having to know it can be created. Opening makes
+// the file with the module's empty routines, and opening again keeps what was
+// written.
+func TestRootModulesAreOfferedAndCreatedOnOpen(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	workspace, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := func(id string) string {
-		snapshot, err := workspace.Snapshot()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, child := range snapshot.Tree.Children {
-			if child.ID != id {
-				continue
-			}
-			for _, property := range child.Properties {
-				if property.Name == "Состояние" {
-					return property.Value
-				}
-			}
-		}
-		t.Fatalf("the tree has no node %s with a state", id)
-		return ""
-	}
 	for id, file := range map[string]string{
 		"session-module":     project.SessionModuleFile,
 		"application-module": project.ApplicationModuleFile,
 	} {
-		if state(id) != "не создан" {
-			t.Fatalf("%s before creation = %q", id, state(id))
+		if _, err := os.Stat(filepath.Join(root, file)); !os.IsNotExist(err) {
+			t.Fatalf("%s exists before it is opened: %v", id, err)
 		}
 		opened, err := workspace.OpenRootModule(id)
 		if err != nil {
@@ -207,8 +159,8 @@ func TestBothRootModulesStandInTheTreeAndAreCreatedOnOpen(t *testing.T) {
 		if opened.Path != file || opened.Language != "bsl" || opened.Content == "" {
 			t.Fatalf("%s opened as %+v", id, opened)
 		}
-		if state(id) != "создан" {
-			t.Fatalf("%s after creation = %q", id, state(id))
+		if _, err := os.Stat(filepath.Join(root, file)); err != nil {
+			t.Fatalf("%s not made by opening: %v", id, err)
 		}
 		// Opening again returns what is there rather than the stub again: the
 		// second open must not overwrite what was written in between.
@@ -255,10 +207,13 @@ func TestApplicationModuleIsCompiledIntoTheProjectProgram(t *testing.T) {
 	t.Fatalf("the application module did not reach the program: %+v", modules)
 }
 
-// The three modules of the root stand in the tree and open, created on the
-// first opening. Defects caught: a module missing from the tree, a node the
-// page cannot tell to open as a module of the root (the external connection
-// module did not open from 2.38 to 2.296).
+// The three modules of the root open from the head of its menu, in the
+// prototype's order - application, session, external connection - and are no
+// rows of the tree (inventory of block 00, konfiguraciya.md, snapshot
+// konfiguraciya/15-menyu). Defects caught: a module missing from the menu, in
+// another order or with other words, a command the page cannot tell to open
+// as a module of the root (the external connection module did not open from
+// 2.38 to 2.296), or a module left a row of the tree.
 func TestRootKeepsThreeModules(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
@@ -270,20 +225,22 @@ func TestRootKeepsThreeModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := map[string]Node{}
-	for _, node := range snapshot.Tree.Children {
-		found[node.ID] = node
+	want := []NodeModule{
+		{Command: "Открыть модуль приложения", Path: project.ApplicationModuleFile, Root: "application-module"},
+		{Command: "Открыть модуль сеанса", Path: project.SessionModuleFile, Root: "session-module"},
+		{Command: "Открыть модуль внешнего соединения", Path: project.ExternalConnectionModuleFile, Root: "external-connection-module"},
 	}
-	for id, file := range map[string]string{
-		"session-module":             project.SessionModuleFile,
-		"application-module":         project.ApplicationModuleFile,
-		"external-connection-module": project.ExternalConnectionModuleFile,
-	} {
-		if node := found[id]; node.Path != file || node.Kind != "root-module" {
-			t.Fatalf("module %s is not in the tree as a module of the root in %s: %+v", id, file, node)
+	if !reflect.DeepEqual(snapshot.Tree.Modules, want) {
+		t.Fatalf("the root offers %+v, want %+v", snapshot.Tree.Modules, want)
+	}
+	for _, module := range want {
+		for _, node := range snapshot.Tree.Children {
+			if node.Path == module.Path || node.ID == module.Root {
+				t.Fatalf("module %s is a row of the tree: %+v", module.Root, node)
+			}
 		}
-		if _, err := workspace.OpenRootModule(id); err != nil {
-			t.Fatalf("module %s does not open: %v", id, err)
+		if _, err := workspace.OpenRootModule(module.Root); err != nil {
+			t.Fatalf("module %s does not open: %v", module.Root, err)
 		}
 	}
 }
@@ -310,6 +267,11 @@ func TestOrdinaryApplicationModuleIsNotCarried(t *testing.T) {
 	for _, node := range snapshot.Tree.Children {
 		if node.ID == "ordinary-application-module" || node.Path == file || node.Title == "Модуль обычного приложения" {
 			t.Fatalf("the ordinary application module is in the tree: %+v", node)
+		}
+	}
+	for _, module := range snapshot.Tree.Modules {
+		if module.Root == "ordinary-application-module" || module.Path == file {
+			t.Fatalf("the ordinary application module is offered by the root: %+v", module)
 		}
 	}
 	if _, err := workspace.OpenRootModule("ordinary-application-module"); err == nil {

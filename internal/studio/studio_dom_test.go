@@ -217,7 +217,8 @@ const studioGutterFits = `(async () => {
   studio.step = 'gutter of ' + last + ' lines';
   document.querySelector('#refresh').click();
   await studio.settle();
-  [...document.querySelectorAll('#tree .leaf')].find(item => item.textContent.includes('Модуль сеанса')).click();
+  document.querySelector('#tree summary').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Открыть модуль сеанса').click();
   await studio.settle();
   bslEditor.goTo({line: last, column: 1});
   bslEditor.setBreakpoints([last]);

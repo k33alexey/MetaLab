@@ -11,39 +11,43 @@ import (
 	"github.com/k33alexey/MetaLab/internal/project"
 )
 
-// rootModule is one module of the configuration root: what it is called in the
-// tree, the file it lies in, the address Studio opens it by, what it starts as
-// when it is opened for the first time.
+// rootModule is one module of the configuration root: the command of the
+// root's menu that opens it, the file it lies in, the address Studio opens it
+// by, what it starts as when it is opened for the first time.
 type rootModule struct {
-	id    string
-	title string
-	file  string
-	stub  string
+	id      string
+	command string
+	file    string
+	stub    string
 }
 
-// rootModules are the modules the configuration root owns. The session module
+// rootModules are the modules the configuration root owns, in the order of
+// the commands of its menu: application, session, external connection, at
+// the head of the menu (inventory of block 00, konfiguraciya.md, snapshot
+// konfiguraciya/15-menyu). The session module
 // answers where session parameters get their values; the application module is
 // where the application itself starts and stops; the external connection
 // module is what runs when something outside connects with nobody in front of
 // it. The ordinary application module is not carried (owner, 14.10.2026).
 //
-// Each stub is the predefined routines of that module, empty. A module always
-// stands in the tree whether or not its file exists, so opening one has to
-// produce something to write in rather than an error about a missing file.
+// Each stub is the predefined routines of that module, empty. A module is
+// always offered in the root's menu whether or not its file exists, so opening
+// one has to produce something to write in rather than an error about a
+// missing file.
 var rootModules = []rootModule{
 	{
-		id: "session-module", title: "Модуль сеанса", file: project.SessionModuleFile,
-		stub: "Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)\n\nКонецПроцедуры\n",
-	},
-	{
-		id: "application-module", title: "Модуль приложения", file: project.ApplicationModuleFile,
+		id: "application-module", command: "Открыть модуль приложения", file: project.ApplicationModuleFile,
 		stub: "Процедура ПередНачаломРаботыСистемы(Отказ)\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПередЗавершениемРаботыСистемы(Отказ)\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
 	},
 	{
-		id: "external-connection-module", title: "Модуль внешнего соединения",
+		id: "session-module", command: "Открыть модуль сеанса", file: project.SessionModuleFile,
+		stub: "Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)\n\nКонецПроцедуры\n",
+	},
+	{
+		id: "external-connection-module", command: "Открыть модуль внешнего соединения",
 		file: project.ExternalConnectionModuleFile,
 		stub: "Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
@@ -59,23 +63,16 @@ func rootModuleByID(id string) (rootModule, bool) {
 	return rootModule{}, false
 }
 
-// rootModuleNodesLocked reports the modules of the configuration root. Each
-// node is always present, whether or not its file exists yet: a module of the
-// root belongs to it the way its description does, and a developer looking for
-// "where does the application start" must find it in the tree instead of having
-// to know it can be created.
-func (workspace *Workspace) rootModuleNodesLocked() []Node {
-	nodes := make([]Node, 0, len(rootModules))
+// rootModuleCommands are the commands of the root's menu that open its
+// modules. A module of the root is no row of the tree, as the prototype's is
+// not: it is opened from the root's menu whether or not its file exists, and
+// made the first time it is opened.
+func rootModuleCommands() []NodeModule {
+	commands := make([]NodeModule, 0, len(rootModules))
 	for _, module := range rootModules {
-		node := Node{ID: module.id, Kind: "root-module", Icon: moduleIcon, Title: module.title, Path: module.file}
-		value := "создан"
-		if _, err := os.Stat(filepath.Join(workspace.root, module.file)); os.IsNotExist(err) {
-			value = "не создан"
-		}
-		node.Properties = []Property{{Name: "Файл", Value: module.file}, {Name: "Состояние", Value: value}}
-		nodes = append(nodes, node)
+		commands = append(commands, NodeModule{Command: module.command, Path: module.file, Root: module.id})
 	}
-	return nodes
+	return commands
 }
 
 // rootPictureNodesLocked reports the pictures the configuration root owns.

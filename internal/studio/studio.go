@@ -80,6 +80,21 @@ type Node struct {
 	Properties []Property `json:"properties,omitempty"`
 	Children   []Node     `json:"children,omitempty"`
 	Line       int        `json:"line,omitempty"`
+	// Modules are the modules the object opens from its menu, «Открыть
+	// модуль …», as the prototype's do: a module is no row of the tree.
+	Modules []NodeModule `json:"modules,omitempty"`
+}
+
+// NodeModule is one command of the menu of an object that opens a module of
+// it: its words, the file, and for a module of the root the address it is
+// opened, and made the first time, by. Main is the action of the object
+// itself - bold in its menu and done by a double click, as «Открыть модуль»
+// of a common module is (inventory of block 00, obshchij-modul.md).
+type NodeModule struct {
+	Command string `json:"command"`
+	Path    string `json:"path"`
+	Root    string `json:"root,omitempty"`
+	Main    bool   `json:"main,omitempty"`
 }
 
 // Property is one ordered value displayed in the properties panel.
@@ -164,7 +179,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		ID: "project", Kind: "project", Icon: configurationIcon, Title: configuration.Name, Path: project.ConfigurationFile,
 		Properties: properties,
 	}
-	root.Children = append(root.Children, workspace.rootModuleNodesLocked()...)
+	root.Modules = rootModuleCommands()
 	root.Children = append(root.Children, workspace.rootPictureNodesLocked()...)
 	// A tree listing must stay usable even while some object's metadata
 	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
@@ -726,11 +741,8 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 				return nil, fmt.Errorf("inspect metadata directory %q: %w", kind, err)
 			}
 		}
-		// A common module keeps its BSL in the shared modules directory, so
-		// without this leaf the code would have no place in the tree at all:
-		// unlike a catalog, a common module has nothing else to open.
 		if kind == "common-modules" {
-			workspace.attachCommonModuleSources(&node)
+			workspace.offerCommonModuleSources(&node)
 		}
 		node.Properties = countProperties(node.Path, len(node.Children)+nestedObjects(node.Children))
 		built[kind] = node
@@ -764,12 +776,16 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 	return branches, nil
 }
 
-// attachCommonModuleSources hangs each common module's BSL file under its own
-// node, matching how every other object reaches its module through itself.
-// The reference is read from the description file rather than from the loaded
-// catalogue on purpose: the tree has to stay usable while some unrelated
-// object is mid-edit and the catalogue as a whole does not yet validate.
-func (workspace *Workspace) attachCommonModuleSources(node *Node) {
+// offerCommonModuleSources gives each common module the command that opens
+// its BSL file, «Открыть модуль», its own action: the common module is a row
+// of the tree with nothing beneath it, its text opened by a double click or
+// from its menu, as the prototype's (inventory of block 00,
+// obshchij-modul.md, snapshot obshchij-modul/12-kontekstnoe-menyu; the
+// owner's word of 20.10.2026). The reference is read from the description
+// file rather than from the loaded catalogue on purpose: the tree has to stay
+// usable while some unrelated object is mid-edit and the catalogue as a whole
+// does not yet validate.
+func (workspace *Workspace) offerCommonModuleSources(node *Node) {
 	for index := range node.Children {
 		file, err := workspace.readSource(node.Children[index].Path)
 		if err != nil {
@@ -785,10 +801,7 @@ func (workspace *Workspace) attachCommonModuleSources(node *Node) {
 		if err != nil {
 			continue
 		}
-		node.Children[index].Children = append(node.Children[index].Children, Node{
-			ID: descriptor.Module.String(), Kind: "modules", Icon: moduleIcon, Title: "Модуль", Path: path,
-			Properties: []Property{{Name: "UUID", Value: descriptor.Module.String()}, {Name: "Путь", Value: path}},
-		})
+		node.Children[index].Modules = []NodeModule{{Command: "Открыть модуль", Path: path, Main: true}}
 	}
 }
 
