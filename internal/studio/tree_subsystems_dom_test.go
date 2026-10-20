@@ -192,6 +192,16 @@ const treeFilterWalk = `(async () => {
   steps.beneath = state();
   document.querySelector('#refresh').click(); await studio.settle();
   steps.reread = state();
+  // Every mark taken away, «Установить» drops the filter in force, as
+  // «Отключить» does (configurator-2026-10-20/otbor-09, 10).
+  await open();
+  box('ПродажиИСклад').click(); box('ПродажиИСклад').click();
+  await press('Установить');
+  branch('Справочники').click(); await studio.settle();
+  steps.emptied = state();
+  await open();
+  box('Продажи').click();
+  await press('Установить');
   await open();
   await press('Отключить');
   branch('Справочники').click(); await studio.settle();
@@ -209,7 +219,8 @@ const treeFilterWalk = `(async () => {
 // holds; the nested subsystem, which stands under its parent, left in the
 // tree under its parent when the filter does not take it in; a branch of a kind left with no object still shown under the
 // filter (the owner's decision of 18.10.2026: it is not), or a branch empty
-// of itself hidden without one; «Добавить» is offered under the filter, or
+// of itself hidden without one; «Установить» with every mark taken away
+// leaving the filter in force; «Добавить» is offered under the filter, or
 // not offered again after «Отключить»; the button does not show the filter
 // in force; reading the project again drops the filter.
 func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
@@ -226,8 +237,8 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 		Add                                                                 bool
 	}
 	var steps struct {
-		Before, Sales, Beneath, Reread, Off state
-		Window                              []string
+		Before, Sales, Beneath, Reread, Emptied, Off state
+		Window                                       []string
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -247,7 +258,8 @@ func TestConfigurationTreeFiltersBySubsystems(t *testing.T) {
 		name      string
 		got, want state
 	}{{"before the filter", steps.Before, whole}, {"under Продажи alone", steps.Sales, sales}, {"with the subsystems beneath", steps.Beneath, beneath},
-		{"after reading the project again", steps.Reread, beneath}, {"after «Отключить»", steps.Off, whole}} {
+		{"after reading the project again", steps.Reread, beneath}, {"after «Установить» with nothing marked", steps.Emptied, whole},
+		{"after «Отключить»", steps.Off, whole}} {
 		got, want := check.got, check.want
 		same := func(a, b []string) bool { return (a == nil) == (b == nil) && slices.Equal(a, b) }
 		if !same(got.Catalogs, want.Catalogs) || !same(got.Documents, want.Documents) || !same(got.Subsystems, want.Subsystems) || !same(got.Sales, want.Sales) ||
@@ -293,37 +305,49 @@ const subsystemFilterWindow = `(async () => {
   await click('Продажи', 'parent');
   await click('<Не входящие в подсистемы>', 'parentAndNone');
   await click('Склад', 'alone');
+  await click('Продажи', 'parentOver');
   await click('ПродажиИСклад', 'rootMarked');
   await click('ПродажиИСклад', 'rootOff');
   row('Продажи').querySelector('button').click(); await studio.settle();
   steps.folded = rows();
-  buttons().find(item => item.textContent === 'Отмена').click(); await studio.settle();
+  buttons().find(item => item.textContent === 'Установить').click(); await studio.settle();
+  steps.emptySet = {open: !!dialog(), pressed: document.querySelector('#tree-subsystems').getAttribute('aria-pressed')};
   [...document.querySelectorAll('#tree summary, #tree .leaf')].find(item => item.textContent.trim() === 'Кладовщик').click(); await studio.settle();
   [...document.querySelectorAll('#role-editor button')].find(item => item.textContent === 'Действия').click();
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Снять по подсистемам...').click();
   await studio.settle();
   steps.apply = column();
-  buttons().find(item => item.textContent === 'Отмена').click(); await studio.settle();
+  // Every mark taken away, «Снять» takes no right away and leaves the role
+  // as it was (configurator-2026-10-20/otbor-11, 12).
+  const rights = () => [...document.querySelectorAll('#role-editor input[type=checkbox]')].filter(input => input.checked).length;
+  steps.applyRoot = row('ПродажиИСклад').querySelector('input').checked;
+  row('ПродажиИСклад').querySelector('input').click(); await studio.settle();
+  const before = rights();
+  buttons().find(item => item.textContent === 'Снять').click(); await studio.settle();
+  steps.applyEmpty = {open: !!dialog(), changed: !document.querySelector('#save').disabled, status: document.querySelector('#status').textContent, same: rights() === before};
   return steps;
 })()`
 
 // The window of the filter by subsystems is the prototype's (snapshots
 // obolochka/32, derevo/21, configurator-2026-10-14/rol-snyat-po-podsistemam-
 // okno, derevo/24, 27, 28; help, form_subsystemchoicedlg; the owner's
-// decision of 19.10.2026 on the root). Defects caught: no row of the
+// decision of 19.10.2026 on the root; the clicks shot again on 20.10.2026,
+// configurator-2026-10-20/otbor-01…12). Defects caught: no row of the
 // configuration at the root, or the subsystems not beneath it, the nested one
 // not beneath its parent or the parent not folding; the window opened
 // without a filter with every row marked rather than the root alone and the
 // rows beneath in the third state; a row under a marked one - the root or a
 // parent - shown empty rather than in the third state, or marked by it; a
 // parent left unmarked with a nested one marked shown empty; a click at a
-// row in the third state under a marked one that leaves another mark - the
-// parent's or one elsewhere - beside it; a click at a marked row that does
-// not take its mark away; a click at the root that marks the rows beneath
-// rather than itself alone, or at the root marked that leaves any mark;
-// folding that leaves the nested row shown; the
+// row not marked that leaves the mark above it (the parent's) or beneath it
+// (the nested one's), or takes away a mark of another branch (the row of
+// none); a click at a marked row that does not take its mark away; a click
+// at the root that marks the rows beneath rather than itself alone, or at
+// the root marked that leaves any mark; folding that leaves the nested row
+// shown; «Установить» with nothing marked refused, or setting a filter; the
 // buttons in a row under the tree, or the flags' boxes before their words;
-// «Снять по подсистемам...» closing up the place of «Отключить».
+// «Снять по подсистемам...» closing up the place of «Отключить», or, with
+// every mark taken away, refusing, staying open or taking rights away.
 func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	addTreeSubsystems(t, root)
@@ -333,13 +357,22 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var steps struct {
-		Opened, NestedAlone, NestedOff, Parent, ParentAndNone, Alone, RootMarked, RootOff, Folded []string
-		Buttons                                                                                   []string
-		Beside                                                                                    bool
-		Flags                                                                                     []bool
-		Apply                                                                                     []struct {
+		Opened, NestedAlone, NestedOff, Parent, ParentAndNone, Alone, ParentOver, RootMarked, RootOff, Folded []string
+		EmptySet                                                                                              struct {
+			Open    bool
+			Pressed string
+		}
+		Buttons []string
+		Beside  bool
+		Flags   []bool
+		Apply   []struct {
 			Text string
 			Top  float64
+		}
+		ApplyRoot  bool
+		ApplyEmpty struct {
+			Open, Changed, Same bool
+			Status              string
 		}
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
@@ -357,7 +390,8 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		{"after a click at the nested one marked", steps.NestedOff, tree("-", "-", "-", "-", "shown")},
 		{"with the parent marked", steps.Parent, tree("~", "x", "~", "-", "shown")},
 		{"with the parent and the row of none marked", steps.ParentAndNone, tree("~", "x", "~", "x", "shown")},
-		{"after a click at the nested one under the parent", steps.Alone, tree("~", "~", "x", "-", "shown")},
+		{"after a click at the nested one under the parent", steps.Alone, tree("~", "~", "x", "x", "shown")},
+		{"after a click at the parent over the nested one", steps.ParentOver, tree("~", "x", "~", "x", "shown")},
 		{"after a click at the root in part", steps.RootMarked, tree("x", "~", "~", "~", "shown")},
 		{"after a click at the root marked", steps.RootOff, tree("-", "-", "-", "-", "shown")},
 		{"with the parent folded", steps.Folded, tree("-", "-", "-", "-", "hidden")},
@@ -365,6 +399,9 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 		if !slices.Equal(check.got, check.want) {
 			t.Errorf("%s the window shows %q, want %q", check.name, check.got, check.want)
 		}
+	}
+	if steps.EmptySet.Open || steps.EmptySet.Pressed != "false" {
+		t.Errorf("«Установить» with nothing marked leaves the window open %v, the filter pressed %q; want it closed with no filter", steps.EmptySet.Open, steps.EmptySet.Pressed)
 	}
 	if !slices.Equal(steps.Buttons, []string{"Установить", "Отключить", "Отмена", "Справка"}) || !steps.Beside {
 		t.Errorf("the buttons are %v, beside the tree: %v; want Установить, Отключить, Отмена, Справка to the right", steps.Buttons, steps.Beside)
@@ -378,6 +415,10 @@ func TestTheWindowOfTheFilterBySubsystemsIsThePrototypes(t *testing.T) {
 	if len(apply) != 4 || apply[0].Text != "Снять" || apply[1].Text != "" || apply[2].Text != "Отмена" || apply[3].Text != "Справка" ||
 		apply[2].Top-apply[0].Top < 1.5*(apply[3].Top-apply[2].Top) {
 		t.Errorf("«Снять по подсистемам...» shows its buttons as %+v, want Снять, an empty place, Отмена, Справка", apply)
+	}
+	if empty := steps.ApplyEmpty; !steps.ApplyRoot || empty.Open || empty.Changed || !empty.Same {
+		t.Errorf("«Снять по подсистемам...» opened with the root marked %v; with nothing marked it left the window open %v, the role changed %v (%q), its rights as they were %v; want closed, unchanged",
+			steps.ApplyRoot, empty.Open, empty.Changed, empty.Status, empty.Same)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)
