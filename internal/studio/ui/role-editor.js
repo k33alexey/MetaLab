@@ -6,6 +6,12 @@
 function restrictsByFields(schema, right) {
   return !!(schema.restrictionRules || []).find(rule => rule.right === right)?.byFields;
 }
+/* The box over many: marked when every one is, cleared when none is, the
+   third state otherwise - 'all', 'none', 'some'. */
+function markOfMany(values) {
+  const set = values.filter(Boolean).length;
+  return !values.length || !set ? 'none' : set === values.length ? 'all' : 'some';
+}
 function createRoleModel(source) {
   // Only the role is copied: the schema is read and never changed, and the
   // window «Все роли» builds a model for every role over one schema.
@@ -285,6 +291,16 @@ function createRoleModel(source) {
     hasObject: objectRight,
     hasField: partRight,
     setAll(id, enabled) { for(const operation of definitions.get(id)?.rights || [])setObject(id, operation, enabled); },
+    // A right over many - the parts of a folder, the objects of a kind
+    // (members, roleGroupMembers): of those that have it, marked at all,
+    // at none or at some; setting it sets it at every one of them.
+    groupMark(members, operation) {
+      return markOfMany(members.filter(member => roleMemberRights(member).includes(operation))
+        .map(({object, part}) => part ? partRight(object.id, part.key, operation) : objectRight(object.id, operation)));
+    },
+    setGroup(members, operation, enabled) {
+      for (const {object, part} of members) if (part) setField(object.id, part.key, operation, enabled); else setObject(object.id, operation, enabled);
+    },
     setAllOfPart(id, key, enabled) { for(const operation of fields.get(id)?.get(key)?.operations || [])setField(id, key, operation, enabled); },
     // «Установить все права», «Снять все права» (help, «Редактирование
     // роли»): every box of the role - the rights of the configuration and of
@@ -306,6 +322,33 @@ function createRoleModel(source) {
   };
 }
 
+/* The rights of one member of a group: of a part, or of an object. */
+function roleMemberRights({object, part}) { return part ? part.operations : object.rights; }
+
+/* What a folder or a branch of the tree of rights holds, as the prototype
+   gives its rights over (pass of 20.10.2026, block-00/rol, «Права папки и
+   ветви вида»): the parts of an object in a folder of parts, the objects
+   inside an object of one kind - the recalculations of a register -, the
+   objects of a kind in its branch; «Общие» holds nothing rights are given
+   over. Only what lies right in it: the attributes of a table part are the
+   table part's. group is the choice the tree makes - {object, partGroup},
+   {object, kind}, {kind} or {common}. */
+function roleGroupMembers(schema, group) {
+  if (group.common) return [];
+  if (group.partGroup) {
+    const object = schema.objects.find(item => item.id === group.object);
+    return (object?.fields || []).filter(part => !part.parent && part.group === group.partGroup).map(part => ({object, part}));
+  }
+  const owner = group.object || undefined;
+  return schema.objects.filter(item => !item.root && item.kind === group.kind && item.owner === owner).map(object => ({object}));
+}
+
+/* The rights a group shows: every right one of its members has, in the
+   order of the list of rights. */
+function roleGroupRights(schema, members) {
+  return schema.rights.map(right => right.key).filter(key => members.some(member => roleMemberRights(member).includes(key)));
+}
+
 /* The caption of a folder of parts - Реквизиты, Табличные части, Команды. */
 function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item => item.key === group)?.title || group; }
 
@@ -321,14 +364,15 @@ function rolePartGroupTitle(schema, group) { return schema.partGroups?.find(item
    recalculation under its register, a table under its source. Every row is
    drawn as the project tree's (treeNode), with the icon the project tree
    gives the same thing: the kind's, the folder's of parts. A choice is
-   {object} or {object, part};
+   {object} or {object, part}; with groups, a folder or a branch is chosen
+   too, as {group} (roleGroupMembers), as the window of a role chooses them;
    selection() answers the one made, choose(next) makes one. expanded keeps
    the keys of the nodes left open, so a redraw keeps them open. subsystems()
    answers the filter by subsystems the tree is under, or null: the
    configuration itself stays, a subsystem not passing stays only on the way
    to one that does. source is the window's: the schema of rights, the
    captions, icons and places of the kinds, the branch «Общие». */
-function createRoleTree({source, title, expanded, selection, choose, subsystems = () => null}) {
+function createRoleTree({source, title, expanded, selection, choose, subsystems = () => null, groups = false}) {
   // What the tree is drawn from comes with the source of either window.
   const {schema, kindTitles, kindIcons, kindPlaces, common: commonBranch} = source;
   const element = node('div', undefined, 'role-tree');
@@ -350,6 +394,14 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
   const branchKey = kind => `branch ${kind}`;
   const foldable = (key, icon, caption, children, open) => treeNode({icon, caption, children, open: open || expanded.has(key),
     toggled: opened => { if (opened) expanded.add(key); else expanded.delete(key); }}).element;
+  // The caption of a folder or a branch: with groups, the button that
+  // chooses it, known by its key; otherwise it only names it.
+  const groupCaption = (text, group) => {
+    if (!groups) return text;
+    const button = treeButton(text, '', 'role-tree-item role-tree-group', selection()?.group?.key === group.key, {group: {...group, caption: text}});
+    button.dataset.group = group.key;
+    return button;
+  };
   const matches = (item, needle) => !needle || `${item.name} ${title(item)}`.toLocaleLowerCase().includes(needle);
   // The nodes of one object: its parts in folders, then the objects inside it.
   // Null when neither the object nor anything in it matches the filter.
@@ -374,18 +426,21 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
     for (const group of schema.partGroups || []) {
       const list = (parts.get('') || []).filter(part => part.group === group.key)
         .filter(part => own || matches(part, needle) || (parts.get(part.key) || []).some(child => matches(child, needle)));
-      if (list.length) folders.push(foldable(`${item.id} ${group.key}`, partGroupIcon(group.key), partGroupTitle(group.key), list.map(part => partNode(part, group.key)), !!needle));
+      const key = `${item.id} ${group.key}`;
+      if (list.length) folders.push(foldable(key, partGroupIcon(group.key), groupCaption(partGroupTitle(group.key), {key, object: item.id, partGroup: group.key}), list.map(part => partNode(part, group.key)), !!needle));
     }
     for (const [kind, list] of inside.get(item.id) || []) {
       // What lies inside an object that matches is shown whole, as its parts are.
       const nodes = list.map(child => objectNode(child, inside, own ? '' : needle, shown)).filter(Boolean);
-      if (nodes.length) folders.push(foldable(`${item.id} ${kind}`, kindIcons?.[kind], kindTitle(kind), nodes, !!needle || !passes));
+      const key = `${item.id} ${kind}`;
+      if (nodes.length) folders.push(foldable(key, kindIcons?.[kind], groupCaption(kindTitle(kind), {key, object: item.id, kind}), nodes, !!needle || !passes));
     }
     if (!own && !folders.length) return null;
     const caption = treeButton(title(item) || item.name, item.name, 'role-tree-item', selected?.object?.id === item.id && !selected.part, {object: item});
     caption.dataset.object = item.id;
     return foldable(item.id, kindIcons?.[item.kind], caption, folders, (!!needle && !own) || !passes);
   }
+  const branch = (kind, children) => foldable(branchKey(kind), kindIcons?.[kind], groupCaption(kindTitle(kind), {key: branchKey(kind), kind, branch: true}), children, !!filter.trim());
   function render(next = filter) {
     filter = next;
     const needle = filter.toLocaleLowerCase().trim(), shown = subsystemFilterPasses(schema, subsystems());
@@ -413,16 +468,16 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
       const place = kindPlaces?.[kind] || '';
       if (place && place !== commonBranch?.place) {
         if (!within.has(place)) within.set(place, []);
-        within.get(place).push(foldable(branchKey(kind), kindIcons?.[kind], kindTitle(kind), entries, !!needle));
+        within.get(place).push(branch(kind, entries));
       }
     }
     for (const [kind, entries] of [...groups, ...[...within.keys()].filter(kind => !groups.has(kind)).map(kind => [kind, []])]) {
       const place = kindPlaces?.[kind] || '';
       if (place && place !== commonBranch?.place) continue;
-      const branch = foldable(branchKey(kind), kindIcons?.[kind], kindTitle(kind), [...(within.get(kind) || []), ...entries], !!needle);
-      (place && place === commonBranch?.place ? common : top).push(branch);
+      (place && place === commonBranch?.place ? common : top).push(branch(kind, [...(within.get(kind) || []), ...entries]));
     }
-    if (common.length) top.unshift(foldable(branchKey(commonBranch.place), commonBranch.icon, commonBranch.title, common, !!needle));
+    const commonKey = branchKey(commonBranch?.place);
+    if (common.length) top.unshift(foldable(commonKey, commonBranch.icon, groupCaption(commonBranch.title, {key: commonKey, common: true}), common, !!needle));
     if (root && (top.length || matches(root, needle))) {
       const button = treeButton(title(root) || root.name, root.name, 'role-tree-item role-tree-root', selection()?.object?.id === root.id, {object: root});
       button.dataset.object = root.id;
@@ -926,25 +981,43 @@ function createRoleEditor(host, onChange) {
     description.replaceChildren(node('span','Описание:','role-description-caption'));
     if(known)description.append(node('span',`${known.description}\n(${known.name})`,'role-description-text'));
   }
+  /* What the node chosen gives rights over, as the prototype's window
+     shows it (pass of 20.10.2026, block-00/rol): an object or a part over
+     itself alone; a folder or a branch over what it holds, a right marked at
+     every one, cleared at none, grey at some, the box of a folder setting or
+     clearing the right at every part, the grey one setting it. What a click
+     on the box of a branch of a kind does was not seen - it would rewrite the
+     rights of hundreds of objects - so the branch only shows them. Only an
+     object takes restrictions of access to data. */
+  function chosenNode(){
+    const {object,part,group}=selected;
+    if(group){
+      const members=roleGroupMembers(source.schema,group),owner=group.object&&source.schema.objects.find(item=>item.id===group.object);
+      return {members,rights:roleGroupRights(source.schema,members),fixed:!!group.branch,heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
+    }
+    const member={object,part},rights=roleMemberRights(member);
+    return {members:[member],rights,restricted:part?null:object,
+      heading:part?[node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${rolePartGroupTitle(source.schema,part.group)}`,'muted')]:[node('h3',title(object)||object.name)],
+      empty:rights.length?null:part?'Своих прав у этого узла нет: права даются на то, что в нём.':'Своих прав у объекта нет: права даются на его части.'};
+  }
   function renderPanel() {
     panel.replaceChildren();
     if(!selected){panel.append(node('p','Выберите объект слева и отметьте разрешённые действия.','muted'));describe(null);return;}
-    const object=selected.object,part=selected.part;
-    const bulk=(set)=>{const all=node('div',undefined,'role-bulk');for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{set(enabled);changed();renderPanel();});all.append(button);}return all;};
+    const {members,rights,fixed,heading,restricted=null,empty}=chosenNode();
+    const bulk=node('div',undefined,'role-bulk');
+    for(const [text,enabled] of [['Разрешить всё',true],['Снять все права',false]]){const button=node('button',text);button.type='button';button.addEventListener('click',()=>{for(const right of rights)model.setGroup(members,right,enabled);changed();renderPanel();});bulk.append(button);}
     // The current right stays current on the next node that has it, as the
     // prototype's does; elsewhere the first right is.
-    const rights=part?part.operations:object.rights;
     if(!rights.includes(restriction.right)){restriction.right=rights[0]||null;restriction.row=-1;}
-    const has=right=>part?model.hasField(object.id,part.key,right):model.hasObject(object.id,right);
-    const mark=(right,enabled)=>{if(part)model.setField(object.id,part.key,right,enabled);else model.setObject(object.id,right,enabled);changed();renderPanel();panel.querySelector('.check-list')?.focus();};
+    const mark=(right,enabled)=>{model.setGroup(members,right,enabled);changed();renderPanel();panel.querySelector('.check-list')?.focus();};
     const choose=right=>{restriction.right=right;restriction.row=-1;renderPanel();panel.querySelector('.check-list')?.focus();};
-    if(part)panel.append(node('h3',title(part)||part.name),node('p',`${title(object)||object.name} · ${rolePartGroupTitle(source.schema,part.group)}`,'muted'));
-    else panel.append(node('h3',title(object)||object.name));
-    if(rights.length){
-      panel.append(checkList(rights.map(right=>({key:right,caption:caption(right),checked:has(right)})),restriction.right,mark,choose));
-      panel.append(bulk(enabled=>part?model.setAllOfPart(object.id,part.key,enabled):model.setAll(object.id,enabled)));
-    } else panel.append(node('p',part?'Своих прав у этого узла нет: права даются на то, что в нём.':'Своих прав у объекта нет: права даются на его части.','muted'));
-    panel.append(roleRestrictionSection({model,object:part?null:object,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
+    panel.append(...heading);
+    if(empty)panel.append(node('p',empty,'muted'));
+    else{
+      panel.append(checkList(rights.map(right=>{const state=model.groupMark(members,right);return{key:right,caption:caption(right),checked:state==='all',mixed:state==='some',disabled:fixed};}),restriction.right,mark,choose));
+      if(rights.length&&!fixed)panel.append(bulk);
+    }
+    panel.append(roleRestrictionSection({model,object:restricted,caption,title,state:restriction,changed:()=>{changed();renderPanel();}}));
     describe(restriction.right);
   }
   // The templates of the role's restrictions (help, «Редактирование роли»,
@@ -985,7 +1058,7 @@ function createRoleEditor(host, onChange) {
   return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
     open(value, preserveSelection=false) {
       clearTitleField();
-      const previous=preserveSelection?selected:null;source=structuredClone(value);model=createRoleModel(source);selected=preserveSelection?null:openRoleTree(source.schema,expanded);if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
+      const previous=preserveSelection?selected:null;source=structuredClone(value);model=createRoleModel(source);selected=preserveSelection?null:openRoleTree(source.schema,expanded);if(previous?.group)selected={group:previous.group};else if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
       const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;name.maxLength=128;name.addEventListener('input',()=>{model.setName(name.value);changed();});label.append(name);identity.append(label);
       const titleLabel=node('label','Заголовок'),titleField=createLocalizedField(source,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed,titleTextOptions);
       titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
@@ -1008,7 +1081,7 @@ function createRoleEditor(host, onChange) {
       // templates of restrictions.
       viewTabs=tabStrip([['rights','Права'],['templates','Шаблоны ограничений']],view,showView);
       host.append(viewTabs);
-      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({source,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems});search.addEventListener('input',()=>tree.render(search.value));
+      const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({source,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems,groups:true});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));

@@ -145,8 +145,10 @@ function checkboxField(label, checked, apply, className = 'catalog-check', disab
 /* checkList is a list of boxes with a current row, as the prototype's list
    of rights: a click on a caption makes its row current, a click on a box
    marks it; the arrows move the current row and the space marks it. items
-   are {key, caption, checked}; mark(key, checked) marks one, choose(key)
-   makes one current. */
+   are {key, caption, checked, mixed, disabled}: a mixed box stands for many
+   marked in part, as the prototype's grey one, and the space or a click
+   marks it; a disabled one is not marked at all. mark(key, checked) marks
+   one, choose(key) makes one current. */
 function checkList(items, current, mark, choose) {
   const list = node('div', undefined, 'check-list');
   list.tabIndex = 0;
@@ -158,6 +160,8 @@ function checkList(items, current, mark, choose) {
     row.dataset.key = item.key;
     input.type = 'checkbox';
     input.checked = item.checked;
+    input.indeterminate = !!item.mixed;
+    input.disabled = !!item.disabled;
     input.tabIndex = -1;
     input.setAttribute('aria-label', item.caption);
     input.addEventListener('change', () => mark(item.key, input.checked));
@@ -171,7 +175,7 @@ function checkList(items, current, mark, choose) {
       event.preventDefault();
       const next = items[Math.min(items.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))];
       if (next) choose(next.key);
-    } else if (event.key === ' ' && at >= 0) {
+    } else if (event.key === ' ' && at >= 0 && !items[at].disabled) {
       event.preventDefault();
       mark(current, !items[at].checked);
     }

@@ -30,19 +30,9 @@ function createRoleOverviewModel(source) {
   function lines(selection) {
     const object = selection?.object;
     if (!object) return [];
-    if (selection.part) {
-      const part = selection.part;
-      return part.operations.map(right => ({key: right,
-        get: model => model.hasField(object.id, part.key, right), set: (model, enabled) => model.setField(object.id, part.key, right, enabled)}));
-    }
-    return object.rights.map(right => ({key: right,
-      get: model => model.hasObject(object.id, right), set: (model, enabled) => model.setObject(object.id, right, enabled)}));
-  }
-  // Флажок над многими: стоит, когда стоят все, снят, когда не стоит ни один,
-  // иначе — третье состояние.
-  function state(values) {
-    const set = values.filter(Boolean).length;
-    return !values.length || !set ? 'none' : set === values.length ? 'all' : 'some';
+    const members = [{object, part: selection.part}];
+    return roleMemberRights(members[0]).map(right => ({key: right,
+      get: model => model.groupMark(members, right) === 'all', set: (model, enabled) => model.setGroup(members, right, enabled)}));
   }
   const at = index => entries[index]?.model;
   const roleOf = entry => entry.model.value();
@@ -56,10 +46,10 @@ function createRoleOverviewModel(source) {
     has(index, selection, key) { const line = lines(selection).find(item => item.key === key); return !!line && line.get(at(index)); },
     set(index, selection, key, enabled) { const line = lines(selection).find(item => item.key === key); if (line && at(index)) line.set(at(index), enabled); },
     // Первая строка: все права роли на выбранное.
-    roleState(index, selection) { return state(lines(selection).map(line => line.get(at(index)))); },
+    roleState(index, selection) { return markOfMany(lines(selection).map(line => line.get(at(index)))); },
     setRole(index, selection, enabled) { for (const line of lines(selection)) line.set(at(index), enabled); },
     // Первая колонка: право во всех ролях.
-    rightState(selection, key) { const line = lines(selection).find(item => item.key === key); return line ? state(entries.map(entry => line.get(entry.model))) : 'none'; },
+    rightState(selection, key) { const line = lines(selection).find(item => item.key === key); return line ? markOfMany(entries.map(entry => line.get(entry.model))) : 'none'; },
     setRight(selection, key, enabled) { const line = lines(selection).find(item => item.key === key); if (line) for (const entry of entries) line.set(entry.model, enabled); },
     // Что сохранять: только изменённые роли, каждая — с ревизией, при
     // которой она прочитана.

@@ -398,3 +398,28 @@ test('the tree of the configuration shows the parent of a marked subsystem as th
   assert.deepEqual(rows(['Казначейство']),['Казначейство']);
   assert.deepEqual(rows(['']),[]);
 });
+// Права над многими - папка частей, объекты вида (опись rol.md, «Права
+// папки и ветви вида»; ожидание выписано здесь по прохождению 20.10.2026).
+// Дефекты: в папку попадали реквизиты табличной части; член без права
+// считался неотмеченным и делал отметку серой; отметка папки ставила право
+// одной части или трогала части вне папки; права узла не в порядке перечня.
+test('a folder and a kind give their rights over what lies right in them, marked at all, at none or at some',()=>{
+  const source=fixture(),model=create(source),schema=source.schema;
+  const attributes=context.roleGroupMembers(schema,{object:'goods',partGroup:'attributes'});
+  assert.deepEqual(attributes.map(member=>member.part.key),['name']);
+  const kind=context.roleGroupMembers({...schema,objects:schema.objects.map(item=>({...item,kind:item.root?'':'catalogs'}))},{kind:'catalogs'});
+  assert.deepEqual(kind.map(member=>member.object.id),['goods','other']);
+  assert.deepEqual([...context.roleGroupRights(schema,kind)],['read','insert','update','delete','view','edit']);
+  model.setObject('goods','insert',true);
+  assert.equal(model.groupMark(kind,'insert'),'all');
+  model.setObject('goods','read',true);
+  assert.equal(model.groupMark(kind,'read'),'some');
+  model.setGroup(kind,'read',true);
+  assert.equal(model.groupMark(kind,'read'),'all');assert.equal(model.hasObject('other','read'),true);
+  model.setGroup(kind,'read',false);
+  assert.equal(model.groupMark(kind,'read'),'none');assert.equal(model.hasObject('goods','insert'),true);
+  const parts=context.roleGroupMembers(schema,{object:'goods',partGroup:'table-parts'});
+  model.setGroup(parts,'view',true);
+  assert.equal(model.hasField('goods','part','view'),true);assert.equal(model.hasField('goods','column','view'),false);assert.equal(model.hasField('goods','name','view'),false);
+  assert.equal(context.roleGroupMembers(schema,{common:true}).length,0);
+});
