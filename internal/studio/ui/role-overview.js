@@ -426,7 +426,7 @@ function createRoleOverview(host, openRole, onChange) {
     const index = roleIndex();
     if (index < 0) {
       const block = node('section', undefined, 'role-restrictions');
-      block.append(node('h4', 'Ограничение доступа к данным'), node('p', 'Выберите роль — щелчком по её столбцу, — чтобы увидеть и изменить её ограничения.', 'muted'));
+      block.append(node('h4', roleRestrictionsCaption), node('p', 'Выберите роль — щелчком по её столбцу, — чтобы увидеть и изменить её ограничения.', 'muted'));
       return block;
     }
     const role = model.roles()[index];
@@ -921,7 +921,9 @@ function createRoleOverview(host, openRole, onChange) {
       search.value = filter;
       tree = createRoleTree({source, title, expanded, selection: () => selected, choose: next => { selected = next; renderPanel(); }});
       search.addEventListener('input', () => { filter = search.value; tree.render(filter); });
-      sidebar.append(search, tree.element);
+      // Над деревом и над таблицей прав — подписи прототипа (снимок
+      // configurator-2026-10-20/prava/19).
+      sidebar.append(node('div', 'Объекты:', 'overview-caption'), search, tree.element);
       panel = node('section', undefined, 'overview-panel');
       body.append(sidebar, panel);
       body.className = 'overview-body';
@@ -942,7 +944,7 @@ function createRoleOverview(host, openRole, onChange) {
     if (!selected) { panel.append(node('p', 'Выберите объект слева: его права во всех ролях можно отметить здесь сразу.', 'muted')); return; }
     const item = selected.object;
     panel.append(node('h3', selected.part ? `${model.title(item) || item.name} · ${model.title(selected.part) || selected.part.name}` : model.title(item) || item.name));
-    panel.append(renderGrid());
+    panel.append(node('div', 'Права:', 'overview-caption'), renderGrid());
     if (selected.object && !selected.part && selected.object.restrictedRights?.length) panel.append(renderRestrictions(selected.object));
   }
   // Выбранное в дереве и выбранная роль переживают сохранение: окно

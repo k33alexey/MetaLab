@@ -46,7 +46,7 @@ const roleRightDescriptionWalk = `(async () => {
 // (configurator 8.3.27, pass of 20.10.2026, block-00/rol): one current
 // right, the description of which stands under the tree with its name in
 // brackets, and whose restrictions are listed under the heading «Ограничения
-// доступа к данным»; the current right stays on the next node that has it,
+// доступа к данным:»; the current right stays on the next node that has it,
 // elsewhere the first is current; the arrows move it, the space marks it.
 // Defects caught: the captions made from the name («Режим основного окна
 // обычный»); no description, or one of another right than the current; the
@@ -77,7 +77,7 @@ func TestTheListOfRightsHasACurrentRightDescribedUnderTheTree(t *testing.T) {
 		opened.Description != "Описание:Право выполнять административные функции\n(Администрирование)" {
 		t.Errorf("as it opens: the current right %q, described %q, among %v", opened.Current, opened.Description, opened.Rights)
 	}
-	if opened.Heading != "Ограничения доступа к данным" || opened.Restrictions != 0 || opened.CanAdd {
+	if opened.Heading != "Ограничения доступа к данным:" || opened.Restrictions != 0 || opened.CanAdd {
 		t.Errorf("the configuration: the restrictions headed %q, %d listed, adding offered %v; want the heading, none, none",
 			opened.Heading, opened.Restrictions, opened.CanAdd)
 	}

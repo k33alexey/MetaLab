@@ -912,10 +912,15 @@ function restrictionWindowContent({fields, editor, change, group}) {
   return content;
 }
 
+/* The caption of the restrictions of access to data in both windows of
+   rights, the role's and «Все роли», as the prototype's (block-00/rol;
+   snapshot configurator-2026-10-20/prava/19). */
+const roleRestrictionsCaption='Ограничения доступа к данным:';
+
 /* The restrictions of access to data a role puts on the right current in
    the list of rights, as the prototype lists them under it (help,
-   «Ограничение доступа к данным»; block-00/rol): the field or «Прочие поля»,
-   and the condition. A right restricted by fields takes one per set of
+   «Ограничение доступа к данным»; block-00/rol): the fields - «Поля» - or
+   «Прочие поля», and the condition. A right restricted by fields takes one per set of
    fields, the others one each; a right no restriction may be put on, or a
    part, shows the list empty with its commands unavailable. model is the
    role's (createRoleModel); object is null for a part; state keeps the
@@ -923,13 +928,13 @@ function restrictionWindowContent({fields, editor, change, group}) {
    after the role changed, to redraw. */
 function roleRestrictionSection({model, object, caption, title, state, changed}) {
   const section=node('section',undefined,'role-restrictions');
-  section.append(node('h4','Ограничения доступа к данным'));
+  section.append(node('h4',roleRestrictionsCaption));
   const right=object?.restrictedRights.includes(state.right)?state.right:null,list=right?model.restrictions(object.id,right):[];
   if(state.row>=list.length)state.row=-1;
   const others=list.some(item=>!item.fields?.length);
   const canAdd=()=>!!right&&(model.restrictedByFields(right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length);
   const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
-  section.append(roleListTable(['Поле','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
+  section.append(roleListTable(['Поля','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
     ['add','Добавить',()=>open(list.length),canAdd],
     ['edit','Изменить',()=>{if(state.row>=0)open(state.row);},()=>state.row>=0],
     ['remove','Удалить',()=>{if(state.row<0)return;model.removeRestriction(object.id,right,state.row);state.row=-1;changed();},()=>state.row>=0],

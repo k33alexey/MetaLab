@@ -10,6 +10,7 @@
 .overview-list>input{width:min(320px,100%);padding:6px 8px;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
 .overview-panel{overflow:auto;padding:12px 18px}
 .overview-panel h3{margin:0 0 14px;font-size:15px}
+.overview-caption{margin:0 0 6px;font-size:13px}
 .overview-panel p{font-size:12px;line-height:1.5;white-space:normal}
 .overview-block{margin-bottom:22px;overflow-x:auto}
 .overview-block h4{margin:0 0 8px;font-size:13px;color:#aeb1b8;text-transform:uppercase;letter-spacing:.04em}
