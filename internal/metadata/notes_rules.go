@@ -525,7 +525,7 @@ func (catalog *Catalog) noteObjectName(kind Kind, id uuid.UUID) string {
 // where the configurator offers no such right: on the configuration, on an
 // object of a kind or on a part of a sort (rightsTargetOf). An object of a
 // kind no export gives rights on is noted whole by use-without-sample, and
-// not right by right.
+// not right by right, on itself or on its parts.
 func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) {
 	for _, role := range catalog.Roles {
 		where := "roles " + role.Name + " rights"
@@ -540,13 +540,14 @@ func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) 
 				object = catalog.noteObjectName(kind, permission.Object)
 			}
 			// An object of a kind whose rights no export proves is noted whole
-			// (use-without-sample) - an enumeration, which the window shows
-			// for its commands and gives no right of its own.
-			if target.rights != nil && (!ok || usesOf(kind).rights != unproven) {
-				for _, right := range slices.Concat(permission.Operations, permission.Denied) {
-					if !slices.Contains(target.rights, right) {
-						note(where, object+" "+string(right))
-					}
+			// (use-without-sample), its parts too - an enumeration, which the
+			// window shows for its commands and gives no right of its own.
+			if ok && usesOf(kind).rights == unproven {
+				continue
+			}
+			for _, right := range slices.Concat(permission.Operations, permission.Denied) {
+				if !slices.Contains(target.rights, right) {
+					note(where, object+" "+string(right))
 				}
 			}
 			for _, field := range permission.Fields {

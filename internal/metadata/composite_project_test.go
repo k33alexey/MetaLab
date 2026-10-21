@@ -89,6 +89,7 @@ var (
 	cmpEnumValue         = compositeID(62)
 	cmpUsersName         = compositeID(63)
 	cmpExternalFunction  = compositeID(65)
+	cmpEnumCommand       = compositeID(66)
 )
 
 // compositeProject writes the composite project and returns its root.
@@ -109,7 +110,9 @@ func compositeProject(t *testing.T) string {
 
 	// Values: an enumeration, a defined type, a chart of kinds of property.
 	writeMetadata(t, root, EnumerationKind, cmpEnumeration, head(cmpEnumeration, "ВидыТоваров")+
-		"values:\n  - {id: "+cmpEnumValue+", name: Товар, title: {ru: Товар}}\n")
+		"values:\n  - {id: "+cmpEnumValue+", name: Товар, title: {ru: Товар}}\n"+
+		"commands:\n  - {id: "+cmpEnumCommand+", name: Подбор, title: {ru: Подбор}}\n")
+	writeCommandModule(t, root, EnumerationKind, "ВидыТоваров", "Подбор")
 	writeMetadata(t, root, DefinedTypeKind, cmpDefinedType, head(cmpDefinedType, "ДенежнаяСумма")+
 		"types: [{kind: number, precision: 15, scale: 2}]\n")
 	writeMetadata(t, root, ChartOfCharacteristicTypesKind, cmpCharacteristics, head(cmpCharacteristics, "ВидыСубконто")+

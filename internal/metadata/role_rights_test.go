@@ -358,7 +358,8 @@ func TestLoaderReadsTheGridBesideTheRole(t *testing.T) {
 // module refused without a reason, or accepted silently; a right outside the
 // exports' lists accepted silently, or one inside them noted; a right on a
 // part of a cube or a dimension table, which no export gives, refused as a
-// part of nothing or accepted silently.
+// part of nothing or accepted silently; a right on a command of an
+// enumeration noted twice, as the object and as the right on its part.
 func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 	t.Parallel()
 	root := compositeProject(t)
@@ -402,6 +403,9 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"a role":          grant(cmpRole, PermissionView),
 		"a defined type":  grant(cmpDefinedType, PermissionView),
 		"an enumeration":  grant(cmpEnumeration, PermissionView),
+		// The window gives the viewing of an enumeration's command, no export
+		// writes it; the object is noted, not the right on its part as well.
+		"a command of an enumeration": part(grant(cmpEnumeration), cmpEnumCommand, PermissionView),
 		// Offered by the window of a role, written by no export (block-00/rol).
 		"a function of a source": grant(cmpExternalFunction, PermissionUse, PermissionView),
 	}
