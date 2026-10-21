@@ -286,7 +286,14 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 // they stay unproven and every one a role gives is noted
 // (NoteRightWithoutSample).
 var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
-	ExternalCubeKind: {DimensionsPart: {PermissionView}, ResourcesPart: {PermissionView}},
+	// The commands of a cube are viewed too (pass of 21.10.2026, prava/63).
+	ExternalCubeKind: {DimensionsPart: {PermissionView}, ResourcesPart: {PermissionView}, CommandsPart: {PermissionView}},
+	// A table of a dimension: its fields are viewed and edited, as those of
+	// a table of a source, its commands viewed; a filter criterion's commands
+	// are viewed (pass of 21.10.2026, prava/56-62). No export gives rights on
+	// these parts either, so every one a role gives is noted.
+	ExternalDimensionTableKind: {FieldsPart: {PermissionView, PermissionEdit}, CommandsPart: {PermissionView}},
+	FilterCriterionKind:        {CommandsPart: {PermissionView}},
 	// The commands of an enumeration are viewed (pass of 21.10.2026,
 	// prava/44); no export gives rights on them, so every one a role gives
 	// is noted.

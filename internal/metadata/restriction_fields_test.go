@@ -95,24 +95,31 @@ func TestNoFieldIsOfferedWhereNothingIsRestricted(t *testing.T) {
 	}
 }
 
-// TestThePartsOfAKindNoExportGivesRightsOnAreOfferedNone catches the window
-// of a role offering rights on the parts of a kind whose parts no export
-// gives rights on (Rights.xml of every role, 13.10.2026): the commands of a
-// filter criterion are carried with a note and not offered. Where the pass in
-// the configurator saw the window offer them - the commands of an
-// enumeration, the dimensions of a cube - it offers what it saw.
-func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedNone(t *testing.T) {
+// TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows
+// catches the window of a role offering on the parts of a kind whose parts
+// no export gives rights on (Rights.xml of every role, 13.10.2026) other
+// rights than the window of the prototype: the commands of an enumeration,
+// a filter criterion, a cube and a table of a dimension are viewed, the
+// dimensions and resources of a cube viewed, the fields of a table of a
+// dimension viewed and edited (passes of 20 and 21.10.2026, prava/16-18,
+// 44, 56-63). Where none was offered (2.434) the window gave the folder no
+// right at all.
+func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows(t *testing.T) {
 	t.Parallel()
+	view, edit := PermissionView, PermissionEdit
 	for _, item := range []struct {
 		kind  Kind
 		group PartGroup
 		want  []PermissionOperation
 	}{
-		{FilterCriterionKind, CommandsPart, nil},
-		{ExternalDimensionTableKind, FieldsPart, nil},
-		{EnumerationKind, CommandsPart, []PermissionOperation{PermissionView}},
-		{ExternalCubeKind, DimensionsPart, []PermissionOperation{PermissionView}},
-		{CatalogKind, CommandsPart, []PermissionOperation{PermissionView}},
+		{FilterCriterionKind, CommandsPart, []PermissionOperation{view}},
+		{ExternalDimensionTableKind, FieldsPart, []PermissionOperation{view, edit}},
+		{ExternalDimensionTableKind, CommandsPart, []PermissionOperation{view}},
+		{ExternalCubeKind, CommandsPart, []PermissionOperation{view}},
+		{EnumerationKind, CommandsPart, []PermissionOperation{view}},
+		{ExternalCubeKind, DimensionsPart, []PermissionOperation{view}},
+		{ExternalCubeKind, ResourcesPart, []PermissionOperation{view}},
+		{CatalogKind, CommandsPart, []PermissionOperation{view}},
 	} {
 		if got := offeredPartRights(item.kind, item.group); !slices.Equal(got, item.want) {
 			t.Errorf("%s offers %v on its %s, want %v", item.kind, got, item.group, item.want)
