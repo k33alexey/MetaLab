@@ -700,12 +700,12 @@ function tabStrip(tabs, chosen, choose) {
 // iconButton is a button drawn by its icon alone, the command named in its
 // tooltip and for a screen reader.
 /* markAllButtons are the platform's pair of buttons over a list of boxes,
-   drawn by their icons: «Отметить все элементы» and «Снять отметки со всех
-   элементов» (Настройка списка, configurator-2026-10-19/shabl-26; the
-   window of a role, block-00/rol/03). mark(true) marks every box, mark(false)
+   drawn by their icons: «Отметить все элементы» and «Снять отметку со всех
+   элементов», named so in Настройка списка and in the window of a role
+   alike (configurator-2026-10-20/prava/33, 34, 52, 53; block-00/rol/03). mark(true) marks every box, mark(false)
    takes every mark away. Answers the two buttons. */
 function markAllButtons(mark) {
-  return [['check-all', 'Отметить все элементы', true], ['uncheck-all', 'Снять отметки со всех элементов', false]].map(([icon, text, enabled]) => {
+  return [['check-all', 'Отметить все элементы', true], ['uncheck-all', 'Снять отметку со всех элементов', false]].map(([icon, text, enabled]) => {
     const button = iconButton(icon, text);
     button.addEventListener('click', () => mark(enabled));
     return button;

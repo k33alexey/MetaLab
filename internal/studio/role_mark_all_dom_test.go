@@ -9,7 +9,7 @@ import (
 // roleMarkAllWalk opens the window of the role Кладовщик on the catalog
 // Товары and reads the row over the list of rights; presses «Отметить все
 // элементы», reads the marks of Товары, then those of Контрагенты; presses
-// «Снять отметки со всех элементов» on Товары; and on the branch
+// «Снять отметку со всех элементов» on Товары; and on the branch
 // «Справочники» reads the buttons, presses «Отметить все элементы» and reads
 // the marks of the branch, then those of Контрагенты.
 const roleMarkAllWalk = `(async () => {
@@ -27,7 +27,7 @@ const roleMarkAllWalk = `(async () => {
   press('Отметить все элементы'); await studio.settle(); answer.marked = marks();
   object('Контрагенты').click(); await studio.settle(); answer.other = marks();
   object('Товары').click(); await studio.settle();
-  press('Снять отметки со всех элементов'); await studio.settle(); answer.cleared = marks();
+  press('Снять отметку со всех элементов'); await studio.settle(); answer.cleared = marks();
   [...editor.querySelectorAll('.role-tree-group')].find(item => item.textContent.trim() === 'Справочники').click(); await studio.settle();
   answer.branch = [...head().querySelectorAll('button')].map(button => button.disabled);
   press('Отметить все элементы'); await studio.settle(); answer.branchMarked = marks();
@@ -37,12 +37,13 @@ const roleMarkAllWalk = `(async () => {
 
 // Over the list of rights of the window of a role stand «Права:» and the
 // platform's two buttons, as the prototype's (snapshot block-00/rol/03, pass
-// of 20.10.2026, block-00/rol «Над списком прав две кнопки»; the second
-// button's tooltip is the pair's in «Настройка списка», shabl-26): they mark
+// of 20.10.2026, block-00/rol «Над списком прав две кнопки»; the captions
+// of the pair, the same in «Настройка списка», prava/33, 34, 52, 53): they mark
 // and clear every right of the node chosen and nothing beside it; on the
 // branch of a kind, as its boxes do (prava/20-23), every right of every
 // object of the kind. Defects caught: the old «Разрешить всё» under the
-// list; the buttons marking the rights of other objects; the buttons
+// list; the second button named «Снять отметки…», as before 2.422; the
+// buttons marking the rights of other objects; the buttons
 // unavailable on a branch, or marking there only the object chosen last.
 func TestTheButtonsOverTheListOfRightsMarkTheNodeChosen(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
@@ -65,7 +66,7 @@ func TestTheButtonsOverTheListOfRightsMarkTheNodeChosen(t *testing.T) {
 	if err := json.Unmarshal(result, &got); err != nil {
 		t.Fatalf("%v: %s", err, result)
 	}
-	if want := []string{"Права:", "Отметить все элементы", "Снять отметки со всех элементов"}; !slices.Equal(got.Head, want) || !got.Above || got.OldButtons != 0 {
+	if want := []string{"Права:", "Отметить все элементы", "Снять отметку со всех элементов"}; !slices.Equal(got.Head, want) || !got.Above || got.OldButtons != 0 {
 		t.Errorf("over the list %v (above it %v), %d old buttons; want %v over it and none", got.Head, got.Above, got.OldButtons, want)
 	}
 	if len(got.Marked) == 0 || slices.Contains(got.Marked, false) {
@@ -75,7 +76,7 @@ func TestTheButtonsOverTheListOfRightsMarkTheNodeChosen(t *testing.T) {
 		t.Errorf("Контрагенты after the button on Товары: %v, want nothing marked", got.Other)
 	}
 	if len(got.Cleared) == 0 || slices.Contains(got.Cleared, true) {
-		t.Errorf("Товары after «Снять отметки со всех элементов»: %v, want nothing marked", got.Cleared)
+		t.Errorf("Товары after «Снять отметку со всех элементов»: %v, want nothing marked", got.Cleared)
 	}
 	if !slices.Equal(got.Branch, []bool{false, false}) {
 		t.Errorf("on the branch «Справочники» the buttons are unavailable %v, want neither", got.Branch)
