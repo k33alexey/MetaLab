@@ -383,6 +383,33 @@ func TestPredefinedHeadOneRuleOnFourKinds(t *testing.T) {
 	}
 }
 
+// TestPredefinedHeadsAreOnceInTheirObject catches the check of the heads of
+// predefined elements letting through two elements of one identifier, or of
+// one name written in another case, in one object: the description is read
+// alone - by Studio saving it, by the loader before the walk of every
+// identifier - and the heads are the one place that refuses it there.
+func TestPredefinedHeadsAreOnceInTheirObject(t *testing.T) {
+	t.Parallel()
+	id := uuid.MustNew()
+	for name, test := range map[string]struct {
+		second predefinedHead
+		want   string
+	}{
+		"one identifier": {predefinedHead{id: id, name: "Второй"}, "predefined[1].id must be unique"},
+		"one name":       {predefinedHead{id: uuid.MustNew(), name: "основной"}, "predefined[1].name must be unique"},
+		"zero":           {predefinedHead{name: "Второй"}, "predefined[1].id must be a non-zero UUID"},
+		"no name":        {predefinedHead{id: uuid.MustNew(), name: "1Второй"}, "predefined[1].name must be a valid identifier"},
+	} {
+		issues, _ := validatePredefinedHeads([]predefinedHead{{id: id, name: "Основной"}, test.second}, CatalogCode{}, 25)
+		if got := strings.Join(issues, "; "); !strings.Contains(got, test.want) {
+			t.Errorf("%s: %q, want one saying %q", name, got, test.want)
+		}
+	}
+	if issues, _ := validatePredefinedHeads([]predefinedHead{{id: id, name: "Основной"}, {id: uuid.MustNew(), name: "Второй"}}, CatalogCode{}, 25); len(issues) != 0 {
+		t.Errorf("two elements of their own were refused: %v", issues)
+	}
+}
+
 // A code repeated among the predefined elements of an object that checks its
 // codes for repeats is refused, naming both elements and the code - rule 6 of
 // METADATA-OBJECTS.md, «Код предопределённого элемента», and the configurator

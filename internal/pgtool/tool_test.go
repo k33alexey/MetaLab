@@ -2,6 +2,7 @@ package pgtool
 
 import (
 	"context"
+	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -123,5 +124,31 @@ func TestMajorRefusesMismatchedOrUnreadableVersions(t *testing.T) {
 		if test.failure != "" && (err == nil || !strings.Contains(err.Error(), test.failure)) {
 			t.Fatalf("%s: error = %v, want %q", test.name, err, test.failure)
 		}
+	}
+}
+
+// TestAFailedRunSaysWhatTheUtilitySaid catches the refusal of pg_dump or
+// pg_restore losing the utility's own words - the only place that says why -
+// and a utility talking past the limit failing for it: the words beyond the
+// limit are dropped, the write itself is taken whole, as io.Writer must
+// answer, so the utility is not stopped by a short write.
+func TestAFailedRunSaysWhatTheUtilitySaid(t *testing.T) {
+	t.Parallel()
+	failure := errors.New("exit status 1")
+	var written int
+	var writeErr error
+	tools := New("pg_dump", "pg_restore", func(_ context.Context, _ string, _, _ []string, output io.Writer) error {
+		written, writeErr = output.Write([]byte("pg_dump: error: permission denied\n" + strings.Repeat("x", DiagnosticLimit)))
+		return failure
+	})
+	err := tools.Dump(context.Background(), postgresconn.Descriptor{Host: "localhost", Port: 5432, Database: "base", User: "user", SSLMode: "disable"}, "archive", nil)
+	if !errors.Is(err, failure) || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("the refusal does not say what the utility said: %v", err)
+	}
+	if want := len("pg_dump: error: permission denied\n") + DiagnosticLimit; written != want || writeErr != nil {
+		t.Fatalf("a long write was answered %d, %v, want %d, nil", written, writeErr, want)
+	}
+	if len(err.Error()) > DiagnosticLimit+len(failure.Error())+2 {
+		t.Fatalf("the refusal holds %d bytes, past the limit of %d", len(err.Error()), DiagnosticLimit)
 	}
 }

@@ -313,3 +313,30 @@ func TestAllRolesRouteAnswersAConflict(t *testing.T) {
 		t.Fatalf("PUT roles over a changed role: %d %s", response.Code, response.Body.String())
 	}
 }
+
+// The grid of a role is read only as a plain file: a link put in its place
+// is refused rather than followed out of the project.
+//
+// Defect caught: Studio reading, and the next save writing, through a link
+// to a file anywhere on the disk.
+func TestAGridOfRightsThatIsALinkIsRefused(t *testing.T) {
+	t.Parallel()
+	workspace, saved, grid := savedRoleWithGrid(t)
+	outside := filepath.Join(t.TempDir(), "rights.json")
+	content, err := os.ReadFile(grid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(grid); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, grid); err != nil {
+		t.Skipf("no links here: %v", err)
+	}
+	if _, err := workspace.ReadRole(saved.Path); !errors.Is(err, ErrInvalidSourcePath) {
+		t.Fatalf("a grid that is a link was read: %v", err)
+	}
+}

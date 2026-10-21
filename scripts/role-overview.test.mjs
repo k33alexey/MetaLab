@@ -527,3 +527,23 @@ test('templates are copied into the roles marked, replacing one of the same name
   assert.deepEqual(roleValue(model,1).restrictionTemplates,[{name:'ПоВладельцу(Поле)',condition:'А'},{name:'ПоЦене',condition:'Б'}]);
   assert.deepEqual(roleValue(model,0).restrictionTemplates,[{name:'ПоВладельцу(Поле)',condition:'А'},{name:'ПоЦене',condition:'Б'}]);
 });
+// Дефект: несколько ограничений одного права удалялись с первого, и номер
+// следующего успевал сдвинуться: из двух выбранных удалялось одно.
+test('several restrictions of one right go together, the last first',()=>{
+  const source=fixture();
+  const model=create(source);
+  const rows=model.allRestrictions().filter(row=>row.path===source.roles[0].path&&row.objectID==='goods'&&row.operation==='read');
+  assert.ok(rows.length>=1);
+  model.model(rows[0].roleIndex).putRestriction('goods','read',rows.length,{fields:['price'],condition:'ГДЕ Ещё'});
+  const both=model.allRestrictions().filter(row=>row.path===source.roles[0].path&&row.objectID==='goods'&&row.operation==='read');
+  model.removeRestrictions([...both].sort((left,right)=>left.index-right.index));
+  assert.equal(model.allRestrictions().filter(row=>row.path===source.roles[0].path&&row.objectID==='goods'&&row.operation==='read').length,0);
+});
+// Дефект: объект, лежащий внутри другого, назывался в мастере и в отборе
+// одним своим именем — две таблицы двух источников не различить.
+test('an object inside another is named with the one it lies in',()=>{
+  const source=fixture();
+  source.schema.objects.push({id:'source',kind:'external-data-sources',name:'Склад',title:{ru:'Склад'},rights:['use'],fields:[],restrictionFields:[],restrictedRights:[]},
+    {id:'table',kind:'external-data-source-tables',owner:'source',name:'Остатки',title:{ru:'Остатки'},rights:['read'],fields:[],restrictionFields:[],restrictedRights:['read']});
+  assert.equal(create(source).restrictable().find(item=>item.id==='table').title,'Склад.Остатки');
+});

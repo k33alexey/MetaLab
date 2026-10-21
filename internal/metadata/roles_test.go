@@ -67,6 +67,19 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 		"field alias":             func(r *RoleDefinition) { r.Objects[0].Fields[0].Field = "Наименование" },
 		"zero command":            func(r *RoleDefinition) { r.Commands = []CommandPermission{{Form: uuid.MustNew()}} },
 		"zero form":               func(r *RoleDefinition) { r.Commands = []CommandPermission{{Command: uuid.MustNew()}} },
+		// A template is a name with the names of its parameters in brackets
+		// (validateRestrictionTemplates), one of a name in a role whatever
+		// its case.
+		"template parameter": func(r *RoleDefinition) {
+			r.RestrictionTemplates = []RestrictionTemplate{{Name: "Шаблон(Поле 1)"}}
+		},
+		"template bracket": func(r *RoleDefinition) {
+			r.RestrictionTemplates = []RestrictionTemplate{{Name: "Шаблон(Поле"}}
+		},
+		"template name": func(r *RoleDefinition) { r.RestrictionTemplates = []RestrictionTemplate{{Name: "1Шаблон"}} },
+		"template twice": func(r *RoleDefinition) {
+			r.RestrictionTemplates = []RestrictionTemplate{{Name: "Шаблон"}, {Name: "шаблон(Поле)"}}
+		},
 		"duplicate command": func(r *RoleDefinition) {
 			c := CommandPermission{Form: uuid.MustNew(), Command: uuid.MustNew()}
 			r.Commands = []CommandPermission{c, c}
@@ -82,6 +95,11 @@ func TestDecodeRoleStrictAndBounded(t *testing.T) {
 				t.Fatalf("format error = %v", err)
 			}
 		})
+	}
+	templated := cloneRole(role)
+	templated.RestrictionTemplates = []RestrictionTemplate{{Name: "Шаблон"}, {Name: "ПоПолю( Поле , Пользователь )", Condition: "ГДЕ #Поле = &Пользователь"}}
+	if err := ValidateRole("templated-role.yaml", templated, metadataConfiguration()); err != nil {
+		t.Fatalf("templates of names and parameters were refused: %v", err)
 	}
 	empty := cloneRole(role)
 	empty.Objects = nil
@@ -583,6 +601,30 @@ func TestProjectRoleIsCheckedAgainstTheProject(t *testing.T) {
 	err := ValidateProjectRole(root, role)
 	if err == nil || !strings.Contains(err.Error(), "references unknown or unsupported object "+role.Objects[0].Object.String()) {
 		t.Fatalf("a role naming an object the project lacks: %v", err)
+	}
+}
+
+// The role editor checks one role without the others: a role another
+// developer left naming an object that is gone does not keep the role being
+// edited from being saved (ValidateProjectRole), and is repaired in its own
+// window. Defect caught: the role checked together with every role of the
+// project, the broken one refusing it.
+func TestAProjectRoleIsCheckedWithoutTheOtherRoles(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := roleFixture()
+	if err := WriteRole(root, broken); err != nil {
+		t.Fatal(err)
+	}
+	edited := roleFixture()
+	edited.Name, edited.Objects = "Администратор", []ObjectPermission{{Object: catalog.Project.ID,
+		Operations: []PermissionOperation{PermissionAdministration}}}
+	if err := ValidateProjectRole(root, edited); err != nil {
+		t.Fatalf("a role was refused for another role naming an object that is gone: %v", err)
 	}
 }
 

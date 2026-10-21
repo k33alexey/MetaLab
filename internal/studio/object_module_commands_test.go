@@ -128,6 +128,9 @@ func TestOpeningAModuleMakesItOnlyWhereTheMenuOffersIt(t *testing.T) {
 	// A form that is there, its module not: a form opens by «Открыть форму»,
 	// no menu offers its module.
 	writeProjectFile(t, root, "metadata/catalogs/Банки/forms/ФормаЭлемента/form.yaml", "format: 1\n")
+	// A common form keeps its module in its folder, and no menu offers it
+	// either: the common form is opened, its module inside it.
+	writeProjectFile(t, root, "metadata/common-forms/Выбор/form.yaml", "format: 1\n")
 	workspace, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -157,6 +160,7 @@ func TestOpeningAModuleMakesItOnlyWhereTheMenuOffersIt(t *testing.T) {
 		"metadata/catalogs/Банки/commands/Нет/МодульКоманды.bsl",
 		"metadata/catalogs/Банки/forms/Нет/МодульФормы.bsl",
 		"metadata/catalogs/Банки/forms/ФормаЭлемента/МодульФормы.bsl",
+		"metadata/common-forms/Выбор/МодульФормы.bsl",
 		"metadata/catalogs/Банки/object.yaml",
 	} {
 		if opened, err := workspace.OpenModule(path); err == nil {

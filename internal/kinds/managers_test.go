@@ -69,21 +69,24 @@ func TestManagerIsTheHelpsType(t *testing.T) {
 }
 
 // TestManagerMethodsAreSignedAsTheHelpSigns catches a method read with the
-// parameters of a shorter form of it, a default left out, and one guessed
-// where the help names a value the type does not have. The parameters are
-// the help's, written here.
+// parameters of a shorter form of it, a default left out, one guessed where
+// the help names a value the type does not have, and a parameter the help
+// lets a call leave out read as one it must give. The parameters are the
+// help's, written here, with how many of them a call may leave out.
 func TestManagerMethodsAreSignedAsTheHelpSigns(t *testing.T) {
 	for _, test := range []struct {
 		kind           Kind
 		method, signed string
+		optional       int
 	}{
-		{Catalog, "НайтиПоКоду", "Код, ПоискПоПолномуКоду = Ложь, Родитель, Владелец"},
+		{Catalog, "НайтиПоКоду", "Код, ПоискПоПолномуКоду = Ложь, Родитель, Владелец", 3},
+		{Catalog, "Выбрать", `Родитель, Владелец, Отбор, Порядок = ""`, 4},
 		// The second form adds the date of the interval.
-		{BusinessProcess, "НайтиПоНомеру", "НомерБизнесПроцесса, ДатаИнтервала"},
+		{BusinessProcess, "НайтиПоНомеру", "НомерБизнесПроцесса, ДатаИнтервала", 1},
 		{ExternalDataSource, "НачатьТранзакцию", "РежимБлокировок = РежимУправленияБлокировкойДанных.Автоматический, " +
-			"УровеньИзоляции = УровеньИзоляцииТранзакций.Авто"},
+			"УровеньИзоляции = УровеньИзоляцииТранзакций.Авто", 2},
 		// «Автоматически» is no value of ОбновлениеПредопределенныхДанных.
-		{ChartOfAccounts, "УстановитьОбновлениеПредопределенныхДанных", "ОбновлениеПредопределенных"},
+		{ChartOfAccounts, "УстановитьОбновлениеПредопределенныхДанных", "ОбновлениеПредопределенных", 1},
 	} {
 		manager, _ := Must(test.kind).Manager()
 		index := slices.IndexFunc(manager.Members, func(member Member) bool { return member.Method && member.Name.Russian == test.method })
@@ -102,8 +105,8 @@ func TestManagerMethodsAreSignedAsTheHelpSigns(t *testing.T) {
 		if got := strings.Join(labels, ", "); got != test.signed {
 			t.Errorf("%s.%s is signed (%s), the help signs (%s)", manager.Name.Russian, test.method, got, test.signed)
 		}
-		if test.kind == BusinessProcess && optional != 1 {
-			t.Errorf("%s.%s: the parameter the shorter form leaves out is not optional", manager.Name.Russian, test.method)
+		if optional != test.optional {
+			t.Errorf("%s.%s: %d parameters may be left out, the help lets %d", manager.Name.Russian, test.method, optional, test.optional)
 		}
 	}
 }

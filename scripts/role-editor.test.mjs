@@ -457,3 +457,30 @@ test('marking a right marks the rights it needs, clearing it clears those needin
   model.setGroup([{object:goods},{object:other}],'read',false);
   assert.deepEqual(rights('goods'),[]);assert.deepEqual(rights('other'),[]);
 });
+// Дефект: второе ограничение на «Прочие поля» у права по полям и второе
+// ограничение у права не по полям не считались столкновением: окно молча
+// писало то, что сервер не сохранит, вместо вопроса «Заменить?»
+// (validateRestrictions; справка, «Ограничение доступа к данным»).
+test('a second restriction on the other fields, or of a right not by fields, collides with the first',()=>{
+  const model=create(fixture());
+  model.putRestriction('goods','read',0,{fields:[],condition:'ГДЕ А'});
+  model.putRestriction('goods','insert',0,{condition:'ГДЕ Б'});
+  assert.deepEqual(plain(model.restrictionClashes('goods','read',1,{fields:[]})),[{index:0,whole:true,shared:[]}]);
+  assert.deepEqual(plain(model.restrictionClashes('goods','insert',1,{})),[{index:0,whole:true,shared:[]}]);
+  assert.deepEqual(plain(model.restrictionClashes('goods','read',1,{fields:['name']})),[]);
+});
+// Дефект: шаблон, который в роли уже стоит точно таким же, записывался ещё
+// раз и попадал в вопрос «Заменить?» как забранный сам у себя.
+test('a template the role has as it is is not written again',()=>{
+  const model=create(fixture());model.putTemplate(0,{name:'Шаблон(Поле)',condition:'ГДЕ #Поле'});
+  assert.deepEqual(plain(model.writeTemplates([{template:{name:'Шаблон(Поле)',condition:'ГДЕ #Поле'}}])),[]);
+  assert.deepEqual(plain(model.templates()),[{name:'Шаблон(Поле)',condition:'ГДЕ #Поле'}]);
+});
+// Дефект: папка вложенных объектов одного вида собирала объекты этого вида
+// под всеми владельцами — у двух регистров расчёта перерасчёты смешивались.
+test('a folder of the objects inside an object holds that object\'s alone',()=>{
+  const schema={objects:[{id:'one',kind:'calculation-registers',rights:['read']},{id:'two',kind:'calculation-registers',rights:['read']},
+    {id:'r1',kind:'recalculations',owner:'one',rights:['read','update']},{id:'r2',kind:'recalculations',owner:'two',rights:['read','update']}]};
+  assert.deepEqual(plain(context.roleGroupMembers(schema,{object:'one',kind:'recalculations'})).map(member=>member.object.id),['r1']);
+  assert.deepEqual(plain(context.roleGroupMembers(schema,{kind:'calculation-registers'})).map(member=>member.object.id),['one','two']);
+});

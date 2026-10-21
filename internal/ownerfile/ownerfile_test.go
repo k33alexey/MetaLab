@@ -132,3 +132,27 @@ func TestRestrictClosesExistingPathsToOthers(t *testing.T) {
 		t.Fatal("Restrict of an absent path succeeded")
 	}
 }
+
+// TestOwnDirectoryIsTheUsersAlone catches a folder taken for the user's own
+// that another user owns - the root of the disk - or that is no folder: the
+// cleanup of password files removes only folders of its own user.
+func TestOwnDirectoryIsTheUsersAlone(t *testing.T) {
+	t.Parallel()
+	own := t.TempDir()
+	if mine, err := IsOwnDirectory(own); err != nil || !mine {
+		t.Fatalf("the user's own folder: %v, %v", mine, err)
+	}
+	file := filepath.Join(own, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if mine, _ := IsOwnDirectory(file); mine {
+		t.Fatal("a file was taken for a folder of the user's own")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("run as root, every folder is the user's own")
+	}
+	if mine, _ := IsOwnDirectory("/"); mine {
+		t.Fatal("the root of the disk was taken for a folder of the user's own")
+	}
+}

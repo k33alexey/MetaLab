@@ -629,6 +629,28 @@ func TestTheSessionParametersOfASeparatorAreTypedAsTheAttribute(t *testing.T) {
 			}
 		})
 	}
+	// A parameter the configuration does not have is refused by name: taken
+	// for no parameter, it would leave the separator with no session
+	// parameter to read its area from, and nothing would say so.
+	for _, field := range []string{"data_separation_value", "data_separation_use"} {
+		t.Run(field+" of nothing", func(t *testing.T) {
+			parameters := areaParameters([]Type{number})
+			common := separating(CommonAttributeDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Область",
+				Title: LocalizedText{"ru": "Область"}, Types: []Type{number},
+				Content: []CommonAttributeContentItem{{Metadata: goods.ID, Use: CommonAttributeUseUse}}}, parameters)
+			missing := uuid.MustNew()
+			if field == "data_separation_value" {
+				common.DataSeparationValue = &missing
+			} else {
+				common.DataSeparationUse = &missing
+			}
+			_, err := NewCatalogSnapshotWithCommonAttributes(metadataConfiguration(), nil, nil, []DefinedTypeObject{area},
+				[]CatalogDefinition{goods}, nil, nil, nil, nil, nil, parameters, []CommonAttributeDefinition{common})
+			if err == nil || !strings.Contains(err.Error(), field+" names unknown session parameter") {
+				t.Fatalf("a parameter of nothing: %v", err)
+			}
+		})
+	}
 }
 
 // The seven properties of data separation are carried and not executed: in the

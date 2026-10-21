@@ -3,6 +3,7 @@ package studio
 import (
 	"slices"
 	"testing"
+	"time"
 )
 
 // titlesOf is the captions of the nodes, in their order.
@@ -80,5 +81,30 @@ func TestObjectsInsideASourceShowTheirBranches(t *testing.T) {
 		if held := titlesOf(node.Children[index].Children); !slices.Equal(held, check.holds) {
 			t.Errorf("%s: %s holds %v, want %v", node.Title, check.branch, held, check.holds)
 		}
+	}
+}
+
+// TestParentsThatComeBackLeaveTheirSubsystemsAtTheTop catches the nesting of
+// subsystems under their parents looping on a chain of parents that comes
+// back to itself, or losing what is in it: such subsystems stay at the top,
+// a nested one under its parent, so the tree still shows what the loader
+// refuses. The walk is given a few seconds, not the ten minutes a hung test
+// would take.
+func TestParentsThatComeBackLeaveTheirSubsystemsAtTheTop(t *testing.T) {
+	t.Parallel()
+	nodes := []Node{{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}, {ID: "c", Title: "В"}, {ID: "d", Title: "Г"}}
+	parents := map[string]string{"a": "b", "b": "a", "c": "d"}
+	done := make(chan []Node, 1)
+	go func() { done <- nestUnderParents(nodes, parents) }()
+	select {
+	case top := <-done:
+		if got := titlesOf(top); !slices.Equal(got, []string{"А", "Б", "Г"}) {
+			t.Fatalf("the top of the tree is %v, want А, Б and Г", got)
+		}
+		if got := titlesOf(top[2].Children); !slices.Equal(got, []string{"В"}) {
+			t.Fatalf("Г holds %v, want В", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a chain of parents that comes back to itself is walked for ever")
 	}
 }

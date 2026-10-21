@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -94,5 +95,23 @@ func TestAnswerSaysTheResultOrTheRefusal(t *testing.T) {
 		if answer.Code != check.code || answer.Body.String() != check.body {
 			t.Errorf("%s: status=%d body=%q, want %d %q", check.name, answer.Code, answer.Body.String(), check.code, check.body)
 		}
+	}
+}
+
+// TestAPolicyLoosenedIsMissing catches the check of a server's answers
+// taking a header of the policy that is there for one that is right: a
+// policy that lets scripts in from anywhere is as missing as none.
+func TestAPolicyLoosenedIsMissing(t *testing.T) {
+	header := http.Header{}
+	SetPolicy(header)
+	if missing := PolicyMissing(header); len(missing) != 0 {
+		t.Fatalf("the policy itself lacks %v", missing)
+	}
+	header.Set("Content-Security-Policy", "default-src *")
+	header.Del("X-Frame-Options")
+	missing := PolicyMissing(header)
+	slices.Sort(missing)
+	if !slices.Equal(missing, []string{"Content-Security-Policy", "X-Frame-Options"}) {
+		t.Fatalf("a loosened and a lost header are missing as %v", missing)
 	}
 }

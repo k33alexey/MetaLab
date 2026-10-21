@@ -332,12 +332,30 @@ def read_baseline(path):
     return counted
 
 
+def differences(current, baseline):
+    """The groups of copies grown past the baseline and those shrunk below
+    it, each as (key, was, now)."""
+    grown = [(key, baseline[key], count) for key, count in sorted(current.items()) if count > baseline[key]]
+    shrunk = [(key, count, current[key]) for key, count in sorted(baseline.items()) if current[key] < count]
+    return grown, shrunk
+
+
+# What the comparison with the baseline takes for a new copy and for a copy
+# removed, checked on every run as the samples of lists are: a comparison
+# that let a grown group through would let every new copy into the code.
+DIFFERENCE_SAMPLES = [
+    ({"a": 2, "b": 1}, {"a": 2, "b": 1}, [], []),
+    ({"a": 3}, {"a": 2}, [("a", 2, 3)], []),
+    ({"a": 1, "new": 1}, {"a": 1}, [("new", 0, 1)], []),
+    ({"a": 1}, {"a": 2, "gone": 1}, [], [("a", 2, 1), ("gone", 1, 0)]),
+]
+
+
 def check(title, clones, baseline_path, hint):
     """Says what differs from the baseline; True when nothing does."""
     current = groups(clones)
     baseline = read_baseline(baseline_path)
-    grown = [(key, baseline[key], count) for key, count in sorted(current.items()) if count > baseline[key]]
-    shrunk = [(key, count, current[key]) for key, count in sorted(baseline.items()) if current[key] < count]
+    grown, shrunk = differences(current, baseline)
     for key, was, now in grown:
         print(f"new copy of code ({was} -> {now} groups): {key}")
     for key, was, now in shrunk:
@@ -357,6 +375,9 @@ def main():
     for lines, expected in CONSTANT_LIST_SAMPLES:
         if constant_list(lines) != expected:
             sys.exit(f"dupl_check: constant_list takes {lines} for {'no ' if expected else ''}list of constants")
+    for current, baseline, grown, shrunk in DIFFERENCE_SAMPLES:
+        if differences(collections.Counter(current), collections.Counter(baseline)) != (grown, shrunk):
+            sys.exit(f"dupl_check: {current} against the baseline {baseline} is not grown {grown}, shrunk {shrunk}")
     arguments = sys.argv[1:]
     if "--near" in arguments:
         near("--all" in arguments)
