@@ -4,6 +4,7 @@ runs the mutants of changed lines after a gremlins dry run.
 
     mutants_recheck.py <run dir> <package dir> [--workers N] [--timeout S]
     mutants_recheck.py <run dir> <package dir> --diff <commit> [...]
+    mutants_recheck.py <run dir> <package dir> --database [...]
 
 The second form exists because `gremlins --diff` (0.6.0) keys the changed
 files by their path from the repository root and the mutants by their path
@@ -28,6 +29,15 @@ removed — the same trimming scripts/mutants.sh does during a gremlins pass.
 With --diff every mutant runs here, about 1500 on internal/metadata, and the
 cache would otherwise reach 40-60 GB. If free space drops below --min-free-gb
 the run stops and the result is marked incomplete.
+
+The third form runs the mutants of lived.tsv and the NOT COVERED ones (of the
+changed lines, with --diff) again with the test database.
+The pass itself runs without it: its workers would share one application
+schema and drop it under each other (AGENTS.md), so every mutant that only an
+integration test can catch is LIVED there. Here they run one at a time with
+ML_TEST_DATABASE_URL and ML_TEST_ADMIN_DATABASE_URL kept; what still lives is
+written to lived-db.tsv, the list to work through when the pass is "with
+PostgreSQL" (block 2в, 20.10.2026).
 """
 
 import argparse
@@ -96,6 +106,8 @@ def main():
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=90)
     ap.add_argument("--diff", help="run the RUNNABLE mutants of lines changed since this commit")
+    ap.add_argument("--database", action="store_true",
+                    help="run the mutants of lived.tsv and the NOT COVERED ones again, one at a time, with the test database")
     ap.add_argument("--trim-every", type=int, default=120, help="seconds between cache trims")
     ap.add_argument("--trim-age", type=int, default=15, help="minutes a cache entry is kept")
     ap.add_argument("--min-free-gb", type=int, default=20)
@@ -104,7 +116,26 @@ def main():
     tree = os.path.join(a.run, "tree")
     with open(os.path.join(a.run, "gremlins.json")) as f:
         report = json.load(f)
-    if a.diff:
+    if a.database:
+        if not os.environ.get("ML_TEST_DATABASE_URL") or not os.environ.get("ML_TEST_ADMIN_DATABASE_URL"):
+            raise SystemExit("--database needs ML_TEST_DATABASE_URL and ML_TEST_ADMIN_DATABASE_URL (AGENTS.md)")
+        a.workers = 1
+        with open(os.path.join(a.run, "lived.tsv")) as f:
+            rows = [line.rstrip("\n").split("\t") for line in f.readlines()[1:] if line.strip()]
+        alive = {(r[0], int(r[1]), int(r[2]), r[3]) for r in rows}
+        # Coverage was measured without the database too, so a line only an
+        # integration test reaches is NOT COVERED there: it runs here as well,
+        # on the changed lines when the pass was over a diff.
+        changed = changed_lines(tree, a.package, a.diff) if a.diff else None
+        for m_file in report["files"]:
+            m_file["mutations"] = [m for m in m_file["mutations"]
+                                   if (m_file["file_name"], m["line"], m["column"], m["type"]) in alive
+                                   or m["status"] == "NOT COVERED"
+                                   and (changed is None or m["line"] in changed.get(m_file["file_name"], ()))]
+            for m in m_file["mutations"]:
+                m["status"] = "TIMED OUT"  # run below exactly like a recheck
+        report["files"] = [f for f in report["files"] if f["mutations"]]
+    elif a.diff:
         changed = changed_lines(tree, a.package, a.diff)
         for m_file in report["files"]:
             m_file["mutations"] = [m for m in m_file["mutations"]
@@ -122,8 +153,9 @@ def main():
     env = dict(os.environ, GOFLAGS="-p=2", GOCACHE=os.path.join(a.run, "recheck-cache"),
                TMPDIR=os.path.join(a.run, "recheck-tmp"))
     os.makedirs(env["TMPDIR"], exist_ok=True)
-    env.pop("ML_TEST_DATABASE_URL", None)
-    env.pop("ML_TEST_ADMIN_DATABASE_URL", None)
+    if not a.database:
+        env.pop("ML_TEST_DATABASE_URL", None)
+        env.pop("ML_TEST_ADMIN_DATABASE_URL", None)
     copies = []
     for w in range(a.workers):
         dst = os.path.join(a.run, f"recheck-w{w}")
@@ -207,7 +239,8 @@ def main():
             print(f"{item[0]}:{item[1]}:{item[2]}\t{item[3]}\t{res}\t{took}s\t{note}", flush=True)
     finished.set()
 
-    with open(os.path.join(a.run, "recheck.tsv"), "w") as o:
+    suffix = "-db" if a.database else ""
+    with open(os.path.join(a.run, f"recheck{suffix}.tsv"), "w") as o:
         o.write("file\tline\tcol\ttype\toutcome\n")
         for (name, line, col, kind), res in results:
             o.write(f"{name}\t{line}\t{col}\t{kind}\t{res}\n")
@@ -224,10 +257,10 @@ def main():
             origin = "gremlins"
             if st == "TIMED OUT":
                 st = rechecked.get((name, m["line"], m["column"], m["type"]), "?")
-                origin = "diff" if m.get("diff") else "recheck"
+                origin = "database" if a.database else "diff" if m.get("diff") else "recheck"
             if st == "LIVED":
                 lived.append((name, m["line"], m["column"], m["type"], origin, src[m["line"] - 1].strip()))
-    with open(os.path.join(a.run, "lived.tsv"), "w") as o:
+    with open(os.path.join(a.run, f"lived{suffix}.tsv"), "w") as o:
         o.write("file\tline\tcol\ttype\tsource\tcode\toutcome\n")
         for r in sorted(lived):
             o.write("\t".join(map(str, r)) + "\t\n")
@@ -252,6 +285,15 @@ def main():
     for _, r in results:
         counts[r] = counts.get(r, 0) + 1
     with open(os.path.join(a.run, "summary.txt"), "a") as o:
+        if a.database:
+            o.write(f"with the database, {len(todo)} LIVED and NOT COVERED run again: " +
+                    ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + "\n")
+            o.write(f"LIVED with the database: {len(lived)} (lived-db.tsv)\n")
+            for c in copies:
+                shutil.rmtree(c, ignore_errors=True)
+            shutil.rmtree(env["GOCACHE"], ignore_errors=True)
+            shutil.rmtree(env["TMPDIR"], ignore_errors=True)
+            return 1 if counts.get("ERROR") or counts.get("STOPPED") else 0
         if a.diff:
             nc = sum(1 for f in report["files"] for m in f["mutations"] if m["status"] == "NOT COVERED")
             o.write(f"changed lines since {a.diff}: NOT COVERED {nc}\n")

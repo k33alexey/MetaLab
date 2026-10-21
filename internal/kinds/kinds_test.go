@@ -215,3 +215,55 @@ func TestIsComparesAsTheLanguage(t *testing.T) {
 		t.Error("a kind is found by a folder no kind has")
 	}
 }
+
+// TestACollectionNamesItsKindAndNoOther catches ByCollection missing the
+// first kind it knows - subsystems stand first - or answering a word that is
+// no collection: Справочники in any case is the catalogs, Подсистемы the
+// subsystems, Нечто nothing (2.432, a mutant lived on both).
+func TestACollectionNamesItsKindAndNoOther(t *testing.T) {
+	for word, want := range map[string]Kind{"Подсистемы": Subsystem, "справочники": Catalog, "Catalogs": Catalog} {
+		if got, ok := ByCollection(word); !ok || got != want {
+			t.Errorf("ByCollection(%q) = %q, %v; want %q", word, got, ok, want)
+		}
+	}
+	if got, ok := ByCollection("Нечто"); ok {
+		t.Errorf("ByCollection(Нечто) = %q, want nothing", got)
+	}
+}
+
+// TestTheLayoutSaysWhereAnObjectLies catches the layout answering wrongly
+// what the tree and the project's files are built from (2.432, no test ran
+// these): a subsystem lies in one file and a recalculation in its register,
+// a catalog, a constant and a common form keep a folder; numerators and
+// sequences stand inside the documents' branch (inventory of block 00,
+// the configuration tree), a catalog in its own; opening the module of a
+// command is the command's own action, of an object it is not; a module's
+// file is read back as the module, any other name as none; and no kind is
+// left with no way to lie at all.
+func TestTheLayoutSaysWhereAnObjectLies(t *testing.T) {
+	for kind, want := range map[Kind]bool{Subsystem: false, Recalculation: false, Catalog: true, Constant: true, CommonForm: true} {
+		if got := Must(kind).Layout().KeepsFolder(); got != want {
+			t.Errorf("%s keeps a folder: %v, want %v", kind, got, want)
+		}
+	}
+	for kind, want := range map[Kind]Kind{Numerator: Document, Sequence: Document, Catalog: ""} {
+		if got := Must(kind).Layout().Within(); got != want {
+			t.Errorf("%s stands within %q, want %q", kind, got, want)
+		}
+	}
+	if !CommandModule.OwnAction() || ObjectModule.OwnAction() {
+		t.Errorf("own action: command module %v, object module %v; want the first alone", CommandModule.OwnAction(), ObjectModule.OwnAction())
+	}
+	if module, ok := ModuleOfFile("МодульОбъекта.bsl"); !ok || module != ObjectModule {
+		t.Errorf("МодульОбъекта.bsl is read as %q, %v", module, ok)
+	}
+	if module, ok := ModuleOfFile("Нечто.bsl"); ok {
+		t.Errorf("Нечто.bsl is read as %q", module)
+	}
+	var unset Storage
+	for _, item := range All() {
+		if item.Layout().Storage == unset {
+			t.Errorf("%s has no way to lie in the project", item.Kind)
+		}
+	}
+}

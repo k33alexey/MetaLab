@@ -266,6 +266,8 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The kind of movement written to a row reads back as written: a read of
+	// ВидДвижения answering nothing lived the mutation pass of 2.432.
 	program, diagnostics := compiler.CompileSource("accumulation.bsl", `&НаСервере
 Функция Проверить(Регистратор)
     Набор = РегистрыНакопления.ОстаткиТоваров.СоздатьНаборЗаписей();
@@ -276,6 +278,9 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
     Строка.ВидДвижения = ВидДвиженияНакопления.Приход;
     Строка.Товар = "A";
     Строка.Количество = 4;
+    Если Строка.ВидДвижения <> ВидДвиженияНакопления.Приход Тогда
+        Возврат "ВидДвижения читается не тем, что записано";
+    КонецЕсли;
     Набор.Записать();
     Остатки = РегистрыНакопления.ОстаткиТоваров.Остатки('20260207000000', Новый Структура("Товар", "A"));
     Возврат Остатки[0].КоличествоОстаток;
