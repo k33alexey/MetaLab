@@ -71,7 +71,7 @@ func postedDocument(arrow []Part) []Part {
 	return join([]Part{
 		rect(Body, 1.5, 1.5, 9, 11),
 		path(Detail, "M3.5 4.5H6.5M3.5 6.5H8.5M3.5 8.5H8.5"),
-	}, coinStack(11, 11.5, 1), arrow)
+	}, coinStack(11, 11.5, 4.5, 1.75, 2, 1, Rim), arrow)
 }
 
 // listOrder is a list with the arrow of what is done to all its levels:

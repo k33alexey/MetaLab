@@ -151,22 +151,24 @@ func barStack() []Part {
 }
 
 // coinStack is coins lying one on another, seen a little from above: the top
-// of the upper one at top, each coin a solid gold disc with a rim. The rims
-// lie on half pixels, so that at 16 px each is one sharp row of pixels
-// instead of two faint ones (the owner's choice of 15.10.2026).
-func coinStack(cx, top float64, count int) []Part {
-	const rx, ry, thickness = 4.5, 1.75, 2
+// of the upper one at top, each coin a solid gold disc rx wide on each side
+// of cx, ry high and thickness thick, its edge drawn in the role edge - a
+// rim, or a dark line where the coins of a narrow stack must not merge into
+// one bar at 16 px (the owner's choice of 21.10.2026). The edges lie on half
+// pixels, so that at 16 px each is one sharp row of pixels instead of two
+// faint ones (the owner's choice of 15.10.2026).
+func coinStack(cx, top, rx, ry, thickness float64, count int, edge Role) []Part {
 	var parts []Part
 	for i := count - 1; i >= 0; i-- {
 		y := top + float64(i)*thickness
 		left, right := number(cx-rx), number(cx+rx)
 		arc := fmt.Sprintf("A%s %s 0 0 0 ", number(rx), number(ry))
-		edge := fmt.Sprintf("M%s %sV%s%s%s %sV%s", left, number(y), number(y+thickness), arc, right, number(y+thickness), number(y))
+		side := fmt.Sprintf("M%s %sV%s%s%s %sV%s", left, number(y), number(y+thickness), arc, right, number(y+thickness), number(y))
 		parts = append(parts,
-			path(Accent, edge+arc+left+" "+number(y)+"Z"),
-			path(Rim, edge+arc+left+" "+number(y)+"Z"))
+			path(Accent, side+arc+left+" "+number(y)+"Z"),
+			path(edge, side+arc+left+" "+number(y)+"Z"))
 		if i == 0 {
-			parts = append(parts, path(Rim, fmt.Sprintf("M%s %s%s%s %s", left, number(y), arc, right, number(y))))
+			parts = append(parts, path(edge, fmt.Sprintf("M%s %s%s%s %s", left, number(y), arc, right, number(y))))
 		}
 	}
 	return parts
@@ -255,7 +257,9 @@ func globe(cx, cy, r float64) []Part {
 // link is a reference, as the prototype draws it: an oval lying from the
 // lower left to the upper right, broken at the middle of its two long sides,
 // a dash through its middle - a reference alone and the sign of a WS
-// reference. Dark lines that lighten on a dark theme.
+// reference. Ink lines: dark on a light page and nearly white on a dark
+// one, where lightened as an outline they stayed grey (the owner's remark of
+// 21.10.2026).
 func link(cx, cy, rx, ry, gap float64) []Part {
 	const turn = -math.Pi / 4
 	at := func(x, y float64) string {
@@ -267,8 +271,8 @@ func link(cx, cy, rx, ry, gap float64) []Part {
 			"Q" + at(edge, ry) + " " + at(corner, ry) + "L" + at(side*gap, ry)
 	}
 	return []Part{
-		colored(path(Detail, half(-1)+half(1)), ink),
-		colored(path(Detail, "M"+at(-rx/2, 0)+"L"+at(rx/2, 0)), ink),
+		colored(path(InkLine, half(-1)+half(1)), ink),
+		colored(path(InkLine, "M"+at(-rx/2, 0)+"L"+at(rx/2, 0)), ink),
 	}
 }
 
@@ -724,11 +728,12 @@ var treeIcons = []Icon{
 		path(Detail, "M1.5 5.5H14.5M1.5 9.5H14.5M5.5 5.5V13.5M10.5 5.5V13.5"),
 	}},
 	// A plain sheet with a stack of gold coins on it, as the prototype draws
-	// the accumulation register: two coins, so that with the face of the
-	// upper one the stack shows three bands, as the prototype's does.
+	// the accumulation register: one stack in the middle of the sheet, two
+	// thick coins with dark edges, which at 16 px read as coins and not as a
+	// yellow bar (the owner's choice of 21.10.2026).
 	{ID: "accumulation-register", Color: steel, Accent: coin, Parts: join(
 		[]Part{rect(Body, 1.5, 1.5, 13, 13)},
-		coinStack(8, 6.5, 2),
+		coinStack(8, 5, 3.5, 1.5, 3, 2, OnAccent),
 	)},
 	{ID: "accounting-register", Color: steel, Accent: blue, Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13),
