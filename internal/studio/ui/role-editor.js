@@ -1024,11 +1024,14 @@ function createRoleEditor(host, onChange) {
      every one, cleared at none, grey at some; the box of a folder or of a
      branch sets or clears the right at everything it holds, the grey one
      setting it (the branch: pass after the series of 2.413, prava/20-23).
-     Only an object takes restrictions of access to data. */
+     Under a filter by subsystems a folder or a branch holds what it shows
+     alone, its summary and its boxes theirs (pass of 21.10.2026,
+     prava/45-48). Only an object takes restrictions of access to data. */
   function chosenNode(){
     const {object,part,group}=selected;
     if(group){
-      const members=roleGroupMembers(source.schema,group),owner=group.object&&source.schema.objects.find(item=>item.id===group.object);
+      const shown=subsystemFilterPasses(source.schema,treeFilter.subsystems);
+      const members=roleGroupMembers(source.schema,group).filter(member=>member.part||shown(member.object.id)),owner=group.object&&source.schema.objects.find(item=>item.id===group.object);
       return {members,rights:roleGroupRights(source.schema,members,group),heading:[node('h3',group.caption),...owner?[node('p',title(owner)||owner.name,'muted')]:[]]};
     }
     const member={object,part},rights=roleMemberRights(member);
@@ -1120,7 +1123,7 @@ function createRoleEditor(host, onChange) {
       const body=node('div',undefined,'role-body'),sidebar=node('div',undefined,'role-sidebar'),search=node('input');search.type='search';search.placeholder='Поиск объекта';search.setAttribute('aria-label','Поиск объекта');tree=createRoleTree({source,title,expanded,selection:()=>selected,choose:next=>{selected=next;renderPanel();},subsystems:()=>treeFilter.subsystems,groups:true});search.addEventListener('input',()=>tree.render(search.value));
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
-      bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>tree.render(search.value)}));
+      bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>{tree.render(search.value);renderPanel();}}));
       description=node('div',undefined,'role-description');sidebar.append(bar,search,tree.element,description);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
       tree.render();renderPanel();showView(view);
