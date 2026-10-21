@@ -98,7 +98,7 @@ func TestTheWindowOfARoleMarksTheRightsARightNeeds(t *testing.T) {
 		ExternalDataSourceTableKind: sourceTableMarked,
 		ExternalDataSourceKind:      {},
 		SessionParameterKind:        {}, SubsystemKind: {}, FilterCriterionKind: {}, CommonCommandKind: {}, CommonFormKind: {},
-		WebServiceKind: {}, HTTPServiceKind: {},
+		WebServiceKind: {}, HTTPServiceKind: {}, EnumerationKind: {},
 	}
 	offered := map[Kind][]PermissionOperation{"": configurationRights}
 	for _, item := range kindInfos {

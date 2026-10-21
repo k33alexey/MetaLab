@@ -123,7 +123,10 @@ func TestEveryKindSaysWhatItHolds(t *testing.T) {
 // owner, block-00/rol, «Права частей внешнего источника»: a function of a
 // source, «Использование» and «Просмотр»). Written out here, not read off
 // kindRightsOf.
-var rightsSeenInTheWindow = map[Kind][]string{ExternalFunctionKind: {"Use", "View"}}
+var rightsSeenInTheWindow = map[Kind][]string{ExternalFunctionKind: {"Use", "View"},
+	// An enumeration is shown for its commands and takes no right of its own
+	// (pass of 21.10.2026, prava/42-44).
+	EnumerationKind: {}}
 
 // expectedConfigurationRights is what the same exports write on the
 // configuration itself, in their order, the window's (block-00/rol/03…06).

@@ -272,6 +272,10 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	// внешнего источника»); no export gives rights on one, so the rights
 	// stay unproven and every role naming a function is noted.
 	ExternalFunctionKind: {PermissionUse, PermissionView},
+	// An enumeration takes no right on itself: the window of a role shows
+	// it, under the branch «Перечисления», for its commands alone (pass of
+	// 21.10.2026, prava/42-44).
+	EnumerationKind: {},
 }
 
 // kindPartRightsOf is, for a kind whose parts the window of a role offers
@@ -283,6 +287,10 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 // (NoteRightWithoutSample).
 var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
 	ExternalCubeKind: {DimensionsPart: {PermissionView}, ResourcesPart: {PermissionView}},
+	// The commands of an enumeration are viewed (pass of 21.10.2026,
+	// prava/44); no export gives rights on them, so every one a role gives
+	// is noted.
+	EnumerationKind: {CommandsPart: {PermissionView}},
 }
 
 // configurationRights are the rights the configurator offers on the

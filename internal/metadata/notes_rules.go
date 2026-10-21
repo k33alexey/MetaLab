@@ -539,7 +539,10 @@ func noteRightWithoutSample(catalog *Catalog, note func(where, written string)) 
 			if ok {
 				object = catalog.noteObjectName(kind, permission.Object)
 			}
-			if target.rights != nil {
+			// An object of a kind whose rights no export proves is noted whole
+			// (use-without-sample) - an enumeration, which the window shows
+			// for its commands and gives no right of its own.
+			if target.rights != nil && (!ok || usesOf(kind).rights != unproven) {
 				for _, right := range slices.Concat(permission.Operations, permission.Denied) {
 					if !slices.Contains(target.rights, right) {
 						note(where, object+" "+string(right))

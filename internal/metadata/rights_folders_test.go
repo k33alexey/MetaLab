@@ -59,6 +59,9 @@ func TestTheTreeOfRightsShowsThePrototypesFolders(t *testing.T) {
 		ExternalCubeKind:            {"kind:external-data-source-dimension-tables", "dimensions", "resources", "commands"},
 		WebServiceKind:              {"operations"}, HTTPServiceKind: {"url-templates"},
 		ChartOfCharacteristicTypesKind: reference, ExchangePlanKind: reference,
+		// An enumeration shows its commands alone (pass of 21.10.2026,
+		// prava/43).
+		EnumerationKind:             {"commands"},
 		ChartOfCalculationTypesKind: {"attributes", "table-parts", "standard-attributes", "standard-table-parts", "commands"},
 		DataProcessorKind:           {"attributes", "table-parts", "commands"},
 		DocumentJournalKind:         {"standard-attributes", "commands"},
@@ -96,7 +99,9 @@ func TestTheFoldersOfTheTreeOfRightsHoldEverythingAKindKeeps(t *testing.T) {
 			for _, group := range branchesOf(item.kind) {
 				want = append(want, string(group))
 			}
-			if len(standardFieldsOfKind(item.kind)) > 0 {
+			// The standard attributes of an enumeration take no rights: its
+			// tree of rights shows its commands alone (prava/43).
+			if len(standardFieldsOfKind(item.kind)) > 0 && item.kind != EnumerationKind {
 				want = append(want, string(StandardAttributesPart))
 			}
 			if len(standardTablePartsOfKind(item.kind)) > 0 {

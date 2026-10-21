@@ -41,9 +41,8 @@ const roleTreeLayoutWalk = `(async () => {
 // out here, not read from the descriptors). Every kind rights are given on
 // has its branch, the empty ones too - the project has no constant, no
 // journal, no external source (snapshots configurator-2026-10-20/prava/19 and 30; zapis.md
-// «Дерево прав»): ML has no branch of the enumerations yet, which the
-// prototype's tree shows (a question of the series of 2.417), and none of
-// the integration services the owner refused. Defects caught: the root a row
+// «Дерево прав»), the enumerations among them, shown for their commands
+// (prava/42-44); none of the integration services the owner refused. Defects caught: the root a row
 // of its own above the branches; no «Общие», a common form standing beside
 // the catalogs; the sequences beside the documents rather than in them; the
 // order of the branches not the prototype's; a branch without objects left
@@ -71,7 +70,7 @@ func TestTheTreeOfRightsStandsAsTheProjectTree(t *testing.T) {
 		if len(tree.Top) != 1 || tree.Icon != "#icon-configuration" {
 			t.Errorf("%s: the tree begins %v (icon %s), want the configuration alone", name, tree.Top, tree.Icon)
 		}
-		if want := []string{"Общие", "Константы", "Справочники", "Документы", "Журналы документов", "Отчёты", "Обработки",
+		if want := []string{"Общие", "Константы", "Справочники", "Документы", "Журналы документов", "Перечисления", "Отчёты", "Обработки",
 			"Планы видов характеристик", "Планы счетов", "Планы видов расчёта", "Регистры сведений", "Регистры накопления",
 			"Регистры бухгалтерии", "Регистры расчёта", "Бизнес-процессы", "Задачи", "Внешние источники данных"}; !slices.Equal(tree.Root, want) {
 			t.Errorf("%s: beneath the root %v, want %v", name, tree.Root, want)
@@ -250,7 +249,8 @@ func TestTheRoleOpenedOnAnObjectInsideAnotherShowsIt(t *testing.T) {
 
 // roleEmptyBranchWalk opens the window of the role Кладовщик, chooses the
 // branch «Константы», which holds nothing, reads the rights listed, presses
-// the box of «Чтение» and reads them again.
+// the box of «Чтение» and reads them again; then chooses «Перечисления» and
+// reads its rights.
 const roleEmptyBranchWalk = `(async () => {
   const studio = window.__studio, editor = document.querySelector('#role-editor'), answer = {};
   const rights = () => [...editor.querySelectorAll('.role-permissions .check-list-row')].map(row => ({caption: row.textContent.trim(), checked: row.querySelector('input').checked}));
@@ -260,14 +260,18 @@ const roleEmptyBranchWalk = `(async () => {
   answer.listed = rights();
   [...editor.querySelectorAll('.role-permissions .check-list-row')].find(row => row.textContent.trim() === 'Чтение').querySelector('input').click(); await studio.settle();
   answer.pressed = rights();
+  [...editor.querySelectorAll('.role-tree-group')].find(item => item.textContent.trim() === 'Перечисления').click(); await studio.settle();
+  answer.enumerations = rights();
   return answer;
 })()`
 
 // An empty branch shows the rights of its kind, as the prototype's
 // «Константы» and «Последовательности» (pass of 20.10.2026, zapis.md «Дерево
 // прав», snapshot prava/10): the rights of a constant ML keeps, written out here from
-// the pass; a click marks nothing, there being nothing to mark. Defects
-// caught: an empty branch with no rights or with another kind's; a click on
+// the pass; a click marks nothing, there being nothing to mark. The branch
+// «Перечисления» has no rights at all (prava/42). Defects caught: an empty
+// branch with no rights or with another kind's; the enumerations given
+// rights of their own; a click on
 // it marking the box with nothing behind it.
 func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
@@ -282,7 +286,7 @@ func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
 		Caption string
 		Checked bool
 	}
-	var got struct{ Listed, Pressed []right }
+	var got struct{ Listed, Pressed, Enumerations []right }
 	if err := json.Unmarshal(result, &got); err != nil {
 		t.Fatalf("%v: %s", err, result)
 	}
@@ -297,6 +301,9 @@ func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
 	}
 	if !slices.Equal(got.Pressed, want) {
 		t.Errorf("after a click on «Чтение» there: %v, want nothing marked", got.Pressed)
+	}
+	if len(got.Enumerations) != 0 {
+		t.Errorf("the branch «Перечисления» lists %v, want no rights", got.Enumerations)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)

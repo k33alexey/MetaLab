@@ -375,7 +375,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	EventSubscriptionKind: {},
 	EnumerationKind: {described: true, held: []heldList{{"values", "Значения", "enumeration-value", func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("value", c.Enumerations[c.enumerationByID[id]].Values)
-	}}}, files: declaredFilesOf},
+	}}}, files: declaredFilesOf, rightsFolders: partFolders(CommandsPart)},
 	ScheduledJobKind:   {},
 	CommandGroupKind:   {},
 	CommonCommandKind:  {},
