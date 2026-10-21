@@ -197,7 +197,6 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {
-		value.Predefined[index].PredefinedCatalogItem = clonePredefinedCatalogItem(value.Predefined[index].PredefinedCatalogItem)
 		value.Predefined[index].ValueType = cloneTypes(value.Predefined[index].ValueType)
 	}
 	value.Commands = cloneObjectCommands(value.Commands)

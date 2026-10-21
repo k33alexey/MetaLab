@@ -1056,11 +1056,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			return err
 		}
 	}
-	for _, item := range catalog.Catalogs {
-		if err := catalog.validatePredefinedValues("catalog item", item.Name, item.Attributes, item.Predefined); err != nil {
-			return err
-		}
-	}
 	for _, item := range catalog.ChartsOfCharacteristicTypes {
 		owner := "chart of characteristic types " + item.Name
 		if err := catalog.validateReferences(owner+" value type", item.ValueType); err != nil {
@@ -1073,13 +1068,6 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 			if _, ok := catalog.catalogByID[*item.AdditionalValues]; !ok {
 				return fmt.Errorf("%s references unknown catalog of additional values %s", owner, item.AdditionalValues)
 			}
-		}
-		predefined := make([]PredefinedCatalogItem, 0, len(item.Predefined))
-		for _, characteristic := range item.Predefined {
-			predefined = append(predefined, characteristic.PredefinedCatalogItem)
-		}
-		if err := catalog.validatePredefinedValues("characteristic", item.Name, item.Attributes, predefined); err != nil {
-			return err
 		}
 		if err := catalog.validatePredefinedCharacteristicTypes(owner, item); err != nil {
 			return err
@@ -1292,26 +1280,6 @@ func (catalog *Catalog) validateObjectsAsLoaded(root string, order []uuid.UUID) 
 			if err := catalog.validateObjectFileSources(files); err != nil {
 				return err
 			}
-		}
-	}
-	return nil
-}
-
-// validatePredefinedValues checks the values the predefined items of an
-// object give its attributes: each names an attribute the object has, and its
-// value is one the attribute holds.
-func (catalog *Catalog) validatePredefinedValues(word, owner string, attributes []Attribute, items []PredefinedCatalogItem) error {
-	for _, predefined := range items {
-		values := make(map[uuid.UUID]Value, len(predefined.Attributes))
-		for name, value := range predefined.Attributes {
-			attribute, ok := findCatalogAttribute(attributes, name)
-			if !ok {
-				return fmt.Errorf("predefined %s %s.%s has unknown attribute %s", word, owner, predefined.Name, name)
-			}
-			values[attribute.ID] = value
-		}
-		if _, err := catalog.normalizeAttributes(owner+"."+predefined.Name, attributes, values); err != nil {
-			return fmt.Errorf("predefined %s %s.%s: %w", word, owner, predefined.Name, err)
 		}
 	}
 	return nil

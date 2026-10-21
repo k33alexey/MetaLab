@@ -137,13 +137,6 @@ func (repository *CatalogRepository) newPredefinedRecord(ctx context.Context, tr
 		}
 		record.Parent = parent.ID
 	}
-	for name, value := range item.Attributes {
-		attribute, ok := findCatalogAttribute(definition.Attributes, name)
-		if !ok {
-			return nil, fmt.Errorf("predefined catalog item %s.%s has unknown attribute %s", definition.Name, item.Name, name)
-		}
-		record.Attributes[attribute.ID] = value
-	}
 	for _, part := range definition.TableParts {
 		record.TableParts[part.ID] = []CatalogRow{}
 	}

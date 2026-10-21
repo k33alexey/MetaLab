@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -480,9 +479,14 @@ type PredefinedCatalogItem struct {
 	// it is a folder rather than an item. A configuration brings whole trees
 	// of predefined data, and flattening them on the way in would lose the
 	// only thing that made them a tree.
-	Parent     string           `yaml:"parent,omitempty" json:"parent,omitempty"`
-	IsFolder   bool             `yaml:"is_folder,omitempty" json:"isFolder,omitempty"`
-	Attributes map[string]Value `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	//
+	// No values of the object's attributes: the prototype's dialog of a
+	// predefined item has the parent, the name, the code, the description and
+	// the fields of its kind, and none of the attributes even of a catalog
+	// that has many (ERP, «ВидыКонтактнойИнформации», 21.10.2026), and no
+	// export writes one. A value given here would be a field of ML alone.
+	Parent   string `yaml:"parent,omitempty" json:"parent,omitempty"`
+	IsFolder bool   `yaml:"is_folder,omitempty" json:"isFolder,omitempty"`
 }
 
 // EffectiveCode is the code a predefined item is created with: the code
@@ -936,7 +940,7 @@ func (catalog *Catalog) CatalogIDs() []uuid.UUID {
 func (definition CatalogDefinition) PredefinedItem(name string) (PredefinedCatalogItem, bool) {
 	for _, item := range definition.Predefined {
 		if strings.EqualFold(item.Name, name) {
-			return clonePredefinedCatalogItem(item), true
+			return item, true
 		}
 	}
 	return PredefinedCatalogItem{}, false
@@ -945,7 +949,7 @@ func (definition CatalogDefinition) PredefinedItem(name string) (PredefinedCatal
 func (definition CatalogDefinition) PredefinedByID(id uuid.UUID) (PredefinedCatalogItem, bool) {
 	for _, item := range definition.Predefined {
 		if item.ID == id {
-			return clonePredefinedCatalogItem(item), true
+			return item, true
 		}
 	}
 	return PredefinedCatalogItem{}, false
@@ -1594,19 +1598,6 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		if item.Parent != "" && strings.EqualFold(item.Parent, item.Name) {
 			issues = append(issues, prefix+".parent is the item itself")
 		}
-		attributeNames := map[string]bool{}
-		for name := range item.Attributes {
-			attribute, ok := findCatalogAttribute(shape.attributes, name)
-			if !ok {
-				issues = append(issues, prefix+".attributes."+name+" is unknown")
-				continue
-			}
-			key := strings.ToLower(attribute.Name)
-			if attributeNames[key] {
-				issues = append(issues, prefix+".attributes contains duplicate "+attribute.Name)
-			}
-			attributeNames[key] = true
-		}
 	}
 	return append(issues, validatePredefinedTree(shape.predefined, shape.hierarchy)...)
 }
@@ -2153,9 +2144,6 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Forms = cloneFormSet(value.Forms)
 	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
-	for index := range value.Predefined {
-		value.Predefined[index] = clonePredefinedCatalogItem(value.Predefined[index])
-	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
@@ -2165,14 +2153,6 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.BasedOn = slices.Clone(value.BasedOn)
 	value.DataLockFields = cloneDataLockFields(value.DataLockFields)
 	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)
-	return value
-}
-
-func clonePredefinedCatalogItem(value PredefinedCatalogItem) PredefinedCatalogItem {
-	if value.Attributes == nil {
-		return value
-	}
-	value.Attributes = maps.Clone(value.Attributes)
 	return value
 }
 

@@ -361,20 +361,13 @@ predefined:
   - id: `+predefinedID.String()+`
     name: Основной
     description: Основной контрагент
-    attributes:
-      ИНН: {kind: string, data: "123456789012"}
 `), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
 	item, ok := definition.PredefinedItem("основной")
-	if !ok || item.ID != predefinedID || item.Attributes["ИНН"].Data != "123456789012" {
+	if !ok || item.ID != predefinedID || item.Description != "Основной контрагент" {
 		t.Fatalf("predefined=%+v found=%v", item, ok)
-	}
-	item.Attributes["ИНН"] = Value{Kind: StringType, Data: "changed"}
-	again, _ := definition.PredefinedItem("Основной")
-	if again.Attributes["ИНН"].Data != "123456789012" {
-		t.Fatal("predefined lookup exposed mutable attributes")
 	}
 }
 
@@ -1022,32 +1015,25 @@ func TestPredefinedTreeKeepsToTheLevels(t *testing.T) {
 	}
 }
 
-// A predefined item gives values to the attributes of its object by their
-// names, and the values are checked once the whole configuration is in: the
-// name has to be an attribute the object has, and the value one it holds. Both
-// kinds whose predefined items carry attribute values are checked. Defects
-// caught: a value for an attribute the object does not have kept and never
-// written anywhere, and a value the attribute cannot hold - a string longer
-// than it - taken as it is (no test held this before 2.375).
-func TestPredefinedValuesFitTheAttributesOfTheirObject(t *testing.T) {
+// A predefined item gives no values to the attributes of its object: the
+// prototype's dialog of a predefined item has none even in a catalog with many
+// attributes (ERP, «ВидыКонтактнойИнформации», 21.10.2026), and no export
+// writes one. A description that gives one is refused at its reading, in both
+// kinds whose predefined items are read from the shape of a catalog, and the
+// same description without it is read. Defect caught: a value of an attribute
+// read, kept and written into the predefined row - a field of ML alone, which
+// three places checked in three ways.
+func TestAPredefinedItemGivesNoValuesToAttributes(t *testing.T) {
 	t.Parallel()
 	objects := map[string]struct {
-		kind       Kind
-		word, head string
+		kind Kind
+		head string
 	}{
-		"catalog": {CatalogKind, "catalog item", ""},
-		"chart":   {ChartOfCharacteristicTypesKind, "characteristic", "value_type: [{kind: string, length: 50}]\n"},
+		"catalog": {CatalogKind, ""},
+		"chart":   {ChartOfCharacteristicTypesKind, "value_type: [{kind: string, length: 50}]\n"},
 	}
 	for name, object := range objects {
-		for _, testCase := range []struct {
-			values, want string
-		}{
-			// Refused already by the reading of the description; the load's
-			// own refusal is for a catalog made without one.
-			{`Нет: {kind: string, data: "1"}`, "predefined[0].attributes.Нет is unknown"},
-			{`ИНН: {kind: string, data: "1234567890123"}`, "predefined " + object.word + " Контрагенты.Основной: "},
-			{`ИНН: {kind: string, data: "123456789012"}`, ""},
-		} {
+		for _, values := range []string{"", "    attributes:\n      ИНН: {kind: string, data: \"123456789012\"}\n"} {
 			root := metadataProject(t)
 			writeMetadata(t, root, object.kind, catalogID, `format: 1
 id: `+catalogID+`
@@ -1065,15 +1051,13 @@ predefined:
     name: Основной
     code: "000000001"
     description: Основной
-    attributes:
-      `+testCase.values+`
-`)
+`+values)
 			_, err := Load(root)
 			switch {
-			case testCase.want == "" && err != nil:
-				t.Errorf("%s: a value that fits was refused: %v", name, err)
-			case testCase.want != "" && (err == nil || !strings.Contains(err.Error(), testCase.want)):
-				t.Errorf("%s, %s: error = %v, want %q", name, testCase.values, err, testCase.want)
+			case values == "" && err != nil:
+				t.Errorf("%s: an item without values was refused: %v", name, err)
+			case values != "" && (err == nil || !strings.Contains(err.Error(), "attributes")):
+				t.Errorf("%s: an item giving a value to an attribute was read: error = %v", name, err)
 			}
 		}
 	}
