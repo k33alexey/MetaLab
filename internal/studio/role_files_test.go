@@ -127,6 +127,35 @@ func TestDeletingARoleRemovesItsGrid(t *testing.T) {
 	}
 }
 
+// A delete refused halfway leaves the role as it was, rights and all.
+//
+// Defect caught: the grid removed before the rest failed, which left a role
+// that loads and grants nothing (review of block 2в, 2.431).
+func TestARoleDeleteThatFailsHalfwayKeepsItsRights(t *testing.T) {
+	t.Parallel()
+	workspace, saved, grid := savedRoleWithGrid(t)
+	before, err := os.ReadFile(grid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles := filepath.Join(workspace.root, "metadata", "roles")
+	// The folder of roles lets nothing go: the grid inside the role's own
+	// folder can be removed, the folder and the description cannot.
+	if err := os.Chmod(roles, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(roles, 0o755)
+	if err := workspace.DeleteRole(saved.Path, saved.Revision); err == nil {
+		t.Fatal("the delete went through a folder that lets nothing go")
+	}
+	if after, err := os.ReadFile(grid); err != nil || string(after) != string(before) {
+		t.Fatalf("the role lost its rights: %q, %v", after, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace.root, filepath.FromSlash(saved.Path))); err != nil {
+		t.Fatalf("the role lost its description: %v", err)
+	}
+}
+
 // The description edited as text is checked with the grid beside it and
 // written back with its restrictions.
 //
@@ -259,6 +288,27 @@ func TestAllRolesSaveOverAChangedRoleWritesNothing(t *testing.T) {
 		t.Fatal("a role named as another was saved")
 	}
 	if roleFilesOf(t, workspace, roles[0]) != before || !untouched(t, workspace, roles[0], file) || roleFilesOf(t, workspace, roles[1]) != beforeSecond {
+		t.Fatal("a refused save wrote a role")
+	}
+}
+
+// «Все роли» changes rights and keeps names: a save renaming a role is
+// refused whole, before anything is written.
+//
+// Defect caught: two roles of one save given one new name, each checked
+// against the disk alone and both written - a project that no longer loads
+// (review of block 2в, 2.431; the owner, 21.10.2026: a role is renamed in its
+// own window).
+func TestAllRolesSaveKeepsTheNames(t *testing.T) {
+	t.Parallel()
+	workspace, roles := twoRolesWithGrids(t)
+	before := []string{roleFilesOf(t, workspace, roles[0]), roleFilesOf(t, workspace, roles[1])}
+	first, second := withRight(roles[0], metadata.PermissionInputByString), withRight(roles[1], metadata.PermissionInputByString)
+	first.Role.Name, second.Role.Name = "Кладовщик2", "Кладовщик2"
+	if _, err := workspace.SaveRoles([]RoleSave{first, second}); err == nil {
+		t.Fatal("two roles were renamed alike in one save")
+	}
+	if roleFilesOf(t, workspace, roles[0]) != before[0] || roleFilesOf(t, workspace, roles[1]) != before[1] {
 		t.Fatal("a refused save wrote a role")
 	}
 }

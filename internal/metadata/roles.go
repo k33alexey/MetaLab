@@ -274,7 +274,10 @@ func DroppedRights() map[PermissionOperation]PermissionOperation {
 // before 8.3.16, and a configuration kept in compatibility with an earlier
 // version writes it under the old name and never under the new one: it is
 // found as the developer tools, which stand for it in ML (droppedRights).
-var renamedRights = map[string]PermissionOperation{"AllFunctionsMode": PermissionDeveloperTools}
+// The old name has its two languages as every name has (help, ПравоДоступа).
+var renamedRights = map[string]PermissionOperation{
+	"AllFunctionsMode": PermissionDeveloperTools, "РежимВсеФункции": PermissionDeveloperTools,
+}
 
 // knownRights answers by name what roleRights lists in order.
 var knownRights = func() map[PermissionOperation]bool {

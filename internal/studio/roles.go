@@ -364,8 +364,16 @@ func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	for _, save := range saves {
-		if _, err := workspace.checkRoleSaveLocked(save); err != nil {
+		opened, err := workspace.checkRoleSaveLocked(save)
+		if err != nil {
 			return RoleOverview{}, fmt.Errorf("role %q: %w", save.Role.Name, err)
+		}
+		// «Все роли» changes rights, not names (the owner, 21.10.2026): a
+		// role is renamed in its own window, one at a time. Two roles of one
+		// save renamed alike would each pass the check against the disk and
+		// leave a project that does not load.
+		if save.Role.Name != opened.Role.Name {
+			return RoleOverview{}, fmt.Errorf("role %q: all roles are saved with their names, a role is renamed in its own window", opened.Role.Name)
 		}
 	}
 	type written struct {
@@ -397,6 +405,10 @@ func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
 // caller still has the latest revision. Reference existence (e.g. a common
 // module still granting this role) is not checked here — same as SaveRole,
 // that is caught at the next full project Load, not at delete time.
+//
+// The grid goes first, as a save writes it first, and comes back when the
+// rest cannot follow: a delete refused halfway leaves the role as it was, not
+// a description with no rights, which loads as a role that grants nothing.
 func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
@@ -407,10 +419,19 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 	if opened.Revision != expectedRevision {
 		return ErrSourceChanged
 	}
-	if err := writeRoleGrid(workspace.roleGridPath(relative), nil); err != nil {
-		return fmt.Errorf("delete role %q: %w", relative, err)
+	current, err := workspace.readRoleFilesLocked(relative)
+	if err != nil {
+		return err
 	}
-	if err := os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative))); err != nil {
+	gridPath := workspace.roleGridPath(relative)
+	err = writeRoleGrid(gridPath, nil)
+	if err == nil {
+		err = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+	}
+	if err != nil {
+		if restoreErr := writeRoleGrid(gridPath, current.grid); restoreErr != nil {
+			return fmt.Errorf("delete role %q: %w; restoring the rights failed: %v", relative, err, restoreErr)
+		}
 		return fmt.Errorf("delete role %q: %w", relative, err)
 	}
 	workspace.invalidateStudioIndexesLocked()

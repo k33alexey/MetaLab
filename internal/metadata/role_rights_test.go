@@ -137,8 +137,11 @@ func TestRightsAreFoundByThePrototypesNames(t *testing.T) {
 		"ИнтерактивноеУдалениеПомеченныхПредопределенныхДанных": PermissionInteractiveDeleteMarkedPredefinedData,
 		// The mode of the technical specialist, under either name, is the
 		// developer tools in ML (ACCESS-RIGHTS, «Своих прав у ML три»).
-		"AllFunctionsMode": "developer-tools",
-		"РежимТехническогоСпециалиста": "developer-tools",
+		// Its name before 8.3.16 is written in both languages too: the help
+		// of ПравоДоступа lists РежимВсеФункции (AllFunctionsMode).
+		"AllFunctionsMode":                       "developer-tools",
+		"РежимВсеФункции":                        "developer-tools",
+		"РежимТехническогоСпециалиста":           "developer-tools",
 		"DeveloperTools":                         "developer-tools",
 		"ИсторияИзменений":                       "change-history",
 		"ExclusiveModeTerminationAtSessionStart": PermissionExclusiveModeTerminationAtSessionStart,
