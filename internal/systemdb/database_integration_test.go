@@ -22,7 +22,7 @@ func TestDatabaseMigrationAndSettingsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	if err := database.Ping(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,9 @@ func TestDatabaseMigrationAndSettingsIntegration(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		_, _ = database.Settings.Delete(cleanupCtx, key)
+		if _, err := database.Settings.Delete(cleanupCtx, key); err != nil {
+			t.Error(err)
+		}
 	})
 	created, err := database.Settings.Set(ctx, key, json.RawMessage(`{"language":"ru"}`))
 	if err != nil {
@@ -85,12 +87,14 @@ func TestSettingsConcurrentUpdatesAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	key := fmt.Sprintf("test.concurrent-%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		_, _ = database.Settings.Delete(cleanupCtx, key)
+		if _, err := database.Settings.Delete(cleanupCtx, key); err != nil {
+			t.Error(err)
+		}
 	})
 
 	const updates = 16

@@ -130,7 +130,14 @@ func openAdministratorTestDatabase(t *testing.T) *Database {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.users")
+		// The audit keeps an event after its actor is gone, so the events the
+		// test's users wrote go first, while the users still name them.
+		if _, err := database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.audit_events WHERE user_id IN (SELECT id FROM ml_system.users)"); err != nil {
+			t.Error(err)
+		}
+		if _, err := database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.users"); err != nil {
+			t.Error(err)
+		}
 		database.Close()
 	})
 	return database

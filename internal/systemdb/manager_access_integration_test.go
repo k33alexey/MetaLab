@@ -31,7 +31,11 @@ func TestManagerSessionAndPermissionBoundariesIntegration(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
-		_, err := database.pool.Exec(cleanup, `DELETE FROM ml_system.databases WHERE id=ANY($1::uuid[])`, []string{databaseID.String(), foreignID.String()})
+		_, err := database.pool.Exec(cleanup, `DELETE FROM ml_system.audit_events WHERE database_id=ANY($1::uuid[])`, []string{databaseID.String(), foreignID.String()})
+		if err != nil {
+			t.Error(err)
+		}
+		_, err = database.pool.Exec(cleanup, `DELETE FROM ml_system.databases WHERE id=ANY($1::uuid[])`, []string{databaseID.String(), foreignID.String()})
 		if err != nil {
 			t.Error(err)
 		}

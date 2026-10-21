@@ -24,7 +24,7 @@ func TestDatabaseRegistryLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	registration := DatabaseRegistration{
 		ID: uuid.MustNew(), Name: "Test " + suffix, PhysicalID: uuid.MustNew(),
@@ -42,9 +42,11 @@ func TestDatabaseRegistryLifecycleIntegration(t *testing.T) {
 		defer cleanupCancel()
 		current, getErr := database.Databases.Get(cleanupCtx, registration.ID)
 		if getErr == nil && current.State != DatabaseStopped {
-			_, _ = database.pool.Exec(cleanupCtx, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", registration.ID.String())
+			if _, err := database.pool.Exec(cleanupCtx, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", registration.ID.String()); err != nil {
+				t.Error(err)
+			}
 		}
-		_, _ = database.Databases.Unregister(cleanupCtx, registration.ID)
+		unregisterTestDatabase(cleanupCtx, t, database, registration.ID)
 	})
 	if created.State != DatabaseStopped || created.StateRevision != 1 || created.PhysicalID != registration.PhysicalID {
 		t.Fatalf("created = %+v", created)
@@ -110,7 +112,7 @@ func TestConcurrentPhysicalDatabaseRegistrationHasSingleWinner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	physicalID := uuid.MustNew()
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	const attempts = 12
@@ -166,7 +168,7 @@ func TestPrimaryDatabaseCannotBeRemovedBeforeItsDebugCopiesIntegration(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	primaryID := uuid.MustNew()
 	primary, err := database.Databases.Register(ctx, DatabaseRegistration{
@@ -194,8 +196,8 @@ func TestPrimaryDatabaseCannotBeRemovedBeforeItsDebugCopiesIntegration(t *testin
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		_, _ = database.Databases.Unregister(cleanupCtx, debug.ID)
-		_, _ = database.Databases.Unregister(cleanupCtx, primary.ID)
+		unregisterTestDatabase(cleanupCtx, t, database, debug.ID)
+		unregisterTestDatabase(cleanupCtx, t, database, primary.ID)
 	})
 	if debug.SourceDatabaseID == nil || *debug.SourceDatabaseID != primary.ID {
 		t.Fatalf("debug source = %v, want %s", debug.SourceDatabaseID, primary.ID)
@@ -208,5 +210,17 @@ func TestPrimaryDatabaseCannotBeRemovedBeforeItsDebugCopiesIntegration(t *testin
 	}
 	if _, err := database.Databases.Unregister(ctx, primary.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// unregisterTestDatabase removes what a test registered and says so when it
+// cannot. A cleanup that dropped the error ran for months on a pool a deferred
+// Close had already shut, and every run left its database, Studio session and
+// setting behind in ml_system. A database the test removed itself is gone
+// already, and that is not a failure.
+func unregisterTestDatabase(ctx context.Context, t *testing.T, database *Database, id uuid.UUID) {
+	t.Helper()
+	if _, err := database.Databases.Unregister(ctx, id); err != nil && !errors.Is(err, ErrDatabaseNotFound) {
+		t.Errorf("unregister test database %s: %v", id, err)
 	}
 }

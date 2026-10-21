@@ -24,7 +24,7 @@ func TestStudioSessionIsExclusiveRenewableAndRecoverableIntegration(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(database.Close)
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	databaseID := uuid.MustNew()
 	_, err = database.Databases.Register(ctx, DatabaseRegistration{
@@ -37,8 +37,10 @@ func TestStudioSessionIsExclusiveRenewableAndRecoverableIntegration(t *testing.T
 	t.Cleanup(func() {
 		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		_, _ = database.pool.Exec(cleanupContext, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", databaseID.String())
-		_, _ = database.Databases.Unregister(cleanupContext, databaseID)
+		if _, err := database.pool.Exec(cleanupContext, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", databaseID.String()); err != nil {
+			t.Error(err)
+		}
+		unregisterTestDatabase(cleanupContext, t, database, databaseID)
 	})
 	projectID, firstID := uuid.MustNew(), uuid.MustNew()
 	firstDigest := auth.SessionTokenDigest("first-studio-token")

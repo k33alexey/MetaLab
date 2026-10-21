@@ -64,7 +64,10 @@ VALUES ($1, $2, $3, $4)`, user.id.String(), user.login, passwordHash, user.platf
 		defer cleanupCancel()
 		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.portal_sessions WHERE user_id IN ($1, $2, $3)", administratorID.String(), memberID.String(), outsiderID.String())
 		_, _ = database.pool.Exec(cleanupCtx, "UPDATE ml_system.databases SET state = 'stopped' WHERE id = $1", databaseID.String())
-		_, _ = database.Databases.Unregister(cleanupCtx, databaseID)
+		if _, err := database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.audit_events WHERE database_id = $1 OR user_id IN ($2, $3, $4)", databaseID.String(), administratorID.String(), memberID.String(), outsiderID.String()); err != nil {
+			t.Error(err)
+		}
+		unregisterTestDatabase(cleanupCtx, t, database, databaseID)
 		_, _ = database.pool.Exec(cleanupCtx, "DELETE FROM ml_system.users WHERE id IN ($1, $2, $3)", administratorID.String(), memberID.String(), outsiderID.String())
 	})
 
