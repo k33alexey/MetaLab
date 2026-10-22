@@ -244,10 +244,12 @@ function createRoleOverviewModel(source) {
   // объектов, где оно есть, caption — подпись, у поля части — через точку
   // после подписи части. Отмеченное поле достаётся только объекту, у
   // которого оно есть (владелец 13.10.2026, проверено в конфигураторе).
-  function restrictionFieldChoices(objectIDs) {
+  // fieldsOf — поля объекта: те, что показывает окно ограничения; отбор
+  // списка берёт и поля, которых у объекта сейчас нет (namedFields).
+  function restrictionFieldChoices(objectIDs, fieldsOf = id => objects.get(id)?.restrictionFields || []) {
     const choices = new Map();
     for (const id of new Set(objectIDs)) {
-      const paths = fieldPaths(id), own = objects.get(id)?.restrictionFields || [];
+      const paths = fieldPaths(id), own = fieldsOf(id);
       const named = field => localized(field) || field.name;
       for (const field of own) {
         const path = paths.get(field.key), part = field.parent && own.find(item => item.key === field.parent);
@@ -260,8 +262,16 @@ function createRoleOverviewModel(source) {
   // Путь поля ограничения объекта по его ключу: имя, у поля табличной
   // части — через точку после имени части.
   function fieldPaths(objectID) {
-    const own = objects.get(objectID)?.restrictionFields || [], byKey = new Map(own.map(field => [field.key, field]));
+    const own = namedFields(objectID), byKey = new Map(own.map(field => [field.key, field]));
     return new Map(own.map(field => [field.key, field.parent ? `${byKey.get(field.parent)?.name}.${field.name}` : field.name]));
+  }
+  // Поля, которые может называть ограничение объекта: те, что показывает
+  // окно, и те, которых у объекта сейчас нет, — ограничение по такому полю
+  // прототип хранит, а список называет его и предлагает в отборе (сверено
+  // 22.10.2026, ACCESS-RIGHTS «Ограничение по полю, которого у объекта нет»).
+  function namedFields(objectID) {
+    const object = objects.get(objectID);
+    return [...object?.restrictionFields || [], ...object?.absentFields || []];
   }
   // Условия отбора: в списке — «одно из отмеченных», ничего не отмечено —
   // условия нет; текст — фрагмент без учёта регистра, пустой условия не
@@ -284,7 +294,7 @@ function createRoleOverviewModel(source) {
     const items = restrictable().filter(item => used.has(item.id));
     return {objects: items, roles: roleList().filter(role => rows.some(row => row.path === role.path)),
       rights: rightKeys().filter(key => rows.some(row => row.operation === key)),
-      fields: restrictionFieldChoices(items.map(item => item.id)).filter(choice => paths.has(choice.path))};
+      fields: restrictionFieldChoices(items.map(item => item.id), namedFields).filter(choice => paths.has(choice.path))};
   }
   // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
   // отмеченных: мастер такому объекту ограничения по этим полям не даёт.

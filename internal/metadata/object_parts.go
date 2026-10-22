@@ -181,11 +181,12 @@ type kindComposition struct {
 	// rest (validateObjectsAsLoaded). Nil is a kind whose objects keep no
 	// such folder, or whose files are checked by code of their own.
 	files func(catalog *Catalog, id uuid.UUID) objectFiles
-	// queryTable is the fields of the table a query reads of an object of
-	// the kind, of all it keeps (objectFieldsOf), where the object decides
-	// which it has and the window of a restriction lists them in an order of
-	// its own; nil is a kind whose table holds every field of its objects.
-	queryTable func(catalog *Catalog, id uuid.UUID, fields []objectPart) []objectPart
+	// queryTable is what an object of the kind decides of the table a query
+	// reads of it, where its settings decide which of the fields it keeps
+	// (objectFieldsOf) the table has and the window of a restriction lists
+	// them in an order of its own (referenceTable); nil is a kind whose
+	// table holds every field of its objects.
+	queryTable func(catalog *Catalog, id uuid.UUID) referenceTable
 	// rightsFolders are the folders the tree of rights of the window of a
 	// role shows under an object of the kind, in its order, every one even
 	// when empty (pass of 20.10.2026, block-00/rol, «Папки частей»): its own
@@ -468,11 +469,21 @@ var kindCompositionOf = map[Kind]kindComposition{
 	DefinedTypeKind: {types: func(c *Catalog, id uuid.UUID) []Type {
 		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
-	LanguageKind:                   {},
-	CatalogKind:                    withQueryTable(referenceKind(CatalogKind, referenceFolders), catalogQueryTable),
-	ChartOfCharacteristicTypesKind: referenceKind(ChartOfCharacteristicTypesKind, referenceFolders),
-	ChartOfAccountsKind: referenceKind(ChartOfAccountsKind, partFolders(AttributesPart, AccountingFlagsPart, ExtDimensionAccountingFlagsPart,
-		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)),
+	LanguageKind: {},
+	CatalogKind: withQueryTable(referenceKind(CatalogKind, referenceFolders), func(c *Catalog, id uuid.UUID) referenceTable {
+		definition := c.Catalogs[c.catalogByID[id]]
+		return referenceTable{hierarchy: definition.Hierarchy, owned: len(definition.Owners) > 0,
+			codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+	}),
+	ChartOfCharacteristicTypesKind: withQueryTable(referenceKind(ChartOfCharacteristicTypesKind, referenceFolders), func(c *Catalog, id uuid.UUID) referenceTable {
+		definition := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
+		return referenceTable{hierarchy: definition.Hierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+	}),
+	ChartOfAccountsKind: withQueryTable(referenceKind(ChartOfAccountsKind, partFolders(AttributesPart, AccountingFlagsPart, ExtDimensionAccountingFlagsPart,
+		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)), func(c *Catalog, id uuid.UUID) referenceTable {
+		definition := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
+		return referenceTable{hierarchy: accountsHierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+	}),
 	ChartOfCalculationTypesKind: referenceKind(ChartOfCalculationTypesKind, partFolders(AttributesPart, TablePartsPart, StandardAttributesPart,
 		StandardTablePartsPart, CommandsPart)),
 	// The addressing attributes of a task are no fields of its own sort:
@@ -544,43 +555,83 @@ func referenceKind(kind Kind, folders []rightsFolder) kindComposition {
 	}, files: declaredFilesOf}
 }
 
-// withQueryTable gives a composition the fields of its table a query reads.
-func withQueryTable(composition kindComposition, queryTable func(*Catalog, uuid.UUID, []objectPart) []objectPart) kindComposition {
+// withQueryTable gives a composition what its objects decide of the table a
+// query reads of them.
+func withQueryTable(composition kindComposition, queryTable func(*Catalog, uuid.UUID) referenceTable) kindComposition {
 	composition.queryTable = queryTable
 	return composition
 }
 
-// catalogQueryTable is the fields of the table of a catalog as the window of
-// a restriction lists them (pass of 22.10.2026, block-00/vse-ogranicheniya-
-// dostupa.md: ERP's Валюты and Бригады). The parent is there only in a
-// hierarchical catalog and the owner only in a subordinate one, as the help
-// of the table says (Справочник.<Имя справочника>: «Существует только для
-// многоуровневых», «только для подчиненных»); the window shows ЭтоГруппа
-// beside the parent, and the code only where it has a length. The order is
-// the window's: the reference, the version of the data, the mark of
-// deletion, the parent, ЭтоГруппа, the code, the description, what the
-// catalog declares with its table parts, then the predefined and its name.
-// Where the owner stands the pass did not see; it keeps its place after
-// ЭтоГруппа, as among the standard attributes.
-func catalogQueryTable(c *Catalog, id uuid.UUID, fields []objectPart) []objectPart {
-	definition := c.Catalogs[c.catalogByID[id]]
+// referenceTable is what the settings of a catalog, a chart of
+// characteristic types or a chart of accounts decide of the table a query
+// reads of it, as the window of a restriction lists its fields (passes of
+// 22.10.2026, block-00/vse-ogranicheniya-dostupa.md, the first and the
+// second; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения»). The help
+// of the tables says the parent is there only in a multi-level object and
+// the owner only in a subordinate catalog (Справочник.<Имя справочника>,
+// ПланВидовХарактеристик.<Имя плана видов характеристик>); the window shows
+// ЭтоГруппа only with a hierarchy of folders and items, as the table keeps
+// the flag of a folder (appendHierarchyColumns), and the code and the
+// description only where they have a length.
+type referenceTable struct {
+	hierarchy Hierarchy
+	// owned is a catalog subordinate to others.
+	owned                         bool
+	codeLength, descriptionLength int
+}
+
+// referenceTableOrder is the window's order of the standard fields of the
+// three kinds: the reference, the version of the data, the mark of
+// deletion, the owner, the parent, ЭтоГруппа, the code, the description,
+// Порядок, Вид and Забалансовый of a chart of accounts, then the rest in
+// the order the object keeps them - ТипЗначения of a chart of
+// characteristic types, the last of its standard attributes, before what
+// the object declares with the table parts, standard ones among them -, and
+// last the predefined and its name.
+var referenceTableOrder = map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "owner": 3, "parent": 4, "isfolder": 5,
+	"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "predefined": 12, "predefineddataname": 13}
+
+// declaredOrder is the place of every field referenceTableOrder does not
+// name.
+const declaredOrder = 11
+
+// fieldsOf is the fields of the table, of all the object keeps, in the
+// window's order. The accounting flags of the ext dimensions are fields of
+// the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
+// счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and the
+// window shows them there, not among the account's own (snapshot pola-12).
+func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
 	absent := map[string]bool{
-		"parent": !definition.Hierarchy.Enabled, "isfolder": !definition.Hierarchy.Enabled,
-		"owner": len(definition.Owners) == 0, "code": definition.Code.Length == 0,
+		"parent": !table.hierarchy.Enabled, "isfolder": !table.hierarchy.Enabled || table.hierarchy.Kind != FoldersAndItemsHierarchy,
+		"owner": !table.owned, "code": table.codeLength == 0, "description": table.descriptionLength == 0,
 	}
-	rank := map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "parent": 3, "isfolder": 4, "owner": 5, "code": 6, "description": 7,
-		"predefined": 9, "predefineddataname": 10}
+	standard := func(field objectPart) bool { return field.group == StandardAttributesPart && field.parent == "" }
 	rankOf := func(field objectPart) int {
-		if order, ok := rank[field.key]; ok && field.group == StandardAttributesPart && field.parent == "" {
+		if order, ok := referenceTableOrder[field.key]; ok && standard(field) {
 			return order
 		}
-		return 8
+		return declaredOrder
 	}
-	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool {
-		return field.group == StandardAttributesPart && field.parent == "" && absent[field.key]
-	})
+	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && absent[field.key] })
 	slices.SortStableFunc(result, func(a, b objectPart) int { return rankOf(a) - rankOf(b) })
-	return result
+	extDimensions := strings.ToLower(extDimensionTypesPart.en)
+	var flags []objectPart
+	result = slices.DeleteFunc(result, func(field objectPart) bool {
+		if field.group != ExtDimensionAccountingFlagsPart {
+			return false
+		}
+		field.parent = extDimensions
+		flags = append(flags, field)
+		return true
+	})
+	if len(flags) == 0 {
+		return result
+	}
+	last := slices.IndexFunc(result, func(field objectPart) bool { return field.key == extDimensions })
+	for index := last + 1; index < len(result) && result[index].parent == extDimensions; index++ {
+		last = index
+	}
+	return slices.Insert(result, last+1, flags...)
 }
 
 // fieldPart is a field of an object or of its table part.
@@ -695,9 +746,23 @@ var dataVersionField = standardField{"ВерсияДанных", "DataVersion"}
 func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
 	fields := catalog.objectFieldsOf(kind, id)
 	if queryTable := kindCompositionOf[kind].queryTable; queryTable != nil && catalog.hasObject(kind, id) {
-		return queryTable(catalog, id, fields)
+		return queryTable(catalog, id).fieldsOf(fields)
 	}
 	return fields
+}
+
+// absentRestrictionFieldsOf is what the object keeps and the table a query
+// reads of it has not by the object's settings now - the parent of a
+// catalog with no hierarchy, the code of length 0 -, in the order of what
+// it keeps. A restriction may still name one, as the prototype keeps it
+// when the setting changes (ACCESS-RIGHTS.md, «Ограничение по полю,
+// которого у объекта нет»): its list names it, its window does not show it.
+func (catalog *Catalog) absentRestrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
+	present := map[string]bool{}
+	for _, field := range catalog.restrictionFieldsOf(kind, id) {
+		present[field.key] = true
+	}
+	return slices.DeleteFunc(catalog.objectFieldsOf(kind, id), func(field objectPart) bool { return present[field.key] })
 }
 
 // objectFieldsOf is every field an object of the kind keeps: every part

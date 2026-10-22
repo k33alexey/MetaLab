@@ -29,13 +29,16 @@ func restrictedProject(t *testing.T, role func(document, part, column, constant 
 // ones the configurator offers on it and the role writes, among reading,
 // adding, changing and deleting; the fields are those of its table, the line
 // number of a table part among them. A restriction the exports never show is
-// accepted and noted.
+// accepted and noted, and so is a field the object does not have, as the
+// prototype keeps one (ACCESS-RIGHTS.md, «Ограничение по полю, которого у
+// объекта нет»): the parent of a document, the line number of no table part.
 //
 // Defect caught: a restriction of a right the object has not, of one the role
 // does not write or of one the prototype does not restrict read as a role; a
 // field the prototype writes (ОС.LineNumber) refused; a restriction on a kind
-// no export restricts, an empty one on the other fields or an empty template
-// accepted silently.
+// no export restricts, an empty one on the other fields, an empty template
+// or a field the object does not have accepted silently; such a field
+// refused, as 2.440 refused it; a field of no name accepted.
 func TestRestrictionsFollowTheObject(t *testing.T) {
 	t.Parallel()
 	role := func(objects func(document, part, column, constant uuid.UUID) []ObjectPermission, templates []RestrictionTemplate) func(document, part, column, constant uuid.UUID) RoleDefinition {
@@ -49,7 +52,8 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 		return []ObjectPermission{
 			{Object: document, Operations: read, Restrictions: []RightRestriction{
 				{Right: PermissionRead, Fields: []string{"ref", "dataversion", part.String() + ".linenumber", column.String()}},
-				{Right: PermissionRead}}},
+				{Right: PermissionRead},
+				{Right: PermissionRead, Fields: []string{"parent", column.String() + ".linenumber"}, Condition: "ГДЕ ИСТИНА"}}},
 			{Object: constant, Operations: []PermissionOperation{PermissionRead},
 				Restrictions: []RightRestriction{{Right: PermissionRead, Condition: "ГДЕ ИСТИНА"}}},
 		}
@@ -72,6 +76,20 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 	if !slices.Equal(noted, want) {
 		t.Fatalf("notes:\n%s\nwant:\n%s", strings.Join(noted, "\n"), strings.Join(want, "\n"))
 	}
+	var absent []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteRestrictionAbsentField {
+			absent = append(absent, note.Where+": "+note.Written)
+		}
+	}
+	slices.Sort(absent)
+	column := catalog.Documents[0].TableParts[0].Attributes[0].ID
+	if want := []string{
+		"roles Кладовщик restrictions: documents Продажа read " + column.String() + ".linenumber",
+		"roles Кладовщик restrictions: documents Продажа read parent",
+	}; !slices.Equal(absent, want) {
+		t.Fatalf("notes of fields the object does not have:\n%s\nwant:\n%s", strings.Join(absent, "\n"), strings.Join(want, "\n"))
+	}
 	for name, objects := range map[string]func(document, part, column, constant uuid.UUID) []ObjectPermission{
 		"a right the object is not offered": func(document, part, column, constant uuid.UUID) []ObjectPermission {
 			return []ObjectPermission{{Object: constant, Operations: []PermissionOperation{PermissionRead, PermissionDelete},
@@ -85,9 +103,9 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 			return []ObjectPermission{{Object: document, Operations: read,
 				Restrictions: []RightRestriction{{Right: PermissionView, Condition: "ГДЕ ЛОЖЬ"}}}}
 		},
-		"a field of no table part": func(document, part, column, constant uuid.UUID) []ObjectPermission {
+		"a field of no name": func(document, part, column, constant uuid.UUID) []ObjectPermission {
 			return []ObjectPermission{{Object: document, Operations: read,
-				Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{column.String() + ".linenumber"}}}}}
+				Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{""}}}}}
 		},
 	} {
 		if _, err := restrictedProject(t, role(objects, nil)); err == nil {

@@ -81,6 +81,7 @@ const (
 	NoteUseWithoutSample           NoteKind = "use-without-sample"
 	NoteRightWithoutSample         NoteKind = "right-without-sample"
 	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
+	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
 )
 
 func init() {
@@ -353,6 +354,14 @@ func init() {
 				"конфигуратор.",
 			"Несётся как записано. Условия ограничений пока не исполняются ни у одного вида: право с условием не даёт роли " +
 				"ни одной записи (блок 10)."},
+		NoteKindInfo{NoteRestrictionAbsentField,
+			"Ограничение доступа к данным называет поле, которого у объекта нет: у справочника сняли иерархию, длина кода или " +
+				"наименования стала 0, справочник перестал быть подчинённым, реквизит удалён. Конфигуратор такую правку не " +
+				"останавливает, поле в ограничении хранит, а проверка конфигурации молчит (сверено 22.10.2026); что такое " +
+				"ограничение делает в режиме «Предприятия», не известно.",
+			"Поле несётся как записано: список «Все ограничения доступа» его называет, окно ограничения не показывает и " +
+				"отмечает «Прочие поля», запись из окна оставляет только отмеченное. Ограничение будет исполняться как ограничение " +
+				"по прочим полям; условия ограничений пока не исполняются ни у одного вида (блок 10)."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -453,6 +462,7 @@ func init() {
 	noteRules[NoteUseWithoutSample] = noteUseWithoutSample
 	noteRules[NoteRightWithoutSample] = noteRightWithoutSample
 	noteRules[NoteRestrictionWithoutSample] = noteRestrictionWithoutSample
+	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan or a
@@ -506,6 +516,42 @@ func noteRestrictionWithoutSample(catalog *Catalog, note func(where, written str
 		for _, template := range role.RestrictionTemplates {
 			if strings.TrimSpace(template.Condition) == "" {
 				note("roles "+role.Name+" restriction-templates", template.Name)
+			}
+		}
+	}
+}
+
+// noteRestrictionAbsentField notes every field a restriction of a role names
+// that the object does not have, by the role, the object, the right and the
+// field - by its name where the object's kind gives one
+// (absentRestrictionFieldsOf), by its key where nothing does, as the
+// identifier of an attribute taken away.
+func noteRestrictionAbsentField(catalog *Catalog, note func(where, written string)) {
+	for _, role := range catalog.Roles {
+		for _, permission := range role.Objects {
+			if len(permission.Restrictions) == 0 {
+				continue
+			}
+			kind, _ := catalog.kindOfObject(permission.Object)
+			present, names := map[string]bool{}, map[string]string{}
+			for _, field := range catalog.restrictionFieldsOf(kind, permission.Object) {
+				present[field.key] = true
+			}
+			for _, field := range catalog.absentRestrictionFieldsOf(kind, permission.Object) {
+				names[field.key] = field.name
+			}
+			object := catalog.noteObjectName(kind, permission.Object)
+			for _, restriction := range permission.Restrictions {
+				for _, field := range restriction.Fields {
+					if present[field] {
+						continue
+					}
+					name := names[field]
+					if name == "" {
+						name = field
+					}
+					note("roles "+role.Name+" restrictions", object+" "+string(restriction.Right)+" "+name)
+				}
 			}
 		}
 	}

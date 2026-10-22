@@ -46,6 +46,17 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			t.Fatal(err)
 		}
 	},
+	NoteRestrictionAbsentField: func(t *testing.T, root string) {
+		id := uuid.MustNew()
+		writeMetadata(t, root, CatalogKind, id.String(), "format: 1\nid: "+id.String()+"\nname: Товары\ntitle: {ru: Товары}\n"+
+			"code: {type: string, length: 9, auto: true}\ndescription_length: 150\n")
+		role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+			Objects: []ObjectPermission{{Object: id, Operations: []PermissionOperation{PermissionRead},
+				Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{"parent"}, Condition: "ГДЕ ИСТИНА"}}}}}
+		if err := WriteRole(root, role); err != nil {
+			t.Fatal(err)
+		}
+	},
 	NoteUnusedBound: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    presentation: {min_value: \"0\"}\n"))
 	},

@@ -240,7 +240,7 @@ func TestRoleKeepsItsThreeFlags(t *testing.T) {
 // A role's restrictions and templates are text, as the prototype keeps them,
 // and they are saved and loaded as written. Defects caught: a restriction or
 // a template lost on the way, and one the prototype cannot have accepted -
-// a field of another object, a right the role does not write, a second
+// a field of no name, a right the role does not write, a second
 // restriction where only reading takes several, fields on a right other than
 // reading, a template under a name that is not one or under one taken.
 func TestRoleEditorSavesRestrictions(t *testing.T) {
@@ -277,8 +277,8 @@ func TestRoleEditorSavesRestrictions(t *testing.T) {
 	}
 
 	broken := map[string]func(*metadata.RoleDefinition){
-		"field of another object": func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[0].Fields[0] = uuid.MustNew().String() },
-		"right not written":       func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[2].Right = metadata.PermissionDelete },
+		"field of no name":  func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[0].Fields[0] = "" },
+		"right not written": func(r *metadata.RoleDefinition) { r.Objects[0].Restrictions[2].Right = metadata.PermissionDelete },
 		"right not restricted": func(r *metadata.RoleDefinition) {
 			r.Objects[0].Operations = append(r.Objects[0].Operations, metadata.PermissionView)
 			r.Objects[0].Restrictions[2].Right = metadata.PermissionView

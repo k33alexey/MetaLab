@@ -552,3 +552,90 @@ func TestTheWindowOfARoleKeepsToThePrototype(t *testing.T) {
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// absentFieldWalk looks at a restriction of the reading of Товары, which have
+// no hierarchy, by Родитель: in «Все ограничения доступа», in its filter and
+// in the window of the role.
+const absentFieldWalk = `(async () => {` + restrictionWalkTools + `
+  await overview('Все ограничения доступа');
+  const seen = {};
+  seen.listField = row('Аналитик', 'Товары')?.children[3]?.textContent.trim() || '';
+  seen.listRow = row('Аналитик', 'Товары')?.textContent || '';
+  await command('filter');
+  seen.filterOffers = !!box('Родитель');
+  await press('Отмена');
+  byText('#tree .studio-tree-row', 'Аналитик').click();
+  await studio.settle();
+  const editor = document.querySelector('#role-editor');
+  seen.warning = !editor.querySelector('.role-warning').hidden;
+  editor.querySelector('[data-object="` + demoGoods + `"]').click(); await studio.settle();
+  const restriction = all('.role-restrictions tbody tr', editor).find(item => item.textContent.includes('ГДЕ Г'));
+  seen.roleField = restriction?.firstChild?.textContent.trim() || '';
+  await choose(restriction);
+  editor.querySelector('.role-restrictions [data-command="edit"]').click(); await studio.settle();
+  seen.windowOffers = !!box('Родитель');
+  seen.othersMarked = box('Прочие поля').checked;
+  seen.okEnabled = enabled('ОК');
+  await press('Отмена');
+  return seen;
+})()`
+
+// TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes catches
+// Studio going its own way with a restriction naming a field the object has
+// no longer - Родитель of a catalog with no hierarchy (configurator
+// 22.10.2026, vse-ogranicheniya-dostupa.md, the third pass; ACCESS-RIGHTS
+// «Ограничение по полю, которого у объекта нет»): the list «Все ограничения
+// доступа» and the list of the role name the field and the filter offers
+// it, the window of the restriction does not show it and marks «Прочие
+// поля», and the role is shown with no warning of rights it cannot keep.
+// Defects caught: the field named by its key (parent), left out of the
+// filter, shown in the window; the role offered «Убрать недоступные права»
+// (2.440).
+func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
+		created, err := workspace.CreateRole("Аналитик")
+		if err != nil {
+			t.Fatal(err)
+		}
+		goods, err := uuid.Parse(demoGoods)
+		if err != nil {
+			t.Fatal(err)
+		}
+		created.Role.Objects = []metadata.ObjectPermission{{Object: goods, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Fields: []string{"parent"}, Condition: "ГДЕ Г"}}}}
+		if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
+			t.Fatal(err)
+		}
+	})
+	result, err := browser.evaluate(ctx, page, absentFieldWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen struct {
+		ListField, ListRow, RoleField                                string
+		FilterOffers, Warning, WindowOffers, OthersMarked, OkEnabled bool
+	}
+	if err := json.Unmarshal(result, &seen); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	for _, check := range []struct {
+		ok   bool
+		says string
+	}{
+		{seen.ListField == "Родитель", fmt.Sprintf("the list names the field %q, want Родитель (row %q)", seen.ListField, seen.ListRow)},
+		{seen.FilterOffers, "the filter of the list does not offer Родитель"},
+		{!seen.Warning, "the role is shown with the warning of rights it cannot keep"},
+		{seen.RoleField == "Родитель", fmt.Sprintf("the list of the role names the field %q, want Родитель", seen.RoleField)},
+		{!seen.WindowOffers, "the window of the restriction shows Родитель"},
+		{seen.OthersMarked, "the window of the restriction does not mark «Прочие поля»"},
+		{seen.OkEnabled, "«ОК» of the window of the restriction is not available on «Прочие поля»"},
+	} {
+		if !check.ok {
+			t.Error(check.says)
+		}
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}

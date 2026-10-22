@@ -127,39 +127,96 @@ func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows(t *testi
 	}
 }
 
-// TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable holds the fields
-// the window of a restriction lists for a catalog to the prototype's (pass of
-// 22.10.2026 on ERP's Валюты and Бригады, block-00/vse-ogranicheniya-
-// dostupa.md; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения») and to
-// the help of the table of a query (Родитель - only of a multi-level
-// catalog, Владелец - only of a subordinate one); written out here, not read
-// off the sets of standard attributes. Defects caught (2.437, case 2в-23):
-// every catalog offered Родитель, ЭтоГруппа, Владелец and Код whatever it
-// was; the version of the data stood first and the predefined fields before
-// the attributes. ЭтотОбъект keeps every field: the help of СправочникОбъект
+// TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject holds the fields
+// the window of a restriction lists for a catalog, a chart of characteristic
+// types and a chart of accounts to the prototype's (passes of 22.10.2026 on
+// ERP: Валюты and Бригады, then НоменклатураПоставщиков,
+// ПодразделенияОрганизаций, КатегорииЦелей, НомераГТД,
+// КаналыРекламныхВоздействий, АналитикиСтатейБюджетов, СтатьиДоходов and
+// Хозрасчетный, block-00/vse-ogranicheniya-dostupa.md; ACCESS-RIGHTS.md,
+// «Состав и порядок полей ограничения») and to the help of the tables of a
+// query (Родитель - only of a multi-level object, Владелец - only of a
+// subordinate catalog; the accounting flags of the ext dimensions are fields
+// of ВидыСубконто). The lists are written out here, from the inventory, not
+// read off the sets of standard attributes. Defects caught: every catalog
+// offered Родитель, ЭтоГруппа, Владелец and Код whatever it was (2.437, case
+// 2в-23); the version of the data first and the predefined fields before
+// the attributes; Владелец after ЭтоГруппа, ЭтоГруппа with a hierarchy of
+// items, Наименование of length 0 (2.440); a chart of characteristic types
+// and a chart of accounts offering every standard field in the order of the
+// standard attributes, the flags of the ext dimensions among the account's
+// own (2.440). ЭтотОбъект keeps every field: the help of СправочникОбъект
 // makes none of them hang on the catalog.
-func TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable(t *testing.T) {
+func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 	t.Parallel()
-	attribute := func(name string) Attribute {
-		return Attribute{ID: uuid.MustNew(), Name: name, Title: LocalizedText{"ru": name}, Types: []Type{{Kind: StringType, Length: 10}}}
+	root := metadataProject(t)
+	attribute := func(name string) string {
+		return "  - {id: " + uuid.MustNew().String() + ", name: " + name + ", title: {ru: " + name + "}, types: [{kind: string, length: 10}]}\n"
 	}
-	currencies := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Валюты", Title: LocalizedText{"ru": "Валюты"},
-		Code: CatalogCode{Type: StringType, Length: 3}, DescriptionLength: 50, Attributes: []Attribute{attribute("Наценка")}}
-	brigades := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Бригады", Title: LocalizedText{"ru": "Бригады"},
-		Code: CatalogCode{Type: StringType}, DescriptionLength: 50, Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy},
-		Attributes: []Attribute{attribute("Мастер")},
-		TableParts: []TablePart{{ID: uuid.MustNew(), Name: "Состав", Title: LocalizedText{"ru": "Состав"}, Attributes: []Attribute{attribute("Сотрудник")}}}}
-	accounts := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Счета", Title: LocalizedText{"ru": "Счета"},
-		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 50, Owners: []uuid.UUID{currencies.ID}}
-	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{currencies, brigades, accounts}, nil, nil, nil, nil)
+	tablePart := func(name, field string) string {
+		return "table_parts:\n  - id: " + uuid.MustNew().String() + "\n    name: " + name + "\n    title: {ru: " + name + "}\n    attributes:\n  " +
+			attribute(field)
+	}
+	type object struct {
+		kind Kind
+		id   uuid.UUID
+		name string
+		want []string
+	}
+	var objects []object
+	write := func(kind Kind, name, settings string, want ...string) uuid.UUID {
+		id := uuid.MustNew()
+		writeMetadata(t, root, kind, id.String(), "format: 1\nid: "+id.String()+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+settings)
+		objects = append(objects, object{kind, id, name, want})
+		return id
+	}
+	head := []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления"}
+	tail := []string{"Предопределенный", "ИмяПредопределенныхДанных"}
+	list := func(names ...string) []string { return slices.Concat(head, names, tail) }
+	currencies := write(CatalogKind, "Валюты", "code: {type: string, length: 3}\ndescription_length: 50\nattributes:\n"+attribute("Наценка"),
+		list("Код", "Наименование", "Наценка")...)
+	write(CatalogKind, "Бригады", "code: {type: string, length: 0}\ndescription_length: 50\nhierarchy: {enabled: true, kind: folders-and-items}\n"+
+		"attributes:\n"+attribute("Мастер")+tablePart("Состав", "Сотрудник"),
+		list("Родитель", "ЭтоГруппа", "Наименование", "Мастер", "Состав", "НомерСтроки", "Сотрудник")...)
+	write(CatalogKind, "Счета", "code: {type: string, length: 9}\ndescription_length: 50\nowners: ["+currencies.String()+"]\n",
+		list("Владелец", "Код", "Наименование")...)
+	write(CatalogKind, "НоменклатураПоставщиков", "code: {type: string, length: 9}\ndescription_length: 50\nowners: ["+currencies.String()+"]\n"+
+		"hierarchy: {enabled: true, kind: folders-and-items}\nattributes:\n"+attribute("Артикул"),
+		list("Владелец", "Родитель", "ЭтоГруппа", "Код", "Наименование", "Артикул")...)
+	write(CatalogKind, "ПодразделенияОрганизаций", "code: {type: string, length: 9}\ndescription_length: 50\nowners: ["+currencies.String()+"]\n"+
+		"hierarchy: {enabled: true, kind: items}\n"+tablePart("Руководители", "Сотрудник"),
+		list("Владелец", "Родитель", "Код", "Наименование", "Руководители", "НомерСтроки", "Сотрудник")...)
+	write(CatalogKind, "КатегорииЦелей", "code: {type: string, length: 0}\ndescription_length: 50\nhierarchy: {enabled: true, kind: items}\n"+
+		"attributes:\n"+attribute("Описание"),
+		list("Родитель", "Наименование", "Описание")...)
+	write(CatalogKind, "НомераГТД", "code: {type: string, length: 30}\ndescription_length: 0\nattributes:\n"+attribute("Страна"),
+		list("Код", "Страна")...)
+	valueType := "value_type: [{kind: boolean}]\n"
+	write(ChartOfCharacteristicTypesKind, "КаналыРекламныхВоздействий", "code: {type: string, length: 0}\ndescription_length: 50\n"+valueType,
+		list("Наименование", "ТипЗначения")...)
+	write(ChartOfCharacteristicTypesKind, "АналитикиСтатейБюджетов", "code: {type: string, length: 9}\ndescription_length: 50\n"+valueType+
+		"attributes:\n"+attribute("Тип"),
+		list("Код", "Наименование", "ТипЗначения", "Тип")...)
+	write(ChartOfCharacteristicTypesKind, "СтатьиДоходов", "code: {type: string, length: 9}\ndescription_length: 50\n"+valueType+
+		"hierarchy: {enabled: true, kind: folders-and-items}\nattributes:\n"+attribute("Статья")+tablePart("Счета", "Счет"),
+		list("Родитель", "ЭтоГруппа", "Код", "Наименование", "ТипЗначения", "Статья", "Счета", "НомерСтроки", "Счет")...)
+	extDimensionKinds := write(ChartOfCharacteristicTypesKind, "ВидыСубконтоХозрасчетные", "code: {type: string, length: 9}\ndescription_length: 50\n"+valueType,
+		list("Код", "Наименование", "ТипЗначения")...)
+	write(ChartOfAccountsKind, "Хозрасчетный", "code: {type: string, length: 9}\ndescription_length: 120\nmax_ext_dimension_count: 3\n"+
+		"ext_dimension_types: "+extDimensionKinds.String()+"\nattributes:\n"+attribute("КодБыстрогоВыбора")+
+		"accounting_flags:\n  - {id: "+uuid.MustNew().String()+", name: Валютный, title: {ru: Валютный}}\n"+
+		"ext_dimension_accounting_flags:\n  - {id: "+uuid.MustNew().String()+", name: Суммовой, title: {ru: Суммовой}}\n",
+		list("Родитель", "Код", "Наименование", "Порядок", "Вид", "Забалансовый", "КодБыстрогоВыбора", "Валютный",
+			"ВидыСубконто", "ВидСубконто", "НомерСтроки", "Предопределенный", "Суммовой", "ТолькоОбороты")...)
+	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The fields of a table part stand under it, in an order the pass did
+	// The fields of a table part stand under it, in an order the passes did
 	// not look at: they are named after it, sorted.
-	names := func(definition CatalogDefinition) []string {
+	names := func(kind Kind, id uuid.UUID) []string {
 		var result, inside []string
-		for _, field := range catalog.restrictionFieldsOf(CatalogKind, definition.ID) {
+		for _, field := range catalog.restrictionFieldsOf(kind, id) {
 			if field.parent != "" {
 				inside = append(inside, field.name)
 				continue
@@ -172,17 +229,9 @@ func TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable(t *testing.T) {
 		}
 		return result
 	}
-	for _, check := range []struct {
-		definition CatalogDefinition
-		want       []string
-	}{
-		{currencies, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Код", "Наименование", "Наценка", "Предопределенный", "ИмяПредопределенныхДанных"}},
-		{brigades, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Родитель", "ЭтоГруппа", "Наименование", "Мастер", "Состав", "НомерСтроки",
-			"Сотрудник", "Предопределенный", "ИмяПредопределенныхДанных"}},
-		{accounts, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Владелец", "Код", "Наименование", "Предопределенный", "ИмяПредопределенныхДанных"}},
-	} {
-		if got := names(check.definition); !slices.Equal(got, check.want) {
-			t.Errorf("a restriction of %s names %v, want %v", check.definition.Name, got, check.want)
+	for _, check := range objects {
+		if got := names(check.kind, check.id); !slices.Equal(got, check.want) {
+			t.Errorf("a restriction of %s %s names\n%v, want\n%v", check.kind, check.name, got, check.want)
 		}
 	}
 	var members []string
@@ -197,5 +246,67 @@ func TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable(t *testing.T) {
 		if !slices.Contains(members, want) {
 			t.Errorf("ЭтотОбъект of Валюты has no %s: %v", want, members)
 		}
+	}
+}
+
+// TestARestrictionKeepsAFieldTheObjectHasNoLonger holds the decision on a
+// restriction naming a field a setting of the object took away (owner,
+// 22.10.2026, question В4; ACCESS-RIGHTS.md, «Ограничение по полю, которого
+// у объекта нет»): the prototype keeps it and says nothing, so the load
+// accepts it and notes the role, the object, the right and the field by its
+// name; the schema of rights gives the window of a restriction the fields of
+// the table alone and the list «Все ограничения доступа» the name of the
+// field the object has no longer. Defects caught: the load refusing such a
+// role (2.440); the note naming the key, not the field; the field offered in
+// the window of the restriction, or left unnamed for the list.
+func TestARestrictionKeepsAFieldTheObjectHasNoLonger(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	id := uuid.MustNew()
+	writeMetadata(t, root, CatalogKind, id.String(), "format: 1\nid: "+id.String()+"\nname: КатегорииЦелей\ntitle: {ru: Категории целей}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 50\n")
+	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Аналитик", Title: LocalizedText{"ru": "Аналитик"},
+		Objects: []ObjectPermission{{Object: id, Operations: []PermissionOperation{PermissionRead},
+			Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{"parent"}, Condition: "ГДЕ Родитель = &Р"}}}}}
+	if err := WriteRole(root, role); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a role keeping a field the catalog has no longer was refused: %v", err)
+	}
+	var noted []string
+	for _, note := range catalog.Notes() {
+		noted = append(noted, string(note.Kind)+" "+note.Where+": "+note.Written)
+	}
+	if want := []string{"restriction-absent-field roles Аналитик restrictions: catalogs КатегорииЦелей read Родитель"}; !slices.Equal(noted, want) {
+		t.Errorf("notes %v, want %v", noted, want)
+	}
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := slices.IndexFunc(schema.Objects, func(object PermissionObject) bool { return object.ID == id })
+	if index < 0 {
+		t.Fatal("the catalog is not in the schema")
+	}
+	keys := func(fields []PermissionField) map[string]string {
+		result := map[string]string{}
+		for _, field := range fields {
+			result[field.Key] = field.Name
+		}
+		return result
+	}
+	if shown := keys(schema.Objects[index].RestrictionFields); shown["parent"] != "" {
+		t.Errorf("the window of a restriction of a catalog with no hierarchy offers Родитель: %v", shown)
+	}
+	absent := keys(schema.Objects[index].AbsentFields)
+	for key, name := range map[string]string{"parent": "Родитель", "isfolder": "ЭтоГруппа", "owner": "Владелец"} {
+		if absent[key] != name {
+			t.Errorf("the list cannot name %s of the catalog: %v", name, absent)
+		}
+	}
+	if absent["code"] != "" || absent["ref"] != "" {
+		t.Errorf("a field the catalog has is among those it has not: %v", absent)
 	}
 }

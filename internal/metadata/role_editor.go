@@ -97,6 +97,11 @@ type PermissionObject struct {
 	// restriction names the version of the data and the line number of a
 	// table part too, which have no rights of their own.
 	RestrictionFields []PermissionField `json:"restrictionFields"`
+	// AbsentFields are the fields the object's settings take away from the
+	// table now (absentRestrictionFieldsOf): a restriction naming one is
+	// kept, the list «Все ограничения доступа» names it and offers it in its
+	// filter, the window of a restriction does not show it.
+	AbsentFields []PermissionField `json:"absentFields"`
 	// RestrictedRights are those of the rights a restriction of access to
 	// data may be put on: none on an object that keeps no data.
 	RestrictedRights []PermissionOperation `json:"restrictedRights"`
@@ -172,7 +177,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		offered, _ := catalog.rightsTargetOf(id)
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
 			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
-			RestrictionFields: []PermissionField{}, RestrictedRights: []PermissionOperation{}}
+			RestrictionFields: []PermissionField{}, AbsentFields: []PermissionField{}, RestrictedRights: []PermissionOperation{}}
 		for _, operation := range objectOperations {
 			if slices.Contains(offered.rights, operation) {
 				object.Operations = append(object.Operations, operation)
@@ -184,9 +189,15 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 					object.RestrictedRights = append(object.RestrictedRights, rule.Right)
 				}
 			}
+			restrictionField := func(field objectPart) PermissionField {
+				return PermissionField{Key: field.key, Name: field.name, Title: cloneTitle(field.title), Parent: field.parent,
+					Operations: []PermissionOperation{}}
+			}
 			for _, field := range catalog.restrictionFieldsOf(kind, id) {
-				object.RestrictionFields = append(object.RestrictionFields, PermissionField{Key: field.key, Name: field.name,
-					Title: cloneTitle(field.title), Parent: field.parent, Operations: []PermissionOperation{}})
+				object.RestrictionFields = append(object.RestrictionFields, restrictionField(field))
+			}
+			for _, field := range catalog.absentRestrictionFieldsOf(kind, id) {
+				object.AbsentFields = append(object.AbsentFields, restrictionField(field))
 			}
 		}
 		// Every part of the object, from the one walk of its composition, with
@@ -209,7 +220,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
 		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
 		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{},
-		RestrictedRights: []PermissionOperation{}})
+		AbsentFields: []PermissionField{}, RestrictedRights: []PermissionOperation{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.
 	formTitles := map[uuid.UUID]LocalizedText{}

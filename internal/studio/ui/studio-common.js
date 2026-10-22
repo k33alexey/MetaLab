@@ -308,11 +308,12 @@ function rolePartRight(role, grant, written, part, right) {
 /* restrictionFieldsCaption names the fields a restriction of access to data
    checks, as the prototype's role editor names them: a restriction with no
    fields is the one on «Прочие поля», a field of a table part is named after
-   the part. object is the schema's object, title gives a field its caption
-   on the language shown. */
+   the part, a field the object does not have now by the name it had
+   (absentFields: the prototype's list keeps naming it). object is the
+   schema's object, title gives a field its caption on the language shown. */
 function restrictionFieldsCaption(object, restriction, title) {
   if (!restriction.fields?.length) return 'Прочие поля';
-  const own = new Map((object?.restrictionFields || []).map(field => [field.key, field]));
+  const own = new Map([...object?.restrictionFields || [], ...object?.absentFields || []].map(field => [field.key, field]));
   const caption = field => title(field) || field.name || field.key;
   return restriction.fields.map(key => {
     const field = own.get(key);

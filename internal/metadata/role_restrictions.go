@@ -27,7 +27,9 @@ type RightRestriction struct {
 	Right PermissionOperation `yaml:"right" json:"right"`
 	// Fields are keys of the object's fields (restrictionFieldsOf): a declared
 	// field by its identifier, a standard one by its prototype name in lower
-	// case, the line number of a table part after the part's identifier.
+	// case, the line number of a table part after the part's identifier. A
+	// field the object does not have is kept and noted
+	// (restriction-absent-field).
 	Fields    []string `yaml:"fields,omitempty" json:"fields,omitempty"`
 	Condition string   `yaml:"condition,omitempty" json:"condition,omitempty"`
 }
@@ -159,6 +161,9 @@ func validateRestrictions(path string, object ObjectPermission) []string {
 			fields[restriction.Right] = map[string]bool{}
 		}
 		for fieldIndex, field := range restriction.Fields {
+			if field == "" {
+				issues = append(issues, fmt.Sprintf("%s.fields[%d] must name a field", prefix, fieldIndex))
+			}
 			if fields[restriction.Right][field] {
 				issues = append(issues, fmt.Sprintf("%s.fields[%d] is restricted already", prefix, fieldIndex))
 			}

@@ -151,18 +151,24 @@ test('repair puts the start of the application in place of the clients ML does n
     assert.deepEqual(plain(model.value().objects).find(item=>item.object==='goods').operations,['read']);
   }
 });
-// Defect caught: a restriction naming a field the object lost kept on, so the
-// role could not be saved; or, emptied of fields, turned into a restriction
-// of every other field.
-test('a restriction loses a field the object no longer has, and goes when none is left',()=>{
+// A restriction naming a field the object no longer has is kept as written,
+// as the prototype keeps it and says nothing (owner 22.10.2026, ACCESS-RIGHTS
+// «Ограничение по полю, которого у объекта нет»); one of a right the object
+// is not offered goes. Defect caught: the role shown with the warning of
+// unavailable rights and repaired of the field (2.440), turning a
+// restriction of one field into one of every other field.
+test('a restriction keeps a field the object no longer has, and goes with a right the object has not',()=>{
   const source=fixture();
   source.role.objects=[{object:'goods',operations:['read'],fields:[],restrictions:[
     {right:'read',fields:['ref','gone']},{right:'read',fields:['lost'],condition:'ГДЕ ЛОЖЬ'},{right:'read',condition:'ГДЕ ИСТИНА'}]}];
   const model=create(source);
-  assert.equal(model.hasUnavailable(),true);
-  model.removeUnavailable();
   assert.equal(model.hasUnavailable(),false);
-  assert.deepEqual(plain(model.value().objects[0].restrictions),[{right:'read',fields:['ref']},{right:'read',condition:'ГДЕ ИСТИНА'}]);
+  source.role.objects[0].operations.push('posting');
+  source.role.objects[0].restrictions.push({right:'posting',condition:'ГДЕ 1'});
+  const offered=create(source);
+  assert.equal(offered.hasUnavailable(),true);
+  offered.removeUnavailable();
+  assert.deepEqual(plain(offered.value().objects[0].restrictions),[{right:'read',fields:['ref','gone']},{right:'read',fields:['lost'],condition:'ГДЕ ЛОЖЬ'},{right:'read',condition:'ГДЕ ИСТИНА'}]);
 });
 test('comment and default-grant flags round-trip through the model; a flag writes what it stood for',()=>{
   const model=create(fixture());
@@ -273,17 +279,21 @@ test('a restriction added on an unwritten right writes the right as it stood',()
     assert.deepEqual(goods.restrictions,[{right:'insert',condition:'ГДЕ ИСТИНА'}]);
   }
 });
-// Defect caught: fields kept on a right other than reading, a field the
-// object does not have, the same field twice; a restriction on an object
-// that keeps no data.
-test('only reading is restricted by fields, and only by the object\'s own',()=>{
+// A field the object does not have now is taken as written: the windows pass
+// only the fields they show, and a change that does not touch the fields -
+// the condition changed alone, a restriction copied - keeps it, as the
+// prototype keeps it. Defect caught: fields kept on a right other than
+// reading, the same field twice; a field the object has no longer dropped,
+// turning the restriction into one of every other field; a restriction on
+// an object that keeps no data.
+test('only reading is restricted by fields, a field the object has not kept as written',()=>{
   const model=create(fixture());
   model.putRestriction('goods','read',0,{fields:['ref','gone','ref','part.linenumber'],condition:'ГДЕ 1'});
   model.putRestriction('goods','update',0,{fields:['ref'],condition:'ГДЕ 2'});
   model.putRestriction('other','read',0,{condition:'ГДЕ 3'});
   model.putRestriction('base','read',0,{condition:'ГДЕ 4'});
   const value=plain(model.value());
-  assert.deepEqual(value.objects.find(item=>item.object==='goods').restrictions,[{right:'read',fields:['ref','part.linenumber'],condition:'ГДЕ 1'},{right:'update',condition:'ГДЕ 2'}]);
+  assert.deepEqual(value.objects.find(item=>item.object==='goods').restrictions,[{right:'read',fields:['ref','gone','part.linenumber'],condition:'ГДЕ 1'},{right:'update',condition:'ГДЕ 2'}]);
   assert.equal(value.objects.some(item=>item.object==='other'||item.object==='base'),false);
 });
 // Which right is restricted by fields is the server's rule, sent with the

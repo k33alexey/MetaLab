@@ -19,9 +19,6 @@ function createRoleModel(source) {
   value.role.objects ||= [];
   const definitions = new Map(value.schema.objects.map(item => [item.id, item]));
   const fields = new Map(value.schema.objects.map(item => [item.id, new Map(item.fields.map(field => [field.key, field]))]));
-  // The fields a restriction of reading may name, by object - see
-  // RestrictionFields on the server.
-  const restrictionFields = new Map(value.schema.objects.map(item => [item.id, new Set((item.restrictionFields||[]).map(field => field.key))]));
   let objects, fieldGrants;
   function reindex(){objects=new Map(value.role.objects.map(item=>[item.object,item]));fieldGrants=new Map(value.role.objects.map(item=>[item.object,new Map((item.fields||[]).map(field=>[field.field,field]))]));}
   reindex();
@@ -91,12 +88,15 @@ function createRoleModel(source) {
   // The restrictions of access to data on one right of an object, in the
   // order the role writes them.
   const restrictionsOf = (id, right) => (objects.get(id)?.restrictions || []).filter(item => item.right === right);
-  // Only a right restricted by fields takes them; a field the object does
-  // not have is not taken.
+  // Only a right restricted by fields takes them. A field the object does
+  // not have now is taken as written: the windows pass only the fields they
+  // show, and what the change does not touch - the condition changed alone,
+  // a restriction copied - keeps the field, as the prototype keeps it
+  // (ACCESS-RIGHTS, «Ограничение по полю, которого у объекта нет»).
   const byFields = right => restrictsByFields(value.schema, right);
   function restrictionEntry(id, right, restriction) {
-    const entry = {right}, own = restrictionFields.get(id) || new Set();
-    const chosen = byFields(right) ? (restriction.fields || []).filter(field => own.has(field)) : [];
+    const entry = {right};
+    const chosen = byFields(right) ? restriction.fields || [] : [];
     if (chosen.length) entry.fields = [...new Set(chosen)];
     if (restriction.condition) entry.condition = restriction.condition;
     return entry;
@@ -227,7 +227,7 @@ function createRoleModel(source) {
     return result;
   }
   // Repair removes only what the configuration no longer has - an object, a
-  // part of one, a restriction pointing at a missing field - and the rights
+  // part of one, a restriction of a right the object is not offered - and the rights
   // ML no longer keeps, putting the one standing for each in its place: the
   // thin and the web client become «Запуск приложения», and the rights on
   // commands of forms an earlier ML gave go, a role giving none (ACCESS-RIGHTS,
@@ -247,16 +247,13 @@ function createRoleModel(source) {
         if (denied.length) item.denied = denied; else delete item.denied;
       }
       item.fields = item.fields.filter(field => parts[item.object].includes(field.field));
-      // A restriction loses a field the object no longer has, and goes when
-      // it had fields and none is left: emptied, it would stand for every
-      // other field, which is not what was restricted.
+      // A restriction goes with the right it restricts. One naming a field
+      // the object no longer has is kept as it is, as the prototype keeps
+      // it, saying nothing (ACCESS-RIGHTS, «Ограничение по полю, которого у
+      // объекта нет»): its window shows it on «Прочие поля».
       if (item.restrictions) {
-        const own = restrictionFields.get(item.object) || new Set(), rights = definitions.get(item.object)?.rights || [];
-        item.restrictions = item.restrictions.filter(restriction => rights.includes(restriction.right)).flatMap(restriction => {
-          if (!restriction.fields?.length) return [restriction];
-          const fields = restriction.fields.filter(field => own.has(field));
-          return fields.length ? [{...restriction, fields}] : [];
-        });
+        const rights = definitions.get(item.object)?.rights || [];
+        item.restrictions = item.restrictions.filter(restriction => rights.includes(restriction.right));
         if (!item.restrictions.length) delete item.restrictions;
       }
     }

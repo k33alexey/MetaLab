@@ -105,28 +105,18 @@ func validateDroppedRights(role RoleDefinition) error {
 }
 
 // validateRoleRestrictions checks the restrictions of one object against the
-// object: the configurator offers the right restricted on it, and the fields
-// named are its own. A kind no export restricts is accepted and
-// noted (restriction-without-sample).
+// object: the configurator offers the right restricted on it. A kind no
+// export restricts is accepted and noted (restriction-without-sample), and
+// so is a field the object does not have (restriction-absent-field): the
+// prototype keeps one when a setting of the object takes it away, and its
+// check of the configuration says nothing (ACCESS-RIGHTS.md, «Ограничение по
+// полю, которого у объекта нет»).
 func (catalog *Catalog) validateRoleRestrictions(role RoleDefinition, permission ObjectPermission, target rightsTarget) error {
-	if len(permission.Restrictions) == 0 {
-		return nil
-	}
 	// A kind keeping no data is offered none of the rights restricted, so the
 	// check of the right below refuses a restriction of it.
-	kind, _ := catalog.kindOfObject(permission.Object)
-	fields := map[string]bool{}
-	for _, field := range catalog.restrictionFieldsOf(kind, permission.Object) {
-		fields[field.key] = true
-	}
 	for _, restriction := range permission.Restrictions {
 		if !slices.Contains(target.rights, restriction.Right) {
 			return fmt.Errorf("role %s: object %s has no right %s to restrict", role.Name, permission.Object, restriction.Right)
-		}
-		for _, field := range restriction.Fields {
-			if !fields[field] {
-				return fmt.Errorf("role %s: restriction of %s names field %s, which object %s does not have", role.Name, restriction.Right, field, permission.Object)
-			}
 		}
 	}
 	return nil
