@@ -157,17 +157,30 @@ func NewCatalogSnapshotWithCommonModules(configuration project.Project, constant
 // propagation and event subscription references. Form command references
 // require the full RuntimeSnapshot.
 func NewCatalogSnapshotWithEventSubscriptions(configuration project.Project, constants []Constant, enumerations []Enumeration, definedTypes []DefinedTypeObject, catalogs []CatalogDefinition, documents []DocumentDefinition, informationRegisters []InformationRegisterDefinition, accumulationRegisters []AccumulationRegisterDefinition, roles []RoleDefinition, subsystems []SubsystemDefinition, sessionParameters []SessionParameter, commonAttributes []CommonAttributeDefinition, commonModules []CommonModuleDefinition, eventSubscriptions []EventSubscriptionDefinition) (*Catalog, error) {
+	return RuntimeSnapshot{Project: configuration, Constants: constants, Enumerations: enumerations, DefinedTypes: definedTypes,
+		Catalogs: catalogs, Documents: documents, InformationRegisters: informationRegisters, AccumulationRegisters: accumulationRegisters,
+		Roles: roles, Subsystems: subsystems, SessionParameters: sessionParameters, CommonAttributes: commonAttributes,
+		CommonModules: commonModules, EventSubscriptions: eventSubscriptions}.catalogOf(nil)
+}
+
+// catalogOf validates what the snapshot holds as a catalog. outside are the
+// objects of the project the snapshot names and holds no description of
+// (RuntimeSnapshot.Outside): a right a role gives on one and a register a
+// document writes into are kept, not refused.
+func (snapshot RuntimeSnapshot) catalogOf(outside map[uuid.UUID]Kind) (*Catalog, error) {
+	configuration := snapshot.Project
 	result := &Catalog{
-		Project: configuration, Constants: slices.Clone(constants), Enumerations: slices.Clone(enumerations),
-		DefinedTypes: slices.Clone(definedTypes), Catalogs: slices.Clone(catalogs), Documents: slices.Clone(documents),
-		InformationRegisters:  slices.Clone(informationRegisters),
-		AccumulationRegisters: slices.Clone(accumulationRegisters),
-		Roles:                 slices.Clone(roles),
-		Subsystems:            slices.Clone(subsystems),
-		SessionParameters:     slices.Clone(sessionParameters),
-		CommonAttributes:      slices.Clone(commonAttributes),
-		CommonModules:         slices.Clone(commonModules),
-		EventSubscriptions:    slices.Clone(eventSubscriptions),
+		Project: configuration, Constants: slices.Clone(snapshot.Constants), Enumerations: slices.Clone(snapshot.Enumerations),
+		DefinedTypes: slices.Clone(snapshot.DefinedTypes), Catalogs: slices.Clone(snapshot.Catalogs), Documents: slices.Clone(snapshot.Documents),
+		InformationRegisters:  slices.Clone(snapshot.InformationRegisters),
+		AccumulationRegisters: slices.Clone(snapshot.AccumulationRegisters),
+		Roles:                 slices.Clone(snapshot.Roles),
+		Subsystems:            slices.Clone(snapshot.Subsystems),
+		SessionParameters:     slices.Clone(snapshot.SessionParameters),
+		CommonAttributes:      slices.Clone(snapshot.CommonAttributes),
+		CommonModules:         slices.Clone(snapshot.CommonModules),
+		EventSubscriptions:    slices.Clone(snapshot.EventSubscriptions),
+		outside:               outside,
 	}
 	for index := range result.Roles {
 		result.Roles[index] = cloneRole(result.Roles[index])

@@ -38,6 +38,53 @@ type RuntimeSnapshot struct {
 	// compiles BSL exclusively from here - it never reads project files
 	// from disk, so it can run on a different machine than Studio.
 	Modules []RuntimeModule `json:"modules,omitempty"`
+	// Outside are the objects of the project a role gives rights on or a
+	// document writes into whose kind the snapshot holds no description of -
+	// a report, a chart, a register of calculation or accounting. Execution
+	// does not know them yet: the rights and the movements are carried and not
+	// executed, not refused (BLOCKS 2в, «Сохранить данные» принимает роль с
+	// правами на любой вид). They were checked against their descriptions
+	// when the project was read.
+	Outside []RuntimeObject `json:"outside,omitempty"`
+}
+
+// RuntimeObject is an object of the project by its identifier and kind.
+type RuntimeObject struct {
+	ID   uuid.UUID `json:"id"`
+	Kind Kind      `json:"kind"`
+}
+
+// outsideOf is the objects the roles and the documents of the catalog name,
+// by their kind in the project: those of them the snapshot holds are its own,
+// and the check of a role or a movement looks here only for what it does not
+// find among them.
+func outsideOf(catalog *Catalog) map[uuid.UUID]Kind {
+	named := map[uuid.UUID]Kind{}
+	name := func(id uuid.UUID) {
+		if kind, ok := catalog.kindOfObject(id); ok {
+			named[id] = kind
+		}
+	}
+	for _, role := range catalog.Roles {
+		for _, permission := range role.Objects {
+			name(permission.Object)
+		}
+	}
+	for _, document := range catalog.Documents {
+		for _, id := range document.Movements {
+			name(id)
+		}
+	}
+	return named
+}
+
+// outsideMap is the snapshot's Outside as catalogOf takes it.
+func (snapshot RuntimeSnapshot) outsideMap() map[uuid.UUID]Kind {
+	result := make(map[uuid.UUID]Kind, len(snapshot.Outside))
+	for _, object := range snapshot.Outside {
+		result[object.ID] = object.Kind
+	}
+	return result
 }
 
 // RuntimeObjectForm is one form an object keeps, named as its folder was and
@@ -64,10 +111,13 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 	if catalog == nil {
 		return RuntimeSnapshot{}, fmt.Errorf("runtime metadata catalog is required")
 	}
-	validated, err := NewCatalogSnapshotWithEventSubscriptions(
-		catalog.Project, catalog.Constants, catalog.Enumerations, catalog.DefinedTypes,
-		catalog.Catalogs, catalog.Documents, catalog.InformationRegisters, catalog.AccumulationRegisters, catalog.Roles, catalog.Subsystems, catalog.SessionParameters, catalog.CommonAttributes, catalog.CommonModules, catalog.EventSubscriptions,
-	)
+	named := outsideOf(catalog)
+	validated, err := RuntimeSnapshot{Project: catalog.Project, Constants: catalog.Constants, Enumerations: catalog.Enumerations,
+		DefinedTypes: catalog.DefinedTypes, Catalogs: catalog.Catalogs, Documents: catalog.Documents,
+		InformationRegisters: catalog.InformationRegisters, AccumulationRegisters: catalog.AccumulationRegisters,
+		Roles: catalog.Roles, Subsystems: catalog.Subsystems, SessionParameters: catalog.SessionParameters,
+		CommonAttributes: catalog.CommonAttributes, CommonModules: catalog.CommonModules,
+		EventSubscriptions: catalog.EventSubscriptions}.catalogOf(named)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
@@ -91,6 +141,14 @@ func NewRuntimeSnapshot(catalog *Catalog, forms []ManagedForm) (RuntimeSnapshot,
 		seen[form.ID] = true
 		result.Forms[index] = cloneRuntimeForm(form)
 	}
+	for id, kind := range named {
+		if _, own := validated.kindOfObject(id); !own {
+			result.Outside = append(result.Outside, RuntimeObject{ID: id, Kind: kind})
+		}
+	}
+	sort.Slice(result.Outside, func(left, right int) bool {
+		return result.Outside[left].ID.String() < result.Outside[right].ID.String()
+	})
 	if len(result.Subsystems) == 0 {
 		result.Subsystems = nil
 	}
@@ -162,10 +220,7 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 	if snapshot.Format != CurrentFormat {
 		return nil, fmt.Errorf("unsupported runtime metadata format %d", snapshot.Format)
 	}
-	catalog, err := NewCatalogSnapshotWithEventSubscriptions(
-		snapshot.Project, snapshot.Constants, snapshot.Enumerations, snapshot.DefinedTypes,
-		snapshot.Catalogs, snapshot.Documents, snapshot.InformationRegisters, snapshot.AccumulationRegisters, snapshot.Roles, snapshot.Subsystems, snapshot.SessionParameters, snapshot.CommonAttributes, snapshot.CommonModules, snapshot.EventSubscriptions,
-	)
+	catalog, err := snapshot.catalogOf(snapshot.outsideMap())
 	if err != nil {
 		return nil, err
 	}

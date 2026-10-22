@@ -60,6 +60,11 @@ func (catalog *Catalog) validateRoleReferences() error {
 			target, ok := targets[permission.Object]
 			if !ok {
 				target, ok = catalog.rightsTargetOf(permission.Object)
+				if _, outside := catalog.outside[permission.Object]; !ok && outside {
+					// Checked against its description when the project was
+					// read; the snapshot carries the rights and runs none.
+					continue
+				}
 				if !ok {
 					return fmt.Errorf("role %s references unknown or unsupported object %s", role.Name, permission.Object)
 				}

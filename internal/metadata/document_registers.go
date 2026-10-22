@@ -103,6 +103,11 @@ func (catalog *Catalog) validateDocumentMovements() error {
 	for _, document := range catalog.Documents {
 		for index, id := range document.Movements {
 			target, ok := catalog.movementRegister(id)
+			if _, outside := catalog.outside[id]; !ok && outside {
+				// A register the snapshot holds no description of: the
+				// project's own check found it; posting writes nothing into it.
+				continue
+			}
 			if !ok {
 				return fmt.Errorf("document %s writes into %s, which is not a register of the configuration", document.Name, id)
 			}

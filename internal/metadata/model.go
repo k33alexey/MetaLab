@@ -650,7 +650,11 @@ type Catalog struct {
 	// The role editor validates one edited role against a catalog that
 	// deliberately holds no others, and the root's default roles must not be
 	// judged against that list: they would all look missing.
-	rolesLoaded     bool
+	rolesLoaded bool
+	// outside are the objects of the project a runtime snapshot names and
+	// holds no description of (RuntimeSnapshot.Outside), by their kind; nil
+	// for a catalog read from the project, which holds them all.
+	outside         map[uuid.UUID]Kind
 	roleByName      map[string]int
 	roleByID        map[uuid.UUID]int
 	Subsystems      []SubsystemDefinition
