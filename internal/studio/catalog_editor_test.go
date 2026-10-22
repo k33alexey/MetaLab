@@ -255,6 +255,177 @@ func TestDeletingAFieldTakesItOffTheRestrictionsOfRoles(t *testing.T) {
 	}
 }
 
+// TestDeletingAFieldTakesItOffTheRightsOfRoles holds that a deleted
+// attribute or table part leaves the rights of the roles as well as their
+// restrictions (closing review of block 2в, finding 1; ACCESS-RIGHTS.md,
+// «Удаление реквизита, по которому стоит ограничение роли»): a role that set
+// rights for new attributes got «Просмотр» of them by itself, another
+// denies a field, and once the fields are deleted no role names them and
+// the project loads. Defect caught: the rights of a deleted field left in
+// rights.json, so the load refused the project with «field … does not
+// belong to object» after an ordinary deletion in Studio.
+func TestDeletingAFieldTakesItOffTheRightsOfRoles(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	granting, err := workspace.CreateRole("Автоматическая")
+	if err != nil {
+		t.Fatal(err)
+	}
+	granting.Role.GrantNewObjectsByDefault, granting.Role.GrantNewFieldsByDefault = true, true
+	if _, err := workspace.SaveRole(granting.Path, granting.Role, granting.Revision); err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreateCatalog("Товары")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribute := func(name string) metadata.Attribute {
+		return metadata.Attribute{ID: uuid.MustNew(), Name: name, Title: metadata.LocalizedText{"ru": name},
+			Types: []metadata.Type{{Kind: metadata.StringType, Length: 10}}}
+	}
+	gone, kept, inPart := attribute("Уходит"), attribute("Остаётся"), attribute("Поле")
+	part := metadata.TablePart{ID: uuid.MustNew(), Name: "Состав", Title: metadata.LocalizedText{"ru": "Состав"}, Attributes: []metadata.Attribute{inPart}}
+	full := created.Catalog
+	full.Attributes = []metadata.Attribute{gone, kept}
+	full.TableParts = []metadata.TablePart{part}
+	saved, err := workspace.SaveCatalogEditor(created.Path, full, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	denying, err := workspace.CreateRole("Запрещающая")
+	if err != nil {
+		t.Fatal(err)
+	}
+	denying.Role.Objects = []metadata.ObjectPermission{{Object: created.Catalog.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+		Fields: []metadata.FieldPermission{{Field: gone.ID.String(), Denied: []metadata.PermissionOperation{metadata.PermissionView}},
+			{Field: kept.ID.String(), Denied: []metadata.PermissionOperation{metadata.PermissionView}}}}}
+	if _, err := workspace.SaveRole(denying.Path, denying.Role, denying.Revision); err != nil {
+		t.Fatal(err)
+	}
+	fieldsOf := func(path string) []string {
+		role, err := workspace.ReadRole(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, field := range role.Role.Objects[0].Fields {
+			keys = append(keys, field.Field)
+		}
+		return keys
+	}
+	if got := fieldsOf(granting.Path); len(got) != 4 {
+		t.Fatalf("the role setting rights for new attributes has %v, want the four fields", got)
+	}
+	smaller := saved.Catalog
+	smaller.Attributes = []metadata.Attribute{kept}
+	smaller.TableParts = nil
+	if _, err := workspace.SaveCatalogEditor(saved.Path, smaller, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{granting.Path, denying.Path} {
+		if got := fieldsOf(path); !slices.Equal(got, []string{kept.ID.String()}) {
+			t.Errorf("%s keeps the rights of %v, want only the field that stays", path, got)
+		}
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("the project does not load after the deletion: %v", err)
+	}
+}
+
+// TestACatalogSaveRefusedHalfwayLeavesTheRolesAsTheyWere holds that saving a
+// catalog that changes the roles writes all of it or none of it (closing
+// review of block 2в, finding 8; CLAUDE.md, «Опасный класс изменений»): a
+// role that cannot be written leaves the catalog and the roles written
+// before it as they were, and a catalog that cannot be written puts back
+// the roles already written. Defects caught: the catalog written first and
+// the roles after it, so a refused role left a catalog without its
+// attribute and roles still naming it - a project that does not load; a
+// role written before the refused one left changed.
+func TestACatalogSaveRefusedHalfwayLeavesTheRolesAsTheyWere(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("a folder without write permission does not refuse root")
+	}
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreateCatalog("Товары")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := metadata.Attribute{ID: uuid.MustNew(), Name: "Уходит", Title: metadata.LocalizedText{"ru": "Уходит"},
+		Types: []metadata.Type{{Kind: metadata.StringType, Length: 10}}}
+	full := created.Catalog
+	full.Attributes = []metadata.Attribute{gone}
+	saved, err := workspace.SaveCatalogEditor(created.Path, full, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles []string
+	for _, name := range []string{"Первая", "Вторая"} {
+		role, err := workspace.CreateRole(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role.Role.Objects = []metadata.ObjectPermission{{Object: created.Catalog.ID, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
+			Fields: []metadata.FieldPermission{{Field: gone.ID.String(), Operations: []metadata.PermissionOperation{metadata.PermissionView}}}}}
+		if _, err := workspace.SaveRole(role.Path, role.Role, role.Revision); err != nil {
+			t.Fatal(err)
+		}
+		roles = append(roles, role.Path)
+	}
+	// The roles are written in the order of their folder: the last of it
+	// is refused after the first is written.
+	slices.Sort(roles)
+	files := func() map[string]string {
+		result := map[string]string{}
+		paths := []string{saved.Path}
+		for _, role := range roles {
+			paths = append(paths, role, strings.TrimSuffix(role, ".yaml")+"/"+metadata.RoleRightsFile)
+		}
+		for _, path := range paths {
+			content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result[path] = string(content)
+		}
+		return result
+	}
+	before := files()
+	smaller := saved.Catalog
+	smaller.Attributes = nil
+	for _, refused := range []string{
+		filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(roles[1], ".yaml"))),
+		filepath.Join(root, filepath.FromSlash(filepath.Dir(saved.Path))),
+	} {
+		if err := os.Chmod(refused, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		_, saveErr := workspace.SaveCatalogEditor(saved.Path, smaller, saved.Revision)
+		if err := os.Chmod(refused, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if saveErr == nil {
+			t.Fatalf("the save went through with %s not writable", refused)
+		}
+		for path, content := range files() {
+			if content != before[path] {
+				t.Errorf("with %s not writable, %s changed:\n%s", refused, path, content)
+			}
+		}
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("the project does not load after the refused saves: %v", err)
+	}
+}
+
 func TestCatalogEditorRoutesValidateMutations(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)

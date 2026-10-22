@@ -105,30 +105,35 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
 	}
+	// The roles go first, put back if the catalog is then refused: a
+	// refusal halfway leaves neither a catalog the roles do not match nor
+	// roles naming fields it has not.
 	added, removed := declaredFieldChanges(opened.Catalog, value)
+	restoreRoles, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+		// A deleted field leaves every role, its rights and its
+		// restrictions, as the prototype takes it off them (ACCESS-RIGHTS.md,
+		// «Удаление реквизита, по которому стоит ограничение роли»).
+		changed := role.DropFields(value.ID, removed)
+		if !role.GrantNewFieldsByDefault {
+			return changed
+		}
+		for _, key := range added {
+			// A line number is not a part a right is given to.
+			if _, err := uuid.Parse(key); err == nil && role.GrantFieldReadByDefault(value.ID, key) {
+				changed = true
+			}
+		}
+		return changed
+	})
+	if err != nil {
+		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
+	}
 	saved, err := workspace.saveSourceLocked(relative, encoded.String(), revision)
 	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	if len(added) > 0 || len(removed) > 0 {
-		if err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
-			// A deleted field leaves the restrictions of every role, as the
-			// prototype takes it off them (ACCESS-RIGHTS.md, «Удаление
-			// реквизита, по которому стоит ограничение роли»).
-			changed := role.DropRestrictionFields(value.ID, removed)
-			if !role.GrantNewFieldsByDefault {
-				return changed
-			}
-			for _, key := range added {
-				// A line number is not a part a right is given to.
-				if _, err := uuid.Parse(key); err == nil && role.GrantFieldReadByDefault(value.ID, key) {
-					changed = true
-				}
-			}
-			return changed
-		}); err != nil {
-			return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
+		if restoreErr := restoreRoles(); restoreErr != nil {
+			return CatalogEditorSource{}, fmt.Errorf("%w; %v", err, restoreErr)
 		}
+		return CatalogEditorSource{}, err
 	}
 	opened.Catalog, opened.Revision = value, saved.Revision
 	return opened, nil
@@ -245,12 +250,17 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return CatalogEditorSource{}, fmt.Errorf("create catalog: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	if err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+	// A refused grant takes the new catalog away again: the roles are left as
+	// they were, and a catalog no role was told of is not left behind.
+	if _, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
 		if !role.GrantNewObjectsByDefault {
 			return false
 		}
 		return role.GrantObjectReadByDefault(id)
 	}); err != nil {
+		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		_ = os.Remove(objectDirectory)
+		workspace.invalidateStudioIndexesLocked()
 		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
 	}
 	choices, err := loadTypeChoices(workspace.root)

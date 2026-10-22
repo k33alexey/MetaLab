@@ -376,11 +376,31 @@ func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
 			return RoleOverview{}, fmt.Errorf("role %q: all roles are saved with their names, a role is renamed in its own window", opened.Role.Name)
 		}
 	}
+	if _, err := workspace.writeRolesLocked(saves); err != nil {
+		return RoleOverview{}, err
+	}
+	return workspace.readAllRolesLocked()
+}
+
+// writeRolesLocked writes the roles in order. A role refused puts back the
+// ones written before it, so a refused save leaves every role as it was;
+// after a save that went through, the answer puts them all back, for a
+// caller whose own step after the roles is refused.
+func (workspace *Workspace) writeRolesLocked(saves []RoleSave) (func() error, error) {
 	type written struct {
 		path            string
 		before, current roleFiles
 	}
 	var done []written
+	restore := func() error {
+		for index := len(done) - 1; index >= 0; index-- {
+			item := done[index]
+			if _, err := workspace.replaceRoleFilesLocked(item.path, item.current, []byte(item.before.description.Content), item.before.grid); err != nil {
+				return fmt.Errorf("restoring role %q failed: %w", item.path, err)
+			}
+		}
+		return nil
+	}
 	for _, save := range saves {
 		before, err := workspace.readRoleFilesLocked(save.Path)
 		if err == nil {
@@ -390,15 +410,12 @@ func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
 				continue
 			}
 		}
-		for index := len(done) - 1; index >= 0; index-- {
-			item := done[index]
-			if _, restoreErr := workspace.replaceRoleFilesLocked(item.path, item.current, []byte(item.before.description.Content), item.before.grid); restoreErr != nil {
-				return RoleOverview{}, fmt.Errorf("role %q: %w; restoring role %q failed: %v", save.Role.Name, err, item.path, restoreErr)
-			}
+		if restoreErr := restore(); restoreErr != nil {
+			return nil, fmt.Errorf("role %q: %w; %v", save.Role.Name, err, restoreErr)
 		}
-		return RoleOverview{}, fmt.Errorf("role %q: %w", save.Role.Name, err)
+		return nil, fmt.Errorf("role %q: %w", save.Role.Name, err)
 	}
-	return workspace.readAllRolesLocked()
+	return restore, nil
 }
 
 // DeleteRole permanently removes one role - its description and its grid - after confirming the
@@ -520,32 +537,35 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide
 // whether to change it (returning true if it did) - used right after a new
-// metadata object is created (GrantNewObjectsByDefault) or a new attribute/
-// table part is added to an existing one (GrantNewFieldsByDefault). The
-// caller must already hold workspace.mu; this only uses the already-locked
-// read/save helpers, never the exported (re-locking) ones.
-func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.RoleDefinition) bool) error {
+// metadata object is created (GrantNewObjectsByDefault), a new attribute/
+// table part is added to an existing one (GrantNewFieldsByDefault) or one is
+// deleted. Every role is read and changed before any is written, and the
+// roles are written by writeRolesLocked: a refusal leaves them all as they
+// were, and the answer puts them back for a caller whose own write after
+// them is refused. The caller must already hold workspace.mu; this only
+// uses the already-locked read/save helpers, never the exported
+// (re-locking) ones.
+func (workspace *Workspace) applyRoleAutoGrantsLocked(mutate func(*metadata.RoleDefinition) bool) (func() error, error) {
+	unchanged := func() error { return nil }
 	descriptions, err := workspace.roleDescriptions()
 	if err != nil || len(descriptions) == 0 {
-		return err
+		return unchanged, err
 	}
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
-		return err
+		return unchanged, err
 	}
+	var saves []RoleSave
 	for _, relative := range descriptions {
 		role, revision, err := workspace.decodeRoleLocked(relative, configuration)
 		if err != nil {
-			return err
+			return unchanged, err
 		}
-		if !mutate(&role) {
-			continue
-		}
-		if _, err := workspace.writeRoleLocked(relative, role, revision); err != nil {
-			return err
+		if mutate(&role) {
+			saves = append(saves, RoleSave{Path: relative, Role: role, ExpectedRevision: revision})
 		}
 	}
-	return nil
+	return workspace.writeRolesLocked(saves)
 }
 
 // editorLanguages are the configured languages as an editor of Studio gets

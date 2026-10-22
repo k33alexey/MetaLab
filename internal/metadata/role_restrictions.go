@@ -187,19 +187,24 @@ func (object ObjectPermission) restrictsData(right PermissionOperation) bool {
 	})
 }
 
-// DropRestrictionFields takes the fields off every restriction of the
-// object, as the prototype does when an attribute is deleted (pass of
+// DropFields takes fields the object no longer has out of the role, as the
+// prototype does when an attribute or a table part is deleted (pass of
 // 22.10.2026, the fourth; ACCESS-RIGHTS.md, «Удаление реквизита, по которому
-// стоит ограничение роли»): a restriction keeps the rest of its fields, and
-// one that named only those goes away - it does not become the restriction
-// of «Прочие поля». Reports whether the role changed.
-func (role *RoleDefinition) DropRestrictionFields(object uuid.UUID, keys []string) bool {
+// стоит ограничение роли»): the rights given or denied on them go, and every
+// restriction of the object loses them - a restriction keeps the rest of
+// its fields, and one that named only those goes away, it does not become
+// the restriction of «Прочие поля». A right on a field the object has not
+// would leave a role that does not load. Reports whether the role changed.
+func (role *RoleDefinition) DropFields(object uuid.UUID, keys []string) bool {
 	changed := false
 	for index := range role.Objects {
 		permission := &role.Objects[index]
 		if permission.Object != object {
 			continue
 		}
+		before := len(permission.Fields)
+		permission.Fields = slices.DeleteFunc(permission.Fields, func(field FieldPermission) bool { return slices.Contains(keys, field.Field) })
+		changed = changed || len(permission.Fields) != before
 		kept := permission.Restrictions[:0]
 		for _, restriction := range permission.Restrictions {
 			fields := slices.DeleteFunc(slices.Clone(restriction.Fields), func(field string) bool { return slices.Contains(keys, field) })
