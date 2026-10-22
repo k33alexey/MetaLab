@@ -7,6 +7,13 @@ function postMutation(path, body) {
   if (body !== undefined) headers["Content-Type"] = "application/json";
   return fetch(path, {method: "POST", headers, body: body === undefined ? undefined : JSON.stringify(body)});
 }
+// refusalOf is the text of a refusal the server words for the person - a
+// JSON answer with "error" (a role saved by an earlier version of ML names
+// the role and the right) - or the fallback for any other.
+async function refusalOf(response, fallback) {
+  if (!(response.headers.get("Content-Type") || "").startsWith("application/json")) return fallback;
+  try { return (await response.json()).error || fallback; } catch { return fallback; }
+}
 function fieldInputValue(kind, data) {
   if (!data) return "";
   if (kind === "date") return data.length >= 16 ? data.slice(0, 16) : data;
@@ -248,7 +255,7 @@ class MLAppShell extends HTMLElement {
     const databaseId = location.pathname.split("/").filter(Boolean).at(-1);
     try {
       const response = await fetch(`/api/databases/${encodeURIComponent(databaseId)}/app-bootstrap`, {headers: {"Accept": "application/json"}});
-      if (!response.ok) throw new Error(response.status === 401 ? "Требуется вход" : "База недоступна");
+      if (!response.ok) throw new Error(response.status === 401 ? "Требуется вход" : await refusalOf(response, "База недоступна"));
       this.databaseId = databaseId; this.bootstrap = await response.json(); this.homeForm = this.bootstrap.form; document.documentElement.lang = this.bootstrap.locale || "ru";
       this.restorePanel(); this.guardUnload(); this.render(); this.startSessionMonitor(databaseId); this.startPublicationWatch(databaseId);
       await this.reopenActiveWindow();

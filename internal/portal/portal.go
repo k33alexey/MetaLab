@@ -203,6 +203,13 @@ func NewHandler(platformRuntime runtime) http.Handler {
 			return
 		}
 		objects, err := platformRuntime.LoadApplicationObjects(request.Context(), token, id, requestLanguages(request))
+		var notRepaired *metadata.RoleNotRepaired
+		if errors.As(err, &notRepaired) {
+			webpage.JSON(response, http.StatusConflict, struct {
+				Error string `json:"error"`
+			}{roleNotRepaired(notRepaired)})
+			return
+		}
 		if err != nil {
 			http.Error(response, "ML App metadata unavailable", http.StatusConflict)
 			return
@@ -337,6 +344,18 @@ func NewHandler(platformRuntime runtime) http.Handler {
 		webpage.Answer(response, http.StatusNoContent, nil, err, webpage.Refusal(http.StatusConflict, "Session unavailable"))
 	})
 	return webpage.Secured(routes)
+}
+
+// roleNotRepaired is why ML App does not open on a base whose saved project
+// has a role saved by an earlier version of ML: the person sees the role and
+// the right, and what the developer does about it (ACCESS-RIGHTS, «Роли,
+// сохранённые прежней версией ML»).
+func roleNotRepaired(refusal *metadata.RoleNotRepaired) string {
+	const repair = " Разработчику — открыть роль в ML Studio, «Убрать недоступные права», записать роль и снова «Сохранить данные»."
+	return refusal.Worded(
+		"Приложение не открывается: роль «%[1]s» даёт права на команды форм (%[2]d), а роль их не даёт — кому доступна команда формы, решает сама команда."+repair,
+		"Приложение не открывается: роль «%[1]s» даёт право «%[3]s» (%[2]s), которого в ML нет."+repair,
+		"Приложение не открывается: роль «%[1]s» запрещает право «%[3]s» (%[2]s), которого в ML нет."+repair)
 }
 
 func decodeDynamicListRequest(query url.Values) (metadata.DynamicListRequest, error) {

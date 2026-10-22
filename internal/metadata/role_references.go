@@ -83,25 +83,65 @@ func (catalog *Catalog) validateRoleReferences() error {
 	return nil
 }
 
-// validateDroppedRights refuses a role that gives or denies a right ML no
-// longer keeps, naming the role and the right, and one giving rights on
-// commands of forms, which a role does not give (RoleDefinition.Commands)
-// (ACCESS-RIGHTS, «Роли, сохранённые прежней версией ML»): such a role is not
-// translated, it is repaired in Studio.
+// RoleNotRepaired refuses a role saved by an earlier version of ML and not
+// repaired since: it gives or denies a right ML no longer keeps, or gives
+// rights on commands of forms, which a role does not give
+// (RoleDefinition.Commands). Such a role is not translated, it is repaired in
+// Studio, and every load that runs it refuses it naming the role and the
+// right (ACCESS-RIGHTS, «Роли, сохранённые прежней версией ML»): «Сохранить
+// данные» by Error, ML App by the fields.
+type RoleNotRepaired struct {
+	Role string
+	// Right is the right ML does not keep by the name a role keeps it under,
+	// and RightName by its name in Russian, as ПравоДоступа knows it; both
+	// are empty when the role gives rights on commands of forms.
+	Right     PermissionOperation
+	RightName string
+	// Denies says the role denies the right rather than gives it.
+	Denies bool
+	// Commands is how many commands of forms the role gives rights on.
+	Commands int
+	why      string
+}
+
+func (refusal *RoleNotRepaired) Error() string {
+	const repair = "; open the role in Studio and take away the rights it cannot keep («Убрать недоступные права»)"
+	return refusal.Worded(
+		"role %[1]s gives rights on %[2]d commands of forms, which a role does not give: whom a command of a form is available to is the command's own use"+repair,
+		"role %[1]s gives the right %[2]s, which ML does not keep: %[4]s"+repair,
+		"role %[1]s denies the right %[2]s, which ML does not keep: %[4]s"+repair)
+}
+
+// Worded words the refusal for its reader, the parts of it the same in
+// every wording: commands takes the role and how many commands of forms it
+// gives rights on; gives and denies take, by their places, the role, the
+// right by the name a role keeps it under, by its Russian name, and why ML
+// does not keep it.
+func (refusal *RoleNotRepaired) Worded(commands, gives, denies string) string {
+	if refusal.Right == "" {
+		return fmt.Sprintf(commands, refusal.Role, refusal.Commands)
+	}
+	format := gives
+	if refusal.Denies {
+		format = denies
+	}
+	return fmt.Sprintf(format, refusal.Role, refusal.Right, refusal.RightName, refusal.why)
+}
+
+// validateDroppedRights refuses a role saved by an earlier version of ML
+// (RoleNotRepaired).
 func validateDroppedRights(role RoleDefinition) error {
 	if len(role.Commands) > 0 {
-		return fmt.Errorf("role %s gives rights on %d commands of forms, which a role does not give: whom a command of a form is available to is the command's own use; open the role in Studio and take away the rights it cannot keep («Убрать недоступные права»)",
-			role.Name, len(role.Commands))
+		return &RoleNotRepaired{Role: role.Name, Commands: len(role.Commands)}
 	}
 	for _, permission := range role.Objects {
 		for _, list := range []struct {
-			verb   string
+			denies bool
 			rights []PermissionOperation
-		}{{"gives", permission.Operations}, {"denies", permission.Denied}} {
+		}{{false, permission.Operations}, {true, permission.Denied}} {
 			for _, operation := range list.rights {
 				if dropped, ok := droppedRightOf(operation); ok {
-					return fmt.Errorf("role %s %s the right %s, which ML does not keep: %s; open the role in Studio and take away the rights it cannot keep («Убрать недоступные права»)",
-						role.Name, list.verb, operation, dropped.why)
+					return &RoleNotRepaired{Role: role.Name, Right: operation, RightName: dropped.russian, Denies: list.denies, why: dropped.why}
 				}
 			}
 		}

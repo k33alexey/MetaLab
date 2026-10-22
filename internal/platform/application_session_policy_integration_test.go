@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -275,5 +276,28 @@ func TestRestrictedReadAdmitsNoRecordIntegration(t *testing.T) {
 	// действует и в нём.
 	if _, err := runtime.GetApplicationObject(ctx, login.Token, registered.ID, metadata.CatalogKind, "Заказы", orders[0]); err == nil {
 		t.Fatal("an object of a restricted catalog opened")
+	}
+
+	// A base saved by an earlier version of ML, while it still kept the thin
+	// client, does not open, and the refusal names the role and the right
+	// (ACCESS-RIGHTS, «Роли, сохранённые прежней версией ML»): the saved
+	// state is given the right as that version wrote it. Defect caught: the
+	// reason thrown away on the way to ML App («База недоступна», 2.444).
+	saved, found, err := publication.CurrentDatabaseState(ctx, pool)
+	if err != nil || !found {
+		t.Fatalf("saved state: found=%v error=%v", found, err)
+	}
+	saved.Roles[0].Objects[0].Operations = append(saved.Roles[0].Objects[0].Operations, "thin-client")
+	encoded, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE ml_core.database_state SET runtime = $1 WHERE singleton", encoded); err != nil {
+		t.Fatal(err)
+	}
+	var notRepaired *metadata.RoleNotRepaired
+	if _, err := runtime.LoadApplicationObjects(ctx, login.Token, registered.ID, nil); !errors.As(err, &notRepaired) ||
+		notRepaired.Role != "Кладовщик" || notRepaired.Right != "thin-client" || notRepaired.RightName != "ТонкийКлиент" || notRepaired.Denies {
+		t.Fatalf("a base with a role of an earlier version opened as %v, want the role Кладовщик and the right thin-client named", err)
 	}
 }

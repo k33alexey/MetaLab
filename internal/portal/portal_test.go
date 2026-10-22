@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -208,6 +209,55 @@ func TestLoginLimiterIsBoundedAndExpires(t *testing.T) {
 	}
 }
 
+// ML App on a base whose saved project has a role saved by an earlier
+// version of ML does not open and names the role and the right, and what the
+// developer does (ACCESS-RIGHTS, «Роли, сохранённые прежней версией ML»);
+// any other failure to read the objects stays the bare refusal. Defects
+// caught: the reason thrown away («База недоступна», pass 2.444), a denied
+// right worded as given, a role with rights on commands of forms not named.
+func TestMLAppNamesTheRoleSavedByAnEarlierVersion(t *testing.T) {
+	t.Parallel()
+	bootstrap := func(failure error) *httptest.ResponseRecorder {
+		runtime := &fakeRuntime{token: "token", session: systemdb.PortalSession{ID: uuid.MustNew(), UserID: uuid.MustNew(), Login: "admin"}, objectsFailure: failure}
+		request := httptest.NewRequest(http.MethodGet, "/api/databases/"+uuid.MustNew().String()+"/app-bootstrap", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookie, Value: runtime.token})
+		response := httptest.NewRecorder()
+		NewHandler(runtime).ServeHTTP(response, request)
+		return response
+	}
+	for _, test := range []struct {
+		name    string
+		failure error
+		says    []string
+	}{
+		{"a right given", fmt.Errorf("validate saved database state: %w", &metadata.RoleNotRepaired{Role: "Кладовщик", Right: "thin-client", RightName: "ТонкийКлиент"}),
+			[]string{"роль «Кладовщик» даёт право «ТонкийКлиент» (thin-client), которого в ML нет", "«Убрать недоступные права»", "«Сохранить данные»"}},
+		{"a right denied", &metadata.RoleNotRepaired{Role: "Кассир", Right: "read-data-history", RightName: "ЧтениеИсторииДанных", Denies: true},
+			[]string{"роль «Кассир» запрещает право «ЧтениеИсторииДанных» (read-data-history)"}},
+		{"commands of forms", &metadata.RoleNotRepaired{Role: "Продавец", Commands: 2},
+			[]string{"роль «Продавец» даёт права на команды форм (2)"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			response := bootstrap(test.failure)
+			var answer struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil || response.Code != http.StatusConflict {
+				t.Fatalf("status=%d body=%s error=%v", response.Code, response.Body.String(), err)
+			}
+			for _, says := range test.says {
+				if !strings.Contains(answer.Error, says) {
+					t.Errorf("the refusal %q does not say %q", answer.Error, says)
+				}
+			}
+		})
+	}
+	if response := bootstrap(errors.New("decode saved database state")); response.Code != http.StatusConflict || strings.TrimSpace(response.Body.String()) != "ML App metadata unavailable" {
+		t.Fatalf("another failure answered status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 type fakeRuntime struct {
 	token        string
 	session      systemdb.PortalSession
@@ -216,8 +266,11 @@ type fakeRuntime struct {
 	loggedOut    bool
 	failure      error
 	loginFailure error
-	publication  string
-	listRequest  metadata.DynamicListRequest
+	// objectsFailure is what reading the objects of the base refuses with,
+	// past the session.
+	objectsFailure error
+	publication    string
+	listRequest    metadata.DynamicListRequest
 }
 
 func (runtime *fakeRuntime) LoginPortal(context.Context, string, string, string, string) (platform.PortalLogin, error) {
@@ -263,7 +316,7 @@ func (runtime *fakeRuntime) LoadApplicationObjects(_ context.Context, _ string, 
 	return platform.ApplicationObjects{Language: language, Objects: []platform.ApplicationObject{
 		{Kind: metadata.CatalogKind, Name: "Товары", Title: "Товары", Operations: []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionInsert}},
 		{Kind: metadata.DocumentKind, Name: "ПродажаТоваров", Title: "Продажа товаров", Operations: []metadata.PermissionOperation{metadata.PermissionRead}},
-	}}, runtime.failure
+	}}, errors.Join(runtime.failure, runtime.objectsFailure)
 }
 func (runtime *fakeRuntime) ApplicationPublication(context.Context, string, uuid.UUID) (publication.PublicationMarker, error) {
 	return publication.PublicationMarker{ContentSHA256: runtime.publication}, runtime.failure
