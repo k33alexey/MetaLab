@@ -690,6 +690,9 @@ func (table referenceTable) fieldsOf(fields []objectPart, window restrictionWind
 		return true
 	})
 	slices.SortStableFunc(result, func(a, b objectPart) int { return rankOf(a) - rankOf(b) })
+	// The flags go in after the walk: inserted inside it, they would shift
+	// the fields after them past the end the walk took at its start.
+	flagsAt := -1
 	for part := range result {
 		if result[part].group != StandardTablePartsPart {
 			continue
@@ -703,8 +706,11 @@ func (table referenceTable) fieldsOf(fields []objectPart, window restrictionWind
 			return window.partFields[strings.TrimPrefix(a.key, key+".")] - window.partFields[strings.TrimPrefix(b.key, key+".")]
 		})
 		if key == extDimensions {
-			result = slices.Insert(result, last+1, flags...)
+			flagsAt = last + 1
 		}
+	}
+	if flagsAt >= 0 {
+		result = slices.Insert(result, flagsAt, flags...)
 	}
 	return result
 }

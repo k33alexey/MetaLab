@@ -612,15 +612,19 @@ function createRoleOverview(host, openRole, onChange) {
   // ограничение, у объекта которого оно есть, серое остаётся каждому как
   // было, снятое снимается; объект без полей получает «Прочие поля». «ОК»
   // становится доступной только отметкой поля или правкой условия.
-  // Ограничение роли с теми же полями на том же праве правленое заменяет
-  // без вопроса, как у прототипа. «ОК» записывает каждую выбранную строку,
-  // поэтому без отмеченного «Изменять ограничение» отказ — и тогда, когда
-  // условия нет у одной из них (такие приходят импортом; владелец
-  // 22.10.2026, ACCESS-RIGHTS «Пустое ограничение в окне роли»).
+  // Поля пишутся, только если отметки полей в окне изменили: правка одного
+  // условия оставляет каждой строке её поля, и то, которого у объекта уже
+  // нет и окно не показывает (ACCESS-RIGHTS «Ограничение по полю, которого
+  // у объекта нет»). Ограничение роли с теми же полями на том же праве
+  // правленое заменяет без вопроса, как у прототипа. «ОК» записывает каждую
+  // выбранную строку, поэтому без отмеченного «Изменять ограничение» отказ —
+  // и тогда, когда условия нет у одной из них (такие приходят импортом;
+  // владелец 22.10.2026, ACCESS-RIGHTS «Пустое ограничение в окне роли»).
   async function editRestrictions(rows) {
     const reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
     const change = {fields: false, condition: false}, chosen = new Set(), mixed = new Set(), marked = new Set();
-    let fields = null, edited = false;
+    let fields = null, edited = false, marks = '';
+    const marksOf = () => `${[...chosen].sort()}|${[...mixed].sort()}`;
     const choices = model.restrictionFieldChoices(reading.map(row => row.objectID));
     const names = (row, choice) => row.keys.includes(choice.keys.get(row.objectID));
     if (reading.length) {
@@ -629,6 +633,7 @@ function createRoleOverview(host, openRole, onChange) {
         if (count === reading.length) chosen.add(choice.path); else if (count) mixed.add(choice.path);
       }
       change.fields = !mixed.size;
+      marks = marksOf();
       fields = restrictionFieldsChoice({chosen, mixed, marked: (key, enabled) => { if (enabled) marked.add(key); else marked.delete(key); }});
       fields.fill(choiceFields(choices));
     }
@@ -647,7 +652,8 @@ function createRoleOverview(host, openRole, onChange) {
       answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
       check: () => emptyAmong(change.condition ? [condition] : rows.map(row => row.condition))});
     if (answer !== 'ok') return;
-    model.editRestrictions(rows, {fields: change.fields ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
+    const fieldsMarked = change.fields && marksOf() !== marks;
+    model.editRestrictions(rows, {fields: fieldsMarked ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
     listChanged();
   }
   // Поля ограничения (restrictionFieldChoices) для restrictionFieldsChoice:

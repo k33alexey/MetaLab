@@ -567,8 +567,9 @@ func TestTheWindowOfARoleKeepsToThePrototype(t *testing.T) {
 }
 
 // absentFieldWalk looks at a restriction of the reading of Товары, which have
-// no hierarchy, by Родитель: in «Все ограничения доступа», in its filter and
-// in the window of the role.
+// no hierarchy, by Родитель: in «Все ограничения доступа», in its filter,
+// in the window of the role, and after the group «Изменить» of the
+// condition alone.
 const absentFieldWalk = `(async () => {` + restrictionWalkTools + `
   await overview('Все ограничения доступа');
   const seen = {};
@@ -590,6 +591,14 @@ const absentFieldWalk = `(async () => {` + restrictionWalkTools + `
   seen.othersMarked = box('Прочие поля').checked;
   seen.okEnabled = enabled('ОК');
   await press('Отмена');
+  await overview('Все ограничения доступа');
+  await choose(row('Аналитик', 'Товары'));
+  await command('edit');
+  const text = dialog().querySelector('textarea');
+  text.value = 'ГДЕ Д'; text.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  await press('ОК');
+  seen.groupClosed = !dialog();
+  seen.groupField = row('Аналитик', 'ГДЕ Д')?.children[3]?.textContent.trim() || '';
   return seen;
 })()`
 
@@ -600,10 +609,12 @@ const absentFieldWalk = `(async () => {` + restrictionWalkTools + `
 // «Ограничение по полю, которого у объекта нет»): the list «Все ограничения
 // доступа» and the list of the role name the field and the filter offers
 // it, the window of the restriction does not show it and marks «Прочие
-// поля», and the role is shown with no warning of rights it cannot keep.
+// поля», the group «Изменить» of the condition alone keeps it, and the role
+// is shown with no warning of rights it cannot keep.
 // Defects caught: the field named by its key (parent), left out of the
 // filter, shown in the window; the role offered «Убрать недоступные права»
-// (2.440).
+// (2.440); the group «Изменить» of the condition alone writing the fields
+// it offers and turning Родитель into «Прочие поля» (2.455).
 func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
@@ -626,8 +637,8 @@ func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T)
 		t.Fatal(err)
 	}
 	var seen struct {
-		ListField, ListRow, RoleField                                string
-		FilterOffers, Warning, WindowOffers, OthersMarked, OkEnabled bool
+		ListField, ListRow, RoleField, GroupField                                 string
+		FilterOffers, GroupClosed, Warning, WindowOffers, OthersMarked, OkEnabled bool
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -638,6 +649,7 @@ func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T)
 	}{
 		{seen.ListField == "Родитель", fmt.Sprintf("the list names the field %q, want Родитель (row %q)", seen.ListField, seen.ListRow)},
 		{seen.FilterOffers, "the filter of the list does not offer Родитель"},
+		{seen.GroupClosed && seen.GroupField == "Родитель", fmt.Sprintf("the group «Изменить» of the condition alone left the field %q (closed %v), want Родитель", seen.GroupField, seen.GroupClosed)},
 		{!seen.Warning, "the role is shown with the warning of rights it cannot keep"},
 		{seen.RoleField == "Родитель", fmt.Sprintf("the list of the role names the field %q, want Родитель", seen.RoleField)},
 		{!seen.WindowOffers, "the window of the restriction shows Родитель"},
