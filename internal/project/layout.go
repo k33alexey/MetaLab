@@ -576,10 +576,10 @@ func InnerFolders(kind string) []string {
 	return result
 }
 
-// InnerModulePath returns one module of an object an object of the owner kind
-// describes inside itself: metadata/calculation-registers/Начисления/
-// recalculations/Перерасчет/МодульНабораЗаписей.bsl.
-func InnerModulePath(kind, owner, name, roleFile string) (string, error) {
+// InnerObjectDirectory returns the folder that keeps the modules of an object
+// an object of the owner kind describes inside itself:
+// metadata/calculation-registers/Начисления/recalculations/Перерасчет.
+func InnerObjectDirectory(kind, owner, name string) (string, error) {
 	item, ok := kinds.Of(kinds.Kind(kind))
 	if !ok || item.Layout().Storage != kinds.InOwner {
 		return "", fmt.Errorf("kind %q is not described inside its owner", kind)
@@ -591,10 +591,21 @@ func InnerModulePath(kind, owner, name, roleFile string) (string, error) {
 	if err := SubordinateName(name); err != nil {
 		return "", err
 	}
+	return path.Join(directory, item.Layout().Folder, name), nil
+}
+
+// InnerModulePath returns one module of an object an object of the owner kind
+// describes inside itself: metadata/calculation-registers/Начисления/
+// recalculations/Перерасчет/МодульНабораЗаписей.bsl.
+func InnerModulePath(kind, owner, name, roleFile string) (string, error) {
+	directory, err := InnerObjectDirectory(kind, owner, name)
+	if err != nil {
+		return "", err
+	}
 	if !KeepsModule(kind, roleFile) {
 		return "", fmt.Errorf("%q is not a module role of an object of %s", roleFile, kind)
 	}
-	return path.Join(directory, item.Layout().Folder, name, roleFile), nil
+	return path.Join(directory, roleFile), nil
 }
 
 // SubordinateObjectKind returns the kind of the objects an object of the owner

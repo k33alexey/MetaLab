@@ -152,9 +152,10 @@ type kindComposition struct {
 	// an enumeration, the columns of a journal, the functions of a source
 	// (snapshots derevo/07, 12b, 10). Nil where there are none.
 	held []heldList
-	// beneath is what the tree shows under a part of an object that is no
-	// part itself, by the part: the parameters of an operation of a web
-	// service (snapshot derevo/11b). Nil where there is nothing.
+	// beneath is what the tree shows under a part of an object, or under an
+	// item of a held list, that is no part itself, by the part or the item:
+	// the parameters of an operation of a web service, the dimensions of a
+	// recalculation (snapshots derevo/11b, 05b). Nil where there is nothing.
 	beneath func(catalog *Catalog, id uuid.UUID) map[uuid.UUID][]BranchPart
 	// dataVersion is a kind whose objects keep the version of their data
 	// (help, the tables of the query language; the table of a chart of
@@ -226,6 +227,19 @@ var (
 type heldList struct {
 	key, title, icon string
 	items            func(catalog *Catalog, id uuid.UUID) []heldIdentity
+	// kind is the kind of the items where they are objects of a kind of
+	// their own (objectsHeld); empty where they are the object's own.
+	kind Kind
+}
+
+// objectsHeld is the list of the objects of a kind an object keeps inside
+// itself, shown by the caption and icon the tree shows the kind by: the
+// functions of a source, the recalculations of a calculation register. The
+// items are objects the catalog knows already, so they name no identity of
+// the object's own.
+func objectsHeld(key string, kind Kind, items func(catalog *Catalog, id uuid.UUID) []heldIdentity) heldList {
+	descriptor := kinds.Must(kind)
+	return heldList{key: key, title: descriptor.Titles, icon: descriptor.Icon, items: items, kind: kind}
 }
 
 // formRoles is the forms of a description: every kind keeps its own set of
@@ -373,7 +387,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	}},
 	CommonModuleKind:      {},
 	EventSubscriptionKind: {},
-	EnumerationKind: {described: true, held: []heldList{{"values", "Значения", "enumeration-value", func(c *Catalog, id uuid.UUID) []heldIdentity {
+	EnumerationKind: {described: true, held: []heldList{{key: "values", title: "Значения", icon: "enumeration-value", items: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("value", c.Enumerations[c.enumerationByID[id]].Values)
 	}}}, files: declaredFilesOf, rightsFolders: partFolders(CommandsPart)},
 	ScheduledJobKind:   {},
@@ -401,10 +415,9 @@ var kindCompositionOf = map[Kind]kindComposition{
 	WebSocketClientKind: {},
 	// The functions of a source lie in its description and are objects of
 	// their own kind (kinds.ExternalFunction), shown by its caption and icon.
-	ExternalDataSourceKind: {held: []heldList{{"functions", kinds.Must(ExternalFunctionKind).Collection.Russian, kinds.Must(ExternalFunctionKind).Icon,
-		func(c *Catalog, id uuid.UUID) []heldIdentity {
-			return identitiesOf("", c.ExternalDataSources[c.externalDataSourceByID[id]].Functions)
-		}}}, rightsFolders: []rightsFolder{{kind: ExternalDataSourceTableKind}, {kind: ExternalCubeKind}, {kind: ExternalFunctionKind}}},
+	ExternalDataSourceKind: {held: []heldList{objectsHeld("functions", ExternalFunctionKind, func(c *Catalog, id uuid.UUID) []heldIdentity {
+		return identitiesOf("", c.ExternalDataSources[c.externalDataSourceByID[id]].Functions)
+	})}, rightsFolders: []rightsFolder{{kind: ExternalDataSourceTableKind}, {kind: ExternalCubeKind}, {kind: ExternalFunctionKind}}},
 	ExternalDataSourceTableKind: {described: true, rightsFolders: tableFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		files := declaredFilesOf(c, id)
 		// The kind has both modules of data; a table keeps the one of its
@@ -469,8 +482,22 @@ var kindCompositionOf = map[Kind]kindComposition{
 			return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 		}, files: declaredFilesOf},
 	AccountingRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders},
+	// The recalculations stand after the branches of parts, each with its
+	// dimensions right under it, and the branch stands even when there are
+	// none (snapshots derevo/05, 05b).
 	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: []rightsFolder{{group: DimensionsPart},
-		{group: ResourcesPart}, {group: AttributesPart}, {group: StandardAttributesPart}, {kind: RecalculationKind}, {group: CommandsPart}}},
+		{group: ResourcesPart}, {group: AttributesPart}, {group: StandardAttributesPart}, {kind: RecalculationKind}, {group: CommandsPart}},
+		held: []heldList{objectsHeld("recalculations", RecalculationKind, func(c *Catalog, id uuid.UUID) []heldIdentity {
+			return identitiesOf("", c.CalculationRegisters[c.calculationRegisterByID[id]].Recalculations)
+		})}, beneath: func(c *Catalog, id uuid.UUID) map[uuid.UUID][]BranchPart {
+			result := map[uuid.UUID][]BranchPart{}
+			for _, recalculation := range c.CalculationRegisters[c.calculationRegisterByID[id]].Recalculations {
+				for _, dimension := range recalculation.Dimensions {
+					result[recalculation.ID] = append(result[recalculation.ID], BranchPart{ID: dimension.ID, Name: dimension.Name, Icon: partGroupOf(DimensionsPart).icon})
+				}
+			}
+			return result
+		}},
 	RecalculationKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		recalculation, _ := c.recalculationOf(id)
 		return identitiesOf("dimension", recalculation.Dimensions)
@@ -481,7 +508,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
 	}, files: declaredFilesOf},
-	DocumentJournalKind: {described: true, held: []heldList{{"columns", "Графы", "journal-column", func(c *Catalog, id uuid.UUID) []heldIdentity {
+	DocumentJournalKind: {described: true, held: []heldList{{key: "columns", title: "Графы", icon: "journal-column", items: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
 	}}}, files: declaredFilesOf, rightsFolders: partFolders(StandardAttributesPart, CommandsPart)},
 	ExchangePlanKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: referenceFolders},
@@ -677,13 +704,16 @@ func branchesOf(kind Kind) []PartGroup {
 
 // ObjectBranch is one branch of the configuration tree under an object: its
 // key, caption and icon, and what it holds. Group is the sort of part it
-// holds, empty for a held list (kindComposition.held). An inline branch has
-// no node of its own: its parts stand right under the object.
+// holds, empty for a held list (kindComposition.held); Kind is the kind of
+// the objects a held list holds, empty where they are the object's own. An
+// inline branch has no node of its own: its parts stand right under the
+// object.
 type ObjectBranch struct {
 	Key    string
 	Group  PartGroup
 	Title  string
 	Icon   string
+	Kind   Kind
 	Inline bool
 	Parts  []BranchPart
 }
@@ -707,7 +737,8 @@ func (catalog *Catalog) ObjectModules(kind Kind, id uuid.UUID) []kinds.Module {
 
 // BranchPart is a part of an object in a branch, or an item of a held list,
 // with the icon it is shown by and what lies in it: the fields of a table
-// part, the methods of a template, the parameters of an operation.
+// part, the methods of a template, the parameters of an operation, the
+// dimensions of a recalculation.
 type BranchPart struct {
 	ID    uuid.UUID
 	Name  string
@@ -758,10 +789,10 @@ func (catalog *Catalog) ObjectBranches(kind Kind, id uuid.UUID) []ObjectBranch {
 		result = append(result, branch)
 	}
 	for _, list := range composition.held {
-		branch := ObjectBranch{Key: list.key, Title: list.title, Icon: list.icon}
+		branch := ObjectBranch{Key: list.key, Title: list.title, Icon: list.icon, Kind: list.kind}
 		if found {
 			for _, item := range list.items(catalog, id) {
-				branch.Parts = append(branch.Parts, BranchPart{ID: item.id, Name: item.name, Icon: list.icon})
+				branch.Parts = append(branch.Parts, BranchPart{ID: item.id, Name: item.name, Icon: list.icon, Parts: beneath[item.id]})
 			}
 		}
 		result = append(result, branch)

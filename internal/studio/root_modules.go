@@ -146,11 +146,36 @@ func (workspace *Workspace) OpenModule(relative string) (SourceFile, error) {
 		return SourceFile{}, ErrSourceNotFound
 	}
 	target := filepath.Join(workspace.root, filepath.FromSlash(relative))
+	// A recalculation its register describes keeps no folder until its
+	// module is first opened: the folder is made with the module, and taken
+	// back with it when the module is not written.
+	var made []string
+	for folder := filepath.Dir(target); ; folder = filepath.Dir(folder) {
+		if _, err := os.Lstat(folder); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return SourceFile{}, fmt.Errorf("inspect %s: %w", relative, err)
+		}
+		made = append(made, folder)
+	}
+	failed := true
+	defer func() {
+		if failed {
+			for _, folder := range made {
+				_ = os.Remove(folder)
+			}
+		}
+	}()
+	for index := len(made) - 1; index >= 0; index-- {
+		if err := os.Mkdir(made[index], 0o755); err != nil {
+			made = made[index+1:]
+			return SourceFile{}, fmt.Errorf("create %s: %w", relative, err)
+		}
+	}
 	created, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return SourceFile{}, fmt.Errorf("create %s: %w", relative, err)
 	}
-	failed := true
 	defer func() {
 		_ = created.Close()
 		if failed {
@@ -177,16 +202,18 @@ func (workspace *Workspace) OpenModule(relative string) (SourceFile, error) {
 // (kinds.Module.Command) and the object keeps by its description
 // (metadata.Catalog.ObjectModules) - the object module of a table of no
 // objects is not made. An object of the kind described inside its owner - a
-// recalculation - has no description of its own: its folder is what says it
-// is there. While the project does not load, what the object keeps by its
-// description is not known, and every module of its kind is made.
+// recalculation - has no description of its own: its owner's description is
+// what says it is there, as the tree shows it (objectBranches), so while the
+// project does not load its module is not made. While the project does not
+// load, what any other object keeps by its description is not known, and
+// every module of its kind is made.
 func (workspace *Workspace) moduleStubLocked(relative string) (string, bool) {
 	for _, module := range rootModules {
 		if module.file == relative {
 			return module.stub, true
 		}
 	}
-	kind, _, rest, ok := project.SplitObjectPath(relative)
+	kind, name, rest, ok := project.SplitObjectPath(relative)
 	if !ok || len(rest) == 0 {
 		return "", false
 	}
@@ -198,8 +225,7 @@ func (workspace *Workspace) moduleStubLocked(relative string) (string, bool) {
 	folder := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
 	if len(rest) == 3 {
 		inner, ok := project.InnerKind(kind, rest[0])
-		info, err := os.Lstat(folder)
-		return "", ok && project.KeepsModule(inner, file) && err == nil && info.IsDir()
+		return "", ok && project.KeepsModule(inner, file) && workspace.describesInside(kind, name, inner, rest[1])
 	}
 	if len(rest) != 1 || !project.KeepsModule(kind, file) {
 		return "", false
@@ -231,4 +257,29 @@ func registerRootModuleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("POST /api/session-module", answerMarked(writeSourceError, func(*http.Request) (any, error) {
 		return workspace.OpenSessionModule()
 	}))
+}
+
+// describesInside says the object of a kind describes an object of the inner
+// kind by the name - a calculation register its recalculation -, read off the
+// branches of the tree, which show what the object describes inside itself.
+func (workspace *Workspace) describesInside(kind, owner, inner, name string) bool {
+	catalog, err := metadata.Load(workspace.root)
+	if err != nil {
+		return false
+	}
+	head, ok := catalog.ObjectHead(metadata.Kind(kind), owner)
+	if !ok {
+		return false
+	}
+	for _, branch := range catalog.ObjectBranches(metadata.Kind(kind), head.ID) {
+		if string(branch.Kind) != inner {
+			continue
+		}
+		for _, part := range branch.Parts {
+			if part.Name == name {
+				return true
+			}
+		}
+	}
+	return false
 }

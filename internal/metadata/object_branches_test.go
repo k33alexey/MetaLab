@@ -118,7 +118,9 @@ func TestEveryBranchOfTheTreeIsDrawn(t *testing.T) {
 // What an object keeps beside its parts stands in the tree as the prototype
 // shows it (inventory of block 00, «Ветки под объектом», snapshots derevo/07,
 // 10, 11a, 11b, 12b): «Значения» under an enumeration, «Графы» under a
-// journal, «Функции» under a source, each after the branches of parts; the
+// journal, «Функции» under a source, «Перерасчеты» under a calculation
+// register with the dimensions of each recalculation right under it (05b),
+// each after the branches of parts; the
 // templates of an HTTP service with their methods and the operations of a
 // web service with their parameters right under the service; each by its
 // icon, in the order of the description and not by the alphabet. Captions,
@@ -131,9 +133,13 @@ func TestEveryBranchOfTheTreeIsDrawn(t *testing.T) {
 func TestObjectBranchesShowWhatTheObjectHoldsBesideItsParts(t *testing.T) {
 	t.Parallel()
 	id := func() uuid.UUID { return uuid.MustNew() }
-	enumeration, journal, source, httpService, webService := id(), id(), id(), id(), id()
+	enumeration, journal, source, httpService, webService, register := id(), id(), id(), id(), id(), id()
 	template, other, get, post, operation, parameter := id(), id(), id(), id(), id(), id()
 	catalog := &Catalog{
+		calculationRegisterByID: map[uuid.UUID]int{register: 0},
+		CalculationRegisters: []CalculationRegisterDefinition{{ID: register, Dimensions: []RegisterDimension{{Attribute: Attribute{ID: id(), Name: "Сотрудник"}}},
+			Recalculations: []Recalculation{{ID: id(), Name: "Перерасчет", Dimensions: []RecalculationDimension{{ID: id(), Name: "Измерение1"}}},
+				{ID: id(), Name: "Второй"}}}},
 		enumerationByID: map[uuid.UUID]int{enumeration: 0},
 		Enumerations: []Enumeration{{ID: enumeration, Values: []EnumerationValue{
 			{ID: id(), Name: "АКласс"}, {ID: id(), Name: "СКласс"}, {ID: id(), Name: "НеКлассифицирован"}}}},
@@ -187,6 +193,9 @@ func TestObjectBranchesShowWhatTheObjectHoldsBesideItsParts(t *testing.T) {
 				"Получить url-template"}}}},
 		{"a web service", view(catalog.ObjectBranches(WebServiceKind, webService)), []shown{{"Операции", "web-service-operation", true,
 			[]string{"FillCatalogs web-service-operation", "FillCatalogs.MobileDeviceID parameter"}}}},
+		{"a calculation register", view(catalog.ObjectBranches(CalculationRegisterKind, register)), []shown{{"Измерения", "dimension", false,
+			[]string{"Сотрудник dimension"}}, {"Ресурсы", "resource", false, nil}, {"Реквизиты", "attribute", false, nil},
+			{"Перерасчёты", "recalculation", false, []string{"Перерасчет recalculation", "Перерасчет.Измерение1 dimension", "Второй recalculation"}}}},
 		{"an enumeration the catalog has not", view(catalog.ObjectBranches(EnumerationKind, id())), []shown{{"Значения", "enumeration-value", false, nil}}},
 		{"no catalog", view((*Catalog)(nil).ObjectBranches(DocumentJournalKind, journal)), []shown{{"Графы", "journal-column", false, nil}}},
 	} {

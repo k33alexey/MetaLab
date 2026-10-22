@@ -630,7 +630,9 @@ function menuButton(text, items, className) {
    icon of what the row is; the caption - a text, or an element such as the
    button that chooses the row. A row with children opens and closes; open is
    how it stands first, toggled(open) is told each time it is opened or
-   closed. Answers {element, row}: the element to put in the tree and the
+   closed by hand - not of the row drawn open, whose details the browser
+   reports opened too, after the fact: a search that opens what holds a
+   match would leave it all open once cleared (2.437, case 2в-25). Answers {element, row}: the element to put in the tree and the
    row to hang clicks and the menu on. Every tree of Studio is made of these;
    the trees of marks - the filter by subsystems, the fields of a
    restriction - are rows of restrictionTreeRow. */
@@ -643,7 +645,8 @@ function treeNode({icon, caption, children = [], open = false, toggled}) {
   }
   const element = node('details', undefined, 'studio-tree-node');
   element.open = open;
-  if (toggled) element.addEventListener('toggle', () => toggled(element.open));
+  let state = open;
+  if (toggled) element.addEventListener('toggle', () => { if (element.open !== state) toggled(state = element.open); });
   const inside = node('div', undefined, 'studio-tree-children');
   inside.append(...children);
   element.append(row, inside);

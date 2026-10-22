@@ -309,3 +309,51 @@ func TestAnEmptyBranchShowsTheRightsOfItsKind(t *testing.T) {
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// roleTreeSearchWalk opens the window of the role Кладовщик, opens the
+// branch «Справочники» by hand, looks for «Контрагент» in «Поиск объекта»
+// and clears it, reading the rows left open while it looks and once cleared.
+const roleTreeSearchWalk = `(async () => {
+  const studio = window.__studio, editor = document.querySelector('#role-editor');
+  [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  await studio.settle();
+  const caption = details => details.querySelector(':scope > .studio-tree-row').textContent.trim();
+  const opened = () => [...editor.querySelectorAll('.role-tree details')].filter(item => item.open).map(caption);
+  [...editor.querySelectorAll('.role-tree details')].find(item => caption(item) === 'Справочники').querySelector(':scope > summary').click();
+  await studio.settle();
+  const search = editor.querySelector('input[type=search]'), look = async text => {
+    search.value = text; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  };
+  await look('Контрагент');
+  const looking = opened();
+  await look('');
+  return {looking, cleared: opened()};
+})()`
+
+// Once «Поиск объекта» is cleared, the tree of rights stands as the
+// developer left it: what the search opened to show a match closes again,
+// what was opened by hand stays open (2.409; ACCESS-RIGHTS.md; case 2в-25).
+// Defect caught (2.437): every row the search drew open was taken for one
+// opened by hand - its details report themselves opened after the fact -,
+// and after clearing «Документы», both documents and their «Реквизиты»
+// stayed open.
+func TestClearingTheSearchOfTheTreeOfRightsLeavesOpenWhatWasOpenedByHand(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
+		addRestrictedRole(t, opened, root)
+	})
+	result, err := browser.evaluate(ctx, page, roleTreeSearchWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct{ Looking, Cleared []string }
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("%v: %s", err, result)
+	}
+	if !slices.Contains(got.Looking, "Документы") || !slices.Contains(got.Looking, "Продажа товаров") {
+		t.Fatalf("the search for Контрагент opened %v, want the documents holding the attribute", got.Looking)
+	}
+	if len(got.Cleared) != 2 || got.Cleared[1] != "Справочники" {
+		t.Errorf("once the search is cleared %v stand open, want the configuration and «Справочники», opened by hand", got.Cleared)
+	}
+}

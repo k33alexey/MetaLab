@@ -18,7 +18,15 @@ const overviewHeadWalk = `(async () => {
     const host = document.querySelector('#role-overview'), head = host.querySelector('.overview-header');
     return {text: host.textContent, head: head ? [...head.children].map(child => child.className) : null};
   };
+  // What stands in the page of a tab before its list.
+  const above = () => {
+    const block = document.querySelector('#role-overview .overview-block'), list = block.querySelector('.role-list');
+    return [...block.children].filter(child => child.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING && !child.contains(list)).map(child => child.textContent);
+  };
   answer.restrictions = await open('Все ограничения доступа');
+  answer.restrictions.above = above();
+  document.querySelector('#role-overview .studio-tab[data-tab=templates]').click(); await studio.settle();
+  answer.restrictions.aboveTemplates = above();
   answer.roles = await open('Все роли');
   return answer;
 })()`
@@ -26,9 +34,12 @@ const overviewHeadWalk = `(async () => {
 // Neither window over all roles counts the roles: the prototype's do not
 // (snapshot configurator-2026-10-18/shabl-01, inventory
 // vse-ogranicheniya-dostupa.md; the owner's word of 20.10.2026). The head of
-// «Все ограничения доступа» holds its strip of tabs alone, «Все роли» has no
-// head. Defects caught: «Ролей в проекте: N» left in a window; a head of
-// nothing left over «Все роли»; something beside the tabs in the head.
+// «Все ограничения доступа» holds its strip of tabs alone, and the list of
+// each tab stands right under it, «Все роли» has no head. Defects caught:
+// «Ролей в проекте: N» left in a window; a head of nothing left over «Все
+// роли»; something beside the tabs in the head; a line explaining the list
+// above it (2.437, case 2в-25: «Каждая строка — одно ограничение…»,
+// snapshots vse-ogr-01 and shabl-01 have none).
 func TestWindowsOverAllRolesCountNoRoles(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
@@ -39,8 +50,8 @@ func TestWindowsOverAllRolesCountNoRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	type window struct {
-		Text string
-		Head []string
+		Text                        string
+		Head, Above, AboveTemplates []string
 	}
 	var got struct{ Restrictions, Roles window }
 	if err := json.Unmarshal(result, &got); err != nil {
@@ -53,6 +64,9 @@ func TestWindowsOverAllRolesCountNoRoles(t *testing.T) {
 	}
 	if len(got.Restrictions.Head) != 1 || got.Restrictions.Head[0] != "studio-tabs" {
 		t.Errorf("the head of «Все ограничения доступа» holds %v, want its strip of tabs alone", got.Restrictions.Head)
+	}
+	if len(got.Restrictions.Above) != 0 || len(got.Restrictions.AboveTemplates) != 0 {
+		t.Errorf("above the lists of «Все ограничения доступа» stand %q and %q, want nothing", got.Restrictions.Above, got.Restrictions.AboveTemplates)
 	}
 	if got.Roles.Head != nil {
 		t.Errorf("«Все роли» has a head of %v, want none", got.Roles.Head)

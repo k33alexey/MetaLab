@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -994,7 +995,6 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 			return nil, err
 		}
 		children := objectBranches(loaded, kind)(id, descriptionPath)
-		children = append(children, owned.inner...)
 		// A group stands where the kind has what it holds, as in the
 		// prototype's tree: a sequence has none of them, a criterion of
 		// filter no templates, a storage of settings no commands.
@@ -1033,9 +1033,6 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 // opens them from its menu (moduleCommands).
 type objectOwnedNodes struct {
 	forms, commands []Node
-	// inner are the groups of what the object describes inside itself and
-	// keeps the modules of: the recalculations of a calculation register.
-	inner []Node
 }
 
 // objectOwnedFileNodes lists one object's managed forms and commands,
@@ -1062,12 +1059,11 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 		}
 		if entry.IsDir() {
 			name := entry.Name()
-			if inner, ok := project.InnerKind(kind, name); ok {
-				group, err := innerObjectNodes(objectDirectory, objectRelative, inner, name)
-				if err != nil {
-					return objectOwnedNodes{}, err
-				}
-				owned.inner = append(owned.inner, group)
+			// The folder of what the object describes inside itself keeps
+			// only modules, which the load checks against the description
+			// (validateRecalculationFiles); the tree shows the objects by the
+			// description, folder or not (objectBranches).
+			if _, ok := project.InnerKind(kind, name); ok {
 				continue
 			}
 			if !slices.Contains(project.ObjectSubordinateDirectories(kind), name) && !slices.Contains(collections, name) {
@@ -1096,36 +1092,6 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
 	sort.Slice(owned.commands, func(left, right int) bool { return owned.commands[left].Title < owned.commands[right].Title })
 	return owned, nil
-}
-
-// innerObjectNodes is the group of what an object describes inside itself
-// and keeps only the modules of, a folder each: the recalculations of a
-// calculation register, each opening its record set module from its menu.
-func innerObjectNodes(objectDirectory, objectRelative, kind, folder string) (Node, error) {
-	relative := filepath.ToSlash(filepath.Join(objectRelative, folder))
-	group := Node{ID: relative, Kind: "group", Icon: kindIcon(kind), Title: metadataTitle(kind)}
-	entries, err := os.ReadDir(filepath.Join(objectDirectory, folder))
-	if err != nil {
-		return Node{}, fmt.Errorf("read %s: %w", relative, err)
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || project.SubordinateName(entry.Name()) != nil {
-			return Node{}, fmt.Errorf("unexpected source path %q", relative+"/"+entry.Name())
-		}
-		node := Node{ID: relative + "/" + entry.Name(), Kind: kind, Icon: kindIcon(kind), Title: entry.Name()}
-		files, err := os.ReadDir(filepath.Join(objectDirectory, folder, entry.Name()))
-		if err != nil {
-			return Node{}, fmt.Errorf("read %s: %w", node.ID, err)
-		}
-		for _, file := range files {
-			if file.IsDir() || file.Type()&os.ModeSymlink != 0 || !project.KeepsModule(kind, file.Name()) {
-				return Node{}, fmt.Errorf("unexpected source path %q", node.ID+"/"+file.Name())
-			}
-		}
-		node.Modules = moduleCommands(kind, kinds.Must(kinds.Kind(kind)).Layout().Modules, node.ID)
-		group.Children = append(group.Children, node)
-	}
-	return group, nil
 }
 
 // objectFormNodes lists the managed forms of one object. A form is a folder
@@ -1340,6 +1306,16 @@ func objectBranches(loaded *metadata.Catalog, kind string) func(id uuid.UUID, de
 			for _, part := range branch.Parts {
 				leaf := Node{ID: part.ID.String(), Kind: "attribute", Icon: part.Icon, Title: part.Name, Path: descriptionPath,
 					Properties: []Property{{Name: "UUID", Value: part.ID.String()}}}
+				// An object of a kind of its own the object keeps inside
+				// itself is of its kind, and one that keeps modules in a
+				// folder of the owner opens them from its menu: a
+				// recalculation its record set module, folder or not yet.
+				if branch.Kind != "" {
+					leaf.Kind = string(branch.Kind)
+					if directory, err := project.InnerObjectDirectory(string(branch.Kind), path.Base(path.Dir(descriptionPath)), part.Name); err == nil {
+						leaf.Modules = moduleCommands(string(branch.Kind), kinds.Must(branch.Kind).Layout().Modules, directory)
+					}
+				}
 				switch {
 				case branch.Group == metadata.TablePartsPart:
 					leaf.Kind, leaf.Fragment = "tablepart", "tablepart:"+part.ID.String()

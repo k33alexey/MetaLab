@@ -546,16 +546,17 @@ function createRoleOverview(host, openRole, onChange) {
   // Закладка окна — список key: пояснение, сам список с выбором окна, его
   // командами (listCommands) и раскладкой по настройке, под ним — строка
   // «Отбор:». cells(row) — ячейки строки в порядке колонок списка.
-  function listBlock(key, intro, rows, cells, commands, empty, filterText) {
+  // A list of the window stands right under its tabs, with nothing to
+  // explain it above, as the prototype's (snapshots vse-ogr-01, shabl-01).
+  function listBlock(key, rows, cells, commands, empty, filterText) {
     const block = node('section', undefined, 'overview-block');
-    block.append(node('p', intro, 'muted'),
-      roleListTable([], rows.map(cells), listChosen, chosen => { listChosen = chosen; }, listCommands(key, rows, commands), empty, {actions: true, layout: layoutOf(key)}),
+    block.append(roleListTable([], rows.map(cells), listChosen, chosen => { listChosen = chosen; }, listCommands(key, rows, commands), empty, {actions: true, layout: layoutOf(key)}),
       filterLine(filterText));
     return block;
   }
   function renderAllRestrictions() {
     const rows = arranged('restrictions', model.allRestrictions(listFilter.restrictions));
-    return listBlock('restrictions', 'Каждая строка — одно ограничение одной роли на одно право. Несколько строк выбираются с Ctrl или Shift.', rows,
+    return listBlock('restrictions', rows,
       row => [[row.object], roleLink(row.role, row.path, row.objectID), [caption(row.operation)], [row.field], [row.condition, 'overview-condition']], {
         add: () => newRestriction(), canAdd: () => model.roleCount() > 0 && model.restrictable().length > 0,
         edit: editRestrictions, copy: copyRestrictions, copyText: 'Копировать ограничения доступа', remove: chosen => model.removeRestrictions(chosen),
@@ -565,7 +566,7 @@ function createRoleOverview(host, openRole, onChange) {
   }
   function renderAllTemplates() {
     const all = model.allTemplates(), rows = arranged('templates', model.allTemplates(listFilter.templates));
-    return listBlock('templates', all.length ? 'Шаблон принадлежит роли: условие её ограничения вызывает его как #Имя("значение", ...). Несколько строк выбираются с Ctrl или Shift.' : 'Ни одна роль не объявила шаблонов ограничений.', rows,
+    return listBlock('templates', rows,
       row => [roleLink(row.role, row.path), [row.name], [row.condition, 'overview-condition']], {
         add: () => addTemplate(), canAdd: () => model.roleCount() > 0,
         edit: editTemplates, copy: copyTemplates, copyText: 'Копировать шаблоны ограничений', remove: chosen => model.removeTemplates(chosen),
