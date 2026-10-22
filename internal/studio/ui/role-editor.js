@@ -986,7 +986,7 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
   if(model.restrictedByFields(right)){
     const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
     fields=restrictionFieldsChoice({chosen,taken:key=>taken.has(key)});
-    fields.fill(object.restrictionFields.map(field=>({key:field.key,name:field.name,parent:field.parent,hint:title(field)})));
+    fields.fill(object.roleWindowFields.map(field=>({key:field.key,name:field.name,parent:field.parent,hint:title(field)})));
   }
   let condition=current.condition||'';
   const editor=queryTextField(condition,text=>{condition=text;},'Ограничение доступа');

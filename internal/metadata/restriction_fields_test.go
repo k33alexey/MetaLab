@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"maps"
 	"slices"
 	"testing"
 
@@ -154,7 +155,12 @@ func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows(t *testi
 // settings, in the order of the standard attributes, the lists after the
 // attributes (2.444; the fourth pass, pola-19…24: ПериодДействияБазовый and
 // ВытесняющиеВидыРасчета only with the period of action, БазовыеВидыРасчета
-// only with a base, Код only with a length). ЭтотОбъект keeps every field: the help of СправочникОбъект
+// only with a base, Код only with a length). «Список полей» of the window of a
+// role lists the same fields in its own order (the fourth and the fifth
+// passes, pola-18, pola-25…31), written out here from the inventory as well:
+// the defect caught is the window of a role offering the fields in the
+// wizard's order (2.446), and a field one window offers and the other not.
+// ЭтотОбъект keeps every field: the help of СправочникОбъект
 // makes none of them hang on the catalog.
 func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 	t.Parallel()
@@ -250,6 +256,53 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 		if got := names(check.kind, check.id); !slices.Equal(got, check.want) {
 			t.Errorf("a restriction of %s %s names\n%v, want\n%v", check.kind, check.name, got, check.want)
 		}
+	}
+	roleHead := []string{"Ссылка", "ВерсияДанных"}
+	roleTail := []string{"ПометкаУдаления", "Предопределенный", "ИмяПредопределенныхДанных"}
+	roleWindow := map[string][]string{
+		"Валюты": slices.Concat(roleHead, []string{"Код", "Наименование"}, roleTail, []string{"Наценка"}),
+		"Бригады": slices.Concat(roleHead, []string{"Наименование", "Родитель", "ЭтоГруппа"}, roleTail,
+			[]string{"Мастер", "Состав", "НомерСтроки", "Сотрудник"}),
+		"НоменклатураПоставщиков": slices.Concat(roleHead, []string{"Код", "Наименование", "Владелец", "Родитель", "ЭтоГруппа"}, roleTail,
+			[]string{"Артикул"}),
+		"КатегорииЦелей": slices.Concat(roleHead, []string{"Наименование", "Родитель"}, roleTail, []string{"Описание"}),
+		"СтатьиДоходов": slices.Concat(roleHead, []string{"Код", "Наименование", "ТипЗначения", "Родитель", "ЭтоГруппа"}, roleTail,
+			[]string{"Статья", "Счета", "НомерСтроки", "Счет", "Аналитика"}),
+		"Хозрасчетный": slices.Concat(roleHead, []string{"Код", "Наименование", "Порядок", "Родитель", "Вид", "Забалансовый"}, roleTail,
+			[]string{"КодБыстрогоВыбора", "Валютный", "ВидыСубконто", "НомерСтроки", "ВидСубконто", "ТолькоОбороты", "Предопределенное", "Суммовой"}),
+		"Начисления": slices.Concat(roleHead, []string{"Код", "Наименование"}, roleTail, []string{"ПериодДействияБазовый"},
+			competition("БазовыеВидыРасчета"), competition("ВедущиеВидыРасчета"), competition("ВытесняющиеВидыРасчета"),
+			[]string{"Категория", "Показатели", "НомерСтроки", "Показатель", "Значение"}),
+	}
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := func(fields []PermissionField) []string {
+		var result []string
+		for _, field := range fields {
+			result = append(result, field.Key)
+		}
+		slices.Sort(result)
+		return result
+	}
+	for _, object := range schema.Objects {
+		if want, ok := roleWindow[object.Name]; ok {
+			var got []string
+			for _, field := range object.RoleWindowFields {
+				got = append(got, field.Name)
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("the window of a role offers %s\n%v, want\n%v", object.Name, got, want)
+			}
+			delete(roleWindow, object.Name)
+		}
+		if !slices.Equal(keys(object.RoleWindowFields), keys(object.RestrictionFields)) {
+			t.Errorf("the two windows offer %s different fields:\n%v\n%v", object.Name, keys(object.RoleWindowFields), keys(object.RestrictionFields))
+		}
+	}
+	if len(roleWindow) != 0 {
+		t.Errorf("the schema has no %v", slices.Collect(maps.Keys(roleWindow)))
 	}
 	var members []string
 	for address, list := range catalog.ThisObjectMembers() {

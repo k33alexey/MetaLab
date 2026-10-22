@@ -592,41 +592,68 @@ type referenceTable struct {
 	actionPeriod, base bool
 }
 
-// referenceTableOrder is the window's order of the standard fields of the
-// four kinds: the reference, the version of the data, the mark of
+// restrictionWindow is the order a window of the prototype lists the fields
+// of a restriction in: the place of a standard field or standard table part
+// by its key, the place of everything the object declares - in the order it
+// keeps them, the accounting flags of a chart of accounts after its
+// attributes, its table parts after them -, and the order of the fields of a
+// standard table part. A field of a standard table part stands where its part
+// does. The two windows list the same fields (ACCESS-RIGHTS.md, «Состав и
+// порядок полей ограничения»).
+type restrictionWindow struct {
+	standard   map[string]int
+	declared   int
+	partFields map[string]int
+}
+
+// wizardWindow is the order of the wizard of «Все ограничения доступа»
+// (passes of 22.10.2026, the first, the second, the fourth and the fifth,
+// pola-16, pola-19…22): the reference, the version of the data, the mark of
 // deletion, the owner, the parent, ЭтоГруппа, the code, the description,
 // Порядок, Вид and Забалансовый of a chart of accounts, ПериодДействияБазовый
 // and the three lists of a chart of calculation types, then the rest in the
 // order the object keeps them - ТипЗначения of a chart of characteristic
 // types, the last of its standard attributes, before what the object
 // declares with the table parts, ВидыСубконто of a chart of accounts after
-// them -, and last the predefined and its name. A field of a standard table
-// part stands where its part does.
-var referenceTableOrder = map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "owner": 3, "parent": 4, "isfolder": 5,
-	"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "actionperiodisbasic": 11,
-	"basecalculationtypes": 12, "leadingcalculationtypes": 13, "displacingcalculationtypes": 14,
-	"predefined": 16, "predefineddataname": 17}
+// them -, and last the predefined and its name. Inside a standard table
+// part: the line number, the kind of ext dimension or of calculation, the
+// predefined flag, ТолькоОбороты - not the order the prototype describes
+// them in, which standardTablePartsOfKind keeps.
+var wizardWindow = restrictionWindow{
+	standard: map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "owner": 3, "parent": 4, "isfolder": 5,
+		"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "actionperiodisbasic": 11,
+		"basecalculationtypes": 12, "leadingcalculationtypes": 13, "displacingcalculationtypes": 14,
+		"predefined": 16, "predefineddataname": 17},
+	declared:   15,
+	partFields: map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "predefined": 2, "turnoversonly": 3},
+}
 
-// declaredOrder is the place of every field referenceTableOrder does not
-// name.
-const declaredOrder = 15
-
-// standardPartFieldsOrder is the window's order of the fields of a standard
-// table part: the line number, the kind of ext dimension or of calculation,
-// the predefined flag, ТолькоОбороты, then the accounting flags of the ext
-// dimensions (pass of 22.10.2026, the fourth, pola-16, pola-20) - not the
-// order the prototype describes them in, which standardTablePartsOfKind
-// keeps.
-var standardPartFieldsOrder = map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "predefined": 2,
-	"turnoversonly": 3}
+// roleWindow is the order of «Список полей» the button «…» of a restriction
+// opens in the window of a role (passes of 22.10.2026, the fourth and the
+// fifth, pola-18, pola-25…31): the reference, the version of the data, the
+// code, the description, ТипЗначения of a chart of characteristic types or
+// Порядок of a chart of accounts, the owner, the parent, Вид and
+// Забалансовый of a chart of accounts, ЭтоГруппа, the mark of deletion, the
+// predefined and its name, ПериодДействияБазовый and the three lists of a
+// chart of calculation types, what the object declares, ВидыСубконто last.
+// Inside ВидыСубконто ТолькоОбороты stands before the predefined flag, as
+// the wizard has it the other way round.
+var roleWindow = restrictionWindow{
+	standard: map[string]int{"ref": 0, "dataversion": 1, "code": 2, "description": 3, "valuetype": 4, "order": 4,
+		"owner": 5, "parent": 6, "type": 7, "offbalance": 8, "isfolder": 9, "deletionmark": 10,
+		"predefined": 11, "predefineddataname": 12, "actionperiodisbasic": 13, "basecalculationtypes": 14,
+		"leadingcalculationtypes": 15, "displacingcalculationtypes": 16, "extdimensiontypes": 18},
+	declared:   17,
+	partFields: map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "turnoversonly": 2, "predefined": 3},
+}
 
 // fieldsOf is the fields of the table, of all the object keeps, in the
-// window's order. The accounting flags of the ext dimensions are fields of
-// the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
-// счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and the
-// window shows them there, after its own, not among the account's
-// (snapshot pola-12).
-func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
+// order of the window. The accounting flags of the ext dimensions are fields
+// of the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
+// счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and both
+// windows show them there, after its own, not among the account's
+// (snapshots pola-12, pola-27…29).
+func (table referenceTable) fieldsOf(fields []objectPart, window restrictionWindow) []objectPart {
 	absent := map[string]bool{
 		"parent": !table.hierarchy.Enabled, "isfolder": !table.hierarchy.Enabled || table.hierarchy.Kind != FoldersAndItemsHierarchy,
 		"owner": !table.owned, "code": table.codeLength == 0, "description": table.descriptionLength == 0,
@@ -646,10 +673,10 @@ func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
 		return field.key
 	}
 	rankOf := func(field objectPart) int {
-		if order, ok := referenceTableOrder[keyOf(field)]; ok && standard(field) {
+		if order, ok := window.standard[keyOf(field)]; ok && standard(field) {
 			return order
 		}
-		return declaredOrder
+		return window.declared
 	}
 	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && absent[keyOf(field)] })
 	extDimensions := strings.ToLower(extDimensionTypesPart.en)
@@ -673,7 +700,7 @@ func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
 			last++
 		}
 		slices.SortStableFunc(result[part+1:last+1], func(a, b objectPart) int {
-			return standardPartFieldsOrder[strings.TrimPrefix(a.key, key+".")] - standardPartFieldsOrder[strings.TrimPrefix(b.key, key+".")]
+			return window.partFields[strings.TrimPrefix(a.key, key+".")] - window.partFields[strings.TrimPrefix(b.key, key+".")]
 		})
 		if key == extDimensions {
 			result = slices.Insert(result, last+1, flags...)
@@ -789,12 +816,17 @@ var dataVersionField = standardField{"ВерсияДанных", "DataVersion"}
 // restrictionFieldsOf is what a restriction of reading the object may name:
 // the fields of the table a query reads (help, «Ограничение доступа к данным»;
 // the tables of the query language), as the object has them
-// (kindComposition.queryTable), in the order the window of a restriction
-// lists them.
+// (kindComposition.queryTable), in the order the wizard of «Все ограничения
+// доступа» lists them.
 func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
+	return catalog.restrictionFieldsIn(kind, id, wizardWindow)
+}
+
+// restrictionFieldsIn is restrictionFieldsOf in the order of the window.
+func (catalog *Catalog) restrictionFieldsIn(kind Kind, id uuid.UUID, window restrictionWindow) []objectPart {
 	fields := catalog.objectFieldsOf(kind, id)
 	if queryTable := kindCompositionOf[kind].queryTable; queryTable != nil && catalog.hasObject(kind, id) {
-		return queryTable(catalog, id).fieldsOf(fields)
+		return queryTable(catalog, id).fieldsOf(fields, window)
 	}
 	return fields
 }
