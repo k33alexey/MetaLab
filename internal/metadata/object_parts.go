@@ -181,6 +181,11 @@ type kindComposition struct {
 	// rest (validateObjectsAsLoaded). Nil is a kind whose objects keep no
 	// such folder, or whose files are checked by code of their own.
 	files func(catalog *Catalog, id uuid.UUID) objectFiles
+	// queryTable is the fields of the table a query reads of an object of
+	// the kind, of all it keeps (objectFieldsOf), where the object decides
+	// which it has and the window of a restriction lists them in an order of
+	// its own; nil is a kind whose table holds every field of its objects.
+	queryTable func(catalog *Catalog, id uuid.UUID, fields []objectPart) []objectPart
 	// rightsFolders are the folders the tree of rights of the window of a
 	// role shows under an object of the kind, in its order, every one even
 	// when empty (pass of 20.10.2026, block-00/rol, «Папки частей»): its own
@@ -464,7 +469,7 @@ var kindCompositionOf = map[Kind]kindComposition{
 		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
 	LanguageKind:                   {},
-	CatalogKind:                    referenceKind(CatalogKind, referenceFolders),
+	CatalogKind:                    withQueryTable(referenceKind(CatalogKind, referenceFolders), catalogQueryTable),
 	ChartOfCharacteristicTypesKind: referenceKind(ChartOfCharacteristicTypesKind, referenceFolders),
 	ChartOfAccountsKind: referenceKind(ChartOfAccountsKind, partFolders(AttributesPart, AccountingFlagsPart, ExtDimensionAccountingFlagsPart,
 		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)),
@@ -537,6 +542,45 @@ func referenceKind(kind Kind, folders []rightsFolder) kindComposition {
 		description, _ := descriptionOf(c, kind, id)
 		return identitiesIn("predefined item", description.FieldByName("Predefined"))
 	}, files: declaredFilesOf}
+}
+
+// withQueryTable gives a composition the fields of its table a query reads.
+func withQueryTable(composition kindComposition, queryTable func(*Catalog, uuid.UUID, []objectPart) []objectPart) kindComposition {
+	composition.queryTable = queryTable
+	return composition
+}
+
+// catalogQueryTable is the fields of the table of a catalog as the window of
+// a restriction lists them (pass of 22.10.2026, block-00/vse-ogranicheniya-
+// dostupa.md: ERP's Валюты and Бригады). The parent is there only in a
+// hierarchical catalog and the owner only in a subordinate one, as the help
+// of the table says (Справочник.<Имя справочника>: «Существует только для
+// многоуровневых», «только для подчиненных»); the window shows ЭтоГруппа
+// beside the parent, and the code only where it has a length. The order is
+// the window's: the reference, the version of the data, the mark of
+// deletion, the parent, ЭтоГруппа, the code, the description, what the
+// catalog declares with its table parts, then the predefined and its name.
+// Where the owner stands the pass did not see; it keeps its place after
+// ЭтоГруппа, as among the standard attributes.
+func catalogQueryTable(c *Catalog, id uuid.UUID, fields []objectPart) []objectPart {
+	definition := c.Catalogs[c.catalogByID[id]]
+	absent := map[string]bool{
+		"parent": !definition.Hierarchy.Enabled, "isfolder": !definition.Hierarchy.Enabled,
+		"owner": len(definition.Owners) == 0, "code": definition.Code.Length == 0,
+	}
+	rank := map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "parent": 3, "isfolder": 4, "owner": 5, "code": 6, "description": 7,
+		"predefined": 9, "predefineddataname": 10}
+	rankOf := func(field objectPart) int {
+		if order, ok := rank[field.key]; ok && field.group == StandardAttributesPart && field.parent == "" {
+			return order
+		}
+		return 8
+	}
+	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool {
+		return field.group == StandardAttributesPart && field.parent == "" && absent[field.key]
+	})
+	slices.SortStableFunc(result, func(a, b objectPart) int { return rankOf(a) - rankOf(b) })
+	return result
 }
 
 // fieldPart is a field of an object or of its table part.
@@ -645,12 +689,23 @@ var dataVersionField = standardField{"ВерсияДанных", "DataVersion"}
 
 // restrictionFieldsOf is what a restriction of reading the object may name:
 // the fields of the table a query reads (help, «Ограничение доступа к данным»;
-// the tables of the query language). That is every part keeping a value - the
-// standard attributes, what the object declares, the standard table parts and
-// their fields - the version of the data where the kind has one, and the line
-// number of every table part, which the prototype writes as ОС.LineNumber.
-// Commands, operations and methods keep no value.
+// the tables of the query language), as the object has them
+// (kindComposition.queryTable), in the order the window of a restriction
+// lists them.
 func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
+	fields := catalog.objectFieldsOf(kind, id)
+	if queryTable := kindCompositionOf[kind].queryTable; queryTable != nil && catalog.hasObject(kind, id) {
+		return queryTable(catalog, id, fields)
+	}
+	return fields
+}
+
+// objectFieldsOf is every field an object of the kind keeps: every part
+// keeping a value - the standard attributes, what the object declares, the
+// standard table parts and their fields - the version of the data where the
+// kind has one, and the line number of every table part, which the prototype
+// writes as ОС.LineNumber. Commands, operations and methods keep no value.
+func (catalog *Catalog) objectFieldsOf(kind Kind, id uuid.UUID) []objectPart {
 	parts, _ := catalog.partsOf(kind, id)
 	language := catalog.Project.DefaultLanguage
 	standard := func(field standardField, key, parent string) objectPart {

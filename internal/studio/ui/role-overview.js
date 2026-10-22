@@ -178,7 +178,8 @@ function createRoleOverviewModel(source) {
     // Команды окна над выбранными строками (справка, «Все ограничения
     // доступа»). Каждая с trial прогоняется на копиях ролей и ничего не
     // меняет: так до записи известно, что она заберёт у ограничений и
-    // шаблонов, которых не называла, — об этом окно спрашивает «Заменить?».
+    // шаблонов, которых не называла, — об этом окно спрашивает «Заменить?»;
+    // групповое «Изменить» не спрашивает, как у прототипа.
     // Ответ — забранное, по строке на роль, объект и право.
     editRestrictions(rows, change, trial) {
       return perform(trial, modelOf => writePlaces(modelOf, rows, undefined, row => ({index: row.index,
@@ -286,9 +287,8 @@ function createRoleOverviewModel(source) {
       fields: restrictionFieldChoices(items.map(item => item.id)).filter(choice => paths.has(choice.path))};
   }
   // Ключи отмеченных полей у объекта; null — у объекта нет ни одного из
-  // отмеченных: мастер такому объекту ограничения по этим полям не даёт,
-  // групповое «Изменить» даёт ему «Прочие поля». Ничего не отмечено —
-  // «Прочие поля» у каждого.
+  // отмеченных: мастер такому объекту ограничения по этим полям не даёт.
+  // Ничего не отмечено — «Прочие поля» у каждого.
   function chosenFieldKeys(choices, paths, objectID) {
     const keys = choices.filter(choice => paths.has(choice.path)).map(choice => choice.keys.get(objectID)).filter(Boolean);
     return paths.size && !keys.length ? null : keys;
@@ -591,44 +591,48 @@ function createRoleOverview(host, openRole, onChange) {
     listChanged();
   }
   const restrictionLine = item => `${item.role} · ${item.object} · ${caption(item.operation)}: ${item.field}${item.whole ? '' : ' (поле переходит к новому ограничению)'}`;
-  // Окно группового «Изменить» (справка, form_EditRowLevelRightDlg): флажки
-  // «Изменять …» при расходящихся значениях сняты, и до их установки поле
-  // не правится. Объект, у которого нет ни одного из отмеченных полей,
-  // получает «Прочие поля», а не сохраняет свои; «ОК» недоступна, пока
-  // окно ничего не меняет (сверено в конфигураторе 14.10.2026, ACCESS-RIGHTS
-  // «Правка ограничений группой»).
+  // Окно группового «Изменить» (справка, form_EditRowLevelRightDlg; сверено
+  // в конфигураторе 22.10.2026, ACCESS-RIGHTS «Групповое «Изменить» состава
+  // полей»): флажки «Изменять …» при расходящихся значениях сняты, и до их
+  // установки поле не правится. Поля — всех выбранных объектов, сначала
+  // первого; поле отмечено, если его называют все выбранные ограничения,
+  // серое — если часть. При записи отмеченное поле получает каждое
+  // ограничение, у объекта которого оно есть, серое остаётся каждому как
+  // было, снятое снимается; объект без полей получает «Прочие поля». «ОК»
+  // становится доступной только отметкой поля или правкой условия.
+  // Ограничение роли с теми же полями на том же праве правленое заменяет
+  // без вопроса, как у прототипа.
   async function editRestrictions(rows) {
     const reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
-    const change = {fields: false, condition: false};
-    let chosen = new Set(), fields = null;
+    const change = {fields: false, condition: false}, chosen = new Set(), mixed = new Set(), marked = new Set();
+    let fields = null, edited = false;
     const choices = model.restrictionFieldChoices(reading.map(row => row.objectID));
+    const names = (row, choice) => row.keys.includes(choice.keys.get(row.objectID));
     if (reading.length) {
-      const pathsOf = row => choices.filter(choice => row.keys.includes(choice.keys.get(row.objectID))).map(choice => choice.path).sort().join('\n');
-      const same = common(reading.map(pathsOf));
-      change.fields = same !== null && reading.every(row => row.keys.length === (same ? same.split('\n').length : 0));
-      if (change.fields) chosen = new Set(same ? same.split('\n') : []);
-      fields = restrictionFieldsChoice({chosen});
+      for (const choice of choices) {
+        const count = reading.filter(row => names(row, choice)).length;
+        if (count === reading.length) chosen.add(choice.path); else if (count) mixed.add(choice.path);
+      }
+      change.fields = !mixed.size;
+      fields = restrictionFieldsChoice({chosen, mixed, marked: (key, enabled) => { if (enabled) marked.add(key); else marked.delete(key); }});
       fields.fill(choiceFields(choices));
     }
     const text = common(rows.map(row => row.condition));
     change.condition = text !== null;
     let condition = text ?? '';
-    const editor = queryTextField(condition, value => { condition = value; }, 'Ограничение доступа');
+    const editor = queryTextField(condition, value => { condition = value; edited = true; }, 'Ограничение доступа');
     const content = restrictionWindowContent({fields, editor, change, group: true});
     // Поля пишутся только праву, ограничиваемому по полям (restrictionEntry
-    // роли); у прочих они пусты, и сравнение «меняет ли окно» их не задевает.
-    const fieldsOf = row => restrictsByFields(source.schema, row.operation) ? model.chosenFieldKeys(choices, chosen, row.objectID) ?? [] : row.keys;
-    const sameKeys = (left, right) => left.length === right.length && left.every(key => right.includes(key));
-    const changes = () => rows.some(row => (change.fields && !sameKeys(fieldsOf(row), row.keys)) || (change.condition && condition !== row.condition));
+    // роли); у прочих они остаются как были.
+    const fieldsOf = row => !restrictsByFields(source.schema, row.operation) ? row.keys : choices
+      .filter(choice => choice.keys.has(row.objectID) && (chosen.has(choice.path) || (mixed.has(choice.path) && names(row, choice))))
+      .map(choice => choice.keys.get(row.objectID));
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
-      answers: [['ok', 'ОК', {enabled: () => (!change.fields || fields.filled()) && changes()}], [null, 'Отмена']]});
-    if (answer !== 'ok' || !changes()) return;
-    const edit = {
-      fields: change.fields ? fieldsOf : undefined,
-      condition: change.condition ? condition : undefined,
-    };
-    await applyReplacing(trial => model.editRestrictions(rows, edit, trial), restrictionLine);
+      answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']]});
+    if (answer !== 'ok') return;
+    model.editRestrictions(rows, {fields: change.fields ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
+    listChanged();
   }
   // Поля ограничения (restrictionFieldChoices) для restrictionFieldsChoice:
   // ключ — путь, поле табличной части — под её путём.
@@ -651,11 +655,14 @@ function createRoleOverview(host, openRole, onChange) {
   // отмечает все, по отмеченному целиком или частично — снимает все. Одно
   // дерево у мастера и у окна отбора; offered — какие объекты предлагаются.
   // holder.subsystems — отбор по подсистемам; объект, скрытый им, из выбора
-  // уходит: в работу идёт то, что видно в списке. refiltered — после смены
-  // отбора, до перерисовки; after — после каждой перемены выбора. Ответ —
+  // уходит: в работу идёт то, что видно в списке. Любая смена отбора —
+  // «Установить» или «Отключить» — снимает отметки всех объектов, и видимых
+  // тоже, у мастера и у окна отбора одинаково (сверено в конфигураторе
+  // 22.10.2026, vse-ogranicheniya-dostupa.md). after — после каждой
+  // перемены выбора. Ответ —
   // список, кнопка, fill, рисующий список заново, и mark(enabled), отмечающий
   // или снимающий все видимые.
-  function objectChoice(chosenObjects, holder, {after = () => {}, offered = () => model.restrictable(), refiltered = () => {}} = {}) {
+  function objectChoice(chosenObjects, holder, {after = () => {}, offered = () => model.restrictable()} = {}) {
     const objectList = node('div', undefined, 'role-restriction-fields role-fields-tree role-wizard-objects');
     let boxes = [], groups = [], shown = [];
     // Отметки ставятся на месте: список, нарисованный заново, забрал бы
@@ -705,7 +712,7 @@ function createRoleOverview(host, openRole, onChange) {
     // Отбор выбирается в своём окне, уже после щелчка, который окно с
     // деревом слышало: перемену ему сообщает событие change списка.
     const button = subsystemFilterButton({schema: () => source.schema, root: () => configurationName(source.schema), holder, applied: () => {
-      refiltered(); fillObjects(); after(); objectList.dispatchEvent(new Event('change', {bubbles: true}));
+      chosenObjects.clear(); fillObjects(); after(); objectList.dispatchEvent(new Event('change', {bubbles: true}));
     }});
     fillObjects();
     return {list: objectList, button, fill: fillObjects, mark(enabled) { markAll(shown, enabled); sync(); after(); }};
@@ -765,7 +772,7 @@ function createRoleOverview(host, openRole, onChange) {
     // Смена отбора по подсистемам — «Установить» или «Отключить» — снимает
     // отметки всех объектов, и видимых тоже; роли остаются (сверено в
     // конфигураторе 14.10.2026).
-    const objectsOffered = objectChoice(chosenObjects, wizardFilter, {refiltered: () => chosenObjects.clear()}), roleList = roleChoice(roles);
+    const objectsOffered = objectChoice(chosenObjects, wizardFilter), roleList = roleChoice(roles);
     first.append(markedListCaption('Объекты:', enabled => objectsOffered.mark(enabled), [objectsOffered.button]), objectsOffered.list,
       markedListCaption('Роли:', enabled => {
         for (const role of model.roles()) if (enabled) roles.add(role.index); else roles.delete(role.index);

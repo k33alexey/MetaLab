@@ -3,6 +3,7 @@ package studio
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,7 @@ const roleRightDescriptionWalk = `(async () => {
   const list = editor.querySelector('.role-permissions .check-list');
   list.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true})); await studio.settle(); read();
   editor.querySelector('.role-permissions .check-list').dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true})); await studio.settle(); read();
+  row('Удаление').querySelector('input').click(); await studio.settle(); read();
   return steps;
 })()`
 
@@ -47,12 +49,14 @@ const roleRightDescriptionWalk = `(async () => {
 // right, the description of which stands under the tree with its name in
 // brackets, and whose restrictions are listed under the heading «Ограничения
 // доступа к данным:»; the current right stays on the next node that has it,
-// elsewhere the first is current; the arrows move it, the space marks it.
+// elsewhere the first is current; the arrows move it, the space marks it, a
+// click on a box marks it and makes it current (configurator 22.10.2026).
 // Defects caught: the captions made from the name («Режим основного окна
 // обычный»); no description, or one of another right than the current; the
 // current right lost on choosing another object; the restrictions listed by
 // a tab of their own rather than for the current right; the old heading
-// «Ограничение доступа к данным»; the keys of the list doing nothing.
+// «Ограничение доступа к данным»; the keys of the list doing nothing; a
+// click on a box leaving another right current (2.437, case 2в-26).
 func TestTheListOfRightsHasACurrentRightDescribedUnderTheTree(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
@@ -69,10 +73,10 @@ func TestTheListOfRightsHasACurrentRightDescribedUnderTheTree(t *testing.T) {
 		Restrictions                  int
 	}
 	var steps []step
-	if err := json.Unmarshal(result, &steps); err != nil || len(steps) != 7 {
+	if err := json.Unmarshal(result, &steps); err != nil || len(steps) != 8 {
 		t.Fatalf("%v: %s", err, result)
 	}
-	opened, output, goods, view, sale, down, space := steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6]
+	opened, output, goods, view, sale, down, space, box := steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6], steps[7]
 	// The modes of the main window ML does not keep; the developer tools and
 	// the change history are ML's own (ACCESS-RIGHTS, 20.10.2026).
 	if slices.Contains(opened.Rights, `Режим основного окна "Обычный"`) || !slices.Contains(opened.Rights, "Инструменты разработчика") ||
@@ -103,6 +107,9 @@ func TestTheListOfRightsHasACurrentRightDescribedUnderTheTree(t *testing.T) {
 	}
 	if space.Current != "Интерактивное добавление" || !space.Checked {
 		t.Errorf("after the space: %q (marked %v), want it marked", space.Current, space.Checked)
+	}
+	if box.Current != "Удаление" || !box.Checked || !strings.HasSuffix(box.Description, "(Удаление)") {
+		t.Errorf("after a click on the box of «Удаление»: %q (marked %v), described %q; want it current and marked", box.Current, box.Checked, box.Description)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)

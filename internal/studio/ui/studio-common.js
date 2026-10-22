@@ -144,7 +144,8 @@ function checkboxField(label, checked, apply, className = 'catalog-check', disab
 
 /* checkList is a list of boxes with a current row, as the prototype's list
    of rights: a click on a caption makes its row current, a click on a box
-   marks it; the arrows move the current row and the space marks it. items
+   marks it and makes its row current too (configurator 22.10.2026,
+   block-00/rol.md); the arrows move the current row and the space marks it. items
    are {key, caption, checked, mixed}: a mixed box stands for many marked
    in part, as the prototype's grey one, and the space or a click marks it.
    mark(key, checked) marks one, choose(key) makes one current. */
@@ -162,7 +163,7 @@ function checkList(items, current, mark, choose) {
     input.indeterminate = !!item.mixed;
     input.tabIndex = -1;
     input.setAttribute('aria-label', item.caption);
-    input.addEventListener('change', () => mark(item.key, input.checked));
+    input.addEventListener('change', () => { mark(item.key, input.checked); choose(item.key); });
     row.addEventListener('click', event => { if (event.target !== input) choose(item.key); });
     row.append(input, node('span', item.caption));
     list.append(row);
@@ -628,7 +629,10 @@ function menuButton(text, items, className) {
    sign of unfolding, or its empty place on a row with nothing beneath, so a
    row stands one step right of the row it lies under whatever it holds; the
    icon of what the row is; the caption - a text, or an element such as the
-   button that chooses the row. A row with children opens and closes; open is
+   button that chooses the row. A row with children opens and closes by its
+   sign, by the keyboard and, where foldOnDoubleClick, by a double click; a
+   single click on the row only chooses it (configurator 22.10.2026,
+   STUDIO-SHELL.md: «Одиночный щелчок по узлу только выделяет его»). open is
    how it stands first, toggled(open) is told each time it is opened or
    closed by hand - not of the row drawn open, whose details the browser
    reports opened too, after the fact: a search that opens what holds a
@@ -636,15 +640,25 @@ function menuButton(text, items, className) {
    row to hang clicks and the menu on. Every tree of Studio is made of these;
    the trees of marks - the filter by subsystems, the fields of a
    restriction - are rows of restrictionTreeRow. */
-function treeNode({icon, caption, children = [], open = false, toggled}) {
-  const row = node(children.length ? 'summary' : 'div', undefined, 'studio-tree-row');
-  row.append(iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
+function treeNode({icon, caption, children = [], open = false, toggled, foldOnDoubleClick = true}) {
+  const row = node(children.length ? 'summary' : 'div', undefined, 'studio-tree-row'), sign = node('span', undefined, 'studio-tree-sign');
+  row.append(sign, iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
   if (!children.length) {
     row.classList.add('studio-tree-leaf');
     return {element: row, row};
   }
   const element = node('details', undefined, 'studio-tree-node');
   element.open = open;
+  // A click of the mouse (detail above 0) anywhere but on the sign does not
+  // fold; the keyboard's click on the row does.
+  row.addEventListener('click', event => { if (event.detail > 0 && !sign.contains(event.target)) event.preventDefault(); });
+  // The double click comes to the row's details through the rows inside it
+  // too: only its own row folds it, and a row whose own double click does
+  // something else stops it before it comes here.
+  if (foldOnDoubleClick) element.addEventListener('dblclick', event => {
+    if (event.target.closest('.studio-tree-row') !== row || sign.contains(event.target)) return;
+    element.open = !element.open;
+  });
   let state = open;
   if (toggled) element.addEventListener('toggle', () => { if (element.open !== state) toggled(state = element.open); });
   const inside = node('div', undefined, 'studio-tree-children');

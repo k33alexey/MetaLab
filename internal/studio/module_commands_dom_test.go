@@ -22,7 +22,7 @@ import (
 const moduleCommandsWalk = `(async () => {
   const studio = window.__studio, answer = {};
   const rows = () => [...document.querySelectorAll('#tree .studio-tree-row')];
-  const row = text => rows().find(item => item.querySelector(':scope > span')?.textContent === text);
+  const row = text => rows().find(item => item.querySelector(':scope > span:not(.studio-tree-sign)')?.textContent === text);
   const menu = item => {
     item.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
     return [...document.querySelector('.context-menu').children].map(entry => entry.classList.contains('context-menu-separator') ? '|' :
@@ -33,7 +33,7 @@ const moduleCommandsWalk = `(async () => {
   answer.commonRow = common.className;
   answer.commonMenu = menu(common).slice(0, 2);
   closeContextMenu();
-  answer.moduleRows = rows().map(item => item.querySelector(':scope > span')?.textContent).filter(text => /^Модуль( приложения| сеанса| внешнего соединения)?$/.test(text));
+  answer.moduleRows = rows().map(item => item.querySelector(':scope > span:not(.studio-tree-sign)')?.textContent).filter(text => /^Модуль( приложения| сеанса| внешнего соединения)?$/.test(text));
   // The first click is still opening the description when the second and
   // the double click come, as a hand's are.
   common.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 1}));

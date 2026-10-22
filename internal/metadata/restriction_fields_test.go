@@ -126,3 +126,76 @@ func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows(t *testi
 		}
 	}
 }
+
+// TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable holds the fields
+// the window of a restriction lists for a catalog to the prototype's (pass of
+// 22.10.2026 on ERP's Валюты and Бригады, block-00/vse-ogranicheniya-
+// dostupa.md; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения») and to
+// the help of the table of a query (Родитель - only of a multi-level
+// catalog, Владелец - only of a subordinate one); written out here, not read
+// off the sets of standard attributes. Defects caught (2.437, case 2в-23):
+// every catalog offered Родитель, ЭтоГруппа, Владелец and Код whatever it
+// was; the version of the data stood first and the predefined fields before
+// the attributes. ЭтотОбъект keeps every field: the help of СправочникОбъект
+// makes none of them hang on the catalog.
+func TestTheFieldsOfARestrictionOfACatalogAreThoseOfItsTable(t *testing.T) {
+	t.Parallel()
+	attribute := func(name string) Attribute {
+		return Attribute{ID: uuid.MustNew(), Name: name, Title: LocalizedText{"ru": name}, Types: []Type{{Kind: StringType, Length: 10}}}
+	}
+	currencies := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Валюты", Title: LocalizedText{"ru": "Валюты"},
+		Code: CatalogCode{Type: StringType, Length: 3}, DescriptionLength: 50, Attributes: []Attribute{attribute("Наценка")}}
+	brigades := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Бригады", Title: LocalizedText{"ru": "Бригады"},
+		Code: CatalogCode{Type: StringType}, DescriptionLength: 50, Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy},
+		Attributes: []Attribute{attribute("Мастер")},
+		TableParts: []TablePart{{ID: uuid.MustNew(), Name: "Состав", Title: LocalizedText{"ru": "Состав"}, Attributes: []Attribute{attribute("Сотрудник")}}}}
+	accounts := CatalogDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Счета", Title: LocalizedText{"ru": "Счета"},
+		Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 50, Owners: []uuid.UUID{currencies.ID}}
+	catalog, err := NewCatalogSnapshotWithRoles(metadataConfiguration(), nil, nil, nil, []CatalogDefinition{currencies, brigades, accounts}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fields of a table part stand under it, in an order the pass did
+	// not look at: they are named after it, sorted.
+	names := func(definition CatalogDefinition) []string {
+		var result, inside []string
+		for _, field := range catalog.restrictionFieldsOf(CatalogKind, definition.ID) {
+			if field.parent != "" {
+				inside = append(inside, field.name)
+				continue
+			}
+			if len(inside) > 0 {
+				slices.Sort(inside)
+				result, inside = append(result, inside...), nil
+			}
+			result = append(result, field.name)
+		}
+		return result
+	}
+	for _, check := range []struct {
+		definition CatalogDefinition
+		want       []string
+	}{
+		{currencies, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Код", "Наименование", "Наценка", "Предопределенный", "ИмяПредопределенныхДанных"}},
+		{brigades, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Родитель", "ЭтоГруппа", "Наименование", "Мастер", "Состав", "НомерСтроки",
+			"Сотрудник", "Предопределенный", "ИмяПредопределенныхДанных"}},
+		{accounts, []string{"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Владелец", "Код", "Наименование", "Предопределенный", "ИмяПредопределенныхДанных"}},
+	} {
+		if got := names(check.definition); !slices.Equal(got, check.want) {
+			t.Errorf("a restriction of %s names %v, want %v", check.definition.Name, got, check.want)
+		}
+	}
+	var members []string
+	for address, list := range catalog.ThisObjectMembers() {
+		if address.Object == "Валюты" && address.Module == kinds.ObjectModule {
+			for _, member := range list {
+				members = append(members, member.Name.Russian)
+			}
+		}
+	}
+	for _, want := range []string{"Родитель", "ЭтоГруппа", "Владелец", "Код"} {
+		if !slices.Contains(members, want) {
+			t.Errorf("ЭтотОбъект of Валюты has no %s: %v", want, members)
+		}
+	}
+}

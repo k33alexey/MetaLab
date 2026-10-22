@@ -2,6 +2,8 @@ package studio
 
 import (
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -203,22 +205,44 @@ const restrictionGroupWalk = `(async () => {` + restrictionWalkTools + `
   seen.shiftChooses = all('.overview-block .role-list tbody tr.selected').length;
   await choose(row('Контрагенты'));
   await choose(row('Товары', 'ГДЕ А'), {ctrlKey: true});
+  const state = caption => { const input = box(caption); return input.indeterminate ? 'grey' : input.checked ? 'marked' : 'off'; };
+  const both = async () => { await choose(row('Контрагенты')); await choose(row('Товары', 'ГДЕ А'), {ctrlKey: true}); await command('edit'); };
   await command('edit');
+  seen.firstStates = ['ИНН', 'Артикул', 'Код', 'Прочие поля'].map(state);
   seen.okUnchanged = enabled('ОК');
   await mark('Изменять состав полей', true);
-  await mark('Артикул', true);
+  seen.okFlagAlone = enabled('ОК');
+  await mark('Код', true);
   seen.okChanged = enabled('ОК');
   await press('ОК');
   seen.partnersField = row('Контрагенты')?.textContent || '';
+  seen.goodsField = row('Товары', 'ГДЕ А')?.textContent || '';
+  await both();
+  seen.secondStates = ['ИНН', 'Артикул', 'Код', 'Прочие поля'].map(state);
+  await mark('Изменять состав полей', true);
+  box('ИНН').click(); await studio.settle();
+  seen.greyClicked = state('ИНН');
+  seen.okGreyTaken = enabled('ОК');
+  await mark('Прочие поля', true);
+  seen.othersStates = ['Артикул', 'Код'].map(state);
+  seen.okOthers = enabled('ОК');
+  await mark('Артикул', true);
+  seen.okMarked = enabled('ОК');
+  await press('ОК');
+  seen.partnersAfterGrey = row('Контрагенты')?.textContent || '';
+  seen.goodsAfterGrey = row('Товары', 'ГДЕ А')?.textContent || '';
   await choose(row('Товары', 'ГДЕ А'));
   await command('edit');
   await mark('Изменять состав полей', true);
   await mark('Прочие поля', true);
+  seen.okOthersOnly = enabled('ОК');
+  const text = dialog().querySelector('textarea');
+  text.value = 'ГДЕ Д'; text.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  seen.okEdited = enabled('ОК');
   await press('ОК');
   seen.replaceAsked = titleOf();
-  if (dialog()) await press('Отмена');
-  seen.keptAfterCancel = !!row('Товары', 'ГДЕ А') && !!row('Товары', 'ГДЕ Б');
-  await choose(row('Товары', 'ГДЕ А'));
+  seen.goods = rows().filter(item => item.textContent.includes('Товары') && item.textContent.includes('Кладовщик')).map(item => item.textContent);
+  await choose(row('Товары', 'ГДЕ Д'));
   await command('copy');
   seen.copyTitle = titleOf();
   seen.copyOkWithoutRoles = enabled('ОК');
@@ -249,12 +273,17 @@ const restrictionGroupWalk = `(async () => {` + restrictionWalkTools + `
 
 // TestRestrictionsAreChangedAndCopiedInAGroupAsThePrototype catches the group
 // «Изменить» and the copying of «Все ограничения доступа» going their own way
-// (ACCESS-RIGHTS, «Правка ограничений группой, копирование»; configurator,
-// 14.10.2026 and 18.10.2026): Shift not choosing the rows from the last one
-// clicked; «ОК» available while the window changes nothing; an object without
-// the field marked keeping its own fields instead of taking «Прочие поля»;
-// the question «Заменить?» not asked before a change takes a restriction
-// away; the copy offered into the roles it copies from, or «ОК» with no role
+// (ACCESS-RIGHTS, «Правка ограничений группой, копирование», «Групповое
+// «Изменить» состава полей»; configurator, 14.10, 18.10 and 22.10.2026,
+// vse-ogranicheniya-dostupa.md «Досъёмка 22.10.2026»): Shift not choosing
+// the rows from the last one clicked; a field some of the restrictions name
+// not grey, or a grey one not kept as it was; «ОК» available before a field
+// is marked or the condition edited - on the flag alone, on a grey field
+// taken away or on «Прочие поля»; a click on a grey field marking it;
+// «Прочие поля» leaving the grey fields; an object left with no field not
+// taking «Прочие поля»; the question «Заменить?» asked when the restriction
+// changed takes the place of one with the same fields (defects of 2.437,
+// case 2в-23); the copy offered into the roles it copies from, or «ОК» with no role
 // marked; «Изменять наименование» set over templates of different names; and
 // «Нет» to the question about a template of the same name copying it all
 // the same, or «Отмена» not going back to the window.
@@ -266,16 +295,18 @@ func TestRestrictionsAreChangedAndCopiedInAGroupAsThePrototype(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seen struct {
-		ShiftChooses                               int
-		OkUnchanged, OkChanged                     bool
-		PartnersField, ReplaceAsked                string
-		KeptAfterCancel                            bool
-		CopyTitle                                  string
-		CopyOkWithoutRoles, CopyOffersItsOwn       bool
-		CopyOkWithRole                             bool
-		NameFlagApart, TextFlagApart               bool
-		AskedNo, AfterNo, AskedCancel, AfterCancel string
-		SellerTemplate                             string
+		ShiftChooses                                               int
+		FirstStates, SecondStates, OthersStates, Goods             []string
+		OkUnchanged, OkFlagAlone, OkChanged, OkGreyTaken, OkOthers bool
+		OkMarked, OkOthersOnly, OkEdited                           bool
+		GreyClicked, PartnersField, GoodsField, ReplaceAsked       string
+		PartnersAfterGrey, GoodsAfterGrey                          string
+		CopyTitle                                                  string
+		CopyOkWithoutRoles, CopyOffersItsOwn                       bool
+		CopyOkWithRole                                             bool
+		NameFlagApart, TextFlagApart                               bool
+		AskedNo, AfterNo, AskedCancel, AfterCancel                 string
+		SellerTemplate                                             string
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -286,12 +317,20 @@ func TestRestrictionsAreChangedAndCopiedInAGroupAsThePrototype(t *testing.T) {
 		says string
 	}{
 		{seen.ShiftChooses == 3, "Shift chose rows other than those from the last one clicked"},
-		{!seen.OkUnchanged, "«ОК» of the group change is available while it changes nothing"},
+		{slices.Equal(seen.FirstStates, []string{"grey", "grey", "off", "marked"}), fmt.Sprintf("ИНН, Артикул, Код and «Прочие поля» of two restrictions by ИНН and by Артикул stand %v", seen.FirstStates)},
+		{!seen.OkUnchanged && !seen.OkFlagAlone, "«ОК» of the group change is available before a field is marked"},
 		{seen.OkChanged, "«ОК» of the group change is unavailable after a field was marked"},
-		{strings.Contains(seen.PartnersField, "Прочие поля") && !strings.Contains(seen.PartnersField, "ИНН"),
-			"an object without the field marked kept its own: " + seen.PartnersField},
-		{seen.ReplaceAsked == "Заменить?", "a change taking a restriction away asked " + seen.ReplaceAsked},
-		{seen.KeptAfterCancel, "«Отмена» to «Заменить?» changed the restrictions"},
+		{strings.Contains(seen.PartnersField, "Код, ИНН") && strings.Contains(seen.GoodsField, "Код, Артикул"),
+			"Код marked and the grey fields kept gave " + seen.PartnersField + " and " + seen.GoodsField},
+		{slices.Equal(seen.SecondStates, []string{"grey", "grey", "marked", "off"}), fmt.Sprintf("the second time the fields stand %v", seen.SecondStates)},
+		{seen.GreyClicked == "off" && !seen.OkGreyTaken, "a click on the grey ИНН left it " + seen.GreyClicked + " (ОК available: " + fmt.Sprint(seen.OkGreyTaken) + ")"},
+		{slices.Equal(seen.OthersStates, []string{"off", "off"}) && !seen.OkOthers, fmt.Sprintf("«Прочие поля» left Артикул and Код %v (ОК available: %v)", seen.OthersStates, seen.OkOthers)},
+		{seen.OkMarked, "«ОК» is unavailable after Артикул was marked"},
+		{strings.Contains(seen.PartnersAfterGrey, "Прочие поля") && strings.Contains(seen.GoodsAfterGrey, "Артикул") && !strings.Contains(seen.GoodsAfterGrey, "Код"),
+			"Артикул alone marked gave " + seen.PartnersAfterGrey + " and " + seen.GoodsAfterGrey},
+		{!seen.OkOthersOnly && seen.OkEdited, "«ОК» over «Прочие поля» alone is available, or not after the condition was edited"},
+		{seen.ReplaceAsked == "", "the change taking the place of the restriction by «Прочие поля» asked " + seen.ReplaceAsked},
+		{len(seen.Goods) == 1 && strings.Contains(seen.Goods[0], "ГДЕ Д"), fmt.Sprintf("Товары of Кладовщик are restricted by %q, want ГДЕ Д alone in the place of ГДЕ Б", seen.Goods)},
 		{seen.CopyTitle == "Копировать ограничения", "the copy opened " + seen.CopyTitle},
 		{!seen.CopyOkWithoutRoles, "«ОК» of the copy is available with no role marked"},
 		{!seen.CopyOffersItsOwn, "the copy offers the role it copies from"},
@@ -323,9 +362,19 @@ const restrictionFilterWalk = `(async () => {` + restrictionWalkTools + `
   await command('filter');
   byText('button', 'По подсистемам', dialog()).click(); await studio.settle();
   await mark('Склад', true); await press('Установить');
+  const objectBoxes = () => all('.role-wizard-objects input[type=checkbox]', dialog());
+  seen.markedAfterSet = objectBoxes().filter(input => input.checked || input.indeterminate).length;
+  objectBoxes()[0].click(); await studio.settle();
   await press('ОК');
   seen.objects = rows().map(item => item.firstChild.textContent);
   seen.line = filterLine();
+  await command('filter');
+  seen.markedBeforeOff = objectBoxes().filter(input => input.checked).length;
+  byText('button', 'По подсистемам', dialog()).click(); await studio.settle();
+  await press('Отключить');
+  seen.shownAfterOff = objectBoxes().length;
+  seen.markedAfterOff = objectBoxes().filter(input => input.checked || input.indeterminate).length;
+  await press('Отмена');
   await overview('Все роли');
   await overview('Все ограничения доступа');
   seen.lineBack = filterLine();
@@ -342,7 +391,11 @@ const restrictionFilterWalk = `(async () => {` + restrictionWalkTools + `
 // taken for a condition, an object the filter by subsystems hides kept among
 // those chosen, the filter outliving a move to «Все роли», and a width of 0
 // taken by «Настройка списка» (configurator 14.10.2026 and 19.10.2026,
-// snapshots vse-ogr-04, shabl-21).
+// snapshots vse-ogr-04, shabl-21). A change of the filter by subsystems -
+// «Установить» or «Отключить» - unmarks every object, the ones still shown
+// too, as the wizard does (configurator 22.10.2026, vse-ogranicheniya-
+// dostupa.md); defect caught (2.437, case 2в-22): the objects left shown
+// stayed marked.
 func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, addRestrictionRoles(t, root))
@@ -351,10 +404,11 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seen struct {
-		EveryMarked                  bool
-		LineAfterAll, Line, LineBack string
-		Objects                      []string
-		WidthAfterZero               string
+		EveryMarked                                                    bool
+		LineAfterAll, Line, LineBack                                   string
+		Objects                                                        []string
+		WidthAfterZero                                                 string
+		MarkedAfterSet, MarkedBeforeOff, ShownAfterOff, MarkedAfterOff int
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -373,6 +427,13 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 	}
 	if len(seen.Objects) != 2 || !strings.Contains(seen.Line, "Объекты: Товары") {
 		t.Errorf("a filter by Склад shows %v under %q", seen.Objects, seen.Line)
+	}
+	if seen.MarkedAfterSet != 0 {
+		t.Errorf("«Установить» left %d boxes of objects marked, want none", seen.MarkedAfterSet)
+	}
+	if seen.MarkedBeforeOff == 0 || seen.ShownAfterOff <= seen.MarkedBeforeOff || seen.MarkedAfterOff != 0 {
+		t.Errorf("«Отключить» over %d marked boxes shows %d boxes with %d marked, want more shown and none marked",
+			seen.MarkedBeforeOff, seen.ShownAfterOff, seen.MarkedAfterOff)
 	}
 	if seen.LineBack != "Отбор:" {
 		t.Errorf("the filter outlived a move to «Все роли»: %q", seen.LineBack)

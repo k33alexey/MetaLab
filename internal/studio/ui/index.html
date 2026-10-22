@@ -158,7 +158,7 @@
     // модуль после них.
     let selecting=Promise.resolve();
     function selectNode(node,element){const next=()=>select(node,element);selecting=selecting.then(next,next);return selecting}
-    function renderNode(node){const children=(node.children||[]).map(renderNode);const {element,row}=treeNode({icon:node.icon,caption:node.title,children,open:node.id==='project'||node.id==='metadata'});row.addEventListener('click',async event=>{event.stopPropagation();await selectNode(node,row);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,row);return element}
+    function renderNode(node){const children=(node.children||[]).map(renderNode);const {element,row}=treeNode({icon:node.icon,caption:node.title,children,open:node.id==='project'||node.id==='metadata',foldOnDoubleClick:node.kind==='group'||node.kind==='metadata-group'});row.addEventListener('click',async event=>{event.stopPropagation();await selectNode(node,row);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,row);return element}
     // Контекстное меню узла дерева. Модуль — не строка дерева, а команда
     // меню его владельца: «Открыть модуль» общего модуля, «Открыть модуль
     // приложения / сеанса / внешнего соединения» корня, «Открыть модуль

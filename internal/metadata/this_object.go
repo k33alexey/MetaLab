@@ -17,8 +17,10 @@ import (
 // the value manager of a constant the common attributes it holds beside its
 // value (КонстантаМенеджерЗначения.<Имя>.<Имя общего реквизита>).
 //
-// The fields are read off the fields a restriction of reading the object
-// names (restrictionFieldsOf): the fields of the object itself, not those of
+// The fields are read off every field the object keeps (objectFieldsOf),
+// the parent of a catalog that is not hierarchical too: the help of
+// СправочникОбъект does not make them hang on the object, as the help of the
+// table of a query does. The fields of the object itself, not those of
 // its table parts. The flags of accounting of an ext dimension are fields of
 // the lines of ВидыСубконто and no member of the object.
 func (catalog *Catalog) ThisObjectMembers() map[project.ModuleAddress][]kinds.Member {
@@ -38,7 +40,7 @@ func (catalog *Catalog) ThisObjectMembers() map[project.ModuleAddress][]kinds.Me
 			}
 			members := objectType.Members
 			if objectType.Declared {
-				for _, field := range catalog.restrictionFieldsOf(object.kind, id) {
+				for _, field := range catalog.objectFieldsOf(object.kind, id) {
 					if field.parent != "" || field.group == ExtDimensionAccountingFlagsPart {
 						continue
 					}

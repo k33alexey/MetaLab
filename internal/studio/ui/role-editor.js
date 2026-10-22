@@ -395,7 +395,13 @@ function createRoleTree({source, title, expanded, selection, choose, subsystems 
   function treeButton(text, hint, className, isSelected, next) {
     const button = node('button', text, className + (isSelected ? ' selected' : ''));
     button.type = 'button'; if (hint) button.title = hint;
-    button.addEventListener('click', event => { event.preventDefault(); choose(next); render(); });
+    // The choice moves in place: a tree drawn anew would leave the second
+    // click of a double click on a row no longer in it.
+    button.addEventListener('click', event => {
+      event.preventDefault(); choose(next);
+      for (const item of element.querySelectorAll('.role-tree-item.selected')) item.classList.remove('selected');
+      button.classList.add('selected');
+    });
     return button;
   }
   // A node with something beneath it opens and closes and stays as it was
@@ -839,29 +845,39 @@ function restrictionTreeRow(depth, toggle, box) {
    beneath, «Отметить все» and «Снять все» over the list and «Прочие поля»
    under it. Marking a field takes «Прочие поля» away, marking «Прочие поля»
    takes every field away, taking the last field away marks «Прочие поля».
-   chosen holds the keys marked; taken(key) - a field another restriction
+   chosen holds the keys marked; mixed - the keys marked grey, as the group
+   «Изменить» shows a field some of its restrictions name and others not
+   (configurator 22.10.2026, ACCESS-RIGHTS «Групповое «Изменить» состава
+   полей»): a click on a grey box takes it away, marking «Прочие поля» takes
+   the grey ones away too, and a grey one marks no field of its own, so
+   «Прочие поля» stands marked beside it; marked(key, enabled) is told of
+   every field the developer marks or takes away. taken(key) - a field another restriction
    names, which cannot be marked. One choice serves the window of one
    restriction, the group «Изменить» and the wizard. Answers the block with
    fill(fields) - the fields, {key, name, parent, hint}, parent the key of
    the table part; filled() - whether a field or «Прочие поля» is marked;
    disable(flag). */
-function restrictionFieldsChoice({chosen, taken = () => false}) {
+function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false, marked = () => {}}) {
   let others = !chosen.size, disabled = false, fields = [];
   const boxes = new Map(), list = node('div', undefined, 'role-restriction-fields role-fields-tree');
   const othersBox = checkboxField('Прочие поля', others, enabled => {
     others = enabled;
-    if (enabled) chosen.clear();
+    if (enabled) { chosen.clear(); mixed.clear(); }
     sync();
   }, 'role-check role-fields-others');
   function mark(key, enabled) {
+    if (mixed.delete(key)) enabled = false;
     if (enabled) chosen.add(key); else chosen.delete(key);
     others = !chosen.size;
+    marked(key, enabled);
     sync();
   }
   // The marks are put on the boxes in place: a list drawn anew would take
   // the focus away from the box just pressed.
   function sync() {
-    for (const [key, input] of boxes) { input.checked = chosen.has(key); input.disabled = disabled || taken(key); }
+    for (const [key, input] of boxes) {
+      input.checked = chosen.has(key); input.indeterminate = mixed.has(key); input.disabled = disabled || taken(key);
+    }
     const input = othersBox.querySelector('input');
     input.checked = others; input.disabled = disabled;
     for (const button of block.querySelectorAll('.role-mark-all')) button.disabled = disabled;
@@ -882,7 +898,9 @@ function restrictionFieldsChoice({chosen, taken = () => false}) {
   }
   const block = node('div', undefined, 'role-restriction-form role-fields-choice');
   block.append(markedListCaption('Поля:', enabled => {
+    mixed.clear();
     if (enabled) for (const field of fields) { if (!taken(field.key)) chosen.add(field.key); } else chosen.clear();
+    for (const field of fields) if (!taken(field.key)) marked(field.key, enabled);
     others = !chosen.size;
     sync();
   }), list, othersBox);
@@ -893,6 +911,7 @@ function restrictionFieldsChoice({chosen, taken = () => false}) {
       fields = next;
       const keys = new Set(fields.map(field => field.key)), before = chosen.size;
       for (const key of [...chosen]) if (!keys.has(key)) chosen.delete(key);
+      for (const key of [...mixed]) if (!keys.has(key)) mixed.delete(key);
       if (before && !chosen.size) others = true;
       list.replaceChildren(); boxes.clear();
       for (const field of fields) if (!field.parent || !keys.has(field.parent)) row(field, 0);
