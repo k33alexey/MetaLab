@@ -638,6 +638,16 @@ func writeSaveDataError(response http.ResponseWriter, names map[string]string, e
 		})
 		return
 	}
+	var modules *publication.ModulesDoNotCompile
+	if errors.As(err, &modules) {
+		lines := []string{"Модули не компилируются — данные не сохранены:"}
+		for _, item := range modules.Errors {
+			lines = append(lines, fmt.Sprintf("%s (строка %d, колонка %d): %s [%s]", item.Module,
+				item.Diagnostic.Span.Start.Line, item.Diagnostic.Span.Start.Column, item.Diagnostic.Message, item.Diagnostic.Code))
+		}
+		http.Error(response, strings.Join(lines, "\n"), http.StatusUnprocessableEntity)
+		return
+	}
 	switch {
 	case errors.Is(err, publication.ErrDirtyPrimary):
 		http.Error(response, "Сохраните и закоммитьте изменения в Git перед сохранением данных на основной базе", http.StatusConflict)

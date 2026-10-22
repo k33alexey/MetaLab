@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/k33alexey/MetaLab/internal/bsl/syntax"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -28,6 +30,56 @@ const (
 // database - re-implemented on the base_package/ path (096) against Git
 // status directly, replacing the retired package-manifest Dirty flag (021).
 var ErrDirtyPrimary = errors.New("an uncommitted ML Project cannot be saved to a primary database")
+
+// ModulesDoNotCompile refuses «Сохранить данные» when a module of the project
+// does not compile: nothing is written and nothing migrated (ML-STUDIO.md,
+// «Сохранить данные», step 2). The prototype shows the errors and asks
+// whether to go on; ML refuses without asking, as the owner decided on
+// 22.10.2026: ML App compiles every module before it writes an object, and a
+// base saved with a module it cannot compile writes nothing. Errors are all
+// the compiler found, in its order, each with the module it is in.
+type ModulesDoNotCompile struct {
+	Errors []ModuleError
+}
+
+// ModuleError is one error of the compiler: the module by the name BSL knows
+// it by, and the place and text of the error.
+type ModuleError struct {
+	Module     string
+	Diagnostic syntax.Diagnostic
+}
+
+func (refusal *ModulesDoNotCompile) Error() string {
+	lines := make([]string, 0, len(refusal.Errors))
+	for _, item := range refusal.Errors {
+		lines = append(lines, item.Module+": "+item.Diagnostic.Error())
+	}
+	return "BSL modules do not compile: " + strings.Join(lines, "; ")
+}
+
+// compileModules compiles the modules of the snapshot as ML App will, and
+// answers ModulesDoNotCompile if the compiler finds anything.
+func compileModules(snapshot metadata.RuntimeSnapshot) error {
+	if len(snapshot.Modules) == 0 {
+		return nil
+	}
+	_, diagnostics, err := snapshot.CompileModules()
+	if err == nil {
+		return nil
+	}
+	if len(diagnostics) == 0 {
+		return err
+	}
+	names := make(map[string]string, len(snapshot.Modules))
+	for _, module := range snapshot.Modules {
+		names[module.Filename] = module.Name
+	}
+	refusal := &ModulesDoNotCompile{Errors: make([]ModuleError, 0, len(diagnostics))}
+	for _, diagnostic := range diagnostics {
+		refusal.Errors = append(refusal.Errors, ModuleError{Module: names[diagnostic.Filename], Diagnostic: diagnostic})
+	}
+	return refusal
+}
 
 // SaveDataRequest describes one "Сохранить данные" invocation - the
 // package-free replacement for the retired BuildFile+Activate flow
@@ -98,6 +150,11 @@ func SaveData(ctx context.Context, pool *pgxpool.Pool, request SaveDataRequest) 
 	// Before anything is read from the schema and long before a plan is built:
 	// this database has to belong to this project.
 	if err := checkDatabaseBelongsToProject(ctx, pool, manifest.ProjectID, manifest.ProjectName); err != nil {
+		return SavedState{}, schemadiff.MigrationRecord{}, err
+	}
+	// The identity of the base first, then the modules, before anything is
+	// planned or written (ML-STUDIO.md, «Сохранить данные», steps 1 and 2).
+	if err := compileModules(snapshot); err != nil {
 		return SavedState{}, schemadiff.MigrationRecord{}, err
 	}
 	desired, err := catalog.ApplicationSchema()
