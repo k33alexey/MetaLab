@@ -4,21 +4,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/host"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/publication"
-	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/studio"
-	"github.com/k33alexey/MetaLab/internal/systemdb"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -51,38 +46,15 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	}
 	platformRuntime := platform.New(ctx, settings, secretstore.New())
 	defer platformRuntime.Close()
-	workspace.SetSavedNamesProvider(func(namesContext context.Context) map[string]string {
-		return platformRuntime.ApplicationPhysicalNames(namesContext, databaseID)
-	})
-	workspace.SetSaveDataProvider(func(saveContext context.Context, root string, consent schemadiff.MigrationConsent) (publication.SavedState, schemadiff.MigrationRecord, error) {
-		return platformRuntime.SaveApplicationData(saveContext, databaseID, root, consent)
-	})
 	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Configuration.ID)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		releaseContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = platformRuntime.ReleaseStudioSession(releaseContext, lease.Session.ID, lease.Token)
-	}()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	defer host.ReleaseStudioLease(ctx, platformRuntime, lease)
+	served, err := host.ServeStudio(platformRuntime, workspace, databaseID, lease)
 	if err != nil {
-		return fmt.Errorf("start ML Studio UI: %w", err)
-	}
-	handler, launchPath, err := studio.NewAuthorizedHandler(workspace, listener.Addr().String(), func(requestContext context.Context) error {
-		return platformRuntime.AuthorizeStudioLease(requestContext, lease)
-	})
-	if err != nil {
-		_ = listener.Close()
 		return err
 	}
-	server := &http.Server{
-		Handler: handler, ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second,
-	}
-	serverErrors := make(chan error, 1)
-	go func() { serverErrors <- server.Serve(listener) }()
 
 	app := application.New(application.Options{
 		Name: "MetaLab Studio", Description: "ML Studio",
@@ -91,18 +63,18 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "ML Studio — " + studioWindowTitle(snapshot.Configuration), Width: 1280, Height: 800,
 		MinWidth: 800, MinHeight: 560, BackgroundColour: application.NewRGB(30, 31, 34),
-		URL: "http://" + listener.Addr().String() + launchPath,
+		URL: served.URL,
 	})
 	window.Center()
 	window.Show()
 	heartbeatContext, stopHeartbeat := context.WithCancel(context.Background())
 	heartbeatDone := make(chan error, 1)
-	go monitorStudioLease(heartbeatContext, platformRuntime, lease, app, heartbeatDone)
+	go func() { heartbeatDone <- host.KeepStudioLease(heartbeatContext, platformRuntime, lease, app.Quit) }()
 	app.OnShutdown(func() {
 		stopHeartbeat()
 		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdownContext)
+		_ = served.Shutdown(shutdownContext)
 	})
 	go func() {
 		<-ctx.Done()
@@ -115,13 +87,10 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	}
 	stopHeartbeat()
 	heartbeatErr := <-heartbeatDone
-	if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serve ML Studio UI: %w", err)
+	if err := served.Wait(); err != nil {
+		return err
 	}
-	if heartbeatErr != nil {
-		return heartbeatErr
-	}
-	return nil
+	return heartbeatErr
 }
 
 func openStudioLease(ctx context.Context, runtime *platform.Runtime, databaseID, projectID uuid.UUID) (platform.StudioLease, error) {
@@ -144,31 +113,4 @@ func openStudioLease(ctx context.Context, runtime *platform.Runtime, databaseID,
 		return platform.StudioLease{Token: token, Session: session}, nil
 	}
 	return platform.StudioLease{}, fmt.Errorf("open ML Studio from an authenticated ML Manager")
-}
-
-func monitorStudioLease(ctx context.Context, runtime *platform.Runtime, lease platform.StudioLease, app *application.App, done chan<- error) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	failures := 0
-	for {
-		select {
-		case <-ctx.Done():
-			done <- nil
-			return
-		case <-ticker.C:
-			heartbeatContext, cancel := context.WithTimeout(ctx, 5*time.Second)
-			_, err := runtime.HeartbeatStudioSession(heartbeatContext, lease.Session.ID, lease.Token, int64(os.Getpid()))
-			cancel()
-			if err == nil {
-				failures = 0
-				continue
-			}
-			failures++
-			if errors.Is(err, systemdb.ErrStudioSessionNotFound) || failures >= 2 {
-				app.Quit()
-				done <- fmt.Errorf("ML Studio session ended: %w", err)
-				return
-			}
-		}
-	}
 }

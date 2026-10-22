@@ -14,6 +14,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
 	"github.com/k33alexey/MetaLab/internal/gitclient"
+	"github.com/k33alexey/MetaLab/internal/host"
 	"github.com/k33alexey/MetaLab/internal/manager"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/secretstore"
@@ -119,7 +120,7 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		releaseStudioLaunchLease(ctx, launcher.runtime, lease)
+		host.ReleaseStudioLease(ctx, launcher.runtime, lease)
 		return fmt.Errorf("locate MetaLab executable: %w", err)
 	}
 	arguments := []string{"studio", "--database", databaseID.String(), "--project", projectPath}
@@ -129,15 +130,9 @@ func (launcher executableStudioLauncher) OpenStudio(ctx context.Context, databas
 	command := exec.Command(executable, arguments...)
 	command.Env = append(os.Environ(), studioSessionIDEnvironment+"="+lease.Session.ID.String(), studioSessionTokenEnvironment+"="+lease.Token)
 	if err := command.Start(); err != nil {
-		releaseStudioLaunchLease(ctx, launcher.runtime, lease)
+		host.ReleaseStudioLease(ctx, launcher.runtime, lease)
 		return fmt.Errorf("start ML Studio: %w", err)
 	}
 	_ = command.Process.Release()
 	return nil
-}
-
-func releaseStudioLaunchLease(ctx context.Context, runtime *platform.Runtime, lease platform.StudioLease) {
-	releaseContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	_ = runtime.ReleaseStudioSession(releaseContext, lease.Session.ID, lease.Token)
 }
