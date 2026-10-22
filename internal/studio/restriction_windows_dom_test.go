@@ -357,6 +357,9 @@ const restrictionFilterWalk = `(async () => {` + restrictionWalkTools + `
   const seen = {};
   await command('filter');
   seen.everyMarked = all('input[type=checkbox]', dialog().querySelector('.role-filter-grid')).every(input => input.checked);
+  const atDepth = depth => all('.role-wizard-objects .role-fields-row', dialog()).filter(item => item.style.getPropertyValue('--depth') === String(depth)).map(item => item.querySelector('label').textContent.trim()).sort();
+  seen.offeredKinds = atDepth(1); seen.offeredObjects = atDepth(2);
+  seen.offeredFields = all('label', dialog().querySelector('.role-filter-grid').children[1]).map(label => label.textContent.trim()).sort();
   await press('ОК');
   seen.lineAfterAll = filterLine();
   await command('filter');
@@ -407,6 +410,7 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 		EveryMarked                                                    bool
 		LineAfterAll, Line, LineBack                                   string
 		Objects                                                        []string
+		OfferedKinds, OfferedObjects, OfferedFields                    []string
 		WidthAfterZero                                                 string
 		MarkedAfterSet, MarkedBeforeOff, ShownAfterOff, MarkedAfterOff int
 	}
@@ -415,6 +419,15 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 	}
 	if !seen.EveryMarked {
 		t.Error("the filter opens with something unmarked")
+	}
+	// Only the objects some restriction is on, and only the fields
+	// restrictions name (otbor-podsistemy-01): the documents and the register
+	// of the demo, restrictable but restricted by no role, are not offered.
+	if strings.Join(seen.OfferedKinds, ",") != "Справочники" || strings.Join(seen.OfferedObjects, ",") != "Контрагенты,Товары" {
+		t.Errorf("the filter offers the kinds %v and the objects %v, want Справочники with Контрагенты and Товары", seen.OfferedKinds, seen.OfferedObjects)
+	}
+	if strings.Join(seen.OfferedFields, ",") != "Артикул,ИНН" {
+		t.Errorf("the filter offers the fields %v, want Артикул and ИНН", seen.OfferedFields)
 	}
 	if seen.LineAfterAll != "Отбор:" {
 		t.Errorf("everything marked set a filter: %q", seen.LineAfterAll)
