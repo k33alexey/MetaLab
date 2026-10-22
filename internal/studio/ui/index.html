@@ -47,6 +47,7 @@
     #properties { padding:8px 12px } .property { display:grid; grid-template-columns:minmax(90px,42%) 1fr; gap:10px; padding:7px 4px; border-bottom:1px solid #34363b; font-size:12px }
     .property span:first-child { color:#aeb1b8 } .property span:last-child { overflow-wrap:anywhere; color:#e1e3e7 }
     footer { height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-top:1px solid #393b40; background:#2b2d30; color:#a8abb3; font-size:11px }
+    #load-error { flex:1; min-width:0; margin:0 12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
     .error { color:#ff7b86 } .warning { color:#e7b75f } button { border:0; border-radius:5px; padding:5px 9px; background:#3c3f45; color:#dfe1e5; cursor:pointer } button:hover { background:#4b4e55 } button:disabled { opacity:.45; cursor:default } .primary { background:#365880 } .primary:hover { background:#416b9b }
     dialog { width:min(920px,calc(100% - 40px)); height:min(700px,calc(100% - 40px)); padding:0; border:1px solid #4a4d54; border-radius:10px; background:#25262a; color:#dfe1e5; box-shadow:0 24px 90px #000b }
     dialog::backdrop { background:#0009 } .git-header,.git-actions { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid #393b40 } .git-header strong { flex:1 }
@@ -76,7 +77,7 @@
     <div class="debug-toolbar"><strong>Отладчик</strong><select id="debug-target"><option value="">Локальный сервер Studio</option></select><input id="debug-routine" maxlength="128" placeholder="Процедура или функция"><input id="debug-arguments" value="[]" placeholder='Параметры JSON: [40, "текст"]'><button id="debug-start" class="primary">Запустить</button><button data-debug-command="continue" class="icon-only" title="Продолжить отладку" aria-label="Продолжить отладку"><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-debug-continue"/></svg></button><button data-debug-command="stepOver" class="icon-only" title="Шагнуть через" aria-label="Шагнуть через"><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-step-over"/></svg></button><button data-debug-command="stepInto" class="icon-only" title="Шагнуть в" aria-label="Шагнуть в"><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-step-into"/></svg></button><button data-debug-command="stepOut" class="icon-only" title="Шагнуть из" aria-label="Шагнуть из"><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-step-out"/></svg></button><button id="debug-pause" class="icon-only" title="Остановить" aria-label="Остановить" disabled><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-debug-pause"/></svg></button><button id="debug-stop" class="icon-only" title="Завершить" aria-label="Завершить" disabled><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-debug-finish"/></svg></button><span id="debug-state">Отладчик не запущен</span><button id="debug-close" class="icon-only" title="Закрыть" aria-label="Закрыть"><svg class="tree-icon" width="16" height="16" aria-hidden="true"><use href="#icon-close"/></svg></button></div>
     <div class="debug-body"><section class="debug-pane"><h3>Стек вызовов</h3><div id="debug-stack"><div class="debug-empty">Стек появится при остановке</div></div></section><section class="debug-pane"><h3>Переменные</h3><div id="debug-variables"><div class="debug-empty">Нет доступных переменных</div></div></section><section class="debug-pane"><h3>Табло выражений</h3><div class="debug-watch-input"><input id="debug-watch-input" maxlength="16384" placeholder="Например: Сумма + 1"><button id="debug-watch-add">Добавить</button></div><div id="debug-watches"><div class="debug-empty">Добавьте вычисляемое выражение</div></div></section></div>
   </section>
-  <footer><span id="status">Готово</span><span>UTF-8 · YAML · BSL</span></footer>
+  <footer><span id="status">Готово</span><span id="load-error" class="error" hidden></span><span>UTF-8 · YAML · BSL</span></footer>
   <dialog id="git-dialog">
     <div class="git-header"><strong>Git</strong><span id="git-summary" class="muted"></span><button id="git-refresh">Обновить</button><button id="git-close">Закрыть</button></div>
     <div class="git-body">
@@ -294,7 +295,15 @@
     StudioListSettings.problem=text=>{status.textContent=text;status.className='error'};
     // Меню пока показывает состав: команды подключаются вместе с ним (блок 3).
     createMainMenu(document.querySelector('#main-menu'),path=>{status.className='';status.textContent=`${path}: команда появится, когда меню заработает (блок 3)`});
-    async function loadTree(selectRoot=true){StudioIcons.load();status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json();projectData=data;configuration=data.configuration;refreshLanguageSelector(configuration.languages,configuration.defaultLanguage);paintProjectTitle();renderTree();if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
+    // Описание, которое не читается, — попавшее в папку проекта мимо Studio
+    // (git pull, слияние, правка руками, файл другой версии ML), — называется
+    // в строке состояния файлом и ключом, как их называет загрузка, и
+    // остаётся там, пока проект при открытии и перечитывании не прочтётся
+    // целиком (ТЗ ML-STUDIO, «Файл, который не читается»; пометка объекта в
+    // дереве — пункт блока 2с).
+    const loadError=document.querySelector('#load-error');
+    function showLoadError(text){loadError.hidden=!text;loadError.textContent=text?`Проект не читается целиком: ${text}`:'';loadError.title=loadError.textContent}
+    async function loadTree(selectRoot=true){StudioIcons.load();status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json();projectData=data;showLoadError(data.loadError);configuration=data.configuration;refreshLanguageSelector(configuration.languages,configuration.defaultLanguage);paintProjectTitle();renderTree();if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
     async function pollExternalChange(){
       if(!currentFile||loadingFile)return;
       // Окна над всеми ролями сверяют ревизии при сохранении: опрашивать все роли

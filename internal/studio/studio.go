@@ -68,6 +68,11 @@ type Snapshot struct {
 	// while the project's descriptions do not read as a whole, and the
 	// filter is not offered then.
 	Subsystems *metadata.SubsystemFilter `json:"subsystems,omitempty"`
+	// LoadError is why the project's descriptions do not read as a whole -
+	// a description put in the folder past Studio, by a pull, a merge, a
+	// hand or another version of ML -, with the file and the key the load
+	// names, the file from the project's folder; empty while they read.
+	LoadError string `json:"loadError,omitempty"`
 }
 
 // Node represents a stable item in the metadata tree.
@@ -193,8 +198,9 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
 	// fixture) — so a load failure here just means the per-kind data
 	// groups (Реквизиты, Измерения, ...) come back empty and the filter by
-	// subsystems is not offered, not a broken tree.
-	loaded, _ := metadata.Load(workspace.root)
+	// subsystems is not offered, not a broken tree. Why it fails goes with
+	// the tree, for Studio to say.
+	loaded, loadErr := metadata.Load(workspace.root)
 	branches, err := workspace.metadataTree(loaded, configuration.DefaultLanguage, configuration.Languages)
 	if err != nil {
 		return Snapshot{}, err
@@ -204,6 +210,12 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	if loaded != nil {
 		filter := loaded.SubsystemFilter()
 		snapshot.Subsystems = &filter
+	}
+	if loadErr != nil {
+		// One line, the files named from the project's folder: the load
+		// names them by the whole path, and a decoder breaks its list of
+		// faults into lines.
+		snapshot.LoadError = strings.Join(strings.Fields(strings.ReplaceAll(loadErr.Error(), workspace.root+string(filepath.Separator), "")), " ")
 	}
 	return snapshot, nil
 }
