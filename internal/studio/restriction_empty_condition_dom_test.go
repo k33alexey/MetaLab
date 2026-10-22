@@ -12,7 +12,8 @@ import (
 // a restriction: the window of a restriction of the role Кладовщик, the
 // wizard of «Все ограничения доступа» and its group «Изменить»; then, in the
 // group «Изменить», changes only the fields of Ревизор's restriction without
-// a condition, chosen with Кладовщик's and alone.
+// a condition, chosen with Кладовщик's and alone, and copies it to
+// Бухгалтер the same two ways; then copies Кладовщик's alone.
 const emptyRestrictionWalk = `(async () => {` + restrictionWalkTools + `
   const seen = {};
   const clear = async () => { const text = dialog().querySelector('textarea'); text.value = '  '; text.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle(); };
@@ -59,6 +60,22 @@ const emptyRestrictionWalk = `(async () => {` + restrictionWalkTools + `
   seen.alone = refused();
   if (dialog()) await press('Отмена');
   seen.fieldsKept = [row('Контрагенты', 'ГДЕ В'), row('Ревизор')].every(item => item?.textContent.includes('ИНН') && !item.textContent.includes('Код'));
+  const accountant = () => rows().filter(item => item.textContent.includes('Бухгалтер')).map(item => item.textContent);
+  const before = accountant();
+  for (const [key, mixed] of [['copyMixed', true], ['copyAlone', false]]) {
+    await choose(row('Ревизор'));
+    if (mixed) await choose(row('Контрагенты', 'ГДЕ В'), {ctrlKey: true});
+    await command('copy');
+    await mark('Бухгалтер', true); await press('ОК');
+    seen[key] = refused();
+    if (dialog()) await press('Отмена');
+  }
+  seen.accountantKept = JSON.stringify(accountant()) === JSON.stringify(before);
+  await choose(row('Контрагенты', 'ГДЕ В'));
+  await command('copy');
+  await mark('Бухгалтер', true); await press('ОК');
+  if (titleOf() === 'Заменить?') await press('Да');
+  seen.copied = !dialog() && !!row('Бухгалтер', 'ГДЕ В');
   return seen;
 })()`
 
@@ -71,10 +88,15 @@ const emptyRestrictionWalk = `(async () => {` + restrictionWalkTools + `
 // given, the wizard writes. The group «Изменить» changing only the fields
 // refuses as well when one of the chosen restrictions has no condition (such
 // come with loading; the owner's decision of 22.10.2026, question В1 of the
-// series 2.449): «ОК» writes every chosen one. Defects caught: «ОК» writing
-// the empty condition (2.449 and before, in every window), the refusal
-// closing the window, the group writing a restriction without a condition
-// it was not asked to change (2.451 and before).
+// series 2.449): «ОК» writes every chosen one. «Копировать ограничения
+// доступа» refuses the same way when one of the chosen restrictions has no
+// condition and copies none (the owner's decision of 22.10.2026, question of
+// the report of 2.452). Defects caught: «ОК» writing the empty condition
+// (2.449 and before, in every window), the refusal closing the window, the
+// group writing a restriction without a condition it was not asked to change
+// (2.451 and before), the copying carrying one to another role, or the
+// others chosen with it (2.452 and before), the copying refusing one with a
+// condition.
 func TestNoWindowWritesARestrictionWithoutACondition(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	roles := addRestrictionRoles(t, root)
@@ -103,8 +125,8 @@ func TestNoWindowWritesARestrictionWithoutACondition(t *testing.T) {
 	}
 	type refused struct{ Title, Problem string }
 	var seen struct {
-		Role, Wizard, Group, Mixed, Alone                         refused
-		RoleKept, WizardWritten, GroupKept, MixedFlag, FieldsKept bool
+		Role, Wizard, Group, Mixed, Alone, CopyMixed, CopyAlone                           refused
+		RoleKept, WizardWritten, GroupKept, MixedFlag, FieldsKept, AccountantKept, Copied bool
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -120,6 +142,8 @@ func TestNoWindowWritesARestrictionWithoutACondition(t *testing.T) {
 		{"the group «Изменить»", seen.Group, "Ограничение доступа"},
 		{"the group «Изменить» of fields over a restriction with a condition and one without", seen.Mixed, "Ограничение доступа"},
 		{"the group «Изменить» of fields alone over a restriction without a condition", seen.Alone, "Ограничение доступа"},
+		{"the copying of a restriction with a condition and one without", seen.CopyMixed, "Копировать ограничения"},
+		{"the copying of a restriction without a condition alone", seen.CopyAlone, "Копировать ограничения"},
 	} {
 		if check.seen.Title != check.title || check.seen.Problem != refusal {
 			t.Errorf("%s with an empty condition: window %q says %q, want %q open saying %q", check.window, check.seen.Title, check.seen.Problem, check.title, refusal)
@@ -133,6 +157,12 @@ func TestNoWindowWritesARestrictionWithoutACondition(t *testing.T) {
 	}
 	if !seen.FieldsKept {
 		t.Error("a refused group «Изменить» of fields changed the fields of a restriction")
+	}
+	if !seen.AccountantKept {
+		t.Error("a refused copying changed the restrictions of Бухгалтер")
+	}
+	if !seen.Copied {
+		t.Error("the copying of a restriction with a condition did not write it to Бухгалтер")
 	}
 	if !seen.WizardWritten {
 		t.Error("the wizard did not write the restriction once its condition was given")

@@ -586,6 +586,8 @@ function createRoleOverview(host, openRole, onChange) {
   }
   // Значение, общее для всех выбранных, или null, когда они расходятся.
   function common(values) { return values.every(value => value === values[0]) ? values[0] : null; }
+  // Отказ emptyRestrictionRefusal, если пусто хотя бы одно из условий.
+  const emptyAmong = conditions => conditions.map(emptyRestrictionRefusal).find(Boolean) || '';
   // Сначала операция прогоняется на копиях ролей: что она заберёт у
   // ограничений и шаблонов, которых не называла, перечисляется, и «Да»
   // заменяет их (владелец 13.10.2026), «Отмена» не меняет ничего.
@@ -643,7 +645,7 @@ function createRoleOverview(host, openRole, onChange) {
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
       answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
-      check: () => (change.condition ? [condition] : rows.map(row => row.condition)).map(emptyRestrictionRefusal).find(Boolean) || ''});
+      check: () => emptyAmong(change.condition ? [condition] : rows.map(row => row.condition))});
     if (answer !== 'ok') return;
     model.editRestrictions(rows, {fields: change.fields ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
     listChanged();
@@ -736,8 +738,8 @@ function createRoleOverview(host, openRole, onChange) {
   // ограничений и у шаблонов одно окно — «Из ролей:» (роли выбранных строк)
   // и «В роли:» флажками без них, «ОК» недоступна, пока роли не отмечены.
   // apply(roles) записывает копию и отвечает false, если окно надо открыть
-  // снова с теми же отметками.
-  async function copyToRoles(rows, title, apply) {
+  // снова с теми же отметками; check() — отказ «ОК», окно остаётся открытым.
+  async function copyToRoles(rows, title, apply, check = () => '') {
     const from = new Set(rows.map(row => row.roleIndex)), roles = new Set();
     for (;;) {
       const sources = node('div', undefined, 'role-restriction-fields role-copy-sources'), targets = node('div', undefined, 'role-restriction-form');
@@ -751,14 +753,17 @@ function createRoleOverview(host, openRole, onChange) {
       left.append(node('div', 'Из ролей:', 'role-restriction-caption'), sources);
       content.append(left, targets);
       const answer = await showDialog({title, content, className: 'role-restriction-dialog', help: 'role-copy',
-        answers: [['ok', 'ОК', {enabled: () => roles.size > 0}], [null, 'Отмена']]});
+        answers: [['ok', 'ОК', {enabled: () => roles.size > 0}], [null, 'Отмена']], check});
       if (answer !== 'ok' || await apply([...roles])) return;
     }
   }
+  // Строку без условия (такие приходят импортом) окно в другие роли не
+  // переносит, и тогда не копируется ничего (владелец 22.10.2026,
+  // ACCESS-RIGHTS «Пустое ограничение в окне роли»).
   const copyRestrictions = rows => copyToRoles(rows, 'Копировать ограничения', async roles => {
     await applyReplacing(trial => model.copyRestrictions(rows, roles, trial), restrictionLine);
     return true;
-  });
+  }, () => emptyAmong(rows.map(row => row.condition)));
   // Шаблон того же наименования в роли: «Да» заменяет его и копирует
   // остальные, «Нет» не копирует ничего, «Отмена» возвращает к окну.
   const copyTemplates = rows => copyToRoles(rows, 'Копировать шаблоны ограничений', async roles => {
