@@ -857,9 +857,16 @@ function restrictionTreeRow(depth, toggle, box) {
 function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false, marked = () => {}}) {
   let others = !chosen.size, disabled = false, fields = [];
   const boxes = new Map(), list = node('div', undefined, 'role-restriction-fields role-fields-tree');
+  // «Прочие поля» take the marks of the fields, and the window is told of
+  // each, as when a field is taken away: «ОК» of the group waits for a
+  // field marked again (configurator 22.10.2026, gruppovoe-dve-stroki-03).
   const othersBox = checkboxField('Прочие поля', others, enabled => {
     others = enabled;
-    if (enabled) { chosen.clear(); mixed.clear(); }
+    if (enabled) {
+      const taken = [...chosen];
+      chosen.clear(); mixed.clear();
+      for (const key of taken) marked(key, false);
+    }
     sync();
   }, 'role-check role-fields-others');
   function mark(key, enabled) {

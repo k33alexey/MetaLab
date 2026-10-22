@@ -611,7 +611,10 @@ function createRoleOverview(host, openRole, onChange) {
   // серое — если часть. При записи отмеченное поле получает каждое
   // ограничение, у объекта которого оно есть, серое остаётся каждому как
   // было, снятое снимается; объект без полей получает «Прочие поля». «ОК»
-  // становится доступной только отметкой поля или правкой условия.
+  // становится доступной только отметкой поля или правкой условия, и
+  // «Прочие поля», снимая поля, снова её гасят. Одна выбранная строка
+  // открывается окном одного ограничения: оба флажка отмечены и недоступны,
+  // «ОК» доступна сразу (седьмой заход, gruppovoe-odna-stroka-01…03).
   // Поля пишутся, только если отметки полей в окне изменили: правка одного
   // условия оставляет каждой строке её поля, и то, которого у объекта уже
   // нет и окно не показывает (ACCESS-RIGHTS «Ограничение по полю, которого
@@ -621,7 +624,7 @@ function createRoleOverview(host, openRole, onChange) {
   // и тогда, когда условия нет у одной из них (такие приходят импортом;
   // владелец 22.10.2026, ACCESS-RIGHTS «Пустое ограничение в окне роли»).
   async function editRestrictions(rows) {
-    const reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
+    const reading = rows.filter(row => restrictsByFields(source.schema, row.operation)), single = rows.length === 1;
     const change = {fields: false, condition: false}, chosen = new Set(), mixed = new Set(), marked = new Set();
     let fields = null, edited = false, marks = '';
     const marksOf = () => `${[...chosen].sort()}|${[...mixed].sort()}`;
@@ -632,16 +635,16 @@ function createRoleOverview(host, openRole, onChange) {
         const count = reading.filter(row => names(row, choice)).length;
         if (count === reading.length) chosen.add(choice.path); else if (count) mixed.add(choice.path);
       }
-      change.fields = !mixed.size;
+      change.fields = single || !mixed.size;
       marks = marksOf();
       fields = restrictionFieldsChoice({chosen, mixed, marked: (key, enabled) => { if (enabled) marked.add(key); else marked.delete(key); }});
       fields.fill(choiceFields(choices));
     }
     const text = common(rows.map(row => row.condition));
-    change.condition = text !== null;
+    change.condition = single || text !== null;
     let condition = text ?? '';
     const editor = queryTextField(condition, value => { condition = value; edited = true; }, 'Ограничение доступа');
-    const content = restrictionWindowContent({fields, editor, change, group: true});
+    const content = restrictionWindowContent({fields, editor, change, group: !single});
     // Поля пишутся только праву, ограничиваемому по полям (restrictionEntry
     // роли); у прочих они остаются как были.
     const fieldsOf = row => !restrictsByFields(source.schema, row.operation) ? row.keys : choices
@@ -649,7 +652,7 @@ function createRoleOverview(host, openRole, onChange) {
       .map(choice => choice.keys.get(row.objectID));
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
-      answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
+      answers: [['ok', 'ОК', {enabled: () => single || (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
       check: () => emptyAmong(change.condition ? [condition] : rows.map(row => row.condition))});
     if (answer !== 'ok') return;
     const fieldsMarked = change.fields && marksOf() !== marks;

@@ -12,7 +12,8 @@ import (
 // a restriction: the window of a restriction of the role Кладовщик, the
 // wizard of «Все ограничения доступа» and its group «Изменить»; then, in the
 // group «Изменить», changes only the fields of Ревизор's restriction without
-// a condition, chosen with Кладовщик's and alone, and copies it to
+// a condition, chosen with Кладовщик's and alone - then the window of one
+// restriction, its condition written as it is -, and copies it to
 // Бухгалтер the same two ways; then copies Кладовщик's alone.
 const emptyRestrictionWalk = `(async () => {` + restrictionWalkTools + `
   const seen = {};
@@ -55,7 +56,6 @@ const emptyRestrictionWalk = `(async () => {` + restrictionWalkTools + `
   if (dialog()) await press('Отмена');
   await choose(row('Ревизор'));
   await command('edit');
-  await mark('Изменять ограничение', false);
   await mark('Код', true); await press('ОК');
   seen.alone = refused();
   if (dialog()) await press('Отмена');
@@ -141,7 +141,7 @@ func TestNoWindowWritesARestrictionWithoutACondition(t *testing.T) {
 		{"the wizard", seen.Wizard, "Новое ограничение доступа"},
 		{"the group «Изменить»", seen.Group, "Ограничение доступа"},
 		{"the group «Изменить» of fields over a restriction with a condition and one without", seen.Mixed, "Ограничение доступа"},
-		{"the group «Изменить» of fields alone over a restriction without a condition", seen.Alone, "Ограничение доступа"},
+		{"«Изменить» of one restriction without a condition, a field marked", seen.Alone, "Ограничение доступа"},
 		{"the copying of a restriction with a condition and one without", seen.CopyMixed, "Копировать ограничения"},
 		{"the copying of a restriction without a condition alone", seen.CopyAlone, "Копировать ограничения"},
 	} {

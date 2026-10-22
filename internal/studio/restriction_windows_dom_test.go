@@ -231,9 +231,26 @@ const restrictionGroupWalk = `(async () => {` + restrictionWalkTools + `
   await press('ОК');
   seen.partnersAfterGrey = row('Контрагенты')?.textContent || '';
   seen.goodsAfterGrey = row('Товары', 'ГДЕ А')?.textContent || '';
+  // Two rows on «Прочие поля» with conditions that differ, as
+  // gruppovoe-dve-stroki-01…03.
+  await choose(row('Контрагенты'));
+  await choose(row('Товары', 'ГДЕ Б'), {ctrlKey: true});
+  await command('edit');
+  const flags = () => ['Изменять состав полей', 'Изменять ограничение'].map(caption => (box(caption).checked ? 'marked' : 'off') + (box(caption).disabled ? ' disabled' : ''));
+  seen.twoFlags = flags();
+  seen.twoOkOpen = enabled('ОК');
+  await mark('Код', true);
+  seen.twoOkField = enabled('ОК');
+  await mark('Прочие поля', true);
+  seen.twoOkOthers = enabled('ОК');
+  seen.twoFieldAfterOthers = state('Код');
+  await press('Отмена');
+  // One row opens as the window of one restriction, as
+  // gruppovoe-odna-stroka-01…03.
   await choose(row('Товары', 'ГДЕ А'));
   await command('edit');
-  await mark('Изменять состав полей', true);
+  seen.oneFlags = flags();
+  seen.oneOkOpen = enabled('ОК');
   await mark('Прочие поля', true);
   seen.okOthersOnly = enabled('ОК');
   const text = dialog().querySelector('textarea');
@@ -281,9 +298,12 @@ const restrictionGroupWalk = `(async () => {` + restrictionWalkTools + `
 // is marked or the condition edited - on the flag alone, on a grey field
 // taken away or on «Прочие поля»; a click on a grey field marking it;
 // «Прочие поля» leaving the grey fields; an object left with no field not
-// taking «Прочие поля»; the question «Заменить?» asked when the restriction
-// changed takes the place of one with the same fields (defects of 2.437,
-// case 2в-23); the copy offered into the roles it copies from, or «ОК» with no role
+// taking «Прочие поля»; «ОК» left available when «Прочие поля» take the
+// field marked (2.456, gruppovoe-dve-stroki-03); one row opening with the
+// flags of a group to change or «ОК» waiting, not as the window of one
+// restriction (2.456, gruppovoe-odna-stroka-01…03); the question
+// «Заменить?» asked when the restriction changed takes the place of one
+// with the same fields (defects of 2.437, case 2в-23); the copy offered into the roles it copies from, or «ОК» with no role
 // marked; «Изменять наименование» set over templates of different names; and
 // «Нет» to the question about a template of the same name copying it all
 // the same, or «Отмена» not going back to the window.
@@ -299,6 +319,9 @@ func TestRestrictionsAreChangedAndCopiedInAGroupAsThePrototype(t *testing.T) {
 		FirstStates, SecondStates, OthersStates, Goods             []string
 		OkUnchanged, OkFlagAlone, OkChanged, OkGreyTaken, OkOthers bool
 		OkMarked, OkOthersOnly, OkEdited                           bool
+		TwoFlags, OneFlags                                         []string
+		TwoOkOpen, TwoOkField, TwoOkOthers, OneOkOpen              bool
+		TwoFieldAfterOthers                                        string
 		GreyClicked, PartnersField, GoodsField, ReplaceAsked       string
 		PartnersAfterGrey, GoodsAfterGrey                          string
 		CopyTitle                                                  string
@@ -328,7 +351,12 @@ func TestRestrictionsAreChangedAndCopiedInAGroupAsThePrototype(t *testing.T) {
 		{seen.OkMarked, "«ОК» is unavailable after Артикул was marked"},
 		{strings.Contains(seen.PartnersAfterGrey, "Прочие поля") && strings.Contains(seen.GoodsAfterGrey, "Артикул") && !strings.Contains(seen.GoodsAfterGrey, "Код"),
 			"Артикул alone marked gave " + seen.PartnersAfterGrey + " and " + seen.GoodsAfterGrey},
-		{!seen.OkOthersOnly && seen.OkEdited, "«ОК» over «Прочие поля» alone is available, or not after the condition was edited"},
+		{slices.Equal(seen.TwoFlags, []string{"marked", "off"}) && !seen.TwoOkOpen, fmt.Sprintf("two rows on «Прочие поля» of conditions that differ open with the flags %v, ОК available: %v", seen.TwoFlags, seen.TwoOkOpen)},
+		{seen.TwoOkField && !seen.TwoOkOthers && seen.TwoFieldAfterOthers == "off",
+			fmt.Sprintf("over two rows «ОК» after a field is %v, after «Прочие поля» %v, the field left %s", seen.TwoOkField, seen.TwoOkOthers, seen.TwoFieldAfterOthers)},
+		{slices.Equal(seen.OneFlags, []string{"marked disabled", "marked disabled"}) && seen.OneOkOpen,
+			fmt.Sprintf("one row opens with the flags %v, ОК available: %v - want both marked and unavailable, «ОК» at once", seen.OneFlags, seen.OneOkOpen)},
+		{seen.OkOthersOnly && seen.OkEdited, "«ОК» of one row is unavailable on «Прочие поля» or after the condition was edited"},
 		{seen.ReplaceAsked == "", "the change taking the place of the restriction by «Прочие поля» asked " + seen.ReplaceAsked},
 		{len(seen.Goods) == 1 && strings.Contains(seen.Goods[0], "ГДЕ Д"), fmt.Sprintf("Товары of Кладовщик are restricted by %q, want ГДЕ Д alone in the place of ГДЕ Б", seen.Goods)},
 		{seen.CopyTitle == "Копировать ограничения", "the copy opened " + seen.CopyTitle},
