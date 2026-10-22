@@ -198,6 +198,14 @@ commands:
 """)
 write(src + "/cubes/Продажи/dimension-tables/Склады/commands/ОткрытьСклады/МодульКоманды.bsl", CMD_BSL)
 
+# Регистратор регистров расчёта и бухгалтерии: без него «Сохранить данные»
+# отказывает (`METADATA-OBJECTS.md`), а стенд С5 сохраняет С2 и С3.
+ids["accrual"] = folder("documents", "Начисление", f"""number: {{type: string, length: 11, auto: true, unique: true, periodicity: year}}
+posting: {{allowed: true}}
+movements: [{ids['calc']}, {ids['accreg']}]
+""")
+write("metadata/documents/Начисление/МодульОбъекта.bsl", "")
+
 if level == "c2":
     sys.exit(0)
 
