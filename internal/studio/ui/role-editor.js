@@ -945,6 +945,14 @@ function restrictionWindowContent({fields, editor, change, group}) {
   return content;
 }
 
+/* A restriction without a condition is written by no window of
+   restrictions - the role's, the wizard and the group «Изменить» of «Все
+   ограничения доступа» -, refused with the prototype's text (snapshot
+   okno-roli-pustoe-ogranichenie; ACCESS-RIGHTS, «Пустое ограничение в окне
+   роли»): the prototype's wizard writes one, ML none, as the owner decided
+   on 22.10.2026. Answers the refusal, '' for a condition given. */
+const emptyRestrictionRefusal=condition=>condition.trim()?'':'Нельзя записывать пустое ограничение доступа.';
+
 /* The caption of the restrictions of access to data in both windows of
    rights, the role's and «Все роли», as the prototype's (block-00/rol;
    snapshot configurator-2026-10-20/prava/19). */
@@ -995,7 +1003,7 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
   // collision left is a second one on «Прочие поля».
   const answer=await showDialog({title:`Ограничение доступа · ${caption(right)}`,content,className:'role-restriction-dialog',help:'role-restriction',
     answers:[['ok','ОК',{enabled:()=>!fields||fields.filled()}],[null,'Отмена']],
-    check:()=>model.restrictionClashes(object.id,right,index,{fields:[...chosen]}).length?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':''});
+    check:()=>emptyRestrictionRefusal(condition)||(model.restrictionClashes(object.id,right,index,{fields:[...chosen]}).length?'Ограничение на прочие поля у этого права уже есть: отметьте поля.':'')});
   if(answer!=='ok')return false;
   model.putRestriction(object.id,right,index,{fields:[...chosen],condition});
   return true;

@@ -639,7 +639,8 @@ function createRoleOverview(host, openRole, onChange) {
       .map(choice => choice.keys.get(row.objectID));
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
-      answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']]});
+      answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
+      check: () => change.condition ? emptyRestrictionRefusal(condition) : ''});
     if (answer !== 'ok') return;
     model.editRestrictions(rows, {fields: change.fields ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
     listChanged();
@@ -821,7 +822,7 @@ function createRoleOverview(host, openRole, onChange) {
       ['next', 'Далее >', {act: () => { step = 2; fillSecond(); show(); }, enabled: () => step === 1 && chosenObjects.size > 0, primary: () => step === 1}],
       ['ok', 'ОК', {enabled: () => step === 2 && rights.size > 0 && (!fieldsChosen() || fields.filled()), primary: () => step === 2}],
       [null, 'Отмена']],
-    check: key => key === 'next' && !roles.size ? 'Отметьте роли.' : ''});
+    check: key => key === 'next' && !roles.size ? 'Отметьте роли.' : key === 'ok' ? emptyRestrictionRefusal(condition) : ''});
     if (answer !== 'ok') return;
     // Только отмеченные поля, если отмечено право, ограничиваемое по полям:
     // без него поля ничего не значат.
