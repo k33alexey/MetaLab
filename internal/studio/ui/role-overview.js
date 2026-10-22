@@ -611,7 +611,10 @@ function createRoleOverview(host, openRole, onChange) {
   // было, снятое снимается; объект без полей получает «Прочие поля». «ОК»
   // становится доступной только отметкой поля или правкой условия.
   // Ограничение роли с теми же полями на том же праве правленое заменяет
-  // без вопроса, как у прототипа.
+  // без вопроса, как у прототипа. «ОК» записывает каждую выбранную строку,
+  // поэтому без отмеченного «Изменять ограничение» отказ — и тогда, когда
+  // условия нет у одной из них (такие приходят импортом; владелец
+  // 22.10.2026, ACCESS-RIGHTS «Пустое ограничение в окне роли»).
   async function editRestrictions(rows) {
     const reading = rows.filter(row => restrictsByFields(source.schema, row.operation));
     const change = {fields: false, condition: false}, chosen = new Set(), mixed = new Set(), marked = new Set();
@@ -640,7 +643,7 @@ function createRoleOverview(host, openRole, onChange) {
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
       className: 'role-restriction-dialog', help: 'role-restriction-group',
       answers: [['ok', 'ОК', {enabled: () => (change.fields && marked.size > 0) || (change.condition && edited)}], [null, 'Отмена']],
-      check: () => change.condition ? emptyRestrictionRefusal(condition) : ''});
+      check: () => (change.condition ? [condition] : rows.map(row => row.condition)).map(emptyRestrictionRefusal).find(Boolean) || ''});
     if (answer !== 'ok') return;
     model.editRestrictions(rows, {fields: change.fields ? fieldsOf : undefined, condition: change.condition ? condition : undefined}, false);
     listChanged();
