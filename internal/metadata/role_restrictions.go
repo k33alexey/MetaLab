@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // RightRestriction is a restriction of access to data on one right of an
@@ -183,6 +185,37 @@ func (object ObjectPermission) restrictsData(right PermissionOperation) bool {
 	return slices.ContainsFunc(object.Restrictions, func(restriction RightRestriction) bool {
 		return restriction.Right == right && strings.TrimSpace(restriction.Condition) != ""
 	})
+}
+
+// DropRestrictionFields takes the fields off every restriction of the
+// object, as the prototype does when an attribute is deleted (pass of
+// 22.10.2026, the fourth; ACCESS-RIGHTS.md, «Удаление реквизита, по которому
+// стоит ограничение роли»): a restriction keeps the rest of its fields, and
+// one that named only those goes away - it does not become the restriction
+// of «Прочие поля». Reports whether the role changed.
+func (role *RoleDefinition) DropRestrictionFields(object uuid.UUID, keys []string) bool {
+	changed := false
+	for index := range role.Objects {
+		permission := &role.Objects[index]
+		if permission.Object != object {
+			continue
+		}
+		kept := permission.Restrictions[:0]
+		for _, restriction := range permission.Restrictions {
+			fields := slices.DeleteFunc(slices.Clone(restriction.Fields), func(field string) bool { return slices.Contains(keys, field) })
+			if len(fields) == len(restriction.Fields) {
+				kept = append(kept, restriction)
+				continue
+			}
+			changed = true
+			if len(fields) > 0 {
+				restriction.Fields = fields
+				kept = append(kept, restriction)
+			}
+		}
+		permission.Restrictions = kept
+	}
+	return changed
 }
 
 func cloneRestrictions(restrictions []RightRestriction) []RightRestriction {

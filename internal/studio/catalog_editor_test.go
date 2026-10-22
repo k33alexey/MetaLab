@@ -170,6 +170,91 @@ func TestCatalogAutoGrantsDefaultAccessToRoles(t *testing.T) {
 	}
 }
 
+// TestDeletingAFieldTakesItOffTheRestrictionsOfRoles holds what the
+// prototype does when an attribute a restriction names is deleted (pass of
+// 22.10.2026, the fourth, udalenie-rekvizita-04…07; ACCESS-RIGHTS.md,
+// «Удаление реквизита, по которому стоит ограничение роли»): every role
+// loses the field from its restrictions, a restriction naming only deleted
+// fields goes away, one naming others keeps them and its condition, and the
+// rest stay. A table part deleted with its attributes goes the same way.
+// Defects caught: the deleted field left in the role's file, noted as a
+// field the object has not (2.443); a restriction left with no fields,
+// which is the restriction of «Прочие поля»; another role or another right
+// left as it was.
+func TestDeletingAFieldTakesItOffTheRestrictionsOfRoles(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreateCatalog("Товары")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribute := func(name string) metadata.Attribute {
+		return metadata.Attribute{ID: uuid.MustNew(), Name: name, Title: metadata.LocalizedText{"ru": name},
+			Types: []metadata.Type{{Kind: metadata.StringType, Length: 10}}}
+	}
+	first, second, kept, inPart := attribute("Реквизит1"), attribute("Реквизит2"), attribute("Остаётся"), attribute("Поле")
+	part := metadata.TablePart{ID: uuid.MustNew(), Name: "Состав", Title: metadata.LocalizedText{"ru": "Состав"}, Attributes: []metadata.Attribute{inPart}}
+	full := created.Catalog
+	full.Attributes = []metadata.Attribute{first, second, kept}
+	full.TableParts = []metadata.TablePart{part}
+	saved, err := workspace.SaveCatalogEditor(created.Path, full, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrictions := []metadata.RightRestriction{
+		{Right: metadata.PermissionRead, Fields: []string{first.ID.String()}, Condition: "Ложь"},
+		{Right: metadata.PermissionRead, Fields: []string{"description", second.ID.String()}, Condition: "Истина"},
+		{Right: metadata.PermissionRead, Fields: []string{part.ID.String(), part.ID.String() + ".linenumber", inPart.ID.String()}},
+		{Right: metadata.PermissionRead, Fields: []string{kept.ID.String()}},
+		{Right: metadata.PermissionRead, Condition: "Ложь"},
+		{Right: metadata.PermissionUpdate, Condition: "Ложь"},
+	}
+	var paths []string
+	for _, name := range []string{"Первая", "Вторая"} {
+		role, err := workspace.CreateRole(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role.Role.Objects = []metadata.ObjectPermission{{Object: created.Catalog.ID,
+			Operations:   []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionUpdate},
+			Restrictions: slices.Clone(restrictions)}}
+		if _, err := workspace.SaveRole(role.Path, role.Role, role.Revision); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, role.Path)
+	}
+	smaller := saved.Catalog
+	smaller.Attributes = []metadata.Attribute{kept}
+	smaller.TableParts = nil
+	if _, err := workspace.SaveCatalogEditor(saved.Path, smaller, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	want := []metadata.RightRestriction{
+		{Right: metadata.PermissionRead, Fields: []string{"description"}, Condition: "Истина"},
+		{Right: metadata.PermissionRead, Fields: []string{kept.ID.String()}},
+		{Right: metadata.PermissionRead, Condition: "Ложь"},
+		{Right: metadata.PermissionUpdate, Condition: "Ложь"},
+	}
+	for _, path := range paths {
+		role, err := workspace.ReadRole(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := role.Role.Objects[0].Restrictions; !slices.EqualFunc(got, want, func(a, b metadata.RightRestriction) bool {
+			return a.Right == b.Right && a.Condition == b.Condition && slices.Equal(a.Fields, b.Fields)
+		}) {
+			t.Errorf("%s keeps the restrictions\n%+v, want\n%+v", path, got, want)
+		}
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCatalogEditorRoutesValidateMutations(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)

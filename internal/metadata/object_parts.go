@@ -484,8 +484,12 @@ var kindCompositionOf = map[Kind]kindComposition{
 		definition := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
 		return referenceTable{hierarchy: accountsHierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
 	}),
-	ChartOfCalculationTypesKind: referenceKind(ChartOfCalculationTypesKind, partFolders(AttributesPart, TablePartsPart, StandardAttributesPart,
-		StandardTablePartsPart, CommandsPart)),
+	ChartOfCalculationTypesKind: withQueryTable(referenceKind(ChartOfCalculationTypesKind, partFolders(AttributesPart, TablePartsPart, StandardAttributesPart,
+		StandardTablePartsPart, CommandsPart)), func(c *Catalog, id uuid.UUID) referenceTable {
+		definition := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
+		return referenceTable{codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength,
+			actionPeriod: definition.ActionPeriodUse, base: takesABase(definition)}
+	}),
 	// The addressing attributes of a task are no fields of its own sort:
 	// they stand between its attributes and its table parts.
 	TaskKind: {dataVersion: true, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
@@ -562,58 +566,92 @@ func withQueryTable(composition kindComposition, queryTable func(*Catalog, uuid.
 	return composition
 }
 
-// referenceTable is what the settings of a catalog, a chart of
-// characteristic types or a chart of accounts decide of the table a query
-// reads of it, as the window of a restriction lists its fields (passes of
-// 22.10.2026, block-00/vse-ogranicheniya-dostupa.md, the first and the
-// second; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения»). The help
-// of the tables says the parent is there only in a multi-level object and
-// the owner only in a subordinate catalog (Справочник.<Имя справочника>,
-// ПланВидовХарактеристик.<Имя плана видов характеристик>); the window shows
-// ЭтоГруппа only with a hierarchy of folders and items, as the table keeps
-// the flag of a folder (appendHierarchyColumns), and the code and the
-// description only where they have a length.
+// referenceTable is what the settings of a catalog or one of the three
+// charts decide of the table a query reads of it, as the window of a
+// restriction lists its fields (passes of 22.10.2026,
+// block-00/vse-ogranicheniya-dostupa.md, the first, the second and the
+// fourth; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения»). The help
+// of the tables says the parent is there only in a multi-level object, the
+// owner only in a subordinate catalog, БазовыеВидыРасчета only in a chart of
+// calculation types depending on a base and ВытесняющиеВидыРасчета only in
+// one using the period of action (Справочник.<Имя справочника>,
+// ПланВидовХарактеристик.<Имя плана видов характеристик>, ПланВидовРасчета.
+// <Имя плана видов расчета>); the window shows ЭтоГруппа only with a
+// hierarchy of folders and items, as the table keeps the flag of a folder
+// (appendHierarchyColumns), the code and the description only where they
+// have a length, and ПериодДействияБазовый only with the period of action
+// (pola-23, pola-24).
 type referenceTable struct {
 	hierarchy Hierarchy
 	// owned is a catalog subordinate to others.
 	owned                         bool
 	codeLength, descriptionLength int
+	// actionPeriod and base are a chart of calculation types using the
+	// period of action and depending on a base; no other kind has the
+	// fields they keep.
+	actionPeriod, base bool
 }
 
 // referenceTableOrder is the window's order of the standard fields of the
-// three kinds: the reference, the version of the data, the mark of
+// four kinds: the reference, the version of the data, the mark of
 // deletion, the owner, the parent, ЭтоГруппа, the code, the description,
-// Порядок, Вид and Забалансовый of a chart of accounts, then the rest in
-// the order the object keeps them - ТипЗначения of a chart of
-// characteristic types, the last of its standard attributes, before what
-// the object declares with the table parts, standard ones among them -, and
-// last the predefined and its name.
+// Порядок, Вид and Забалансовый of a chart of accounts, ПериодДействияБазовый
+// and the three lists of a chart of calculation types, then the rest in the
+// order the object keeps them - ТипЗначения of a chart of characteristic
+// types, the last of its standard attributes, before what the object
+// declares with the table parts, ВидыСубконто of a chart of accounts after
+// them -, and last the predefined and its name. A field of a standard table
+// part stands where its part does.
 var referenceTableOrder = map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "owner": 3, "parent": 4, "isfolder": 5,
-	"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "predefined": 12, "predefineddataname": 13}
+	"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "actionperiodisbasic": 11,
+	"basecalculationtypes": 12, "leadingcalculationtypes": 13, "displacingcalculationtypes": 14,
+	"predefined": 16, "predefineddataname": 17}
 
 // declaredOrder is the place of every field referenceTableOrder does not
 // name.
-const declaredOrder = 11
+const declaredOrder = 15
+
+// standardPartFieldsOrder is the window's order of the fields of a standard
+// table part: the line number, the kind of ext dimension or of calculation,
+// the predefined flag, ТолькоОбороты, then the accounting flags of the ext
+// dimensions (pass of 22.10.2026, the fourth, pola-16, pola-20) - not the
+// order the prototype describes them in, which standardTablePartsOfKind
+// keeps.
+var standardPartFieldsOrder = map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "predefined": 2,
+	"turnoversonly": 3}
 
 // fieldsOf is the fields of the table, of all the object keeps, in the
 // window's order. The accounting flags of the ext dimensions are fields of
 // the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
 // счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and the
-// window shows them there, not among the account's own (snapshot pola-12).
+// window shows them there, after its own, not among the account's
+// (snapshot pola-12).
 func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
 	absent := map[string]bool{
 		"parent": !table.hierarchy.Enabled, "isfolder": !table.hierarchy.Enabled || table.hierarchy.Kind != FoldersAndItemsHierarchy,
 		"owner": !table.owned, "code": table.codeLength == 0, "description": table.descriptionLength == 0,
+		"actionperiodisbasic": !table.actionPeriod, "displacingcalculationtypes": !table.actionPeriod,
+		"basecalculationtypes": !table.base,
 	}
-	standard := func(field objectPart) bool { return field.group == StandardAttributesPart && field.parent == "" }
+	// A standard field or part is ranked by its key, a field of a standard
+	// part by its part's; what the object declares is keyed by identifiers
+	// and ranked as declared.
+	standard := func(field objectPart) bool {
+		return field.group == StandardAttributesPart || field.group == StandardTablePartsPart
+	}
+	keyOf := func(field objectPart) string {
+		if field.parent != "" {
+			return field.parent
+		}
+		return field.key
+	}
 	rankOf := func(field objectPart) int {
-		if order, ok := referenceTableOrder[field.key]; ok && standard(field) {
+		if order, ok := referenceTableOrder[keyOf(field)]; ok && standard(field) {
 			return order
 		}
 		return declaredOrder
 	}
-	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && absent[field.key] })
-	slices.SortStableFunc(result, func(a, b objectPart) int { return rankOf(a) - rankOf(b) })
+	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && absent[keyOf(field)] })
 	extDimensions := strings.ToLower(extDimensionTypesPart.en)
 	var flags []objectPart
 	result = slices.DeleteFunc(result, func(field objectPart) bool {
@@ -624,14 +662,24 @@ func (table referenceTable) fieldsOf(fields []objectPart) []objectPart {
 		flags = append(flags, field)
 		return true
 	})
-	if len(flags) == 0 {
-		return result
+	slices.SortStableFunc(result, func(a, b objectPart) int { return rankOf(a) - rankOf(b) })
+	for part := range result {
+		if result[part].group != StandardTablePartsPart {
+			continue
+		}
+		key := result[part].key
+		last := part
+		for last+1 < len(result) && result[last+1].parent == key {
+			last++
+		}
+		slices.SortStableFunc(result[part+1:last+1], func(a, b objectPart) int {
+			return standardPartFieldsOrder[strings.TrimPrefix(a.key, key+".")] - standardPartFieldsOrder[strings.TrimPrefix(b.key, key+".")]
+		})
+		if key == extDimensions {
+			result = slices.Insert(result, last+1, flags...)
+		}
 	}
-	last := slices.IndexFunc(result, func(field objectPart) bool { return field.key == extDimensions })
-	for index := last + 1; index < len(result) && result[index].parent == extDimensions; index++ {
-		last = index
-	}
-	return slices.Insert(result, last+1, flags...)
+	return result
 }
 
 // fieldPart is a field of an object or of its table part.
@@ -773,14 +821,23 @@ func (catalog *Catalog) absentRestrictionFieldsOf(kind Kind, id uuid.UUID) []obj
 func (catalog *Catalog) objectFieldsOf(kind Kind, id uuid.UUID) []objectPart {
 	parts, _ := catalog.partsOf(kind, id)
 	language := catalog.Project.DefaultLanguage
-	standard := func(field standardField, key, parent string) objectPart {
-		return objectPart{key: key, name: field.ru, english: field.en, title: LocalizedText{language: nameInWords(field.ru)},
-			group: StandardAttributesPart, parent: parent}
-	}
 	var fields []objectPart
 	if kindCompositionOf[kind].dataVersion {
-		fields = append(fields, standard(dataVersionField, strings.ToLower(dataVersionField.en), ""))
+		fields = append(fields, standardFieldPart(dataVersionField, strings.ToLower(dataVersionField.en), "", language))
 	}
+	return append(fields, valueFields(parts, language)...)
+}
+
+// standardFieldPart is a field the platform gives, under its key.
+func standardFieldPart(field standardField, key, parent, language string) objectPart {
+	return objectPart{key: key, name: field.ru, english: field.en, title: LocalizedText{language: nameInWords(field.ru)},
+		group: StandardAttributesPart, parent: parent}
+}
+
+// valueFields is the parts that keep a value, each table part followed by
+// its line number.
+func valueFields(parts []objectPart, language string) []objectPart {
+	var fields []objectPart
 	for _, part := range parts {
 		switch part.group {
 		case CommandsPart, OperationsPart, URLTemplatesPart, MethodsPart:
@@ -789,11 +846,22 @@ func (catalog *Catalog) objectFieldsOf(kind Kind, id uuid.UUID) []objectPart {
 		fields = append(fields, part)
 		if part.group == TablePartsPart {
 			for _, field := range tablePartStandardFields {
-				fields = append(fields, standard(field, part.key+"."+strings.ToLower(field.en), part.key))
+				fields = append(fields, standardFieldPart(field, part.key+"."+strings.ToLower(field.en), part.key, language))
 			}
 		}
 	}
 	return fields
+}
+
+// DeclaredFieldKeys is the keys a restriction of a role names the fields an
+// object declares by (RightRestriction.Fields): its attributes, its table
+// parts, their attributes and line numbers.
+func DeclaredFieldKeys(attributes []Attribute, tableParts []TablePart) []string {
+	var keys []string
+	for _, field := range valueFields(declaredParts(attributes, tableParts, nil), "") {
+		keys = append(keys, field.key)
+	}
+	return keys
 }
 
 // branchesOf is the sorts of part an object of the kind shows a branch of

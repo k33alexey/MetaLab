@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -104,57 +105,53 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
 	}
-	newFieldIDs := newCatalogFieldIDs(opened.Catalog, value)
+	added, removed := declaredFieldChanges(opened.Catalog, value)
 	saved, err := workspace.saveSourceLocked(relative, encoded.String(), revision)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	if len(newFieldIDs) > 0 {
+	if len(added) > 0 || len(removed) > 0 {
 		if err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+			// A deleted field leaves the restrictions of every role, as the
+			// prototype takes it off them (ACCESS-RIGHTS.md, «Удаление
+			// реквизита, по которому стоит ограничение роли»).
+			changed := role.DropRestrictionFields(value.ID, removed)
 			if !role.GrantNewFieldsByDefault {
-				return false
+				return changed
 			}
-			changed := false
-			for _, fieldID := range newFieldIDs {
-				if role.GrantFieldReadByDefault(value.ID, fieldID.String()) {
+			for _, key := range added {
+				// A line number is not a part a right is given to.
+				if _, err := uuid.Parse(key); err == nil && role.GrantFieldReadByDefault(value.ID, key) {
 					changed = true
 				}
 			}
 			return changed
 		}); err != nil {
-			return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog fields: %w", err)
+			return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
 		}
 	}
 	opened.Catalog, opened.Revision = value, saved.Revision
 	return opened, nil
 }
 
-// newCatalogFieldIDs collects the IDs of attributes and table parts (whole
-// table parts, and their own nested attributes) present in after but not in
-// before - a table part added earlier that only gained a new nested
-// attribute counts too, since that attribute alone is separately grantable.
-func newCatalogFieldIDs(before, after metadata.CatalogDefinition) []uuid.UUID {
-	collect := func(value metadata.CatalogDefinition) map[uuid.UUID]bool {
-		ids := make(map[uuid.UUID]bool)
-		for _, attribute := range value.Attributes {
-			ids[attribute.ID] = true
-		}
-		for _, part := range value.TableParts {
-			ids[part.ID] = true
-			for _, attribute := range part.Attributes {
-				ids[attribute.ID] = true
-			}
-		}
-		return ids
-	}
-	existing := collect(before)
-	var result []uuid.UUID
-	for id := range collect(after) {
-		if !existing[id] {
-			result = append(result, id)
+// declaredFieldChanges is the keys of the fields the catalog declares after
+// the edit and not before - an attribute added to a table part added earlier
+// counts too, since that attribute alone is separately grantable - and the
+// keys of those it declared before and not after.
+func declaredFieldChanges(before, after metadata.CatalogDefinition) (added, removed []string) {
+	was := metadata.DeclaredFieldKeys(before.Attributes, before.TableParts)
+	is := metadata.DeclaredFieldKeys(after.Attributes, after.TableParts)
+	for _, key := range is {
+		if !slices.Contains(was, key) {
+			added = append(added, key)
 		}
 	}
-	return result
+	for _, key := range was {
+		if !slices.Contains(is, key) {
+			removed = append(removed, key)
+		}
+	}
+	return added, removed
 }
 
 func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinition) error {

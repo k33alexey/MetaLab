@@ -145,7 +145,16 @@ func TestThePartsOfAKindNoExportGivesRightsOnAreOfferedAsTheWindowShows(t *testi
 // items, Наименование of length 0 (2.440); a chart of characteristic types
 // and a chart of accounts offering every standard field in the order of the
 // standard attributes, the flags of the ext dimensions among the account's
-// own (2.440). ЭтотОбъект keeps every field: the help of СправочникОбъект
+// own (2.440); the fields of ВидыСубконто in the order the prototype
+// describes them and its predefined one named Предопределенный (2.443; the
+// fourth pass, pola-16, pola-17: НомерСтроки first, then the fields of the
+// line as the window lists them), and so on a chart with no accounting flags
+// of the ext dimensions (2.445 sorted only where there were flags); a chart
+// of calculation types offering every standard field and part whatever its
+// settings, in the order of the standard attributes, the lists after the
+// attributes (2.444; the fourth pass, pola-19…24: ПериодДействияБазовый and
+// ВытесняющиеВидыРасчета only with the period of action, БазовыеВидыРасчета
+// only with a base, Код only with a length). ЭтотОбъект keeps every field: the help of СправочникОбъект
 // makes none of them hang on the catalog.
 func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 	t.Parallel()
@@ -153,9 +162,12 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 	attribute := func(name string) string {
 		return "  - {id: " + uuid.MustNew().String() + ", name: " + name + ", title: {ru: " + name + "}, types: [{kind: string, length: 10}]}\n"
 	}
-	tablePart := func(name, field string) string {
-		return "table_parts:\n  - id: " + uuid.MustNew().String() + "\n    name: " + name + "\n    title: {ru: " + name + "}\n    attributes:\n  " +
-			attribute(field)
+	tablePart := func(name string, fields ...string) string {
+		result := "table_parts:\n  - id: " + uuid.MustNew().String() + "\n    name: " + name + "\n    title: {ru: " + name + "}\n    attributes:\n"
+		for _, field := range fields {
+			result += "  " + attribute(field)
+		}
+		return result
 	}
 	type object struct {
 		kind Kind
@@ -198,8 +210,8 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 		"attributes:\n"+attribute("Тип"),
 		list("Код", "Наименование", "ТипЗначения", "Тип")...)
 	write(ChartOfCharacteristicTypesKind, "СтатьиДоходов", "code: {type: string, length: 9}\ndescription_length: 50\n"+valueType+
-		"hierarchy: {enabled: true, kind: folders-and-items}\nattributes:\n"+attribute("Статья")+tablePart("Счета", "Счет"),
-		list("Родитель", "ЭтоГруппа", "Код", "Наименование", "ТипЗначения", "Статья", "Счета", "НомерСтроки", "Счет")...)
+		"hierarchy: {enabled: true, kind: folders-and-items}\nattributes:\n"+attribute("Статья")+tablePart("Счета", "Счет", "Аналитика"),
+		list("Родитель", "ЭтоГруппа", "Код", "Наименование", "ТипЗначения", "Статья", "Счета", "НомерСтроки", "Счет", "Аналитика")...)
 	extDimensionKinds := write(ChartOfCharacteristicTypesKind, "ВидыСубконтоХозрасчетные", "code: {type: string, length: 9}\ndescription_length: 50\n"+valueType,
 		list("Код", "Наименование", "ТипЗначения")...)
 	write(ChartOfAccountsKind, "Хозрасчетный", "code: {type: string, length: 9}\ndescription_length: 120\nmax_ext_dimension_count: 3\n"+
@@ -207,24 +219,29 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 		"accounting_flags:\n  - {id: "+uuid.MustNew().String()+", name: Валютный, title: {ru: Валютный}}\n"+
 		"ext_dimension_accounting_flags:\n  - {id: "+uuid.MustNew().String()+", name: Суммовой, title: {ru: Суммовой}}\n",
 		list("Родитель", "Код", "Наименование", "Порядок", "Вид", "Забалансовый", "КодБыстрогоВыбора", "Валютный",
-			"ВидыСубконто", "ВидСубконто", "НомерСтроки", "Предопределенный", "Суммовой", "ТолькоОбороты")...)
+			"ВидыСубконто", "НомерСтроки", "ВидСубконто", "Предопределенное", "ТолькоОбороты", "Суммовой")...)
+	write(ChartOfAccountsKind, "Международный", "code: {type: string, length: 9}\ndescription_length: 120\nmax_ext_dimension_count: 3\n"+
+		"ext_dimension_types: "+extDimensionKinds.String()+"\n",
+		list("Родитель", "Код", "Наименование", "Порядок", "Вид", "Забалансовый",
+			"ВидыСубконто", "НомерСтроки", "ВидСубконто", "Предопределенное", "ТолькоОбороты")...)
+	competition := func(part string) []string {
+		return []string{part, "НомерСтроки", "ВидРасчета", "Предопределенный"}
+	}
+	write(ChartOfCalculationTypesKind, "Начисления", "code: {type: string, length: 5}\ndescription_length: 100\n"+
+		"action_period_use: true\nbase_dependency: by-action-period\nattributes:\n"+attribute("Категория")+tablePart("Показатели", "Показатель", "Значение"),
+		list(slices.Concat([]string{"Код", "Наименование", "ПериодДействияБазовый"}, competition("БазовыеВидыРасчета"),
+			competition("ВедущиеВидыРасчета"), competition("ВытесняющиеВидыРасчета"),
+			[]string{"Категория", "Показатели", "НомерСтроки", "Показатель", "Значение"})...)...)
+	write(ChartOfCalculationTypesKind, "Удержания", "code: {type: string, length: 0}\ndescription_length: 100\n"+
+		"attributes:\n"+attribute("Категория"),
+		list(slices.Concat([]string{"Наименование"}, competition("ВедущиеВидыРасчета"), []string{"Категория"})...)...)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The fields of a table part stand under it, in an order the passes did
-	// not look at: they are named after it, sorted.
 	names := func(kind Kind, id uuid.UUID) []string {
-		var result, inside []string
+		var result []string
 		for _, field := range catalog.restrictionFieldsOf(kind, id) {
-			if field.parent != "" {
-				inside = append(inside, field.name)
-				continue
-			}
-			if len(inside) > 0 {
-				slices.Sort(inside)
-				result, inside = append(result, inside...), nil
-			}
 			result = append(result, field.name)
 		}
 		return result

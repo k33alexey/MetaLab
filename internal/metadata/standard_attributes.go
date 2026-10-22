@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -265,13 +266,21 @@ type standardTablePart struct {
 	ru     string
 	en     string
 	fields []standardField
+	// formerly is a Russian name ML once gave a field of the line, folded,
+	// with the name the field has now: a description written by it still
+	// describes that field.
+	formerly map[string]string
 }
 
 var (
+	// The field of a predefined kind of analytics is Предопределенное: so
+	// the window of a restriction, the help of the table ПланСчетов.<Имя> and
+	// the property of ПланСчетовВидыСубконтоСтрока name it (pass of
+	// 22.10.2026, the fourth, pola-16). ML called it Предопределенный before.
 	extDimensionTypesPart = standardTablePart{"ВидыСубконто", "ExtDimensionTypes", []standardField{
-		{"ТолькоОбороты", "TurnoversOnly"}, {"Предопределенный", "Predefined"},
+		{"ТолькоОбороты", "TurnoversOnly"}, {"Предопределенное", "Predefined"},
 		{"ВидСубконто", "ExtDimensionType"}, {"НомерСтроки", "LineNumber"},
-	}}
+	}, map[string]string{"предопределенный": "Предопределенное"}}
 	competitionPartFields = []standardField{
 		{"Предопределенный", "Predefined"}, {"ВидРасчета", "CalculationType"},
 		{"НомерСтроки", "LineNumber"},
@@ -288,9 +297,9 @@ func standardTablePartsOfKind(kind Kind) []standardTablePart {
 		return []standardTablePart{extDimensionTypesPart}
 	case ChartOfCalculationTypesKind:
 		return []standardTablePart{
-			{"ВедущиеВидыРасчета", "LeadingCalculationTypes", competitionPartFields},
-			{"ВытесняющиеВидыРасчета", "DisplacingCalculationTypes", competitionPartFields},
-			{"БазовыеВидыРасчета", "BaseCalculationTypes", competitionPartFields},
+			{"ВедущиеВидыРасчета", "LeadingCalculationTypes", competitionPartFields, nil},
+			{"ВытесняющиеВидыРасчета", "DisplacingCalculationTypes", competitionPartFields, nil},
+			{"БазовыеВидыРасчета", "BaseCalculationTypes", competitionPartFields, nil},
 		}
 	}
 	return nil
@@ -341,9 +350,23 @@ func validateStandardTableParts(path string, parts []StandardTablePart, known []
 		if !validFillCheck(part.FillChecking) {
 			issues = append(issues, prefix+".fill_checking must be dont-check or show-error")
 		}
-		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, match.fields, configuration)...)
+		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", match.currentNames(part.StandardAttributes), match.fields, configuration)...)
 	}
 	return issues
+}
+
+// currentNames is the descriptions of the fields of the part's line, each
+// under the name its field has now: one written by a former name
+// (standardTablePart.formerly) describes the field it named, and twice with
+// the current one.
+func (part standardTablePart) currentNames(attributes []StandardAttribute) []StandardAttribute {
+	result := slices.Clone(attributes)
+	for index, attribute := range result {
+		if current, ok := part.formerly[foldStandardName(attribute.Name)]; ok {
+			result[index].Name = current
+		}
+	}
+	return result
 }
 
 func cloneStandardTableParts(parts []StandardTablePart) []StandardTablePart {

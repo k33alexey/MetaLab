@@ -439,6 +439,71 @@ standard_table_parts:
 	}
 }
 
+// The predefined kind of analytics is Предопределенное, as the window of a
+// restriction, the help of the table of a chart of accounts and the property
+// of its line name it (pass of 22.10.2026, the fourth, pola-16); ML named it
+// Предопределенный until 2.445, and a description written by that name
+// still describes the field - once: the two names are one field. Defects
+// caught: the field kept under the name of the object's own predefined
+// flag; a project written before the rename refused; the field described
+// under both names twice without a word.
+func TestThePredefinedKindOfAnalyticsIsPredefinedInTheNeuter(t *testing.T) {
+	t.Parallel()
+	load := func(names ...string) error {
+		root := metadataProject(t)
+		writeMetadata(t, root, ChartOfCharacteristicTypesKind, characteristicsID, accountsChartYAML)
+		described := ""
+		for _, name := range names {
+			described += "      - {name: " + name + ", title: {ru: Свой}}\n"
+		}
+		writeMetadata(t, root, ChartOfAccountsKind, accountsID, `format: 1
+id: `+accountsID+`
+name: Основной
+title: {ru: Основной}
+code: {type: string, length: 5, auto: false}
+description_length: 120
+ext_dimension_types: `+characteristicsID+`
+max_ext_dimension_count: 3
+standard_table_parts:
+  - name: ВидыСубконто
+    standard_attributes:
+`+described)
+		_, err := Load(root)
+		return err
+	}
+	for _, name := range []string{"Предопределенное", "Предопределённое", "Predefined", "Предопределенный"} {
+		if err := load(name); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := load("Предопределенный", "Предопределенное"); err == nil || !strings.Contains(err.Error(), "describes Предопределенное a second time") {
+		t.Errorf("both names: %v", err)
+	}
+	if err := load("ПредопределенныйВид"); err == nil {
+		t.Error("a field the line has not was accepted")
+	}
+	catalog, err := Load(func() string {
+		root := metadataProject(t)
+		writeMetadata(t, root, ChartOfCharacteristicTypesKind, characteristicsID, accountsChartYAML)
+		writeMetadata(t, root, ChartOfAccountsKind, accountsID, "format: 1\nid: "+accountsID+"\nname: Основной\ntitle: {ru: Основной}\n"+
+			"code: {type: string, length: 5, auto: false}\ndescription_length: 120\next_dimension_types: "+characteristicsID+"\nmax_ext_dimension_count: 3\n")
+		return root
+	}())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart, _ := catalog.ChartOfAccounts("Основной")
+	var names []string
+	for _, field := range catalog.restrictionFieldsOf(ChartOfAccountsKind, chart.ID) {
+		if field.parent == "extdimensiontypes" {
+			names = append(names, field.name)
+		}
+	}
+	if !slices.Contains(names, "Предопределенное") || slices.Contains(names, "Предопределенный") {
+		t.Errorf("the fields of ВидыСубконто are %v", names)
+	}
+}
+
 // The three lists of competition are the chart of calculation types' own
 // standard parts, and the field inside them is the calculation type they name -
 // not, say, the kind of analytics, which belongs to another chart entirely.
