@@ -98,7 +98,7 @@ type PermissionObject struct {
 	// table part too, which have no rights of their own.
 	RestrictionFields []PermissionField `json:"restrictionFields"`
 	// RoleWindowFields are the same fields in the order «Список полей» of
-	// the window of a role lists them (roleWindow), not the wizard's.
+	// the window of a role lists them (roleOrder), not the wizard's.
 	RoleWindowFields []PermissionField `json:"roleWindowFields"`
 	// AbsentFields are the fields the object's settings take away from the
 	// table now (absentRestrictionFieldsOf): a restriction naming one is
@@ -200,7 +200,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			for _, field := range catalog.restrictionFieldsOf(kind, id) {
 				object.RestrictionFields = append(object.RestrictionFields, restrictionField(field))
 			}
-			for _, field := range catalog.restrictionFieldsIn(kind, id, roleWindow) {
+			for _, field := range catalog.restrictionFieldsIn(kind, id, roleOrder) {
 				object.RoleWindowFields = append(object.RoleWindowFields, restrictionField(field))
 			}
 			for _, field := range catalog.absentRestrictionFieldsOf(kind, id) {

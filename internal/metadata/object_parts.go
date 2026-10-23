@@ -182,11 +182,15 @@ type kindComposition struct {
 	// such folder, or whose files are checked by code of their own.
 	files func(catalog *Catalog, id uuid.UUID) objectFiles
 	// queryTable is what an object of the kind decides of the table a query
-	// reads of it, where its settings decide which of the fields it keeps
-	// (objectFieldsOf) the table has and the window of a restriction lists
-	// them in an order of its own (referenceTable); nil is a kind whose
-	// table holds every field of its objects.
-	queryTable func(catalog *Catalog, id uuid.UUID) referenceTable
+	// reads of it, as a restriction of access names its fields: which of the
+	// fields it keeps (objectFieldsOf) the table has by its settings, and
+	// what else it has (restrictionTable); nil is a kind whose table holds
+	// every field of its objects.
+	queryTable func(catalog *Catalog, id uuid.UUID) restrictionTable
+	// windows are the orders the wizard of «Все ограничения доступа» and the
+	// window of a role list the fields of the table in; the zero value lists
+	// them in the order the object keeps them.
+	windows restrictionWindows
 	// rightsFolders are the folders the tree of rights of the window of a
 	// role shows under an object of the kind, in its order, every one even
 	// when empty (pass of 20.10.2026, block-00/rol, «Папки частей»): its own
@@ -470,29 +474,29 @@ var kindCompositionOf = map[Kind]kindComposition{
 		return c.DefinedTypes[c.definedTypeByID[id]].Types
 	}},
 	LanguageKind: {},
-	CatalogKind: withQueryTable(referenceKind(CatalogKind, referenceFolders), func(c *Catalog, id uuid.UUID) referenceTable {
+	CatalogKind: withQueryTable(referenceKind(CatalogKind, referenceFolders), referenceWindows, func(c *Catalog, id uuid.UUID) restrictionTable {
 		definition := c.Catalogs[c.catalogByID[id]]
 		return referenceTable{hierarchy: definition.Hierarchy, owned: len(definition.Owners) > 0,
-			codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+			codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}.table()
 	}),
-	ChartOfCharacteristicTypesKind: withQueryTable(referenceKind(ChartOfCharacteristicTypesKind, referenceFolders), func(c *Catalog, id uuid.UUID) referenceTable {
+	ChartOfCharacteristicTypesKind: withQueryTable(referenceKind(ChartOfCharacteristicTypesKind, referenceFolders), referenceWindows, func(c *Catalog, id uuid.UUID) restrictionTable {
 		definition := c.ChartsOfCharacteristicTypes[c.chartOfCharacteristicTypesByID[id]]
-		return referenceTable{hierarchy: definition.Hierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+		return referenceTable{hierarchy: definition.Hierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}.table()
 	}),
 	ChartOfAccountsKind: withQueryTable(referenceKind(ChartOfAccountsKind, partFolders(AttributesPart, AccountingFlagsPart, ExtDimensionAccountingFlagsPart,
-		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)), func(c *Catalog, id uuid.UUID) referenceTable {
+		TablePartsPart, StandardAttributesPart, StandardTablePartsPart, CommandsPart)), referenceWindows, func(c *Catalog, id uuid.UUID) restrictionTable {
 		definition := c.ChartsOfAccounts[c.chartOfAccountsByID[id]]
-		return referenceTable{hierarchy: accountsHierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}
+		return referenceTable{hierarchy: accountsHierarchy, codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength}.table()
 	}),
 	ChartOfCalculationTypesKind: withQueryTable(referenceKind(ChartOfCalculationTypesKind, partFolders(AttributesPart, TablePartsPart, StandardAttributesPart,
-		StandardTablePartsPart, CommandsPart)), func(c *Catalog, id uuid.UUID) referenceTable {
+		StandardTablePartsPart, CommandsPart)), referenceWindows, func(c *Catalog, id uuid.UUID) restrictionTable {
 		definition := c.ChartsOfCalculationTypes[c.chartOfCalculationTypesByID[id]]
 		return referenceTable{codeLength: definition.Code.Length, descriptionLength: definition.DescriptionLength,
-			actionPeriod: definition.ActionPeriodUse, base: takesABase(definition)}
+			actionPeriod: definition.ActionPeriodUse, base: takesABase(definition)}.table()
 	}),
 	// The addressing attributes of a task are no fields of its own sort:
 	// they stand between its attributes and its table parts.
-	TaskKind: {dataVersion: true, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
+	TaskKind: {dataVersion: true, windows: taskWindows, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
 		rightsFolders: partFolders(AddressingAttributesPart, AttributesPart, TablePartsPart, StandardAttributesPart, CommandsPart), parts: func(c *Catalog, id uuid.UUID) []objectPart {
 			item := c.Tasks[c.taskByID[id]]
 			parts := declaredParts(item.Attributes, nil, nil)
@@ -501,11 +505,11 @@ var kindCompositionOf = map[Kind]kindComposition{
 			}
 			return append(parts, declaredParts(nil, item.TableParts, item.Commands)...)
 		}, files: declaredFilesOf},
-	AccountingRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders},
+	AccountingRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders, queryTable: noFieldTable},
 	// The recalculations stand after the branches of parts, each with its
 	// dimensions right under it, and the branch stands even when there are
 	// none (snapshots derevo/05, 05b).
-	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: []rightsFolder{{group: DimensionsPart},
+	CalculationRegisterKind: {dataVersion: true, described: true, files: declaredFilesOf, queryTable: noFieldTable, rightsFolders: []rightsFolder{{group: DimensionsPart},
 		{group: ResourcesPart}, {group: AttributesPart}, {group: StandardAttributesPart}, {kind: RecalculationKind}, {group: CommandsPart}},
 		held: []heldList{objectsHeld("recalculations", RecalculationKind, func(c *Catalog, id uuid.UUID) []heldIdentity {
 			return identitiesOf("", c.CalculationRegisters[c.calculationRegisterByID[id]].Recalculations)
@@ -528,11 +532,18 @@ var kindCompositionOf = map[Kind]kindComposition{
 	SequenceKind: {identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("dimension", c.Sequences[c.sequenceByID[id]].Dimensions)
 	}, files: declaredFilesOf},
-	DocumentJournalKind: {described: true, held: []heldList{{key: "columns", title: "Графы", icon: "journal-column", items: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	// The table of a journal has its columns and no Тип (pola-36, pola-50).
+	DocumentJournalKind: withQueryTable(kindComposition{described: true, held: []heldList{{key: "columns", title: "Графы", icon: "journal-column", items: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("column", c.DocumentJournals[c.documentJournalByID[id]].Columns)
-	}}}, files: declaredFilesOf, rightsFolders: partFolders(StandardAttributesPart, CommandsPart)},
-	ExchangePlanKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: referenceFolders},
-	BusinessProcessKind: {dataVersion: true, described: true, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	}}}, files: declaredFilesOf, rightsFolders: partFolders(StandardAttributesPart, CommandsPart)}, journalWindows, func(c *Catalog, id uuid.UUID) restrictionTable {
+		table := restrictionTable{absent: map[string]bool{"type": true}}
+		for _, column := range c.DocumentJournals[c.documentJournalByID[id]].Columns {
+			table.columns = append(table.columns, objectPart{key: column.ID.String(), name: column.Name, title: column.Title, group: FieldsPart})
+		}
+		return table
+	}),
+	ExchangePlanKind: {dataVersion: true, described: true, windows: exchangePlanWindows, files: declaredFilesOf, rightsFolders: referenceFolders},
+	BusinessProcessKind: {dataVersion: true, described: true, windows: businessProcessWindows, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
 	}, rightsFolders: referenceFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		// The route map keeps the pictures its items draw in a folder of
@@ -542,11 +553,23 @@ var kindCompositionOf = map[Kind]kindComposition{
 		files.route = &c.BusinessProcesses[c.businessProcessByID[id]].Route
 		return files
 	}},
-	DocumentKind: {dataVersion: true, described: true, files: declaredFilesOf, rightsFolders: referenceFolders},
+	DocumentKind: {dataVersion: true, described: true, windows: documentWindows, files: declaredFilesOf, rightsFolders: referenceFolders},
+	// The table of a register of information has the period where the
+	// register is periodic, the recorder where it is subordinate to one, and
+	// neither the line number nor the activity (pola-42…44, pola-57).
 	InformationRegisterKind: {described: true, files: declaredFilesOf,
-		rightsFolders: partFolders(DimensionsPart, ResourcesPart, StandardAttributesPart, AttributesPart, CommandsPart)},
-	AccumulationRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders},
+		rightsFolders: partFolders(DimensionsPart, ResourcesPart, StandardAttributesPart, AttributesPart, CommandsPart),
+		queryTable: func(c *Catalog, id uuid.UUID) restrictionTable {
+			definition := c.InformationRegisters[c.informationRegisterByID[id]]
+			return restrictionTable{absent: map[string]bool{"period": definition.Periodicity == InformationRegisterPeriodNone,
+				"recorder": definition.WriteMode != InformationRegisterRecorder, "linenumber": true, "active": true}}
+		}},
+	AccumulationRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders, queryTable: noFieldTable},
 }
+
+// noFieldTable is the table of a register a restriction names no field of
+// (restrictionTable.none).
+func noFieldTable(*Catalog, uuid.UUID) restrictionTable { return restrictionTable{none: true} }
 
 // referenceKind is the composition of a kind of reference with predefined
 // items - a catalog, the three charts: its parts read off its description,
@@ -559,15 +582,34 @@ func referenceKind(kind Kind, folders []rightsFolder) kindComposition {
 	}, files: declaredFilesOf}
 }
 
-// withQueryTable gives a composition what its objects decide of the table a
-// query reads of them.
-func withQueryTable(composition kindComposition, queryTable func(*Catalog, uuid.UUID) referenceTable) kindComposition {
+// withQueryTable gives a composition the orders the two windows list the
+// fields of a restriction in and what its objects decide of the table a
+// query reads of them; nil where they decide nothing.
+func withQueryTable(composition kindComposition, windows restrictionWindows, queryTable func(*Catalog, uuid.UUID) restrictionTable) kindComposition {
+	composition.windows = windows
 	composition.queryTable = queryTable
 	return composition
 }
 
+// restrictionTable is what the settings of an object decide of the table a
+// query reads of it, as a restriction of access names its fields.
+type restrictionTable struct {
+	// absent are the standard fields and parts the object keeps and the
+	// table has not, by their keys.
+	absent map[string]bool
+	// none is a table a restriction names no field of: the registers of
+	// accumulation, accounting and calculation (pass of 22.10.2026,
+	// pola-45…47: the wizard lists no field and «Прочие поля» stand marked
+	// and unavailable; of 577 restrictions of theirs in the exports none
+	// names a field).
+	none bool
+	// columns are the fields of the table that are no parts of the object:
+	// the columns of a journal (pola-36, pola-50).
+	columns []objectPart
+}
+
 // referenceTable is what the settings of a catalog or one of the three
-// charts decide of the table a query reads of it, as the window of a
+// charts decide of the table a query reads of it (table), as the window of a
 // restriction lists its fields (passes of 22.10.2026,
 // block-00/vse-ogranicheniya-dostupa.md, the first, the second and the
 // fourth; ACCESS-RIGHTS.md, «Состав и порядок полей ограничения»). The help
@@ -592,6 +634,55 @@ type referenceTable struct {
 	actionPeriod, base bool
 }
 
+// restrictionWindows are the orders the wizard of «Все ограничения доступа»
+// and «Список полей» of the window of a role list the fields of a
+// restriction of an object of a kind in: the two differ, kind by kind (pass
+// of 22.10.2026, the seventh, pola-33…56; ACCESS-RIGHTS.md, «Поля
+// ограничения прочих видов»).
+type restrictionWindows struct{ wizard, role restrictionWindow }
+
+// wizardOrder and roleOrder pick one of the two windows.
+func wizardOrder(windows restrictionWindows) restrictionWindow { return windows.wizard }
+func roleOrder(windows restrictionWindows) restrictionWindow   { return windows.role }
+
+// orderedWindow lists the standard fields of the keys in their order, then
+// what the object declares in the order it keeps it.
+func orderedWindow(keys ...string) restrictionWindow {
+	standard := make(map[string]int, len(keys))
+	for index, key := range keys {
+		standard[key] = index
+	}
+	return restrictionWindow{standard: standard, declared: len(keys)}
+}
+
+// The orders of the kinds the wizard offers beside the catalog and the three
+// charts (the seventh pass, pola-33…56): a document, a journal, a business
+// process, a task, an exchange plan. A register of information lists its
+// fields in the order it keeps them in both - the period, the recorder, then
+// its own (pola-42…44, pola-51, pola-57).
+var (
+	documentWindows = restrictionWindows{
+		wizard: orderedWindow("ref", "dataversion", "deletionmark", "number", "date", "posted"),
+		role:   orderedWindow("ref", "dataversion", "number", "date", "posted", "deletionmark"),
+	}
+	journalWindows = restrictionWindows{
+		wizard: orderedWindow("ref", "date", "deletionmark", "number", "posted"),
+		role:   orderedWindow("ref", "date", "number", "posted", "deletionmark"),
+	}
+	businessProcessWindows = restrictionWindows{
+		wizard: orderedWindow("ref", "dataversion", "deletionmark", "number", "date", "completed", "headtask", "started"),
+		role:   orderedWindow("ref", "dataversion", "number", "date", "headtask", "deletionmark", "started", "completed"),
+	}
+	taskWindows = restrictionWindows{
+		wizard: orderedWindow("ref", "dataversion", "deletionmark", "number", "date", "businessprocess", "routepoint", "description", "executed"),
+		role:   orderedWindow("ref", "dataversion", "number", "description", "date", "deletionmark", "businessprocess", "routepoint", "executed"),
+	}
+	exchangePlanWindows = restrictionWindows{
+		wizard: orderedWindow("ref", "dataversion", "deletionmark", "thisnode", "code", "description", "sentno", "receivedno"),
+		role:   orderedWindow("ref", "dataversion", "thisnode", "code", "description", "deletionmark", "sentno", "receivedno"),
+	}
+)
+
 // restrictionWindow is the order a window of the prototype lists the fields
 // of a restriction in: the place of a standard field or standard table part
 // by its key, the place of everything the object declares - in the order it
@@ -606,7 +697,10 @@ type restrictionWindow struct {
 	partFields map[string]int
 }
 
-// wizardWindow is the order of the wizard of «Все ограничения доступа»
+// referenceWindows are the orders of a catalog and the three charts.
+var referenceWindows = restrictionWindows{wizard: referenceWizard, role: referenceRole}
+
+// referenceWizard is the order of the wizard of «Все ограничения доступа»
 // (passes of 22.10.2026, the first, the second, the fourth and the fifth,
 // pola-16, pola-19…22): the reference, the version of the data, the mark of
 // deletion, the owner, the parent, ЭтоГруппа, the code, the description,
@@ -619,7 +713,7 @@ type restrictionWindow struct {
 // part: the line number, the kind of ext dimension or of calculation, the
 // predefined flag, ТолькоОбороты - not the order the prototype describes
 // them in, which standardTablePartsOfKind keeps.
-var wizardWindow = restrictionWindow{
+var referenceWizard = restrictionWindow{
 	standard: map[string]int{"ref": 0, "dataversion": 1, "deletionmark": 2, "owner": 3, "parent": 4, "isfolder": 5,
 		"code": 6, "description": 7, "order": 8, "type": 9, "offbalance": 10, "actionperiodisbasic": 11,
 		"basecalculationtypes": 12, "leadingcalculationtypes": 13, "displacingcalculationtypes": 14,
@@ -628,7 +722,7 @@ var wizardWindow = restrictionWindow{
 	partFields: map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "predefined": 2, "turnoversonly": 3},
 }
 
-// roleWindow is the order of «Список полей» the button «…» of a restriction
+// referenceRole is the order of «Список полей» the button «…» of a restriction
 // opens in the window of a role (passes of 22.10.2026, the fourth and the
 // fifth, pola-18, pola-25…31): the reference, the version of the data, the
 // code, the description, ТипЗначения of a chart of characteristic types or
@@ -638,7 +732,7 @@ var wizardWindow = restrictionWindow{
 // chart of calculation types, what the object declares, ВидыСубконто last.
 // Inside ВидыСубконто ТолькоОбороты stands before the predefined flag, as
 // the wizard has it the other way round.
-var roleWindow = restrictionWindow{
+var referenceRole = restrictionWindow{
 	standard: map[string]int{"ref": 0, "dataversion": 1, "code": 2, "description": 3, "valuetype": 4, "order": 4,
 		"owner": 5, "parent": 6, "type": 7, "offbalance": 8, "isfolder": 9, "deletionmark": 10,
 		"predefined": 11, "predefineddataname": 12, "actionperiodisbasic": 13, "basecalculationtypes": 14,
@@ -647,18 +741,26 @@ var roleWindow = restrictionWindow{
 	partFields: map[string]int{"linenumber": 0, "extdimensiontype": 1, "calculationtype": 1, "turnoversonly": 2, "predefined": 3},
 }
 
-// fieldsOf is the fields of the table, of all the object keeps, in the
-// order of the window. The accounting flags of the ext dimensions are fields
-// of the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
-// счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and both
-// windows show them there, after its own, not among the account's
-// (snapshots pola-12, pola-27…29).
-func (table referenceTable) fieldsOf(fields []objectPart, window restrictionWindow) []objectPart {
-	absent := map[string]bool{
+// table is what the settings decide: the fields the table has not.
+func (table referenceTable) table() restrictionTable {
+	return restrictionTable{absent: map[string]bool{
 		"parent": !table.hierarchy.Enabled, "isfolder": !table.hierarchy.Enabled || table.hierarchy.Kind != FoldersAndItemsHierarchy,
 		"owner": !table.owned, "code": table.codeLength == 0, "description": table.descriptionLength == 0,
 		"actionperiodisbasic": !table.actionPeriod, "displacingcalculationtypes": !table.actionPeriod,
 		"basecalculationtypes": !table.base,
+	}}
+}
+
+// fieldsOf is the fields of the table, of all the object keeps, in the
+// order of the window, the columns of a journal among what it declares. The
+// accounting flags of the ext dimensions are fields
+// of the table of the kinds of ext dimensions (help, ПланСчетов.<Имя плана
+// счетов>: ВидыСубконто holds <Признак учета доп. измерения>), and both
+// windows show them there, after its own, not among the account's
+// (snapshots pola-12, pola-27…29).
+func (table restrictionTable) fieldsOf(fields []objectPart, window restrictionWindow) []objectPart {
+	if table.none {
+		return nil
 	}
 	// A standard field or part is ranked by its key, a field of a standard
 	// part by its part's; what the object declares is keyed by identifiers
@@ -678,7 +780,8 @@ func (table referenceTable) fieldsOf(fields []objectPart, window restrictionWind
 		}
 		return window.declared
 	}
-	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && absent[keyOf(field)] })
+	result := slices.DeleteFunc(slices.Clone(fields), func(field objectPart) bool { return standard(field) && table.absent[keyOf(field)] })
+	result = append(result, table.columns...)
 	extDimensions := strings.ToLower(extDimensionTypesPart.en)
 	var flags []objectPart
 	result = slices.DeleteFunc(result, func(field objectPart) bool {
@@ -825,16 +928,18 @@ var dataVersionField = standardField{"ВерсияДанных", "DataVersion"}
 // (kindComposition.queryTable), in the order the wizard of «Все ограничения
 // доступа» lists them.
 func (catalog *Catalog) restrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
-	return catalog.restrictionFieldsIn(kind, id, wizardWindow)
+	return catalog.restrictionFieldsIn(kind, id, wizardOrder)
 }
 
-// restrictionFieldsIn is restrictionFieldsOf in the order of the window.
-func (catalog *Catalog) restrictionFieldsIn(kind Kind, id uuid.UUID, window restrictionWindow) []objectPart {
-	fields := catalog.objectFieldsOf(kind, id)
-	if queryTable := kindCompositionOf[kind].queryTable; queryTable != nil && catalog.hasObject(kind, id) {
-		return queryTable(catalog, id).fieldsOf(fields, window)
+// restrictionFieldsIn is restrictionFieldsOf in the order of one of the two
+// windows (wizardOrder, roleOrder).
+func (catalog *Catalog) restrictionFieldsIn(kind Kind, id uuid.UUID, order func(restrictionWindows) restrictionWindow) []objectPart {
+	composition := kindCompositionOf[kind]
+	var table restrictionTable
+	if composition.queryTable != nil && catalog.hasObject(kind, id) {
+		table = composition.queryTable(catalog, id)
 	}
-	return fields
+	return table.fieldsOf(catalog.objectFieldsOf(kind, id), order(composition.windows))
 }
 
 // absentRestrictionFieldsOf is what the object keeps and the table a query

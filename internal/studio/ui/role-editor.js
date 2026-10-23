@@ -882,8 +882,11 @@ function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false
     for (const [key, input] of boxes) {
       input.checked = chosen.has(key); input.indeterminate = mixed.has(key); input.disabled = disabled || taken(key);
     }
+    // Where the object has no field to restrict by - a register of
+    // accumulation, accounting or calculation - «Прочие поля» stand marked
+    // and unavailable (configurator 22.10.2026, pola-45…47).
     const input = othersBox.querySelector('input');
-    input.checked = others; input.disabled = disabled;
+    input.checked = others; input.disabled = disabled || !fields.length;
     for (const button of block.querySelectorAll('.role-mark-all')) button.disabled = disabled;
   }
   // A table part folds: its fields are under it, hidden until it is opened.
@@ -919,7 +922,6 @@ function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false
       if (before && !chosen.size) others = true;
       list.replaceChildren(); boxes.clear();
       for (const field of fields) if (!field.parent || !keys.has(field.parent)) row(field, 0);
-      if (!fields.length) list.append(node('p', 'Полей для ограничения нет.', 'muted'));
       sync();
     },
     filled: () => chosen.size > 0 || others,

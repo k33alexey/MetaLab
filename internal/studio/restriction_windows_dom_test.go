@@ -139,6 +139,19 @@ const restrictionWizardWalk = `(async () => {` + restrictionWalkTools + `
   await press('< Назад');
   seen.okOnFirst = enabled('ОК');
   await press('Отмена');
+  // A register of accumulation offers no field: «Прочие поля» stand marked
+  // and unavailable.
+  document.querySelector('.overview-block .role-list').dispatchEvent(new KeyboardEvent('keydown', {key: 'Insert', bubbles: true}));
+  await studio.settle();
+  byText('button', 'По подсистемам', dialog()).click(); await studio.settle();
+  await press('Отключить');
+  await mark('Остатки товаров', true); await mark('Кладовщик', true);
+  await press('Далее >');
+  await mark('Чтение', true);
+  seen.registerFields = all('.role-fields-choice .role-restriction-fields label', dialog()).map(label => label.textContent.trim());
+  seen.registerOthers = box('Прочие поля').checked && box('Прочие поля').disabled;
+  seen.okRegister = enabled('ОК');
+  await press('Отмена');
   return seen;
 })()`
 
@@ -149,7 +162,9 @@ const restrictionWizardWalk = `(async () => {` + restrictionWalkTools + `
 // a click on a kind marked in part marking the rest instead of clearing it; a
 // change of the filter by subsystems leaving objects marked; the fields and
 // «Прочие поля» not taking each other's marks; Ins over the list not opening
-// it; Enter pressing «< Назад» on the second step.
+// it; Enter pressing «< Назад» on the second step; a register of
+// accumulation offering fields, or «Прочие поля» it can take away (the
+// seventh pass, pola-45…47).
 func TestTheWizardOfANewRestrictionStepsAsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, addRestrictionRoles(t, root))
@@ -164,6 +179,8 @@ func TestTheWizardOfANewRestrictionStepsAsThePrototypes(t *testing.T) {
 		PrimaryOnSecond                                                       string
 		OthersFirst, FieldTakesOthers, LastFieldGivesOthers, OthersTakeFields bool
 		OkWithNothingMarked, OkWithOthers, OkOnFirst                          bool
+		RegisterFields                                                        []string
+		RegisterOthers, OkRegister                                            bool
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -186,6 +203,9 @@ func TestTheWizardOfANewRestrictionStepsAsThePrototypes(t *testing.T) {
 		{!seen.OkWithNothingMarked, "«ОК» is available with neither a field nor «Прочие поля» marked"},
 		{seen.OkWithOthers, "«ОК» is unavailable with a right and «Прочие поля» marked"},
 		{!seen.OkOnFirst, "«ОК» is available on the first step"},
+		{len(seen.RegisterFields) == 0, fmt.Sprintf("a register of accumulation offers the fields %v", seen.RegisterFields)},
+		{seen.RegisterOthers, "«Прочие поля» of a register of accumulation are not marked and unavailable"},
+		{seen.OkRegister, "«ОК» is unavailable for a register of accumulation with «Чтение» marked"},
 	} {
 		if !check.ok {
 			t.Error(check.says)

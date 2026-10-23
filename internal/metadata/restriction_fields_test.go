@@ -380,3 +380,144 @@ func TestARestrictionKeepsAFieldTheObjectHasNoLonger(t *testing.T) {
 		t.Errorf("a field the catalog has is among those it has not: %v", absent)
 	}
 }
+
+// TestTheFieldsOfARestrictionOfTheOtherKindsAreThePrototypes holds the
+// fields both windows list for a restriction of the other kinds the wizard
+// offers to the prototype's (passes of 22.10.2026, the seventh and the
+// eighth, pola-33…57; ACCESS-RIGHTS.md, «Поля ограничения прочих видов»).
+// The lists are written out here from the inventory, not read off the
+// orders the code keeps. Defects caught: the version of the data before the
+// reference (every kind keeping it, until 2.457); the window of a role
+// listing them in the wizard's order; a journal offering Тип and none of its
+// columns; a register of information offering the line number and the
+// activity whatever it is, the period where it is not periodic and the
+// recorder where it is independent; the registers of accumulation,
+// accounting and calculation offering their fields at all. A restriction of
+// such a register by a field, which the exports never write, is loaded and
+// noted, as the iron rule of CONFORMANCE.md says.
+func TestTheFieldsOfARestrictionOfTheOtherKindsAreThePrototypes(t *testing.T) {
+	t.Parallel()
+	root := taskWithAddressing(t, `addressing_attributes:
+  - id: `+addressRoleAttribute+`
+    name: РольИсполнителя
+    title: {ru: Роль исполнителя}
+    types: [{kind: catalog, reference: `+addressRoleCatalogID+`}]
+    dimension: `+addressRoleDimension+`
+table_parts:
+  - id: `+uuid.MustNew().String()+`
+    name: Этапы
+    title: {ru: Этапы}
+    attributes:
+      - {id: `+uuid.MustNew().String()+`, name: Этап, title: {ru: Этап}, types: [{kind: string, length: 10}]}
+`)
+	field := func(name string) string {
+		return "  - {id: " + uuid.MustNew().String() + ", name: " + name + ", title: {ru: " + name + "}, types: [{kind: string, length: 10}]}\n"
+	}
+	write := func(kind Kind, name, settings string) uuid.UUID {
+		id := uuid.MustNew()
+		writeMetadata(t, root, kind, id.String(), "format: 1\nid: "+id.String()+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+settings)
+		return id
+	}
+	number := "number: {type: string, length: 11, auto: true, periodicity: none}\n"
+	documentAttribute := uuid.MustNew().String()
+	document := write(DocumentKind, "АвансовыйОтчет", number+"attributes:\n  - {id: "+documentAttribute+", name: Подотчетник, title: {ru: Подотчетник}, types: [{kind: string, length: 10}]}\n"+
+		"table_parts:\n  - id: "+uuid.MustNew().String()+"\n    name: Расходы\n    title: {ru: Расходы}\n    attributes:\n    "+field("Сумма"))
+	write(DocumentJournalKind, "Взаиморасчеты", "documents: ["+document.String()+"]\n"+
+		"columns:\n  - {id: "+uuid.MustNew().String()+", name: Сотрудник, title: {ru: Сотрудник}, references: ["+documentAttribute+"]}\n")
+	write(ExchangePlanKind, "Полный", "code: {type: string, length: 9}\ndescription_length: 100\nattributes:\n"+field("Адрес"))
+	write(BusinessProcessKind, "Задание", number+"task: "+addressTaskID+"\nattributes:\n"+field("Описание"))
+	write(InformationRegisterKind, "КурсыВалют", "write_mode: independent\nperiodicity: day\ndimensions:\n"+field("Валюта")+
+		"resources:\n"+field("Курс")+"attributes:\n"+field("Источник"))
+	write(InformationRegisterKind, "Настройки", "write_mode: independent\nperiodicity: none\ndimensions:\n"+field("Ключ")+"resources:\n"+field("Значение"))
+	write(InformationRegisterKind, "СтатусыДокументов", "write_mode: recorder\nperiodicity: day\ndimensions:\n"+field("Документ")+"resources:\n"+field("Статус"))
+	write(InformationRegisterKind, "БлокировкиЯчеек", "write_mode: recorder\nperiodicity: none\ndimensions:\n"+field("Ячейка")+"resources:\n"+field("Причина"))
+	dimension := uuid.MustNew().String()
+	register := write(AccumulationRegisterKind, "ОстаткиТоваров", "kind: balance\ndimensions:\n  - {id: "+dimension+", name: Склад, title: {ru: Склад}, types: [{kind: string, length: 10}]}\n"+
+		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}]}\n")
+	if err := WriteRole(root, RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Кладовщик", Title: LocalizedText{"ru": "Кладовщик"},
+		Objects: []ObjectPermission{{Object: register, Operations: []PermissionOperation{PermissionRead},
+			Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{dimension, "period"}, Condition: "ГДЕ Склад = &С"}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	wizard := map[string][]string{
+		"АвансовыйОтчет":    {"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Номер", "Дата", "Проведен", "Подотчетник", "Расходы", "НомерСтроки", "Сумма"},
+		"Взаиморасчеты":     {"Ссылка", "Дата", "ПометкаУдаления", "Номер", "Проведен", "Сотрудник"},
+		"Полный":            {"Ссылка", "ВерсияДанных", "ПометкаУдаления", "ЭтотУзел", "Код", "Наименование", "НомерОтправленного", "НомерПринятого", "Адрес"},
+		"Задание":           {"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Номер", "Дата", "Завершен", "ВедущаяЗадача", "Стартован", "Описание"},
+		"ЗадачаИсполнителя": {"Ссылка", "ВерсияДанных", "ПометкаУдаления", "Номер", "Дата", "БизнесПроцесс", "ТочкаМаршрута", "Наименование", "Выполнена", "Предмет", "РольИсполнителя", "Этапы", "НомерСтроки", "Этап"},
+		"КурсыВалют":        {"Период", "Валюта", "Курс", "Источник"},
+		"Настройки":         {"Ключ", "Значение"},
+		"СтатусыДокументов": {"Период", "Регистратор", "Документ", "Статус"},
+		"БлокировкиЯчеек":   {"Регистратор", "Ячейка", "Причина"},
+		"ИсполнителиЗадач":  {"РольИсполнителя", "Исполнитель"},
+		"ОстаткиТоваров":    nil,
+	}
+	role := map[string][]string{
+		"АвансовыйОтчет":    {"Ссылка", "ВерсияДанных", "Номер", "Дата", "Проведен", "ПометкаУдаления", "Подотчетник", "Расходы", "НомерСтроки", "Сумма"},
+		"Взаиморасчеты":     {"Ссылка", "Дата", "Номер", "Проведен", "ПометкаУдаления", "Сотрудник"},
+		"Полный":            {"Ссылка", "ВерсияДанных", "ЭтотУзел", "Код", "Наименование", "ПометкаУдаления", "НомерОтправленного", "НомерПринятого", "Адрес"},
+		"Задание":           {"Ссылка", "ВерсияДанных", "Номер", "Дата", "ВедущаяЗадача", "ПометкаУдаления", "Стартован", "Завершен", "Описание"},
+		"ЗадачаИсполнителя": {"Ссылка", "ВерсияДанных", "Номер", "Наименование", "Дата", "ПометкаУдаления", "БизнесПроцесс", "ТочкаМаршрута", "Выполнена", "Предмет", "РольИсполнителя", "Этапы", "НомерСтроки", "Этап"},
+		"КурсыВалют":        wizard["КурсыВалют"],
+		"Настройки":         wizard["Настройки"],
+		"СтатусыДокументов": wizard["СтатусыДокументов"],
+		"БлокировкиЯчеек":   wizard["БлокировкиЯчеек"],
+		"ИсполнителиЗадач":  wizard["ИсполнителиЗадач"],
+		"ОстаткиТоваров":    nil,
+	}
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(fields []PermissionField) []string {
+		var result []string
+		for _, field := range fields {
+			result = append(result, field.Name)
+		}
+		return result
+	}
+	for _, object := range schema.Objects {
+		want, ok := wizard[object.Name]
+		if !ok {
+			continue
+		}
+		if got := names(object.RestrictionFields); !slices.Equal(got, want) {
+			t.Errorf("the wizard offers %s\n%v, want\n%v", object.Name, got, want)
+		}
+		if got := names(object.RoleWindowFields); !slices.Equal(got, role[object.Name]) {
+			t.Errorf("the window of a role offers %s\n%v, want\n%v", object.Name, got, role[object.Name])
+		}
+		delete(wizard, object.Name)
+	}
+	if len(wizard) != 0 {
+		t.Errorf("the schema has no %v", slices.Collect(maps.Keys(wizard)))
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a restriction of a register of accumulation by its fields was refused: %v", err)
+	}
+	var noted []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteRestrictionAbsentField {
+			noted = append(noted, note.Where+": "+note.Written)
+		}
+	}
+	want := []string{"roles Кладовщик restrictions: accumulation-registers ОстаткиТоваров read Склад",
+		"roles Кладовщик restrictions: accumulation-registers ОстаткиТоваров read Период"}
+	if !slices.Equal(noted, want) {
+		t.Errorf("notes %v, want %v", noted, want)
+	}
+	composite, err := LoadPermissionSchema(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, object := range composite.Objects {
+		switch object.Kind {
+		case AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind:
+			if len(object.RestrictedRights) == 0 || len(object.RestrictionFields)+len(object.RoleWindowFields) != 0 {
+				t.Errorf("%s %s is restricted on %v by the fields %v and %v", object.Kind, object.Name, object.RestrictedRights,
+					names(object.RestrictionFields), names(object.RoleWindowFields))
+			}
+		}
+	}
+}
