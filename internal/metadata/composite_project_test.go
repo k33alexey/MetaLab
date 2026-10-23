@@ -111,7 +111,7 @@ func compositeProject(t *testing.T) string {
 	// Values: an enumeration, a defined type, a chart of kinds of property.
 	writeMetadata(t, root, EnumerationKind, cmpEnumeration, head(cmpEnumeration, "ВидыТоваров")+
 		"values:\n  - {id: "+cmpEnumValue+", name: Товар, title: {ru: Товар}}\n"+
-		"commands:\n  - {id: "+cmpEnumCommand+", name: Подбор, title: {ru: Подбор}}\n")
+		"commands:\n  - {id: "+cmpEnumCommand+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important}\n")
 	writeCommandModule(t, root, EnumerationKind, "ВидыТоваров", "Подбор")
 	writeMetadata(t, root, DefinedTypeKind, cmpDefinedType, head(cmpDefinedType, "ДенежнаяСумма")+
 		"types: [{kind: number, precision: 15, scale: 2}]\n")

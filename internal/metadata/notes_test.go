@@ -82,7 +82,7 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"number: {type: string, length: 11, periodicity: year}\nposting: {allowed: false, real_time: deny, records_deletion: auto}\n")
 	},
 	NotePictureWithoutPicture: func(t *testing.T, root string) {
-		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, representation: picture}\n", "")
+		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, representation: picture}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	},
 	NoteChartHoldsNothing: func(t *testing.T, root string) {
@@ -326,7 +326,7 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			"items:\n  - {id: "+uuid.MustNew().String()+", name: Метки, kind: input-field, allow_multiple_values_duplicates: true}\n")
 	},
 	NoteParameterUseNoType: func(t *testing.T, root string) {
-		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter_use: single}\n", "")
+		noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, parameter_use: single}\n", "")
 		writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	},
 }
@@ -465,7 +465,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9, auto: true}\ndescription_length: 150\n"+
 		"hierarchy: {enabled: true, kind: folders-and-items, folders_on_top: true, limit_levels: true, level_count: 2}\n"+
 		"full_text_search: use\ndata_history: use\n"+
-		"commands:\n  - {id: "+commandID+", name: Подбор, title: {ru: Подбор}, representation: picture, picture: {standard: Начислить, load_transparent: true, transparent_pixel: {x: 7, y: 5}}, "+
+		"commands:\n  - {id: "+commandID+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, representation: picture, picture: {standard: Начислить, load_transparent: true, transparent_pixel: {x: 7, y: 5}}, "+
 		"parameter: [{kind: catalog, reference: "+id+"}], parameter_use: single}\n"+
 		"attributes:\n"+
 		"  - id: "+uuid.MustNew().String()+"\n    name: Цена\n    title: {ru: Цена}\n    types: [{kind: number, precision: 15, scale: 2}]\n"+

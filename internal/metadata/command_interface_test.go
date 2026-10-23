@@ -141,7 +141,7 @@ func TestCommandInterfaceListsWhatPointsAtNothing(t *testing.T) {
 	writeCommandGroup(t, root, commandGroupID, "Цены")
 	objectCommandID, otherID := uuid.MustNew(), uuid.MustNew()
 	writeMetadata(t, root, CatalogKind, catalogID, "format: 1\nid: "+catalogID+"\nname: Товары\ntitle: {ru: Товары}\ncode: {type: string, length: 9}\ndescription_length: 100\n"+
-		"commands:\n  - {id: "+objectCommandID.String()+", name: Подбор, title: {ru: Подбор}}\n")
+		"commands:\n  - {id: "+objectCommandID.String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important}\n")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	// A command of an object, not only a common one, is found by its identifier.
 	writeMetadata(t, root, SubsystemKind, otherID.String(), "format: 1\nid: "+otherID.String()+"\nname: Закупки\ntitle: {ru: Закупки}\n"+

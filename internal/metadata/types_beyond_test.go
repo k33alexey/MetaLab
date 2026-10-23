@@ -65,7 +65,7 @@ func TestEachNewKindOfTypeStandsWhereItMay(t *testing.T) {
 func TestCommandParametersResolveAndStoredFieldsRefuseWhatIsStoredNowhere(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
-	noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter: [{kind: catalog, reference: "+uuid.MustNew().String()+"}]}\n", "")
+	noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, parameter: [{kind: catalog, reference: "+uuid.MustNew().String()+"}]}\n", "")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	if message := loadRefused(t, root, "a command typed by a catalog that is not there"); !strings.Contains(message, "references unknown catalog") {
 		t.Fatalf("the error does not say why: %v", message)

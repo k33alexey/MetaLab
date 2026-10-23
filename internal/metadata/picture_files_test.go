@@ -38,7 +38,7 @@ func pictureFileOwners() map[string]pictureFileOwner {
 			write: func(t *testing.T, root, picture string) {
 				writeMetadata(t, root, CatalogKind, catalogID, "format: 1\nid: "+catalogID+"\nname: Товары\ntitle: {ru: Товары}\n"+
 					"code: {type: string, length: 9}\ndescription_length: 150\n"+
-					"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, picture: "+picture+"}\n")
+					"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, picture: "+picture+"}\n")
 				writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 			},
 			folder: []string{"metadata", string(CatalogKind), "Товары", "commands", "Подбор"},

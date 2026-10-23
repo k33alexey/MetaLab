@@ -554,7 +554,7 @@ func TestExternalTableFolderIsAnObjectFolder(t *testing.T) {
 // through.
 func TestExternalTableCommandsAndTemplatesAreDeclaredAndKept(t *testing.T) {
 	t.Parallel()
-	const command = "commands:\n  - id: f8000000-0000-4000-8000-000000000071\n    name: Печать\n    title: {ru: Печать}\n"
+	const command = "commands:\n  - id: f8000000-0000-4000-8000-000000000071\n    name: Печать\n    title: {ru: Печать}\n    group: form-command-bar-important\n"
 	root := metadataProject(t)
 	writeExternalSource(t, root, warehouseSource, "Склад", "")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody+command)

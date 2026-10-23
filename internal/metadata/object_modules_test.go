@@ -165,7 +165,7 @@ title: {ru: Товары}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 commands:
-  - {id: `+moduleCommand+`, name: Пересчитать, title: {ru: Пересчитать}}
+  - {id: `+moduleCommand+`, name: Пересчитать, title: {ru: Пересчитать}, group: form-command-bar-important}
 `)
 	writeCommandModule(t, root, CatalogKind, "Товары", "Пересчитать")
 	if _, err := Load(root); err != nil {

@@ -245,6 +245,7 @@ commands:
   - id: `+commandID+`
     name: НачислитьБонусы
     title: {ru: Начислить бонусы}
+    group: form-command-bar-important
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a command module that does not exist was accepted")
@@ -270,15 +271,15 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
 	// body earlier than the rule under test does.
 	for name, broken := range map[string]struct{ body, want string }{
 		"два имени в одном объекте": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}}
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important}
   - {id: ` + second + `, name: открыть, title: {ru: Открыть ещё}}`,
 			"commands[1].name must be unique"},
 		"один идентификатор на две команды": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}}
-  - {id: ` + commandID + `, name: Закрыть, title: {ru: Закрыть}}`,
+  - {id: ` + commandID + `, name: Закрыть, title: {ru: Закрыть}, group: form-command-bar-important}`,
 			"commands[1].id must be unique"},
 		"имя не идентификатор": {`commands:
-  - {id: ` + commandID + `, name: "Открыть список", title: {ru: Открыть}}`,
+  - {id: ` + commandID + `, name: "Открыть список", title: {ru: Открыть}, group: form-command-bar-important}`,
 			"commands[0].name must be a valid identifier"},
 		"группы платформы с таким именем нет": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: nowhere}`,
@@ -287,10 +288,10 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: actions-panel-tools, group_ref: ` + commandGroup + `}`,
 			"names both a standard group and a group of the configuration"},
 		"картинка из двух источников": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
 			"names more than one of a standard picture, a common picture and a file"},
 		"набор вариантов у команды": {`commands:
-  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, picture: {file: Picture, variants: [{file: 100.png, density: 100}]}}`,
+  - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important, picture: {file: Picture, variants: [{file: 100.png, density: 100}]}}`,
 			"commands[0].picture.variants belong to a picture of an element of a form only"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -562,7 +563,7 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 commands:
-  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, `+test.properties+`}
+  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important, `+test.properties+`}
 `), metadataConfiguration())
 			if err != nil {
 				t.Fatalf("refused: %v", err)

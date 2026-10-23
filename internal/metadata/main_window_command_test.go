@@ -25,7 +25,7 @@ func TestACommandOfTheMainWindowTakesNoParameter(t *testing.T) {
 		"navigation-panel-important": true, "navigation-panel-ordinary": true, "navigation-panel-see-also": true,
 		"actions-panel-create": true, "actions-panel-reports": true, "actions-panel-tools": true,
 		"form-navigation-panel-important": false, "form-navigation-panel-see-also": false, "form-navigation-panel-go-to": false,
-		"form-command-bar-important": false, "form-command-bar-create-based-on": false, "": false,
+		"form-command-bar-important": false, "form-command-bar-create-based-on": false,
 	} {
 		command := ObjectCommand{ID: uuid.MustNew(), Name: "Команда", Title: LocalizedText{"ru": "Команда"}, Group: group, Parameter: parameter, ParameterUse: CommandParameterSingle}
 		issues := validateCommandShape("command", command, configuration)

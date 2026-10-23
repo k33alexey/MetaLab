@@ -23,6 +23,12 @@ func writeCommonCommand(t *testing.T, root, name, body string, withModule bool) 
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// A command stands in a group (2.500: the designer refuses one in none);
+	// a body that names none, written by a test of something else, is given
+	// the important group of the command bar of a form.
+	if !strings.Contains(body, "\ngroup") {
+		body += "group: form-command-bar-important\n"
+	}
 	if err := os.WriteFile(filepath.Join(directory, project.ObjectMetadataFile), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

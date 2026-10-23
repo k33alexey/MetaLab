@@ -28,7 +28,7 @@ func TestPictureReferenceKeepsItsTransparentPixel(t *testing.T) {
 	catalogID := uuid.MustNew().String()
 	writeMetadata(t, root, CatalogKind, catalogID, "format: 1\nid: "+catalogID+"\nname: Товары\ntitle: {ru: Товары}\n"+
 		"code: {type: string, length: 9}\ndescription_length: 150\n"+
-		"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, "+strings.TrimSuffix(picture, "\n")+"}\n")
+		"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, "+strings.TrimSuffix(picture, "\n")+"}\n")
 	writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 	catalog, err := Load(root)
 	if err != nil {

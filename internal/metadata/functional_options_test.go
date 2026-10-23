@@ -51,6 +51,7 @@ commands:
   - id: `+optionCommand+`
     name: ПоказатьОстатки
     title: {ru: Показать остатки}
+    group: form-command-bar-important
 `)
 	writeCommandModule(t, root, CatalogKind, "Номенклатура", "ПоказатьОстатки")
 	writeMetadata(t, root, InformationRegisterKind, optionRegister, `format: 1

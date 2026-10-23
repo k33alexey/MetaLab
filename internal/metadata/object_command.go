@@ -237,9 +237,14 @@ func validateCommandShape(prefix string, command ObjectCommand, configuration pr
 	var issues []string
 	issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 	issues = append(issues, validateTitle(prefix+".tooltip", command.Tooltip, configuration)...)
-	// A command is placed in one place, not in two.
-	if command.Group != "" && command.GroupRef != nil {
+	// A command is placed in one place, not in two, and not in none: «Проверка
+	// конфигурации» refuses a command with no group - «Не указана группа, в
+	// которую входит команда по умолчанию» (opis of 15.10.2026, komanda.md).
+	switch {
+	case command.Group != "" && command.GroupRef != nil:
 		issues = append(issues, prefix+" names both a standard group and a group of the configuration")
+	case command.Group == "" && command.GroupRef == nil:
+		issues = append(issues, prefix+" names no group: the designer refuses a command with no group it stands in by default")
 	}
 	if category, ok := standardCommandGroups[command.Group]; command.Group != "" && !ok {
 		issues = append(issues, prefix+".group is not a standard group of the platform")

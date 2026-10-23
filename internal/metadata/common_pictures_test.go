@@ -386,7 +386,7 @@ title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 commands:
-  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, picture: {common: `+commonPictureID+`}}
+  - {id: `+commandID+`, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important, picture: {common: `+commonPictureID+`}}
 `)
 	writeCommandModule(t, root, CatalogKind, "Контрагенты", "Открыть")
 	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), commonPictureID) {

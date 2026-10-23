@@ -30,7 +30,7 @@ func TestAnOptionalTextWithABrokenLanguageCodeIsRefused(t *testing.T) {
 		{"presentation of an object", catalog("object_presentation: " + broken + "\n"), "object_presentation.r u is not a language code"},
 		{"tooltip of an attribute", catalog("attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цена, title: {ru: Цена}, types: [{kind: boolean}], presentation: {tooltip: " + broken + "}}\n"),
 			"presentation.tooltip.r u is not a language code"},
-		{"tooltip of a command", catalog("commands:\n  - {id: " + uuid.MustNew().String() + ", name: Подбор, title: {ru: Подбор}, tooltip: " + broken + "}\n"),
+		{"tooltip of a command", catalog("commands:\n  - {id: " + uuid.MustNew().String() + ", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, tooltip: " + broken + "}\n"),
 			"tooltip.r u is not a language code"},
 		{"explanation of a filter criterion", func(t *testing.T) error {
 			id := uuid.MustNew().String()

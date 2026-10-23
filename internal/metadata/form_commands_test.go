@@ -167,7 +167,7 @@ func TestTheCommandOfAButtonIsResolvedInTheProject(t *testing.T) {
 			root := formReferencesProject(t)
 			processor := uuid.MustNew().String()
 			writeMetadata(t, root, DataProcessorKind, processor, "format: 1\nid: "+processor+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
-				"commands:\n  - {id: "+uuid.MustNew().String()+", name: Заполнить, title: {ru: Заполнить}}\n")
+				"commands:\n  - {id: "+uuid.MustNew().String()+", name: Заполнить, title: {ru: Заполнить}, group: form-command-bar-important}\n")
 			writeCommandModule(t, root, DataProcessorKind, "Заполнение", "Заполнить")
 			path := filepath.Join(root, "metadata", string(CatalogKind), "Номенклатура", "forms", "ФормаЭлемента", project.FormMetadataFile)
 			content, err := os.ReadFile(path)

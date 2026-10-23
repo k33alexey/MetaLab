@@ -69,7 +69,7 @@ func TestRemnantsOfWhatWasDeletedAreErrors(t *testing.T) {
 		where, wrote string
 	}{
 		"тип удалённого объекта": {func(t *testing.T, root string) {
-			noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, parameter: [{kind: vanished-type, reference: "+gone+"}]}\n", "")
+			noteCatalog(t, root, "commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, parameter: [{kind: vanished-type, reference: "+gone+"}]}\n", "")
 			writeCommandModule(t, root, CatalogKind, "Товары", "Подбор")
 		}, "Подбор parameter type", gone},
 		"значение заполнения удалённого типа": {func(t *testing.T, root string) {

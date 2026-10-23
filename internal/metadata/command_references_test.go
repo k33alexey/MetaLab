@@ -57,7 +57,7 @@ func TestACommonCommandParameterTypedByNothingIsRefused(t *testing.T) {
 			id := uuid.MustNew().String()
 			writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: Банки\ntitle: {ru: Банки}\n"+
 				"code: {type: string, length: 9, auto: true}\ndescription_length: 150\n"+
-				"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, "+fill(test.ownedType)+"parameter_use: single}\n")
+				"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important, "+fill(test.ownedType)+"parameter_use: single}\n")
 			writeCommandModule(t, root, CatalogKind, "Банки", "Подбор")
 			_, err := Load(root)
 			if err == nil || !strings.Contains(err.Error(), "parameter references unknown catalog "+missing) {
