@@ -73,6 +73,83 @@ var subscriptionEvents = map[TypeKind][]string{
 	AccountingRegisterManagerType:     {"FormGetProcessing"},
 	CalculationRegisterManagerType:    {"FormGetProcessing"},
 	DocumentJournalManagerType:        {"FormGetProcessing"},
+	ReportManagerType:                 {"FormGetProcessing"},
+	DataProcessorManagerType:          {"FormGetProcessing"},
+	SettingsStorageManagerType:        {"GetDescriptionProcessing", "LoadProcessing", "SaveProcessing", "SetDescriptionProcessing"},
+	// The help gives the manager of a criterion the event of getting a form,
+	// and the designer offers it no event in a subscription: the list of
+	// events is empty, though the manager is offered as a source (opis of
+	// the subscription, 14.10.2026). Such a subscription cannot be filled.
+	FilterCriterionManagerType: {},
+}
+
+// handlerParameters are the parameters the handler of an event gets after the
+// source, as the syntax assistant 8.3.27 gives them on the object, record set
+// or manager of a kind; handlerParametersOf are the kinds whose handler of the
+// event gets other ones. A source of several kinds offers only the events
+// whose handler gets the same parameters on all of them (opis of the
+// subscription, 14.10.2026: a catalog and a document have seven events in
+// common and are offered six - not BeforeWrite, which a document's handler
+// gets with the modes of writing and posting).
+var handlerParameters = map[string][]string{
+	"AfterWriteDataHistoryVersionsProcessing":  {"ИнформацияОЗаписиВерсий"},
+	"BeforeBeginSendDataToMaster":              {"ПотокОбменаДанными"},
+	"BeforeBeginSendDataToSlave":               {"ПотокОбменаДанными"},
+	"BeforeCreateInitialImage":                 {"ТолькоЗарегистрированные", "ПотокДанныхОбмена"},
+	"BeforeDelete":                             {"Отказ"},
+	"BeforeExecute":                            {"Отказ"},
+	"BeforeExecuteInteractively":               {"Отказ"},
+	"BeforeWrite":                              {"Отказ"},
+	"ChoiceDataGetProcessing":                  {"ДанныеВыбора", "Параметры", "СтандартнаяОбработка"},
+	"FillCheckProcessing":                      {"Отказ", "ПроверяемыеРеквизиты"},
+	"Filling":                                  {"ДанныеЗаполнения", "ТекстЗаполнения", "СтандартнаяОбработка"},
+	"FormGetProcessing":                        {"ВидФормы", "Параметры", "ВыбраннаяФорма", "ДополнительнаяИнформация", "СтандартнаяОбработка"},
+	"GenerateFromDataHistoryVersionProcessing": {"ДанныеВерсии", "НомерВерсии", "ИсключитьДанные", "СтандартнаяОбработка"},
+	"GetDescriptionProcessing":                 {"КлючОбъекта", "КлючНастроек", "ОписаниеНастроек", "Пользователь"},
+	"InteractiveActivationProcessing":          {"СтандартнаяОбработка"},
+	"LoadProcessing":                           {"КлючОбъекта", "КлючНастроек", "Настройки", "ОписаниеНастроек", "Пользователь"},
+	"OnAutoCreateNewNode":                      {"Отказ"},
+	"OnCheckExecutionProcessing":               {"Результат"},
+	"OnCopy":                                   {"ОбъектКопирования"},
+	"OnExecute":                                {"Отказ"},
+	"OnReceiveDataFromMaster":                  {"ЭлементДанных", "ПолучениеЭлемента", "ОтправкаНазад"},
+	"OnReceiveDataFromSlave":                   {"ЭлементДанных", "ПолучениеЭлемента", "ОтправкаНазад"},
+	"OnReceiveNodeDataFromMaster":              {"ЭлементДанных", "Игнорировать"},
+	"OnSendDataToMaster":                       {"ЭлементДанных", "ОтправкаЭлемента"},
+	"OnSendDataToSlave":                        {"ЭлементДанных", "ОтправкаЭлемента", "СозданиеНачальногоОбраза"},
+	"OnSendNodeDataToSlave":                    {"ЭлементДанных", "Игнорировать"},
+	"OnSetNewCode":                             {"СтандартнаяОбработка", "Префикс"},
+	"OnSetNewNumber":                           {"СтандартнаяОбработка", "Префикс"},
+	"OnWrite":                                  {"Отказ"},
+	"Posting":                                  {"Отказ", "РежимПроведения"},
+	"PresentationFieldsGetProcessing":          {"Поля", "СтандартнаяОбработка"},
+	"PresentationGetProcessing":                {"Данные", "Представление", "СтандартнаяОбработка"},
+	"SaveProcessing":                           {"КлючОбъекта", "КлючНастроек", "Настройки", "ОписаниеНастроек", "Пользователь"},
+	"SetDescriptionProcessing":                 {"КлючОбъекта", "КлючНастроек", "ОписаниеНастроек", "Пользователь"},
+	"UndoPosting":                              {"Отказ"},
+}
+
+var handlerParametersOf = map[TypeKind]map[string][]string{
+	DocumentObjectType:                {"BeforeWrite": {"Отказ", "РежимЗаписи", "РежимПроведения"}},
+	CalculationTypesObjectType:        {"GenerateFromDataHistoryVersionProcessing": {}},
+	ExchangePlanObjectType:            {"GenerateFromDataHistoryVersionProcessing": {}},
+	TaskObjectType:                    {"GenerateFromDataHistoryVersionProcessing": {"ДанныеВерсии", "НомерВерсии", "СтандартнаяОбработка", "ИсключитьДанные"}},
+	InformationRegisterRecordSetType:  {"BeforeWrite": {"Отказ", "Замещение"}, "Filling": {"ДанныеЗаполнения", "СтандартнаяОбработка"}, "GenerateFromDataHistoryVersionProcessing": {"ДанныеВерсии", "НомерВерсии", "КлючЗаписи", "ИсключитьДанные", "СтандартнаяОбработка"}, "OnWrite": {"Отказ", "Замещение"}},
+	AccumulationRegisterRecordSetType: {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
+	AccountingRegisterRecordSetType:   {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
+	CalculationRegisterRecordSetType:  {"BeforeWrite": {"Отказ", "Замещение", "ТолькоЗапись", "ЗаписьФактическогоПериодаДействия", "ЗаписьПерерасчетов"}, "OnWrite": {"Отказ", "Замещение", "ТолькоЗапись", "ЗаписьФактическогоПериодаДействия", "ЗаписьПерерасчетов"}},
+	SequenceRecordSetType:             {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
+	RecalculationRecordSetType:        {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
+	ConstantValueManagerType:          {"GenerateFromDataHistoryVersionProcessing": {}},
+}
+
+// handlerParametersFor are the parameters the handler of the event of the
+// prototype gets on the kind.
+func handlerParametersFor(kind TypeKind, event string) []string {
+	if parameters, ok := handlerParametersOf[kind][event]; ok {
+		return parameters
+	}
+	return handlerParameters[event]
 }
 
 // eventSubscriptionName spells an event of the prototype the way a project
@@ -98,15 +175,22 @@ func eventSubscriptionName(event string) string {
 	return builder.String()
 }
 
+// kindSubscriptionEvent is the event of the kind in the prototype's name for
+// one in a project's spelling, and false when the kind has no such event.
+func kindSubscriptionEvent(kind TypeKind, event string) (string, bool) {
+	for _, name := range subscriptionEvents[kind] {
+		if eventSubscriptionName(name) == event {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 // kindHasSubscriptionEvent says the kind has the event, in a project's
 // spelling.
 func kindHasSubscriptionEvent(kind TypeKind, event string) bool {
-	for _, name := range subscriptionEvents[kind] {
-		if eventSubscriptionName(name) == event {
-			return true
-		}
-	}
-	return false
+	_, ok := kindSubscriptionEvent(kind, event)
+	return ok
 }
 
 // knownSubscriptionEvent says some kind has the event.
@@ -117,6 +201,12 @@ func knownSubscriptionEvent(event string) bool {
 		}
 	}
 	return false
+}
+
+// listenable says a subscription may name the kind in its source.
+func listenable(kind TypeKind) bool {
+	_, ok := subscriptionEvents[kind]
+	return ok
 }
 
 func DecodeEventSubscription(source string, reader io.Reader, configuration project.Project) (EventSubscriptionDefinition, error) {
@@ -152,7 +242,7 @@ func validateEventSubscription(value EventSubscriptionDefinition, configuration 
 			if item.Reference == nil || item.Reference.IsZero() {
 				issues = append(issues, prefix+".reference is required")
 			}
-		case subscriptionEvents[item.Kind] != nil:
+		case listenable(item.Kind):
 			// No reference is the kind as a whole.
 			if item.Reference != nil && item.Reference.IsZero() {
 				issues = append(issues, prefix+".reference must be a non-zero UUID or left out for the kind as a whole")
@@ -220,7 +310,7 @@ func (catalog *Catalog) subscriptionSourceTypes(item EventSubscriptionDefinition
 		}
 		if defined, ok := catalog.DefinedTypeByID(*source.Reference); ok {
 			for _, inner := range defined.Types {
-				if subscriptionEvents[inner.Kind] != nil {
+				if listenable(inner.Kind) {
 					result = append(result, inner)
 				}
 			}
@@ -263,9 +353,19 @@ func (catalog *Catalog) validateEventSubscriptionReferences() error {
 				return fmt.Errorf("event subscription %s source is %s of unknown object %s", item.Name, source.Kind, source.Reference)
 			}
 		}
+		first := TypeKind("")
+		var parameters []string
 		for _, source := range catalog.subscriptionSourceTypes(item) {
-			if !kindHasSubscriptionEvent(source.Kind, item.Event) {
+			event, ok := kindSubscriptionEvent(source.Kind, item.Event)
+			if !ok {
 				return fmt.Errorf("event subscription %s event %q is not an event of %s", item.Name, item.Event, source.Kind)
+			}
+			own := handlerParametersFor(source.Kind, event)
+			if first == "" {
+				first, parameters = source.Kind, own
+			} else if !slices.Equal(own, parameters) {
+				return fmt.Errorf("event subscription %s event %q: its handler gets (%s) on %s and (%s) on %s, and a source of several kinds takes only an event whose handler gets the same on all of them",
+					item.Name, item.Event, strings.Join(parameters, ", "), first, strings.Join(own, ", "), source.Kind)
 			}
 		}
 	}

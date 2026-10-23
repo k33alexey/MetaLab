@@ -336,13 +336,12 @@ var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
 // managers the editor of the type of a defined type takes only by themselves
 // (opis of 14.10.2026). The managers of a chart, a business process, a task,
 // an exchange plan, an accounting register and a constant it takes in a
-// composite. Those of a report, a data processor and a filter criterion are
-// alone too, and the model has no such types yet (BLOCKS 2б, «подписка на
-// событие — составной источник и четыре менеджера»).
+// composite, and that of a settings storage.
 var kindAloneInDefinedType = map[Kind][]TypeKind{
 	CatalogKind: {CatalogManagerType}, DocumentKind: {DocumentManagerType}, EnumerationKind: {EnumerationManagerType},
 	DocumentJournalKind: {DocumentJournalManagerType}, InformationRegisterKind: {InformationRegisterManagerType},
 	AccumulationRegisterKind: {AccumulationRegisterManagerType}, CalculationRegisterKind: {CalculationRegisterManagerType},
+	ReportKind: {ReportManagerType}, DataProcessorKind: {DataProcessorManagerType}, FilterCriterionKind: {FilterCriterionManagerType},
 }
 
 // configurationRights are the rights the configurator offers on the
@@ -560,8 +559,10 @@ func init() {
 		describedAs(FunctionalOptionParameterKind, DecodeFunctionalOptionParameter, func(catalog *Catalog) *[]FunctionalOptionParameterDefinition {
 			return &catalog.FunctionalOptionParameters
 		}, func(c *Catalog) map[uuid.UUID]int { return c.functionalOptionParameterByID }),
-		describedAs(SettingsStorageKind, DecodeSettingsStorage, func(catalog *Catalog) *[]SettingsStorageDefinition { return &catalog.SettingsStorages }, func(c *Catalog) map[uuid.UUID]int { return c.settingsStorageByID }),
-		describedAs(FilterCriterionKind, DecodeFilterCriterion, func(catalog *Catalog) *[]FilterCriterionDefinition { return &catalog.FilterCriteria }, func(c *Catalog) map[uuid.UUID]int { return c.filterCriterionByID }),
+		describedAs(SettingsStorageKind, DecodeSettingsStorage, func(catalog *Catalog) *[]SettingsStorageDefinition { return &catalog.SettingsStorages }, func(c *Catalog) map[uuid.UUID]int { return c.settingsStorageByID }).
+			holds(SettingsStorageManagerType),
+		describedAs(FilterCriterionKind, DecodeFilterCriterion, func(catalog *Catalog) *[]FilterCriterionDefinition { return &catalog.FilterCriteria }, func(c *Catalog) map[uuid.UUID]int { return c.filterCriterionByID }).
+			holds(FilterCriterionManagerType),
 		describedAs(DefinedTypeKind, DecodeDefinedType, func(catalog *Catalog) *[]DefinedTypeObject { return &catalog.DefinedTypes }, func(c *Catalog) map[uuid.UUID]int { return c.definedTypeByID }).
 			names(DefinedType),
 		describedAs(CatalogKind, DecodeCatalog, func(catalog *Catalog) *[]CatalogDefinition { return &catalog.Catalogs }, func(c *Catalog) map[uuid.UUID]int { return c.catalogByID }).
@@ -590,9 +591,9 @@ func init() {
 		describedAs(CalculationRegisterKind, DecodeCalculationRegister, func(catalog *Catalog) *[]CalculationRegisterDefinition { return &catalog.CalculationRegisters }, func(c *Catalog) map[uuid.UUID]int { return c.calculationRegisterByID }).
 			holds(CalculationRegisterRecordSetType, CalculationRegisterManagerType),
 		describedAs(ReportKind, DecodeReport, func(catalog *Catalog) *[]ReportDefinition { return &catalog.Reports }, func(c *Catalog) map[uuid.UUID]int { return c.reportByID }).
-			holds(ReportObjectType),
+			holds(ReportObjectType, ReportManagerType),
 		describedAs(DataProcessorKind, DecodeDataProcessor, func(catalog *Catalog) *[]DataProcessorDefinition { return &catalog.DataProcessors }, func(c *Catalog) map[uuid.UUID]int { return c.dataProcessorByID }).
-			holds(DataProcessorObjectType),
+			holds(DataProcessorObjectType, DataProcessorManagerType),
 		describedAs(NumeratorKind, DecodeNumerator, func(catalog *Catalog) *[]NumeratorDefinition { return &catalog.Numerators }, func(c *Catalog) map[uuid.UUID]int { return c.numeratorByID }),
 		describedAs(SequenceKind, DecodeSequence, func(catalog *Catalog) *[]SequenceDefinition { return &catalog.Sequences }, func(c *Catalog) map[uuid.UUID]int { return c.sequenceByID }).
 			holds(SequenceRecordSetType),

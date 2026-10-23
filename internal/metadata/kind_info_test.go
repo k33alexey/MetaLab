@@ -39,6 +39,8 @@ func TestTypesNameTheirKinds(t *testing.T) {
 		SequenceRecordSetType: SequenceKind, RecalculationRecordSetType: RecalculationKind,
 		ConstantValueManagerType: ConstantKind, DocumentJournalManagerType: DocumentJournalKind,
 		ReportObjectType: ReportKind, DataProcessorObjectType: DataProcessorKind,
+		ReportManagerType: ReportKind, DataProcessorManagerType: DataProcessorKind,
+		SettingsStorageManagerType: SettingsStorageKind, FilterCriterionManagerType: FilterCriterionKind,
 		DefinedType:       DefinedTypeKind,
 		ExternalTableType: ExternalDataSourceTableKind, ExternalDimensionTableType: ExternalDimensionTableKind,
 	}
@@ -65,7 +67,8 @@ func TestTypesNameTheirKinds(t *testing.T) {
 			AccumulationRegisterRecordSetType, AccumulationRegisterManagerType, AccountingRegisterRecordSetType,
 			AccountingRegisterManagerType, CalculationRegisterRecordSetType, CalculationRegisterManagerType,
 			SequenceRecordSetType, RecalculationRecordSetType, ConstantValueManagerType, DocumentJournalManagerType,
-			ReportObjectType, DataProcessorObjectType}, kind)
+			ReportObjectType, DataProcessorObjectType, ReportManagerType, DataProcessorManagerType,
+			SettingsStorageManagerType, FilterCriterionManagerType}, kind)
 		if isObjectType(kind) != inMemory {
 			t.Errorf("%s lives in memory: %t, the prototype's: %t", kind, isObjectType(kind), inMemory)
 		}

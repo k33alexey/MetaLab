@@ -63,7 +63,7 @@ func TestASubscriptionListensToWhatThePrototypeLetsItListenTo(t *testing.T) {
 		"менеджер значения константы": {"[{kind: constant-value-manager, reference: " + sourceConstant + "}]", "on-write"},
 		"менеджер всех справочников":  {"[{kind: catalog-manager}]", "form-get-processing"},
 		"все планы обмена":            {"[{kind: exchange-plan-object}]", "on-send-data-to-slave"},
-		"объекты и наборы вместе":     {"[{kind: document-object}, {kind: information-register-record-set}, {kind: catalog-object}]", "before-write"},
+		"объекты и наборы вместе":     {"[{kind: document-object}, {kind: information-register-record-set}, {kind: catalog-object}]", "fill-check"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

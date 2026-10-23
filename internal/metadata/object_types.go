@@ -63,6 +63,13 @@ const (
 	AccountingRegisterManagerType   TypeKind = "accounting-register-manager"
 	CalculationRegisterManagerType  TypeKind = "calculation-register-manager"
 	DocumentJournalManagerType      TypeKind = "document-journal-manager"
+	// The managers of a report, a data processor, a settings storage and a
+	// filter criterion: the editor of the type offers them as the source of
+	// a subscription and in a defined type (opis of 14.10.2026).
+	ReportManagerType          TypeKind = "report-manager"
+	DataProcessorManagerType   TypeKind = "data-processor-manager"
+	SettingsStorageManagerType TypeKind = "settings-storage-manager"
+	FilterCriterionManagerType TypeKind = "filter-criterion-manager"
 )
 
 // The value types: no object of metadata behind them.
