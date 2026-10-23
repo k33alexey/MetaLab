@@ -197,6 +197,11 @@ const (
 	// it once was is the most the exports keep, read as a ceiling. Only a
 	// catalog has a count of levels.
 	maxHierarchyLevelCount = 10
+	// maxExtDimensionCount is the most analytics an account of a chart of
+	// accounts may have: 50 taken, 51 «Отменить ввод?» (checked in the
+	// designer, 14.10.2026, METADATA-OBJECTS.md «Пределы на состав»). The
+	// configurations being moved keep 3 at most.
+	maxExtDimensionCount = 50
 	// maxCodeLength is the longest code of a reference object and the longest
 	// number of a document, a business process or a task, string or numeric.
 	maxCodeLength = 50

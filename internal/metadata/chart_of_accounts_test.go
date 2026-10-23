@@ -416,3 +416,23 @@ func TestPredefinedAccountCarriesItsOrder(t *testing.T) {
 		t.Fatal("an order longer than the code accepted where the order takes the code's width")
 	}
 }
+
+// An account may have up to 50 analytics: the designer takes 50 and asks to
+// cancel the input at 51 (14.10.2026). The exports keep 3 at most, so the
+// ceiling is the designer's and not read off them.
+//
+// Defect caught: 51 and more taken, which the prototype never saves; 50
+// refused by a ceiling set too low; a negative count taken.
+func TestExtDimensionCountIsAtMostFifty(t *testing.T) {
+	t.Parallel()
+	for count, refused := range map[int]bool{0: false, 3: false, 50: false, 51: true, 1000: true, -1: true} {
+		_, err := DecodeChartOfAccounts("chart.yaml", strings.NewReader(chartWithMask("@@@@@", 9, "")+
+			fmt.Sprintf("max_ext_dimension_count: %d\n", count)), metadataConfiguration())
+		if !refused && err != nil {
+			t.Fatalf("%d analytics refused: %v", count, err)
+		}
+		if refused && (err == nil || !strings.Contains(err.Error(), "max_ext_dimension_count must be 0..50")) {
+			t.Fatalf("%d analytics: error = %v", count, err)
+		}
+	}
+}

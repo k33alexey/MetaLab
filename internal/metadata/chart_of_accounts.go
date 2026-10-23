@@ -216,9 +216,7 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 		}, configuration)...)
 		issues = append(issues, validateAccountingFlags("accounting_flags", value.AccountingFlags, configuration)...)
 		issues = append(issues, validateAccountingFlags("ext_dimension_accounting_flags", value.ExtDimensionAccountingFlags, configuration)...)
-		if value.MaxExtDimensionCount < 0 {
-			issues = append(issues, "max_ext_dimension_count must not be negative")
-		}
+		issues = append(issues, validateMaxExtDimensionCount(value.MaxExtDimensionCount)...)
 		if value.ExtDimensionTypes != nil && value.ExtDimensionTypes.IsZero() {
 			issues = append(issues, "ext_dimension_types must be a non-zero UUID")
 		}
@@ -430,6 +428,15 @@ func AccountCodeOrder(mask, code string, length int) string {
 
 // orderColumnWidth is how wide the order of an account may be: the order
 // length, or the code length where the order length is not given.
+// validateMaxExtDimensionCount checks how many analytics an account may have
+// against the designer's ceiling.
+func validateMaxExtDimensionCount(count int) []string {
+	if count < 0 || count > maxExtDimensionCount {
+		return []string{fmt.Sprintf("max_ext_dimension_count must be 0..%d", maxExtDimensionCount)}
+	}
+	return nil
+}
+
 // EffectiveMaxExtDimensionCount is how many analytics an account of the chart
 // really has: the count written, and none when the chart names no chart of
 // kinds to take them from. Everything that lays out or names the analytics -
