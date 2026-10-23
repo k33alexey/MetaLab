@@ -718,6 +718,11 @@ func (catalog *Catalog) validateExternalDataSources() error {
 	for _, source := range catalog.ExternalDataSources {
 		for _, table := range source.Tables {
 			owner := fmt.Sprintf("external data source %s table %s", source.Name, table.Name)
+			for _, field := range table.Fields {
+				if err := catalog.validateExternalTableFieldType(owner, field); err != nil {
+					return err
+				}
+			}
 			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields, nil); err != nil {
 				return err
 			}
@@ -758,6 +763,32 @@ func (catalog *Catalog) validateExternalDataSources() error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// validateExternalTableFieldType checks what the editor of the type of a field
+// of a table of a source gives (opis of 15.10.2026, vneshnij-istochnik.md):
+// one type - choosing one clears the other, there is no «Составной тип
+// данных», and a defined type that is composite «Проверка конфигурации»
+// refuses, «Поле не может иметь составной тип»; and no reference to an object
+// of the base - the editor offers none, while a defined type holding one it
+// takes. A function of a source takes a composite type (funkciya-istochnika.md)
+// and is not checked here; what the editors of a cube and of its dimension
+// tables give was not seen for their fields.
+func (catalog *Catalog) validateExternalTableFieldType(owner string, field ExternalField) error {
+	for _, item := range field.Types {
+		if _, reference := referenceStorages[item.Kind]; reference && !isExternalReference(item.Kind) {
+			return fmt.Errorf("%s field %s is typed by a reference to an object of the base, %s: the designer offers a field of a source no such type, a defined type holding one it takes",
+				owner, field.Name, item.Kind)
+		}
+	}
+	expanded, err := catalog.expandTypes(field.Types, nil)
+	if err != nil {
+		return fmt.Errorf("%s field %s: %w", owner, field.Name, err)
+	}
+	if len(expanded) > 1 {
+		return fmt.Errorf("%s field %s has a composite type: the designer refuses a field of a source of more than one type", owner, field.Name)
 	}
 	return nil
 }
