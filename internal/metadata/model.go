@@ -205,8 +205,10 @@ const (
 	// one the palette makes «Фиксированная» unavailable (checked in the
 	// designer on a constant and an attribute of a catalog, 14.10.2026,
 	// METADATA-OBJECTS.md «Пределы на состав»). The window of the type lets
-	// it through, a roughness of the platform Studio does not copy; the
-	// model's refusal is an item of block 2б.
+	// it through - whence, it seems, the two predefined characteristics of
+	// lombard1 of a fixed string of 128 - a roughness of the platform neither
+	// Studio nor the model copies (owner, 14.10.2026; PLATFORM-MODEL.md
+	// «Выбор типа»): a longer fixed string is refused wherever a type stands.
 	maxFixedStringLength = 100
 	// maxDescriptionLength is the longest description of a catalog, a chart
 	// of characteristic types, of accounts or of calculation types and a task:
@@ -2024,6 +2026,9 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			// be a length to pad to.
 			if item.FixedLength && item.Length == 0 {
 				issues = append(issues, prefix+".fixed_length requires a length")
+			}
+			if item.FixedLength && item.Length > maxFixedStringLength {
+				issues = append(issues, fmt.Sprintf("%s.fixed_length allows a length of at most %d: the designer makes «Фиксированная» unavailable at a longer one", prefix, maxFixedStringLength))
 			}
 		case NumberType:
 			// A number of no length is a number of any length. Only a form

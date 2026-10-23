@@ -193,3 +193,39 @@ func TestCodePropertiesBelongToTheKindsThatHaveThem(t *testing.T) {
 		})
 	}
 }
+
+// TestAFixedStringIsAtMostAHundred catches a fixed string longer than 100
+// taken somewhere a type stands: the prototype's palette makes «Фиксированная»
+// unavailable past 100 (checked on a constant and an attribute of a catalog,
+// 14.10.2026), its window of the type lets it through - whence the two
+// predefined characteristics of lombard1 with a fixed string of 128 - and the
+// model takes neither (owner, 14.10.2026; PLATFORM-MODEL «Выбор типа»). And a
+// ceiling put on a string of variable length, or on the fixed string of 100.
+// Every place a type stands, and a predefined characteristic, whose type is
+// checked on its own.
+func TestAFixedStringIsAtMostAHundred(t *testing.T) {
+	t.Parallel()
+	const says = "fixed_length allows a length of at most 100"
+	places := []typePlace{placeStored, placeDefinedType, placeSessionParameter, placeRunningObject, placeCommandParameter, placeFormAttribute}
+	for _, place := range places {
+		for _, test := range []struct {
+			item    Type
+			refused bool
+		}{
+			{Type{Kind: StringType, Length: 100, FixedLength: true}, false},
+			{Type{Kind: StringType, Length: 101, FixedLength: true}, true},
+			{Type{Kind: StringType, Length: 128, FixedLength: true}, true},
+			{Type{Kind: StringType, Length: 1024}, false},
+		} {
+			issues := validateTypesIn("types", []Type{test.item}, place)
+			refused := len(issues) == 1 && strings.Contains(issues[0], says)
+			if refused != test.refused || (!test.refused && len(issues) != 0) {
+				t.Errorf("place %d, string of %d fixed %v: issues %v, want refused %v", place, test.item.Length, test.item.FixedLength, issues, test.refused)
+			}
+		}
+	}
+	issues := validatePredefinedCharacteristics([]PredefinedCharacteristic{{ValueType: []Type{{Kind: StringType, Length: 128, FixedLength: true}}}})
+	if len(issues) != 1 || !strings.Contains(issues[0], "predefined[0].value_type[0]."+says) {
+		t.Errorf("a predefined characteristic of a fixed string of 128, as in lombard1: %v", issues)
+	}
+}
