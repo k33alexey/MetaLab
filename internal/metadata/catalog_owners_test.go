@@ -235,3 +235,68 @@ content: [{kind: catalogs, object: `+ownerFiles+`, auto_record: allow}]
 		t.Fatalf("an exchange plan numbered within a range it does not have: %v", err)
 	}
 }
+
+// ownedCatalog writes a catalog with the owners given and the rest of the
+// body given.
+func ownedCatalog(t *testing.T, root, id, name, owners, rest string) {
+	t.Helper()
+	writeMetadata(t, root, CatalogKind, id, "format: 1\nid: "+id+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 150\nowners: ["+owners+"]\n"+rest)
+}
+
+// The designer of 8.3.27 lets no developer name three owners (opis of the
+// catalog, 14.10.2026): one of a catalog with predefined items, the catalog
+// itself, and an owner already subordinate to the catalog, directly or through
+// a chain. A chain without a ring, and predefined items on the owner rather
+// than on the subordinate, are taken.
+//
+// Defect caught: any of the three loaded - a ring would never end the deletion
+// mark of a branch, which follows subordinate catalogs down - and the refusal
+// not naming the catalogs; a chain refused for a ring it does not close.
+func TestCatalogOwnersRefusedAsTheDesignerRefusesThem(t *testing.T) {
+	t.Parallel()
+	const a, b, c = "cb000000-0000-4000-8000-0000000000a1", "cb000000-0000-4000-8000-0000000000b1", "cb000000-0000-4000-8000-0000000000c1"
+	predefined := "predefined:\n  - {id: cb000000-0000-4000-8000-0000000000d1, name: Основной, code: \"000000001\", description: Основной}\n"
+	for name, testCase := range map[string]struct {
+		write func(t *testing.T, root string)
+		says  string
+	}{
+		"владелец у справочника с предопределёнными": {func(t *testing.T, root string) {
+			ownedCatalog(t, root, a, "Склады", "", "")
+			ownedCatalog(t, root, b, "Ячейки", a, predefined)
+		}, "catalog Ячейки keeps predefined items and cannot belong to Склады (owners[0])"},
+		"справочник — владелец самого себя": {func(t *testing.T, root string) {
+			ownedCatalog(t, root, a, "Склады", a, "")
+		}, "catalog Склады cannot be its own owner (owners[0])"},
+		"кольцо из двух": {func(t *testing.T, root string) {
+			ownedCatalog(t, root, a, "Склады", b, "")
+			ownedCatalog(t, root, b, "Ячейки", a, "")
+		}, "Склады belongs to Ячейки belongs to Склады"},
+		"кольцо из трёх": {func(t *testing.T, root string) {
+			ownedCatalog(t, root, a, "Склады", c, "")
+			ownedCatalog(t, root, b, "Ячейки", a, "")
+			ownedCatalog(t, root, c, "Полки", b, "")
+		}, "Склады belongs to Полки belongs to Ячейки belongs to Склады"},
+		"цепочка без кольца": {func(t *testing.T, root string) {
+			ownedCatalog(t, root, a, "Склады", "", predefined)
+			ownedCatalog(t, root, b, "Ячейки", a, "")
+			ownedCatalog(t, root, c, "Полки", b+", "+a, "")
+		}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			testCase.write(t, root)
+			_, err := Load(root)
+			if testCase.says == "" {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), testCase.says) {
+				t.Fatalf("error = %v, expected it to say %q", err, testCase.says)
+			}
+		})
+	}
+}

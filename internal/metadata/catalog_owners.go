@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -130,6 +132,9 @@ func validateCatalogSubordination(owners []uuid.UUID, subordination Subordinatio
 // nowhere; subordination to folders where the owner has none is a restriction
 // on rows that cannot exist.
 func (catalog *Catalog) validateCatalogOwners() error {
+	if err := catalog.validateOwnersAsTheDesignerDoes(); err != nil {
+		return err
+	}
 	for _, definition := range catalog.Catalogs {
 		for index, id := range definition.Owners {
 			kind, ok := catalog.ownerObject(id)
@@ -145,6 +150,77 @@ func (catalog *Catalog) validateCatalogOwners() error {
 				return fmt.Errorf("catalog %s is subordinate to folders of %s %s, which has none",
 					definition.Name, kind, catalog.ownerName(id))
 			}
+		}
+	}
+	return nil
+}
+
+// validateOwnersAsTheDesignerDoes refuses the three owners the designer of
+// 8.3.27 does not let a developer name (opis of the catalog, 14.10.2026,
+// docs/block-00/spravochnik.md; METADATA-OBJECTS.md, «Владелец — не сам
+// справочник и не кольцо»): an owner of a catalog that keeps predefined items,
+// a catalog owning itself, and a ring of owners of any length. A ring would
+// also never end the deletion mark of a branch, which follows subordinate
+// catalogs down.
+func (catalog *Catalog) validateOwnersAsTheDesignerDoes() error {
+	for _, definition := range catalog.Catalogs {
+		for index, id := range definition.Owners {
+			if len(definition.Predefined) > 0 {
+				return fmt.Errorf("catalog %s keeps predefined items and cannot belong to %s (owners[%d])",
+					definition.Name, catalog.ownerName(id), index)
+			}
+			if id == definition.ID {
+				return fmt.Errorf("catalog %s cannot be its own owner (owners[%d])", definition.Name, index)
+			}
+		}
+	}
+	if ring := catalog.ownerRing(); len(ring) > 0 {
+		return fmt.Errorf("catalogs own each other in a ring: %s", strings.Join(ring, " belongs to "))
+	}
+	return nil
+}
+
+// ownerRing finds a ring of catalogs owning one another and names it from
+// the catalog it starts at round to that catalog again, or returns nil. The
+// catalogs are walked in their order and the owners in theirs, so one
+// configuration is always worded alike.
+func (catalog *Catalog) ownerRing() []string {
+	const (
+		unseen = iota
+		onPath
+		done
+	)
+	state := make(map[uuid.UUID]int, len(catalog.Catalogs))
+	var path []uuid.UUID
+	var ring []string
+	var walk func(id uuid.UUID) bool
+	walk = func(id uuid.UUID) bool {
+		state[id] = onPath
+		path = append(path, id)
+		for _, owner := range catalog.Catalogs[catalog.catalogByID[id]].Owners {
+			if _, isCatalog := catalog.catalogByID[owner]; !isCatalog || owner == id {
+				continue
+			}
+			switch state[owner] {
+			case onPath:
+				start := slices.Index(path, owner)
+				for _, member := range append(path[start:], owner) {
+					ring = append(ring, catalog.Catalogs[catalog.catalogByID[member]].Name)
+				}
+				return true
+			case unseen:
+				if walk(owner) {
+					return true
+				}
+			}
+		}
+		path = path[:len(path)-1]
+		state[id] = done
+		return false
+	}
+	for _, definition := range catalog.Catalogs {
+		if state[definition.ID] == unseen && walk(definition.ID) {
+			return ring
 		}
 	}
 	return nil
