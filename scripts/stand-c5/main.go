@@ -139,13 +139,27 @@ func (names *roleNames) String() string        { return strings.Join(*names, ","
 func (names *roleNames) Set(name string) error { *names = append(*names, name); return nil }
 
 // up makes the stand when its folder has none and serves it until ctx ends.
+// A folder that holds something other than a stand it refuses: down removes
+// the whole folder, and what lay there before would go with the stand.
 func up(ctx context.Context, folder, projectPath string, port int) error {
+	if !holdsStand(folder) {
+		entries, err := os.ReadDir(folder)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		for _, entry := range entries {
+			// The lock of an up that failed before it made the stand.
+			if entry.Name() != "stand.lock" {
+				return fmt.Errorf("%s holds no stand and is not empty; give an empty or a new folder", folder)
+			}
+		}
+	}
 	lock, err := holdStand(folder)
 	if err != nil {
 		return err
 	}
 	defer lock.Release()
-	if _, err := os.Stat(filepath.Join(folder, "stand.json")); errors.Is(err, os.ErrNotExist) {
+	if !holdsStand(folder) {
 		if projectPath == "" {
 			return fmt.Errorf("the first up needs --project")
 		}
@@ -191,6 +205,12 @@ func up(ctx context.Context, folder, projectPath string, port int) error {
 		_ = server.Shutdown(shutdown)
 	}
 	return err
+}
+
+// holdsStand says the folder holds a stand: create writes stand.json last.
+func holdsStand(folder string) bool {
+	_, err := os.Stat(filepath.Join(folder, "stand.json"))
+	return err == nil
 }
 
 // holdStand locks the stand's folder for the time of up: down refuses while it
@@ -558,6 +578,11 @@ func ensureUser(ctx, managerCtx context.Context, runtime *platform.Runtime, stan
 // down removes what create made: the databases and roles of PostgreSQL, then
 // the stand's folder.
 func down(ctx context.Context, folder string) error {
+	// Nothing is made or removed in a folder with no stand: holdStand would
+	// make the folder and its lock first.
+	if !holdsStand(folder) {
+		return fmt.Errorf("%s holds no stand", folder)
+	}
 	lock, err := holdStand(folder)
 	if err != nil {
 		return err
@@ -740,9 +765,15 @@ func (windows *studioWindows) close() {
 func standPage(folder string, stand state, portalAddress, managerAddress string, runtime *platform.Runtime, studios *studioWindows) http.Handler {
 	routes := http.NewServeMux()
 	routes.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
-		// user adds accounts while the stand is up.
+		// user adds accounts while the stand is up. Each request reads them
+		// into its own copy: the stand of up is shared by every request, and
+		// two at once would write and read one map (review 2.464, П3).
+		stand := stand
 		if current, err := os.ReadFile(filepath.Join(folder, "stand.json")); err == nil {
-			_ = json.Unmarshal(current, &stand)
+			var fresh state
+			if json.Unmarshal(current, &fresh) == nil {
+				stand = fresh
+			}
 		}
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(response, `<!doctype html><html lang="ru"><meta charset="utf-8"><title>Стенд С5</title>

@@ -7,7 +7,10 @@
 одинаково каждый раз.
 
 Запуск: `python3 scripts/test_stand.py <каталог> c1|c2|c3`. Каталог
-перезаписывается. С1 — копия `examples/sales-and-warehouse`; С2 — С1 и объект
+перезаписывается, если в нём прежний стенд — его скрипт метит файлом
+`.ml-test-stand`; каталог с чем-то другим, внутри репозитория или выше него
+скрипт не трогает и отказывает (ревью 2.464, П1: опечатка в пути удаляла
+бы рабочую копию). С1 — копия `examples/sales-and-warehouse`; С2 — С1 и объект
 каждого вида, которого в демо нет, с командой, реквизитами, измерениями,
 признаками учёта, перерасчётом, шаблоном URL, операцией, внешним источником с
 таблицей, кубом, таблицей измерения и функцией; С3 — С2 и подсистемы «Продажи»
@@ -26,9 +29,22 @@ if len(sys.argv) != 3 or sys.argv[2] not in ("c1", "c2", "c3"):
 target = sys.argv[1]
 level = sys.argv[2]
 
-if os.path.exists(target):
+# Метка стенда: каталог с ней скрипт сделал сам, и перезаписать его можно.
+MARK = ".ml-test-stand"
+
+def refuse(reason):
+    sys.exit(f"test_stand.py: {target}: {reason}")
+
+real, repo = os.path.realpath(target), os.path.realpath(REPO)
+if os.path.commonpath([real, repo]) in (real, repo):
+    refuse("каталог внутри репозитория или выше него; укажите каталог вне репозитория")
+if os.path.lexists(target):
+    if not os.path.isfile(os.path.join(target, MARK)):
+        refuse("каталог есть, и в нём не стенд этого скрипта; удалите его сами или укажите новый")
     shutil.rmtree(target)
 shutil.copytree(os.path.join(REPO, "examples/sales-and-warehouse"), target)
+with open(os.path.join(target, MARK), "w") as mark:
+    mark.write("Стенд тест-кейсов, собран scripts/test_stand.py; каталог перезаписывается.\n")
 if level == "c1":
     sys.exit(0)
 
@@ -99,8 +115,8 @@ recalculations:
     dimensions:
       - {{id: {nid()}, name: Контрагент, title: {{ru: Контрагент}}, register_dimension: {dim}}}
 """)
-# Модуль перерасчёта — пока дерево Studio не показывает перерасчёт без
-# папки модуля (пункт блока 2в, найдено проходом 2.437).
+# Модуль перерасчёта: дерево Studio показывает перерасчёт и без папки модуля
+# (с 2.439), а с ним стенд проверяет и открытие модуля из дерева.
 write("metadata/calculation-registers/Начисления/recalculations/Перерасчет/МодульНабораЗаписей.bsl", "")
 ids["accreg"] = folder("accounting-registers", "Хозрасчетный", f"""chart_of_accounts: {ids['accounts']}
 correspondence: true

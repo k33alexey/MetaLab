@@ -6,10 +6,12 @@ package integrationtest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -31,7 +33,8 @@ var objectTables = map[string]string{
 
 // ForgetObjects removes, when the test ends, the rows the objects leave in
 // the platform's own tables. A removal that fails fails the test: a test that
-// cannot clean up leaves rows for the next run to trip on.
+// cannot clean up leaves rows for the next run to trip on. A table that is not
+// there holds nothing to remove (nothingThere).
 func ForgetObjects(t testing.TB, pool *pgxpool.Pool, objects []uuid.UUID) {
 	t.Helper()
 	ids := make([]string, 0, len(objects))
@@ -60,8 +63,19 @@ func cleanup(t testing.TB, pool *pgxpool.Pool, statement string, arguments ...an
 	t.Cleanup(func() {
 		ctx, stop := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer stop()
-		if _, err := pool.Exec(ctx, statement, arguments...); err != nil {
+		if _, err := pool.Exec(ctx, statement, arguments...); err != nil && !nothingThere(err) {
 			t.Errorf("clean up after the test (%s): %v", statement, err)
 		}
 	})
+}
+
+// nothingThere says the removal found no table to remove from: the platform
+// makes its tables of objects in ml_core only inside a save, so a test that
+// failed on a fresh database before its first save leaves none, and a
+// complaint about them would only bury the reason it failed (review 2.464,
+// П4). undefined_table by its SQLSTATE, which PostgreSQL gives for a table in
+// a schema that is not there too.
+func nothingThere(err error) bool {
+	var databaseError *pgconn.PgError
+	return errors.As(err, &databaseError) && databaseError.Code == "42P01"
 }
