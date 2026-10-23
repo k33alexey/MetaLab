@@ -41,6 +41,20 @@ func TestTheOtherKindsTakeALengthOfZeroAsTheDesignerDoes(t *testing.T) {
 		"код плана обмена": {func() error {
 			_, err := DecodeExchangePlan("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+"\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 0}\ndescription_length: 100\n"), configuration)
 			return err
+		}, "code.length must be 1..50"},
+		// Nor a description of length 0 (opis of 15.10.2026, plan-obmena.md).
+		"наименование плана обмена": {func() error {
+			_, err := DecodeExchangePlan("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+"\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 9}\ndescription_length: 0\n"), configuration)
+			return err
+		}, "description_length must be 1..250"},
+		"длина кода плана обмена 51": {func() error {
+			_, err := DecodeExchangePlan("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+"\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 51}\ndescription_length: 100\n"), configuration)
+			return err
+		}, "code.length must be 1..50"},
+		// A numerator of length 0 the designer takes (numerator.md).
+		"номер нумератора": {func() error {
+			_, err := DecodeNumerator("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+"\nname: Сквозной\ntitle: {ru: Сквозной}\nnumber: {type: string, length: 0, periodicity: none}\n"), configuration)
+			return err
 		}, ""},
 		// The description of a chart of accounts was not checked: carried and
 		// noted.

@@ -71,9 +71,6 @@ type ExchangePlanDefinition struct {
 	// Content is what is registered, with the kind of registration beside each
 	// entry. A plan with no content registers nothing and exchanges nothing.
 	Content []ExchangePlanContentItem `yaml:"content,omitempty" json:"content,omitempty"`
-	// IncludeExtensions says whether extensions of the configuration travel to
-	// the nodes along with the data.
-	IncludeExtensions bool `yaml:"include_extensions,omitempty" json:"includeExtensions,omitempty"`
 	// DistributedInfoBase is carried, shown and never acted upon. The platform
 	// does not replicate a configuration between nodes, and saying so out loud
 	// in the model is the whole point: a flag raised in the source
@@ -118,21 +115,20 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 			list:              value.List,
 			reservedName:      reservedExchangePlanName,
 			codeAllowedLength: true,
-			// A length of 0 the owner did not check on this kind: nothing shows
-			// the configurator refusing it, so it is carried, switches the field
-			// off as on a catalog, and is a note (NoteLengthZeroUnchecked).
-			codeMayBeAbsent:        true,
-			descriptionMayBeAbsent: true,
-			kind:                   ExchangePlanKind,
-			presentation:           value.Presentations,
-			choice:                 value.ObjectChoice,
-			basedOn:                value.BasedOn,
-			dataLock:               value.DataLock,
-			dataLockFields:         value.DataLockFields,
-			fullTextSearch:         value.FullTextSearch,
-			dataHistory:            value.DataHistorySettings,
-			additionalIndexes:      value.AdditionalIndexes,
-			standardAttributes:     value.StandardAttributes,
+			// A code and a description of length 0 the designer refuses on an
+			// exchange plan - «В поле введены некорректные данные» (opis of
+			// 15.10.2026, plan-obmena.md) - as it does 51 and 251: the bounds
+			// are 1..50 and 1..250.
+			kind:               ExchangePlanKind,
+			presentation:       value.Presentations,
+			choice:             value.ObjectChoice,
+			basedOn:            value.BasedOn,
+			dataLock:           value.DataLock,
+			dataLockFields:     value.DataLockFields,
+			fullTextSearch:     value.FullTextSearch,
+			dataHistory:        value.DataHistorySettings,
+			additionalIndexes:  value.AdditionalIndexes,
+			standardAttributes: value.StandardAttributes,
 		}, configuration)...)
 		issues = append(issues, validateExchangePlanContent(value)...)
 		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)

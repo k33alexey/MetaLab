@@ -42,10 +42,7 @@ type codeNumberRow struct {
 	extra string
 }
 
-const (
-	untilExchangePlanLengths = "2б «план обмена: длина кода и наименования не 0»"
-	untilDescriptionZero     = "2б «длина наименования 0 у плана счетов, плана видов расчёта и задачи»"
-)
+const untilDescriptionZero = "2б «длина наименования 0 у плана счетов, плана видов расчёта и задачи»"
 
 var codeNumberTable = map[string]codeNumberRow{
 	"справочник": {kind: CatalogKind, numericCode: true, allowedLength: true,
@@ -57,8 +54,9 @@ var codeNumberTable = map[string]codeNumberRow{
 		codeZero: true, descriptionZeroUntil: untilDescriptionZero, unique: true, descriptionCeiling: 150},
 	"план видов расчёта": {kind: ChartOfCalculationTypesKind, numericCode: true, allowedLength: true,
 		codeZero: true, descriptionZeroUntil: untilDescriptionZero, descriptionCeiling: 150},
-	"план обмена": {kind: ExchangePlanKind, allowedLength: true,
-		codeZeroUntil: untilExchangePlanLengths, descriptionZeroUntil: untilExchangePlanLengths, descriptionCeiling: 250},
+	// The designer refuses a code and a description of length 0 on an
+	// exchange plan (opis of 15.10.2026, plan-obmena.md).
+	"план обмена":    {kind: ExchangePlanKind, allowedLength: true, descriptionCeiling: 250},
 	"документ":       {kind: DocumentKind, numbered: true, allowedLength: true, codeZero: true},
 	"бизнес-процесс": {kind: BusinessProcessKind, numbered: true, allowedLength: true, codeZero: true},
 	"задача": {kind: TaskKind, numbered: true, allowedLength: true, codeZero: true,

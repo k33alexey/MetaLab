@@ -10,9 +10,9 @@ import (
 )
 
 // A length of 0 on the description of a chart of accounts, a chart of
-// calculation types and a task, and on the code and the description of an
-// exchange plan, switches the field off in the database as on a catalog: no
-// column, no index by it. With a length the tables are what they were, column
+// calculation types and a task switches the field off in the database as on a
+// catalog: no column, no index by it. An exchange plan, which takes no length
+// of 0 (2.494), stands beside them with its code and keeps its index by code. With a length the tables are what they were, column
 // for column, so a base that already has them migrates nothing.
 //
 // Defect caught: a column of character varying(0), which PostgreSQL refuses -
@@ -31,10 +31,10 @@ func TestALengthOfZeroSwitchesTheColumnOffAndLeavesTheRestAlone(t *testing.T) {
 			{ChartOfAccountsKind, "code: {type: string, length: 5}\n"},
 			{ChartOfCalculationTypesKind, "code: {type: string, length: 5}\n"},
 			{TaskKind, "number: {type: string, length: 11, auto: true, periodicity: none}\n"},
-			{ExchangePlanKind, "code: {type: string, length: " + map[bool]string{true: "0", false: "9"}[length == 0] + "}\n"},
 		} {
 			noteChartBody(t, root, item.kind, item.body+"description_length: "+map[bool]string{true: "0", false: "100"}[length == 0]+"\n")
 		}
+		noteChartBody(t, root, ExchangePlanKind, "code: {type: string, length: 9}\ndescription_length: 100\n")
 		catalog, err := Load(root)
 		if err != nil {
 			t.Fatalf("refused: %v", err)
@@ -77,24 +77,10 @@ func TestALengthOfZeroSwitchesTheColumnOffAndLeavesTheRestAlone(t *testing.T) {
 	accounts, _ := PhysicalCatalogTable(off.ChartsOfAccounts[0].ID)
 	calculation, _ := PhysicalCatalogTable(off.ChartsOfCalculationTypes[0].ID)
 	task, _ := PhysicalCatalogTable(off.Tasks[0].ID)
-	plan, _ := PhysicalCatalogTable(off.ExchangePlans[0].ID)
 	built := tables(t, off)
 	for _, name := range []string{accounts, calculation, task} {
 		if slices.Contains(columns(built[name]), "description") {
 			t.Errorf("table %s keeps a description of length 0: %v", name, columns(built[name]))
-		}
-	}
-	if got := columns(built[plan]); slices.Contains(got, "code") || slices.Contains(got, "description") {
-		t.Errorf("exchange plan keeps a field of length 0: %v", got)
-	}
-	for _, index := range built[plan].Indexes {
-		if slices.Contains(index.Keys, "code") {
-			t.Errorf("exchange plan indexes a code of length 0: %+v", index)
-		}
-	}
-	for _, constraint := range built[plan].Constraints {
-		if strings.Contains(constraint.Definition, "(code)") {
-			t.Errorf("exchange plan keeps a constraint on a code of length 0: %+v", constraint)
 		}
 	}
 
@@ -105,7 +91,7 @@ func TestALengthOfZeroSwitchesTheColumnOffAndLeavesTheRestAlone(t *testing.T) {
 	accounts, _ = PhysicalCatalogTable(on.ChartsOfAccounts[0].ID)
 	calculation, _ = PhysicalCatalogTable(on.ChartsOfCalculationTypes[0].ID)
 	task, _ = PhysicalCatalogTable(on.Tasks[0].ID)
-	plan, _ = PhysicalCatalogTable(on.ExchangePlans[0].ID)
+	plan, _ := PhysicalCatalogTable(on.ExchangePlans[0].ID)
 	for name, want := range map[string][]string{
 		accounts:    {"ref", "version", "code", "description", "account_kind", "off_balance", "deletion_mark", "predefined_name"},
 		calculation: {"ref", "version", "code", "description", "deletion_mark", "predefined_name", "action_period_is_base"},

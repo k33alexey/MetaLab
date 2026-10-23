@@ -1241,9 +1241,11 @@ type referenceObjectShape struct {
 	// chart; the designer of 8.3.27 has it); 720 catalogs of the
 	// configurations being moved have no code. A chart of accounts and a
 	// chart of calculation types may have no code either, the owner checked
-	// the same day. Their description, and the code and the description of an
-	// exchange plan, were not checked: a length of 0 there is carried the same
-	// way and is a note (NoteLengthZeroUnchecked).
+	// the same day, and so may a chart of characteristic types and a chart of
+	// accounts by the opis of 15.10.2026. The description of a chart of
+	// accounts and of calculation types was not checked: a length of 0 there
+	// is carried the same way and is a note (NoteLengthZeroUnchecked). An
+	// exchange plan has neither of length 0: the designer refuses both.
 	codeMayBeAbsent        bool
 	descriptionMayBeAbsent bool
 	// autonumbering and checkUnique say this kind has automatic codes and the

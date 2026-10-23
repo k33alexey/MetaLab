@@ -156,8 +156,7 @@ func init() {
 			"Зависимость от базы у плана видов расчёта без базовых планов или базовые планы без зависимости.",
 			"Несётся как записано; база собирается из названных базовых планов, без них — пуста."},
 		NoteKindInfo{NoteLengthZeroUnchecked,
-			"Длина 0 кода, наименования или номера у вида, где её в конфигураторе не проверяли: наименование плана счетов, " +
-				"плана видов расчёта и задачи, код и наименование плана обмена, номер нумератора.",
+			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов, плана видов расчёта и задачи.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
 		NoteKindInfo{NoteJournalShowsNothing,
 			"Журнал документов без регистрируемых документов или графа журнала без ссылок на реквизиты — " +
@@ -870,19 +869,6 @@ func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string))
 	for _, task := range catalog.Tasks {
 		if task.DescriptionLength == 0 {
 			note("tasks "+task.Name+" description_length", "0")
-		}
-	}
-	for _, numerator := range catalog.Numerators {
-		if numerator.Number.Length == 0 {
-			note("document-numerators "+numerator.Name+" number.length", "0")
-		}
-	}
-	for _, plan := range catalog.ExchangePlans {
-		if plan.Code.Length == 0 {
-			note("exchange-plans "+plan.Name+" code.length", "0")
-		}
-		if plan.DescriptionLength == 0 {
-			note("exchange-plans "+plan.Name+" description_length", "0")
 		}
 	}
 }

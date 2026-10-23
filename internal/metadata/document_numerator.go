@@ -30,9 +30,9 @@ type NumeratorDefinition struct {
 func DecodeNumerator(source string, reader io.Reader, configuration project.Project) (NumeratorDefinition, error) {
 	return decodeDescription(source, reader, configuration, func(value NumeratorDefinition, configuration project.Project) []string {
 		var issues []string
-		// A number of length 0 is allowed as on a document, whose length the owner
-		// checked; on a numerator it was not checked, so it is a note
-		// (NoteLengthZeroUnchecked).
+		// A number of length 0 is allowed as on a document: the designer takes
+		// it on a numerator, and «Проверка конфигурации» says nothing (opis of
+		// 15.10.2026, numerator.md).
 		issues = append(issues, validateNumberShapeOf(value.Number, true)...)
 		if value.Number.Auto {
 			issues = append(issues, "number.auto belongs to the document, not to the numerator it shares")

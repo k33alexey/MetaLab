@@ -192,8 +192,9 @@ func DecodeChartOfAccounts(source string, reader io.Reader, configuration projec
 			codeSeries:        true,
 			checkUnique:       true,
 			codeMayBeAbsent:   true,
-			// The description of length 0 was not checked by the owner, as the
-			// code was: carried, switched off, a note (NoteLengthZeroUnchecked).
+			// A code of length 0 the designer takes (opis of 15.10.2026,
+			// plan-schetov.md); the description of length 0 was not checked:
+			// carried, switched off, a note (NoteLengthZeroUnchecked).
 			descriptionMayBeAbsent: true,
 			// codeAllowedLength stays off: the shape of an account code is the code
 			// mask's to decide, and the prototype gives the chart no such property.

@@ -645,11 +645,11 @@ func TestATablePartForFolderAndItemWithoutFoldersIsNoted(t *testing.T) {
 	}
 }
 
-// A numerator of length 0 is carried and noted, and a recalculation whose
+// A numerator of length 0 is carried with no note, and a recalculation whose
 // dimension names no dimension of the register builds - the dimension simply
 // has no column.
 //
-// Defect caught: the numerator refused, or accepted without a note; and the
+// Defect caught: the numerator refused, or accepted with a note; and the
 // schema refusing the whole configuration over a dimension that holds nothing.
 func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	t.Parallel()
@@ -665,8 +665,10 @@ func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	for _, note := range catalog.Notes() {
 		numeratorNoted = numeratorNoted || (note.Kind == NoteLengthZeroUnchecked && strings.Contains(note.Where, "Сквозной"))
 	}
-	if !numeratorNoted {
-		t.Fatalf("a numerator of length 0 carries no note: %+v", catalog.Notes())
+	// The designer takes a numerator of length 0 (opis of 15.10.2026,
+	// numerator.md): no note.
+	if numeratorNoted {
+		t.Fatalf("a numerator of length 0 carries a note: %+v", catalog.Notes())
 	}
 	schema, err := catalog.ApplicationSchema()
 	if err != nil {

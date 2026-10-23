@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -37,7 +38,7 @@ values:
 `)
 }
 
-// A plan carries three things nothing else does: what is registered, whether
+// A plan carries two things nothing else does: what is registered and whether
 // the platform registers it by itself, and a flag we do not implement but must
 // not lose. A node carries which base it is and what the two sides have
 // exchanged.
@@ -51,7 +52,6 @@ name: ОбменСФилиалами
 title: {ru: Обмен с филиалами}
 code: {type: string, length: 36, auto: false}
 description_length: 150
-include_extensions: true
 distributed_info_base: true
 content:
   - {kind: catalogs, object: `+exchangedCatalog+`, auto_record: allow}
@@ -83,9 +83,6 @@ attributes:
 	}
 	if plan.Content[0].Auto != AutoRecordAllow || plan.Content[1].Auto != AutoRecordDeny {
 		t.Fatalf("automatic registration is not a detail and was lost: %+v", plan.Content)
-	}
-	if !plan.IncludeExtensions {
-		t.Fatal("whether extensions travel to the nodes was lost")
 	}
 	// Carried, shown, not acted upon - and above all not dropped in silence.
 	if !plan.DistributedInfoBase {
@@ -285,5 +282,21 @@ func TestExchangePlanCarriesAPlanInItsContentWithANote(t *testing.T) {
 	if len(notes) != 1 || notes[0].Kind != NoteUseWithoutSample || notes[0].Where != "exchange-plans ОбменСФилиалами content" ||
 		notes[0].Written != "exchange-plans Филиалы" {
 		t.Fatalf("notes = %+v", notes)
+	}
+}
+
+// «Включать расширения конфигурации» is not carried: extensions of the
+// configuration are refused whole (owner, 30.09.2026, and the audit of
+// 15.10.2026, exclusions-audit.md, question 5). A project naming it is
+// refused as naming a property the model does not keep.
+//
+// Defect caught: the flag kept in the model after the mechanism it serves was
+// refused.
+func TestAnExchangePlanCarriesNoFlagOfExtensions(t *testing.T) {
+	t.Parallel()
+	_, err := DecodeExchangePlan("object.yaml", strings.NewReader("format: 1\nid: "+exchangePlanID+
+		"\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 9}\ndescription_length: 100\ninclude_extensions: true\n"), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "include_extensions") {
+		t.Fatalf("the flag of extensions: %v", err)
 	}
 }
