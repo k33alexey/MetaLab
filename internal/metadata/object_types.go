@@ -222,12 +222,21 @@ func mayStandUnstored(place typePlace) bool {
 	return place == placeRunningObject || place == placeCommandParameter || place == placeDefinedType || place == placeFormAttribute
 }
 
-// sessionParameterValueTypes are the value types the help lets a session
-// parameter hold.
+// sessionParameterValueTypes are the types beyond the stored ones the help
+// lets a session parameter hold. The help («ПараметрыСеанса.<Имя параметра
+// сеанса>») lists the stored types - number, string, date, boolean, value
+// storage, unique identifier, any reference - and besides them the three
+// fixed collections, a type description, binary data, the kind of account,
+// the kinds of accounting and accumulation movement, Null and Undefined.
+// Undefined is no type of its own: it is what a composite type holds when it
+// holds nothing. Null the designer offers in the editor of the type, alone
+// and in a composite, and «Проверка конфигурации» takes both (opis of the
+// session parameter, 14.10.2026).
 var sessionParameterValueTypes = map[TypeKind]bool{
 	FixedStructureType: true, FixedArrayType: true, FixedMapType: true,
 	TypeDescriptionType: true, BinaryDataType: true,
 	AccountKindType: true, AccountingRecordKindType: true, AccumulationRecordKindType: true,
+	NullType: true,
 }
 
 // allowedIn says whether a kind that lives in memory may stand in the place.

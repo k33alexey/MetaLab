@@ -119,3 +119,31 @@ func TestRuntimeSessionParameterGetSetRoundTrip(t *testing.T) {
 		t.Fatalf("unknown session parameter set error = %v", err)
 	}
 }
+
+// Null is a type a session parameter may hold, alone and in a composite: the
+// help names it among the types of the value, the designer offers it in the
+// editor of the type and «Проверка конфигурации» takes both (opis of the
+// session parameter, 14.10.2026). A field the database stores still may not
+// hold it.
+//
+// Defect caught: a session parameter of Null refused, as when Null was a type
+// of an attribute of a form alone; Null let into a stored field along with it.
+func TestNullIsATypeOfASessionParameter(t *testing.T) {
+	t.Parallel()
+	for name, types := range map[string]string{
+		"Null":           "[{kind: null-type}]",
+		"Null в составе": "[{kind: string, length: 10}, {kind: null-type}, {kind: fixed-array}, {kind: binary-data}]",
+	} {
+		_, err := DecodeSessionParameter("session-parameter.yaml", strings.NewReader("format: 1\nid: "+sessionParameterID+
+			"\nname: Параметр\ntitle: {ru: Параметр}\ntypes: "+types+"\n"), metadataConfiguration())
+		if err != nil {
+			t.Fatalf("%s: a session parameter of Null was refused: %v", name, err)
+		}
+	}
+	_, err := DecodeCatalog("object.yaml", strings.NewReader(ceilingCatalog("{type: string, length: 9}", "100")+
+		"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Реквизит, title: {ru: Реквизит}, types: [{kind: null-type}]}\n"),
+		metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "null-type is a type of an attribute of a form and cannot stand in a field the database stores") {
+		t.Fatalf("an attribute of a catalog of Null: %v", err)
+	}
+}

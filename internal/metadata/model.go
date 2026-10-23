@@ -1971,7 +1971,8 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			continue
 		}
 		if formOnlyKinds[item.Kind] {
-			if place != placeFormAttribute {
+			// Null is the one of them a session parameter may hold too.
+			if place != placeFormAttribute && !(place == placeSessionParameter && sessionParameterValueTypes[item.Kind]) {
 				issues = append(issues, prefix+".kind "+string(item.Kind)+" is a type of an attribute of a form and cannot stand "+placeName(place))
 			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
 				issues = append(issues, prefix+" has unsupported qualifiers")
