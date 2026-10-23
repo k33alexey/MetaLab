@@ -283,3 +283,32 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 		}
 	}
 }
+
+// TestTheWizardOffersThePrototypesKinds catches the wizard «Новое
+// ограничение доступа» offering on its first step a kind the prototype's
+// does not, or leaving out one it does (review 2.464, Р1): the wizard
+// offered whatever restricts - a sequence, a recalculation, the table, the
+// cube and the table of dimensions of an external source. The kinds are
+// written out here from the seventh pass of 22.10.2026
+// (vse-ogranicheniya-dostupa.md, «Что мастер предлагает»), not read from
+// kindUsesOf; a kind saying nothing of it fails, so a new kind is not left
+// out by omission.
+func TestTheWizardOffersThePrototypesKinds(t *testing.T) {
+	t.Parallel()
+	offered := []Kind{CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind,
+		ChartOfCalculationTypesKind, InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind,
+		CalculationRegisterKind, BusinessProcessKind, TaskKind, ExchangePlanKind}
+	for _, item := range kinds.All() {
+		got := usesOf(item.Kind).wizard
+		want := absent
+		if slices.Contains(offered, item.Kind) {
+			want = present
+		}
+		switch {
+		case got == unsaid:
+			t.Errorf("%s says nothing of the wizard of a new restriction", item.Kind)
+		case got != want:
+			t.Errorf("the wizard of a new restriction offers %s: %d, the prototype's %d", item.Kind, got, want)
+		}
+	}
+}

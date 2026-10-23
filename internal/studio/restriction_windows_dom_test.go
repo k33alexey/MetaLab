@@ -216,6 +216,131 @@ func TestTheWizardOfANewRestrictionStepsAsThePrototypes(t *testing.T) {
 	}
 }
 
+// Identifiers of the objects writeEveryRestrictableKind writes that a role
+// restricts below.
+const (
+	everySequence      = "e1000000-0000-4000-8000-000000000001"
+	everyRecalculation = "e1000000-0000-4000-8000-000000000002"
+	everyTable         = "e1000000-0000-4000-8000-000000000003"
+)
+
+// writeEveryRestrictableKind writes an object of every kind a role may
+// restrict, each named as its kind in one word, and a role Кладовщик
+// restricting the reading of the sequence, the recalculation and the table
+// of the external source - the kinds the wizard does not offer.
+func writeEveryRestrictableKind(t *testing.T, root string) func(*Workspace) {
+	t.Helper()
+	id := func() string { return uuid.MustNew().String() }
+	head := func(name, identifier string) string {
+		return "format: 1\nid: " + identifier + "\nname: " + name + "\ntitle: {ru: " + name + "}\n"
+	}
+	write := func(path, content string) { writeProjectFile(t, root, path+"/object.yaml", content) }
+	const code = "code: {type: string, length: 9, auto: false}\ndescription_length: 50\n"
+	const number = "number: {type: string, length: 9, auto: true, periodicity: none}\n"
+	sum := func() string {
+		return "resources:\n  - {id: " + id() + ", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"
+	}
+	document, chart, calculation := id(), id(), id()
+	write("metadata/catalogs/Справочник", head("Справочник", id())+code)
+	write("metadata/documents/Документ", head("Документ", document)+number)
+	write("metadata/document-journals/Журнал", head("Журнал", id())+"documents: ["+document+"]\n")
+	write("metadata/charts-of-characteristic-types/Характеристики", head("Характеристики", id())+code+"value_type: [{kind: boolean}]\n")
+	write("metadata/charts-of-accounts/Счета", head("Счета", chart)+code)
+	write("metadata/charts-of-calculation-types/Расчеты", head("Расчеты", calculation)+code)
+	write("metadata/information-registers/Сведения", head("Сведения", id())+"write_mode: independent\nperiodicity: none\n"+sum())
+	write("metadata/accumulation-registers/Накопления", head("Накопления", id())+"kind: turnover\n"+sum())
+	write("metadata/accounting-registers/Бухгалтерия", head("Бухгалтерия", id())+"chart_of_accounts: "+chart+"\n"+sum())
+	write("metadata/calculation-registers/Начисления", head("Начисления", id())+"chart_of_calculation_types: "+calculation+
+		"\nperiodicity: month\n"+sum()+"recalculations:\n  - {id: "+everyRecalculation+", name: Перерасчет, title: {ru: Перерасчет}}\n")
+	write("metadata/business-processes/Процесс", head("Процесс", id())+number)
+	write("metadata/tasks/Задача", head("Задача", id())+number+"description_length: 50\n")
+	write("metadata/exchange-plans/Обмен", head("Обмен", id())+code)
+	write("metadata/constants/Константа", head("Константа", id())+"types: [{kind: boolean}]\n")
+	write("metadata/sequences/Последовательность", head("Последовательность", everySequence))
+	write("metadata/external-data-sources/Источник", head("Источник", id()))
+	write("metadata/external-data-sources/Источник/tables/Таблица", head("Таблица", everyTable)+"name_in_data_source: dbo.T\ndata_type: non-object\n")
+	write("metadata/external-data-sources/Источник/cubes/Куб", head("Куб", id())+"name_in_data_source: C\n")
+	write("metadata/external-data-sources/Источник/cubes/Куб/dimension-tables/Измерение", head("Измерение", id())+"name_in_data_source: D\n")
+	return func(workspace *Workspace) {
+		t.Helper()
+		created, err := workspace.CreateRole("Кладовщик")
+		if err != nil {
+			t.Fatal(err)
+		}
+		read := []metadata.PermissionOperation{metadata.PermissionRead}
+		for _, text := range []string{everySequence, everyRecalculation, everyTable} {
+			object, err := uuid.Parse(text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			created.Role.Objects = append(created.Role.Objects, metadata.ObjectPermission{Object: object, Operations: read,
+				Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Condition: "ГДЕ ИСТИНА"}}})
+		}
+		if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// restrictionKindsWalk reads the tree of objects of the first step of the
+// wizard and of the window «Отбор», row by row with its depth.
+const restrictionKindsWalk = `(async () => {` + restrictionWalkTools + `
+  await overview('Все ограничения доступа');
+  const tree = () => all('.role-wizard-objects .role-fields-row', dialog()).map(item => item.style.getPropertyValue('--depth') + ' ' + item.querySelector('label').textContent.trim());
+  const seen = {};
+  document.querySelector('.overview-block .role-list').dispatchEvent(new KeyboardEvent('keydown', {key: 'Insert', bubbles: true}));
+  await studio.settle();
+  seen.wizard = tree();
+  await press('Отмена');
+  await command('filter');
+  seen.filter = tree();
+  await press('Отмена');
+  return seen;
+})()`
+
+// TestTheWizardOffersTheKindsThePrototypesDoes catches the first step of the
+// wizard «Новое ограничение доступа» offering an object the prototype's does
+// not, or leaving out one it does (review 2.464, Р1; the seventh pass of
+// 22.10.2026, vse-ogranicheniya-dostupa.md «Что мастер предлагает»): the
+// wizard offered whatever restricts - the sequence, the recalculation and the
+// objects of the external source - where the prototype's offers catalogs,
+// documents, journals, the three charts, the registers of four kinds,
+// processes, tasks and exchange plans. The window «Отбор» keeps every object
+// a restriction is on, these three too: they are restricted in the window
+// of a role, and a filter that lost them could not show their restrictions.
+// The expectation is written out here, not read from the descriptors. The
+// exchange plans stand first as a kind of their own, not inside «Общие» as
+// the pass saw them: where «Общие» stands in the wizard was not seen, a
+// question of the series of 2.465 (docs/series/2026-10-23-2.465.md, В1).
+func TestTheWizardOffersTheKindsThePrototypesDoes(t *testing.T) {
+	root := createProject(t)
+	ctx, browser, page := openStudioInBrowser(t, root, writeEveryRestrictableKind(t, root))
+	result, err := browser.evaluate(ctx, page, restrictionKindsWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen struct{ Wizard, Filter []string }
+	if err := json.Unmarshal(result, &seen); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	wizard := []string{"0 Продажи и склад", "1 Планы обмена", "2 Обмен", "1 Справочники", "2 Справочник", "1 Документы", "2 Документ",
+		"1 Журналы документов", "2 Журнал", "1 Планы видов характеристик", "2 Характеристики", "1 Планы счетов", "2 Счета",
+		"1 Планы видов расчёта", "2 Расчеты", "1 Регистры сведений", "2 Сведения", "1 Регистры накопления", "2 Накопления",
+		"1 Регистры бухгалтерии", "2 Бухгалтерия", "1 Регистры расчёта", "2 Начисления", "1 Бизнес-процессы", "2 Процесс",
+		"1 Задачи", "2 Задача"}
+	if !slices.Equal(seen.Wizard, wizard) {
+		t.Errorf("the wizard offers\n%v\nwant\n%v", seen.Wizard, wizard)
+	}
+	filter := []string{"0 Продажи и склад", "1 Последовательности", "2 Последовательность", "1 Перерасчёты", "2 Начисления.Перерасчет",
+		"1 Таблицы", "2 Источник.Таблица"}
+	if !slices.Equal(seen.Filter, filter) {
+		t.Errorf("the filter offers\n%v\nwant\n%v", seen.Filter, filter)
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
+
 // restrictionGroupWalk changes restrictions in a group and copies them.
 const restrictionGroupWalk = `(async () => {` + restrictionWalkTools + `
   await overview('Все ограничения доступа');

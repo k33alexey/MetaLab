@@ -714,8 +714,8 @@ func validateRightStates(path string, granted, denied []PermissionOperation) []s
 }
 
 func validPermissionField(field string) bool {
-	if id, err := uuid.Parse(field); err == nil {
-		return !id.IsZero() && id.String() == field
+	if declared, canonical := declaredFieldKey(field); declared {
+		return canonical
 	}
 	// No ceiling on the length: whether the key is one the object has is
 	// decided against the object itself, and a key it does not have is
@@ -723,6 +723,30 @@ func validPermissionField(field string) bool {
 	// standard table part is named after the part.
 	part, field, nested := strings.Cut(field, ".")
 	return standardKeyShape(part) && (!nested || standardKeyShape(field))
+}
+
+// declaredFieldKey says the key is an identifier, as a declared part is
+// named, and whether it is written as a part's identifier is: canonical, and
+// not zero.
+func declaredFieldKey(field string) (declared, canonical bool) {
+	id, err := uuid.Parse(field)
+	return err == nil, err == nil && !id.IsZero() && id.String() == field
+}
+
+// validRestrictionField is the shape of a key a restriction of access names
+// a field by (ACCESS-RIGHTS.md, «Устройство ограничения»): a key of a part,
+// as a right on it is given (validPermissionField), or a field of a declared
+// table part no right is given on - its line number, which the prototype
+// writes ОС.LineNumber - in lower case after the identifier of the part.
+// Whether the object has the field is another matter: a key of this shape it
+// has not is accepted and noted (restriction-absent-field).
+func validRestrictionField(field string) bool {
+	if part, standard, nested := strings.Cut(field, "."); nested {
+		if declared, canonical := declaredFieldKey(part); declared {
+			return canonical && standardKeyShape(standard)
+		}
+	}
+	return validPermissionField(field)
 }
 
 // standardKeyShape is a prototype name in lower case: letters, then digits

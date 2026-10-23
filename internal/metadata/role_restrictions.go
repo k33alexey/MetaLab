@@ -179,6 +179,9 @@ func validateRestrictions(path string, object ObjectPermission) []string {
 		for fieldIndex, field := range restriction.Fields {
 			if field == "" {
 				issues = append(issues, fmt.Sprintf("%s.fields[%d] must name a field", prefix, fieldIndex))
+			} else if !validRestrictionField(field) {
+				issues = append(issues, fmt.Sprintf("%s.fields[%d] must be a canonical UUID, a lowercase standard field key "+
+					"or a table part's UUID with a lowercase standard field key after a dot", prefix, fieldIndex))
 			}
 			if fields[restriction.Right][field] {
 				issues = append(issues, fmt.Sprintf("%s.fields[%d] is restricted already", prefix, fieldIndex))

@@ -106,6 +106,10 @@ type PermissionObject struct {
 	// more on «Прочие поля» (RestrictionRule.ByFields); the rest take one
 	// restriction each, with no fields.
 	RestrictedByFields []PermissionOperation `json:"restrictedByFields"`
+	// InWizard is the wizard «Новое ограничение доступа» offering the object
+	// on its first step (kindUses.wizard); the rest of the objects with
+	// restricted rights are restricted in the window of a role alone.
+	InWizard bool `json:"inWizard,omitempty"`
 }
 
 // PermissionField is one part of an object: under Fields, with the folder it
@@ -186,6 +190,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			}
 		}
 		if usesOf(kind).restriction.accepted() {
+			object.InWizard = usesOf(kind).wizard == present
 			for _, rule := range restrictionRulesOf(kind) {
 				if slices.Contains(offered.rights, rule.Right) {
 					object.RestrictedRights = append(object.RestrictedRights, rule.Right)

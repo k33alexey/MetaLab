@@ -39,7 +39,9 @@ func restrictedProject(t *testing.T, role func(document, part, column, constant 
 // field the prototype writes (ОС.LineNumber) refused; a restriction on a kind
 // no export restricts, an empty one on the other fields, an empty template
 // or a field the object does not have accepted silently; such a field
-// refused, as 2.440 refused it; a field of no name accepted.
+// refused, as 2.440 refused it; a field of no name accepted; a key not of
+// the shape of ACCESS-RIGHTS (Parent, Родитель, ОС.LineNumber as the
+// prototype writes them) accepted and lost at the first write of the role.
 func TestRestrictionsFollowTheObject(t *testing.T) {
 	t.Parallel()
 	role := func(objects func(document, part, column, constant uuid.UUID) []ObjectPermission, templates []RestrictionTemplate) func(document, part, column, constant uuid.UUID) RoleDefinition {
@@ -49,12 +51,15 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 		}
 	}
 	read := []PermissionOperation{PermissionRead, PermissionView}
+	// The key of an attribute deleted since: of the right shape, and the
+	// object has it not.
+	removed := uuid.MustNew()
 	catalog, err := restrictedProject(t, role(func(document, part, column, constant uuid.UUID) []ObjectPermission {
 		return []ObjectPermission{
 			{Object: document, Operations: read, Restrictions: []RightRestriction{
 				{Right: PermissionRead, Fields: []string{"ref", "dataversion", part.String() + ".linenumber", column.String()}},
 				{Right: PermissionRead},
-				{Right: PermissionRead, Fields: []string{"parent", column.String() + ".linenumber"}, Condition: "ГДЕ ИСТИНА"}}},
+				{Right: PermissionRead, Fields: []string{"parent", column.String() + ".linenumber", removed.String()}, Condition: "ГДЕ ИСТИНА"}}},
 			{Object: constant, Operations: []PermissionOperation{PermissionRead},
 				Restrictions: []RightRestriction{{Right: PermissionRead, Condition: "ГДЕ ИСТИНА"}}},
 		}
@@ -85,10 +90,13 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 	}
 	slices.Sort(absent)
 	column := catalog.Documents[0].TableParts[0].Attributes[0].ID
-	if want := []string{
+	absentWant := []string{
 		"roles Кладовщик restrictions: documents Продажа read " + column.String() + ".linenumber",
+		"roles Кладовщик restrictions: documents Продажа read " + removed.String(),
 		"roles Кладовщик restrictions: documents Продажа read parent",
-	}; !slices.Equal(absent, want) {
+	}
+	slices.Sort(absentWant)
+	if want := absentWant; !slices.Equal(absent, want) {
 		t.Fatalf("notes of fields the object does not have:\n%s\nwant:\n%s", strings.Join(absent, "\n"), strings.Join(want, "\n"))
 	}
 	for name, objects := range map[string]func(document, part, column, constant uuid.UUID) []ObjectPermission{
@@ -111,6 +119,23 @@ func TestRestrictionsFollowTheObject(t *testing.T) {
 	} {
 		if _, err := restrictedProject(t, role(objects, nil)); err == nil {
 			t.Errorf("%s was accepted", name)
+		}
+	}
+	// A key not of the shape ACCESS-RIGHTS gives (review 2.464, Р2): the
+	// prototype's name as it writes it, the name in Russian, an identifier
+	// not written canonically, a line number not in lower case or after no
+	// identifier, a field two dots deep, a name opening with a digit.
+	// Accepted, it went away silently at the first write of the role.
+	// PART stands for the identifier of the table part of the document.
+	for _, key := range []string{"Parent", "Родитель", "Ref", "UPPER", "PART.LineNumber", "ОС.linenumber", "PART.Номер",
+		"PART.linenumber.x", "parent.", ".linenumber", "ref ", "1c", "PART.1c", uuid.UUID{}.String() + ".linenumber"} {
+		objects := func(document, part, column, constant uuid.UUID) []ObjectPermission {
+			field := strings.ReplaceAll(strings.ReplaceAll(key, "UPPER", strings.ToUpper(part.String())), "PART", part.String())
+			return []ObjectPermission{{Object: document, Operations: read,
+				Restrictions: []RightRestriction{{Right: PermissionRead, Fields: []string{field}, Condition: "ГДЕ ИСТИНА"}}}}
+		}
+		if _, err := restrictedProject(t, role(objects, nil)); err == nil || !strings.Contains(err.Error(), "fields[0] must be a canonical UUID") {
+			t.Errorf("a field keyed %q was not refused by its shape: %v", key, err)
 		}
 	}
 }

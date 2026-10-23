@@ -160,7 +160,7 @@ function createRoleOverviewModel(source) {
     restrictedRights(items) {
       return rightKeys().filter(key => items.some(item => item.rights.includes(key)));
     },
-    restrictionFieldChoices, chosenFieldKeys, restrictable,
+    restrictionFieldChoices, chosenFieldKeys, restrictable, offeredByWizard,
     // «Новое ограничение доступа» (справка, form_NewRowLevelRightDlg): одно
     // условие — каждому выбранному объекту в каждой выбранной роли на каждое
     // отмеченное право, которое у объекта ограничивается (право без
@@ -212,16 +212,18 @@ function createRoleOverviewModel(source) {
   function roleList() { return entries.map((entry, index) => ({index, path: entry.path, name: entry.role.name, title: localized(entry.role)})); }
   function rightKeys() { return (source.schema.rights || []).map(right => right.key); }
   function rightTitle(key) { return source.schema.rights?.find(right => right.key === key)?.title || key; }
-  // Объекты, на права которых ставятся ограничения, — первый шаг мастера
-  // «Новое ограничение доступа» и окно отбора, по видам в порядке дерева;
-  // вложенный назван вместе с тем, в чём лежит.
+  // Объекты, на права которых ставятся ограничения, — окно отбора, по видам
+  // в порядке дерева; вложенный назван вместе с тем, в чём лежит. wizard —
+  // объект предлагает первый шаг мастера «Новое ограничение доступа»: не
+  // всякий вид, который ограничивается (inWizard, седьмой заход).
   function restrictable() {
     return (source.schema.objects || []).filter(item => item.restrictedRights?.length).map(item => {
       let caption = localized(item) || item.name;
       for (let owner = objects.get(item.owner); owner; owner = objects.get(owner.owner)) caption = `${localized(owner) || owner.name}.${caption}`;
-      return {id: item.id, kind: item.kind, title: caption, rights: item.restrictedRights};
+      return {id: item.id, kind: item.kind, title: caption, rights: item.restrictedRights, wizard: !!item.inWizard};
     });
   }
+  function offeredByWizard() { return restrictable().filter(item => item.wizard); }
   // Все ограничения всех ролей, по объекту и роли.
   function restrictionRows() {
     const rows = [];
@@ -567,7 +569,7 @@ function createRoleOverview(host, openRole, onChange) {
     const rows = arranged('restrictions', model.allRestrictions(listFilter.restrictions));
     return listBlock('restrictions', rows,
       row => [[row.object], roleLink(row.role, row.path, row.objectID), [caption(row.operation)], [row.field], [row.condition, 'overview-condition']], {
-        add: () => newRestriction(), canAdd: () => model.roleCount() > 0 && model.restrictable().length > 0,
+        add: () => newRestriction(), canAdd: () => model.roleCount() > 0 && model.offeredByWizard().length > 0,
         edit: editRestrictions, copy: copyRestrictions, copyText: 'Копировать ограничения доступа', remove: chosen => model.removeRestrictions(chosen),
         removing: ['Удалить ограничение доступа?', 'Удалить ограничения доступа?'],
         choose: () => filterRestrictions(),
@@ -685,7 +687,8 @@ function createRoleOverview(host, openRole, onChange) {
   // вида и у объекта, виды свёрнуты; и кнопка «По подсистемам». Флажок над
   // объектами показывает, отмечены все, часть или ни один: щелчок по снятому
   // отмечает все, по отмеченному целиком или частично — снимает все. Одно
-  // дерево у мастера и у окна отбора; offered — какие объекты предлагаются.
+  // дерево у мастера и у окна отбора; offered — какие объекты предлагаются,
+  // без него — мастера.
   // holder.subsystems — отбор по подсистемам; объект, скрытый им, из выбора
   // уходит: в работу идёт то, что видно в списке. Любая смена отбора —
   // «Установить» или «Отключить» — снимает отметки всех объектов, и видимых
@@ -694,7 +697,7 @@ function createRoleOverview(host, openRole, onChange) {
   // перемены выбора. Ответ —
   // список, кнопка, fill, рисующий список заново, и mark(enabled), отмечающий
   // или снимающий все видимые.
-  function objectChoice(chosenObjects, holder, {after = () => {}, offered = () => model.restrictable()} = {}) {
+  function objectChoice(chosenObjects, holder, {after = () => {}, offered = () => model.offeredByWizard()} = {}) {
     const objectList = node('div', undefined, 'role-restriction-fields role-fields-tree role-wizard-objects');
     let boxes = [], groups = [], shown = [];
     // Отметки ставятся на месте: список, нарисованный заново, забрал бы
