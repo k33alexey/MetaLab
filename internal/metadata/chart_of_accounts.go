@@ -268,7 +268,7 @@ func accountingFlagFields(flags []AccountingFlag) []Attribute {
 
 func validateAccountingFlags(path string, flags []AccountingFlag, configuration project.Project) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, flag := range flags {
 		prefix := fmt.Sprintf("%s[%d]", path, index)
 		if flag.ID.IsZero() {
@@ -278,17 +278,11 @@ func validateAccountingFlags(path string, flags []AccountingFlag, configuration 
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[flag.ID] = true
-		if !validIdentifier(flag.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(flag.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
+		issues = append(issues, names.take(prefix, flag.Name)...)
+		folded := foldedName(flag.Name)
 		if reservedChartOfAccountsName(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
-		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", flag.Title, configuration)...)
 		if !isBooleanType(accountingFlagTypes(flag)) {
 			issues = append(issues, prefix+".types must be boolean alone: an accounting flag is a checkbox and has no other type")

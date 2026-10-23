@@ -175,7 +175,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		if value.Schedule != nil && (value.ScheduleValue == nil || value.ScheduleDate == nil) {
 			issues = append(issues, "a schedule needs both the resource its value is in and the dimension its date is in")
 		}
-		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		names, ids := namesWithin(""), map[uuid.UUID]bool{}
 		for index, dimension := range value.Dimensions {
 			prefix := fmt.Sprintf("dimensions[%d]", index)
 			issues = append(issues, validateRegisterDimension(prefix, dimension, calculationRegisterDimensions())...)
@@ -195,7 +195,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 			issues = append(issues, validateMovementFieldStorage(prefix, resource)...)
 		}
 		issues = append(issues, validateAttributes("attributes", value.attributeFields(), configuration, func(name string) bool {
-			return names[strings.ToLower(name)] || reservedCalculationRegisterName(name)
+			return names.taken[foldedName(name)] || reservedCalculationRegisterName(name)
 		})...)
 		for index, attribute := range value.Attributes {
 			prefix := fmt.Sprintf("attributes[%d]", index)
@@ -234,7 +234,7 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 // dimension or a resource could hold a format bound to no type and a choice
 // form that does not exist, and nothing would say so until the form was opened.
 func validateRegisterField(prefix string, field Attribute,
-	names map[string]bool, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
+	names *siblingNames, ids map[uuid.UUID]bool, configuration project.Project, reserved func(string) bool) []string {
 	id, name, title, types := field.ID, field.Name, field.Title, field.Types
 	var issues []string
 	if id.IsZero() {
@@ -244,14 +244,10 @@ func validateRegisterField(prefix string, field Attribute,
 		issues = append(issues, prefix+".id must be unique")
 	}
 	ids[id] = true
-	if !validIdentifier(name) {
-		issues = append(issues, prefix+".name must be a valid identifier")
-	}
-	folded := strings.ToLower(name)
-	if names[folded] || reserved(folded) {
+	issues = append(issues, names.take(prefix, name)...)
+	if reserved(foldedName(name)) {
 		issues = append(issues, prefix+".name is taken")
 	}
-	names[folded] = true
 	issues = append(issues, validateTitle(prefix+".title", title, configuration)...)
 	issues = append(issues, validateTypes(prefix+".types", types)...)
 	issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
@@ -261,7 +257,7 @@ func validateRegisterField(prefix string, field Attribute,
 
 func validateRecalculations(value CalculationRegisterDefinition, configuration project.Project) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, recalculation := range value.Recalculations {
 		prefix := fmt.Sprintf("recalculations[%d]", index)
 		if recalculation.ID.IsZero() {
@@ -271,20 +267,13 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[recalculation.ID] = true
-		if !validIdentifier(recalculation.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(recalculation.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, recalculation.Name)...)
 		issues = append(issues, validateTitle(prefix+".title", recalculation.Title, configuration)...)
 		issues = append(issues, validateDataLockMode(prefix+".data_lock", recalculation.DataLock)...)
 		// A recalculation with no dimensions is saved by the designer: the
 		// test configuration of mdclasses keeps one (РегистрРасчета1,
 		// Перерасчет, no child objects).
-		inner, innerIDs := map[string]bool{}, map[uuid.UUID]bool{}
+		inner, innerIDs := namesWithin(""), map[uuid.UUID]bool{}
 		for position, dimension := range recalculation.Dimensions {
 			path := fmt.Sprintf("%s.dimensions[%d]", prefix, position)
 			if dimension.ID.IsZero() {
@@ -294,13 +283,7 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 				issues = append(issues, path+".id must be unique")
 			}
 			innerIDs[dimension.ID] = true
-			if !validIdentifier(dimension.Name) {
-				issues = append(issues, path+".name must be a valid identifier")
-			}
-			if inner[strings.ToLower(dimension.Name)] {
-				issues = append(issues, path+".name must be unique")
-			}
-			inner[strings.ToLower(dimension.Name)] = true
+			issues = append(issues, inner.take(path, dimension.Name)...)
 			issues = append(issues, validateTitle(path+".title", dimension.Title, configuration)...)
 			// A dimension with no dimension of the register, or with no
 			// leading data, is half set: carried, it computes nothing again,

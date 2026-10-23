@@ -190,7 +190,7 @@ type ObjectCommand struct {
 // file is there at all is checked against the folder, in validateObjectFiles.
 func validateObjectCommands(commands []ObjectCommand, configuration project.Project) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, command := range commands {
 		prefix := fmt.Sprintf("commands[%d]", index)
 		if command.ID.IsZero() {
@@ -200,14 +200,7 @@ func validateObjectCommands(commands []ObjectCommand, configuration project.Proj
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[command.ID] = true
-		if !validIdentifier(command.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(command.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, command.Name)...)
 		issues = append(issues, validateCommandShape(prefix, command, configuration)...)
 	}
 	return issues

@@ -84,7 +84,7 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 		issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,
 			recordIndexTables(sequenceStandardFields, sequenceDimensionNames(value.Dimensions)))...)
-		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		names, ids := namesWithin(""), map[uuid.UUID]bool{}
 		for index, dimension := range value.Dimensions {
 			prefix := fmt.Sprintf("dimensions[%d]", index)
 			if dimension.ID.IsZero() {
@@ -94,14 +94,7 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 				issues = append(issues, prefix+".id must be unique")
 			}
 			ids[dimension.ID] = true
-			if !validIdentifier(dimension.Name) {
-				issues = append(issues, prefix+".name must be a valid identifier")
-			}
-			folded := strings.ToLower(dimension.Name)
-			if names[folded] {
-				issues = append(issues, prefix+".name must be unique")
-			}
-			names[folded] = true
+			issues = append(issues, names.take(prefix, dimension.Name)...)
 			issues = append(issues, validateTitle(prefix+".title", dimension.Title, configuration)...)
 			issues = append(issues, validateTypes(prefix+".types", dimension.Types)...)
 			issues = append(issues, validateUniqueIDs(prefix+".document_attributes", dimension.DocumentAttributes)...)

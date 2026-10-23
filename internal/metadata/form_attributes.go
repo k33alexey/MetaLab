@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -180,11 +179,11 @@ type FormRoleRight struct {
 // configuration at hand.
 func validateFormAttributes(attributes []FormAttribute, ids map[uuid.UUID]bool, configuration project.Project) []string {
 	var issues []string
-	names := map[string]bool{}
+	names := namesWithin(" within the attributes")
 	main := -1
 	for index, attribute := range attributes {
 		path := fmt.Sprintf("attributes[%d]", index)
-		issues = append(issues, validateFormDataName(path, attribute.ID, attribute.Name, ids, names, "the attributes")...)
+		issues = append(issues, validateFormDataName(path, attribute.ID, attribute.Name, ids, names)...)
 		issues = append(issues, validateTitle(path+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypesIn(path+".types", attribute.Types, placeFormAttribute)...)
 		if attribute.Main {
@@ -280,10 +279,10 @@ func validateUseAlways(place, field, attribute string) []string {
 // themselves.
 func validateFormColumns(path string, columns []FormAttributeColumn, ids map[uuid.UUID]bool, configuration project.Project) []string {
 	var issues []string
-	names := map[string]bool{}
+	names := namesWithin(" within the columns")
 	for index, column := range columns {
 		place := fmt.Sprintf("%s[%d]", path, index)
-		issues = append(issues, validateFormDataName(place, column.ID, column.Name, ids, names, "the columns")...)
+		issues = append(issues, validateFormDataName(place, column.ID, column.Name, ids, names)...)
 		issues = append(issues, validateTitle(place+".title", column.Title, configuration)...)
 		issues = append(issues, validateTypesIn(place+".types", column.Types, placeFormAttribute)...)
 		if !validFillCheck(column.FillChecking) {
@@ -298,7 +297,7 @@ func validateFormColumns(path string, columns []FormAttributeColumn, ids map[uui
 
 // validateFormDataName checks the identity of an attribute or a column: an
 // identifier no other part of the form has, and a name unique in its set.
-func validateFormDataName(path string, id uuid.UUID, name string, ids map[uuid.UUID]bool, names map[string]bool, set string) []string {
+func validateFormDataName(path string, id uuid.UUID, name string, ids map[uuid.UUID]bool, names *siblingNames) []string {
 	var issues []string
 	if id.IsZero() {
 		issues = append(issues, path+".id must be a non-zero UUID")
@@ -306,15 +305,7 @@ func validateFormDataName(path string, id uuid.UUID, name string, ids map[uuid.U
 		issues = append(issues, path+".id must be unique within the form")
 	}
 	ids[id] = true
-	if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
-		issues = append(issues, path+".name must be a valid identifier of at most 255 characters")
-	}
-	folded := strings.ToLower(name)
-	if names[folded] {
-		issues = append(issues, path+".name must be unique within "+set)
-	}
-	names[folded] = true
-	return issues
+	return append(issues, names.take(path, name)...)
 }
 
 func validateFormOptions(path string, options []uuid.UUID) []string {

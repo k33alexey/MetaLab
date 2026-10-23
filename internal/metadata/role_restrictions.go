@@ -121,7 +121,7 @@ func templateName(written string) (name string, parameters []string, ok bool) {
 // none, and erp keeps a template of 431 thousand characters.
 func validateRestrictionTemplates(templates []RestrictionTemplate) []string {
 	var issues []string
-	names := make(map[string]bool, len(templates))
+	names := namesWithin(" within the role")
 	for index, template := range templates {
 		prefix := fmt.Sprintf("restriction_templates[%d]", index)
 		name, _, ok := templateName(template.Name)
@@ -129,12 +129,9 @@ func validateRestrictionTemplates(templates []RestrictionTemplate) []string {
 			issues = append(issues, prefix+".name must be a name, with the names of its parameters in brackets where it takes any")
 			continue
 		}
-		// Names of the prototype are told apart without regard to case.
-		key := strings.ToLower(name)
-		if names[key] {
-			issues = append(issues, prefix+".name must be unique within the role")
-		}
-		names[key] = true
+		// The name, read out of what is written, is one of a template's
+		// siblings like any other.
+		issues = append(issues, names.take(prefix, name)...)
 		if !utf8.ValidString(template.Condition) {
 			issues = append(issues, prefix+".condition must be valid UTF-8")
 		}

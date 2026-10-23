@@ -147,7 +147,7 @@ func addressingAttributeFields(attributes []AddressingAttribute) []Attribute {
 
 func validateAddressing(value TaskDefinition, configuration project.Project) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	attributeNames := map[string]bool{}
 	for _, attribute := range value.Attributes {
 		attributeNames[strings.ToLower(attribute.Name)] = true
@@ -161,20 +161,14 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[attribute.ID] = true
-		if !validIdentifier(attribute.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(attribute.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
+		issues = append(issues, names.take(prefix, attribute.Name)...)
+		folded := foldedName(attribute.Name)
 		if attributeNames[folded] {
 			issues = append(issues, prefix+".name conflicts with an attribute")
 		}
 		if reservedTaskName(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
-		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypes(prefix+".types", attribute.Types)...)
 		issues = append(issues, validateFieldSettings(prefix, attribute.Attribute, configuration)...)
@@ -199,7 +193,7 @@ func validateAddressing(value TaskDefinition, configuration project.Project) []s
 	// one addressing attribute and neither a register nor a main attribute,
 	// and a task with a register and no attributes. It is carried, addresses
 	// nobody, and is a note (NoteIncompleteAddressing).
-	if value.MainAddressingAttribute != "" && !names[strings.ToLower(value.MainAddressingAttribute)] {
+	if value.MainAddressingAttribute != "" && !names.taken[strings.ToLower(value.MainAddressingAttribute)] {
 		issues = append(issues, "main_addressing_attribute names "+value.MainAddressingAttribute+", which is not an addressing attribute")
 	}
 	if value.CurrentPerformer != nil && value.CurrentPerformer.IsZero() {

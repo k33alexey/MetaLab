@@ -93,7 +93,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 		if len(value.Resources) == 0 {
 			issues = append(issues, "resources must contain at least one item: an entry with no amount is not an entry")
 		}
-		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		names, ids := namesWithin(""), map[uuid.UUID]bool{}
 		// What a dimension and a resource share: the common set and the flag of
 		// the chart of accounts. «Balance» is not checked against correspondence:
 		// the designer offers it without correspondence too, on a dimension and on
@@ -122,7 +122,7 @@ func DecodeAccountingRegister(source string, reader io.Reader, configuration pro
 			issues = append(issues, validateResourceIndexing(prefix, resource.Indexing)...)
 		}
 		issues = append(issues, validateAttributes("attributes", value.Attributes, configuration, func(name string) bool {
-			return names[strings.ToLower(name)] || reservedAccountingRegisterName(name)
+			return names.taken[strings.ToLower(name)] || reservedAccountingRegisterName(name)
 		})...)
 		for index, attribute := range value.Attributes {
 			issues = append(issues, validateMovementFieldStorage(fmt.Sprintf("attributes[%d]", index), attribute)...)

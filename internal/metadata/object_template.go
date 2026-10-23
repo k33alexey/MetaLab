@@ -3,7 +3,6 @@ package metadata
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -92,7 +91,7 @@ type ObjectTemplate struct {
 // validateObjectTemplates checks the templates of one object.
 func validateObjectTemplates(templates []ObjectTemplate, configuration project.Project) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, template := range templates {
 		prefix := fmt.Sprintf("templates[%d]", index)
 		if template.ID.IsZero() {
@@ -102,14 +101,7 @@ func validateObjectTemplates(templates []ObjectTemplate, configuration project.P
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[template.ID] = true
-		if !validIdentifier(template.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(template.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, template.Name)...)
 		issues = append(issues, validateTitle(prefix+".title", template.Title, configuration)...)
 		if !validTemplateKind(template.Kind) {
 			issues = append(issues, prefix+".kind is not a kind of template")

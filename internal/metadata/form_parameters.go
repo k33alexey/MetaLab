@@ -2,8 +2,6 @@ package metadata
 
 import (
 	"fmt"
-	"strings"
-	"unicode/utf8"
 )
 
 // FormParameter is a parameter of a form: a value the form is opened with,
@@ -27,17 +25,10 @@ type FormParameter struct {
 
 func validateFormParameters(parameters []FormParameter) []string {
 	var issues []string
-	names := map[string]bool{}
+	names := namesWithin(" within the parameters")
 	for index, parameter := range parameters {
 		path := fmt.Sprintf("parameters[%d]", index)
-		if !validIdentifier(parameter.Name) || utf8.RuneCountInString(parameter.Name) > maxNameLength {
-			issues = append(issues, path+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(parameter.Name)
-		if names[folded] {
-			issues = append(issues, path+".name must be unique within the parameters")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(path, parameter.Name)...)
 		issues = append(issues, validateTypesIn(path+".types", parameter.Types, placeFormAttribute)...)
 	}
 	return issues

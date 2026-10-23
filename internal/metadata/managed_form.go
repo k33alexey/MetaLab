@@ -272,7 +272,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 	} {
 		issues = append(issues, validateTitle(name, text, configuration)...)
 	}
-	commandNames, commandIDs := map[string]bool{}, map[uuid.UUID]bool{}
+	commandNames, commandIDs := namesWithin(" within commands"), map[uuid.UUID]bool{}
 	// A command names the table whose current row it needs, which is found
 	// once the whole form is walked.
 	for index, command := range value.Commands {
@@ -283,14 +283,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 			issues = append(issues, prefix+".id must be unique")
 		}
 		commandIDs[command.ID] = true
-		if !validIdentifier(command.Name) || utf8.RuneCountInString(command.Name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(command.Name)
-		if commandNames[folded] {
-			issues = append(issues, prefix+".name must be unique within commands")
-		}
-		commandNames[folded] = true
+		issues = append(issues, commandNames.take(prefix, command.Name)...)
 		issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 		switch command.Action {
 		case FormCommandCustom:
@@ -448,7 +441,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 			switch command, ok := parseButtonCommand(item.Command); {
 			case !ok:
 				issues = append(issues, current.path+".command must be "+commandWritings)
-			case command.kind == formCommand && !commandNames[strings.ToLower(command.name)]:
+			case command.kind == formCommand && !commandNames.taken[strings.ToLower(command.name)]:
 				issues = append(issues, current.path+".command names no command of the form")
 			case command.kind == elementStandardCommand:
 				commanded = append(commanded, pending{element: item, path: current.path})
@@ -571,7 +564,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 			issues = append(issues, reference.name+" names no element of the form")
 		}
 	}
-	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames)...)
+	issues = append(issues, validateFormCommandInterface(value.CommandInterface, names, commandNames.taken)...)
 	issues = append(issues, validateFormAttributes(value.Attributes, ids, configuration)...)
 	issues = append(issues, validateConditionalAppearance("conditional_appearance", value.ConditionalAppearance, false)...)
 	issues = append(issues, validateFormParameters(value.Parameters)...)

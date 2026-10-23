@@ -69,7 +69,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 		issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
 			recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
-		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		names, ids := namesWithin(""), map[uuid.UUID]bool{}
 		for index, column := range value.Columns {
 			prefix := fmt.Sprintf("columns[%d]", index)
 			if column.ID.IsZero() {
@@ -79,14 +79,7 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 				issues = append(issues, prefix+".id must be unique")
 			}
 			ids[column.ID] = true
-			if !validIdentifier(column.Name) {
-				issues = append(issues, prefix+".name must be a valid identifier")
-			}
-			folded := strings.ToLower(column.Name)
-			if names[folded] {
-				issues = append(issues, prefix+".name must be unique")
-			}
-			names[folded] = true
+			issues = append(issues, names.take(prefix, column.Name)...)
 			issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
 			if !validIndexMode(column.Indexing) {
 				issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")

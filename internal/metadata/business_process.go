@@ -290,7 +290,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		return nil
 	}
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(": a reference to a route point carries this name"), map[uuid.UUID]bool{}
 	variants := map[string]map[string]bool{}
 	kinds := map[string]RoutePointKind{}
 	ports := map[string][2]int{}
@@ -304,14 +304,8 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[point.ID] = true
-		if !validIdentifier(point.Name) || utf8.RuneCountInString(point.Name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(point.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique: a reference to a route point carries this name")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, point.Name)...)
+		folded := foldedName(point.Name)
 		kinds[folded] = point.Kind
 		// A caption is what the drawing shows; a point without one is drawn by
 		// its name, and the platform's own maps leave the start uncaptioned.
@@ -388,11 +382,11 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 	for index, transition := range route.Transitions {
 		prefix := fmt.Sprintf("route.transitions[%d]", index)
 		from, to := strings.ToLower(transition.From), strings.ToLower(transition.To)
-		if !names[from] {
+		if !names.taken[from] {
 			issues = append(issues, prefix+".from names "+transition.From+", which is not a point of this route")
 			continue
 		}
-		if !names[to] {
+		if !names.taken[to] {
 			issues = append(issues, prefix+".to names "+transition.To+", which is not a point of this route")
 			continue
 		}
@@ -503,17 +497,10 @@ func validateAddressingValues(prefix string, values []AddressingValue) []string 
 
 func validateRouteDecorations(decorations []RouteDecoration, configuration project.Project) []string {
 	var issues []string
-	names := map[string]bool{}
+	names := namesWithin("")
 	for index, decoration := range decorations {
 		prefix := fmt.Sprintf("route.decorations[%d]", index)
-		if !validIdentifier(decoration.Name) || utf8.RuneCountInString(decoration.Name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(decoration.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, decoration.Name)...)
 		issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
 		issues = append(issues, validateRouteArea(prefix+".location", decoration.Location)...)
 		// A decoration that is neither placed nor drawn is nothing on the map.

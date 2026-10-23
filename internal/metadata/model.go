@@ -1102,7 +1102,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 		// the configurations being moved - erp СтатьиБезАналитики, acc
 		// РежимыОбменаДанными. Its attribute can hold only the empty reference.
 		var issues []string
-		names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+		names, ids := namesWithin(""), map[uuid.UUID]bool{}
 		for index, item := range value.Values {
 			prefix := fmt.Sprintf("values[%d]", index)
 			if item.ID.IsZero() {
@@ -1112,14 +1112,7 @@ func DecodeEnumeration(source string, reader io.Reader, configuration project.Pr
 				issues = append(issues, prefix+".id must be unique")
 			}
 			ids[item.ID] = true
-			if !validIdentifier(item.Name) {
-				issues = append(issues, prefix+".name must be a valid identifier")
-			}
-			folded := strings.ToLower(item.Name)
-			if names[folded] {
-				issues = append(issues, prefix+".name must be unique")
-			}
-			names[folded] = true
+			issues = append(issues, names.take(prefix, item.Name)...)
 			issues = append(issues, validateTitle(prefix+".title", item.Title, configuration)...)
 		}
 		for name, text := range map[string]LocalizedText{
@@ -1535,7 +1528,7 @@ func emptyPredefinedCode(value string) bool {
 // names it has seen, for the checks of parents and lists that follow.
 func validatePredefinedHeads(heads []predefinedHead, code CatalogCode, descriptionLength int) ([]string, map[string]bool) {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, head := range heads {
 		prefix := fmt.Sprintf("predefined[%d]", index)
 		if head.id.IsZero() {
@@ -1545,14 +1538,7 @@ func validatePredefinedHeads(heads []predefinedHead, code CatalogCode, descripti
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[head.id] = true
-		if !validIdentifier(head.name) || utf8.RuneCountInString(head.name) > maxNameLength {
-			issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
-		}
-		folded := strings.ToLower(head.name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		names[folded] = true
+		issues = append(issues, names.take(prefix, head.name)...)
 		// One rule for the four kinds - METADATA-OBJECTS.md, «Код
 		// предопределённого элемента — одно правило на четыре вида». The
 		// empty code is allowed with automatic codes and without them: with
@@ -1577,7 +1563,7 @@ func validatePredefinedHeads(heads []predefinedHead, code CatalogCode, descripti
 			issues = append(issues, fmt.Sprintf("%s.description must not exceed %d characters", prefix, descriptionLength))
 		}
 	}
-	return append(issues, predefinedCodeRepeats(heads, code)...), names
+	return append(issues, predefinedCodeRepeats(heads, code)...), names.taken
 }
 
 // predefinedCodeRepeats refuses a code repeated among the predefined elements
@@ -1735,7 +1721,7 @@ func validateAttributes(path string, attributes []Attribute, configuration proje
 
 func validateAttributesIn(path string, attributes []Attribute, configuration project.Project, reserved func(string) bool, place typePlace) []string {
 	var issues []string
-	names, ids := map[string]bool{}, map[uuid.UUID]bool{}
+	names, ids := namesWithin(""), map[uuid.UUID]bool{}
 	for index, attribute := range attributes {
 		prefix := fmt.Sprintf("%s[%d]", path, index)
 		if attribute.ID.IsZero() {
@@ -1745,17 +1731,10 @@ func validateAttributesIn(path string, attributes []Attribute, configuration pro
 			issues = append(issues, prefix+".id must be unique")
 		}
 		ids[attribute.ID] = true
-		if !validIdentifier(attribute.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(attribute.Name)
-		if names[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
-		if reserved != nil && reserved(folded) {
+		issues = append(issues, names.take(prefix, attribute.Name)...)
+		if reserved != nil && reserved(foldedName(attribute.Name)) {
 			issues = append(issues, prefix+".name is reserved")
 		}
-		names[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", attribute.Title, configuration)...)
 		issues = append(issues, validateTypesIn(prefix+".types", attribute.Types, place)...)
 		issues = append(issues, validateFieldSettings(prefix, attribute, configuration)...)
@@ -2097,6 +2076,37 @@ func validIdentifier(value string) bool {
 		}
 	}
 	return value != ""
+}
+
+// siblingNames are the names a list of siblings has taken so far, folded: the
+// values of an enumeration, the attributes of an object, its table parts, its
+// commands, the parameters of a form. A name is the prototype's identifier
+// (validIdentifier) of at most 255 characters (METADATA-OBJECTS «Пределы на
+// состав»), unique among its siblings with case ignored - one rule, which
+// eighteen places once wrote out each for itself, some without the length.
+type siblingNames struct {
+	// within ends the refusal of a repeated name, after "must be unique": "
+	// within commands", ": a reference to a route point carries this name".
+	within string
+	taken  map[string]bool
+}
+
+func namesWithin(within string) *siblingNames {
+	return &siblingNames{within: within, taken: map[string]bool{}}
+}
+
+// take checks the name of the sibling at prefix and takes it.
+func (names *siblingNames) take(prefix, name string) []string {
+	var issues []string
+	if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+		issues = append(issues, fmt.Sprintf("%s.name must be a valid identifier of at most %d characters", prefix, maxNameLength))
+	}
+	folded := foldedName(name)
+	if names.taken[folded] {
+		issues = append(issues, prefix+".name must be unique"+names.within)
+	}
+	names.taken[folded] = true
+	return issues
 }
 
 // validLocalizedText is a translation as the prototype keeps it: text that

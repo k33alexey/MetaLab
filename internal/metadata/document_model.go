@@ -314,7 +314,7 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, confi
 	if reserved == nil {
 		reserved = func(string) bool { return false }
 	}
-	partNames, partIDs := map[string]bool{}, map[uuid.UUID]bool{}
+	partNames, partIDs := namesWithin(""), map[uuid.UUID]bool{}
 	for index, part := range parts {
 		prefix := fmt.Sprintf("table_parts[%d]", index)
 		if part.ID.IsZero() {
@@ -324,20 +324,14 @@ func validateTableParts(parts []TablePart, attributeNames map[string]bool, confi
 			issues = append(issues, prefix+".id must be unique")
 		}
 		partIDs[part.ID] = true
-		if !validIdentifier(part.Name) {
-			issues = append(issues, prefix+".name must be a valid identifier")
-		}
-		folded := strings.ToLower(part.Name)
-		if partNames[folded] {
-			issues = append(issues, prefix+".name must be unique")
-		}
+		issues = append(issues, partNames.take(prefix, part.Name)...)
+		folded := foldedName(part.Name)
 		if reserved(folded) {
 			issues = append(issues, prefix+".name is reserved")
 		}
 		if attributeNames[folded] {
 			issues = append(issues, prefix+".name conflicts with an attribute")
 		}
-		partNames[folded] = true
 		issues = append(issues, validateTitle(prefix+".title", part.Title, configuration)...)
 		issues = append(issues, validateAttributes(prefix+".attributes", part.Attributes, configuration, nil)...)
 		issues = append(issues, validateStandardAttributes(prefix+".standard_attributes", part.StandardAttributes, tablePartStandardFields, configuration)...)
