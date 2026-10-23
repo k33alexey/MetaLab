@@ -18,7 +18,7 @@ const FilterCriterionKind = kinds.FilterCriterion
 // CriterionField is one field the criterion searches: an attribute of an
 // object, or an attribute of a table part of one.
 //
-// The object is one of seven kinds - see criterionFieldKind. A register, a
+// The object is one of eight kinds - see criterionFieldKind. A register, a
 // report, a data processor or a constant is not among them, whatever else
 // the model knows about their fields.
 type CriterionField struct {
@@ -77,7 +77,7 @@ func DecodeFilterCriterion(source string, reader io.Reader, configuration projec
 		for index, field := range value.Fields {
 			prefix := fmt.Sprintf("fields[%d]", index)
 			if !criterionFieldKind(field.Kind) {
-				issues = append(issues, prefix+".kind must be a catalog, a document, a business process, a task, an exchange plan, a chart of characteristic types or a chart of calculation types")
+				issues = append(issues, prefix+".kind must be a catalog, a document, a business process, a task, an exchange plan, a chart of characteristic types, a chart of accounts or a chart of calculation types")
 			}
 			if field.Object.IsZero() {
 				issues = append(issues, prefix+".object must be a non-zero UUID")
@@ -165,20 +165,8 @@ func (catalog *Catalog) validateFilterCriteria() error {
 }
 
 // criterionFieldKind says whether a criterion may search a field of this kind
-// of object. The content of a criterion is offered by the configurator from
-// catalogs, documents, business processes, tasks, exchange plans, charts of
-// characteristic types and charts of calculation types (owner, 02.10.2026, by
-// the configurator); the help says only that it is made of attributes of
-// objects, and the three configurations being moved use catalogs, documents
-// and tasks.
-func criterionFieldKind(kind Kind) bool {
-	switch kind {
-	case CatalogKind, DocumentKind, BusinessProcessKind, TaskKind, ExchangePlanKind,
-		ChartOfCharacteristicTypesKind, ChartOfCalculationTypesKind:
-		return true
-	}
-	return false
-}
+// of object - kindUses.criterion.
+func criterionFieldKind(kind Kind) bool { return usesOf(kind).criterion == present }
 
 // criterionFieldTypes finds the field a criterion searches and returns what it
 // may hold.
