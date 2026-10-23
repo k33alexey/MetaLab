@@ -102,6 +102,16 @@ type kindUses struct {
 	// none of the rights restricted, which are the rights to data an object
 	// keeps in the infobase; present where the exports write one.
 	restriction presence
+	// restricted are the rights the window of a role puts a restriction on
+	// for an object of the kind and whether by fields, where they are not
+	// restrictionRules (pass of 22.10.2026, the eighth, rol-*;
+	// ACCESS-RIGHTS.md, «Ограничение у видов, которых мастер не
+	// предлагает»): none on a constant, «Чтение» alone and with no fields
+	// on a sequence and a recalculation. Nil is restrictionRules. What a
+	// role loaded says is checked by restrictionRules all the same: a kind
+	// whose restriction is unproven is noted whole
+	// (restriction-without-sample).
+	restricted []RestrictionRule
 	// parts is a role giving rights on the parts of the object: present
 	// where the exports write rights on a part of an object of the kind,
 	// unproven where the kind has parts and no export writes rights on any
@@ -145,7 +155,7 @@ func usesOf(kind Kind) kindUses {
 var kindUsesOf = map[Kind]kindUses{
 	RoleKind:                    {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
 	SubsystemKind:               {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
-	ConstantKind:                {rights: present, registration: present, option: present, restriction: unproven, parts: absent},
+	ConstantKind:                {rights: present, registration: present, option: present, restriction: unproven, restricted: []RestrictionRule{}, parts: absent},
 	SessionParameterKind:        {rights: present, registration: absent, option: unproven, restriction: absent, parts: absent},
 	CommonAttributeKind:         {rights: present, registration: absent, option: present, restriction: absent, parts: absent},
 	CommonModuleKind:            {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
@@ -188,14 +198,14 @@ var kindUsesOf = map[Kind]kindUses{
 	ReportKind:                     {rights: present, registration: absent, option: present, restriction: absent, parts: present},
 	DataProcessorKind:              {rights: present, registration: absent, option: present, restriction: absent, parts: present},
 	NumeratorKind:                  {rights: unproven, registration: absent, option: unproven, restriction: absent, parts: absent},
-	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven, parts: absent},
+	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven, restricted: readingAlone, parts: absent},
 	DocumentJournalKind:            {rights: present, registration: absent, option: present, restriction: present, parts: present},
 	ExchangePlanKind:               {rights: present, registration: unproven, option: present, restriction: unproven, parts: present},
 	BusinessProcessKind:            {rights: present, registration: present, option: present, restriction: present, parts: present},
 	DocumentKind:                   {rights: present, registration: present, option: present, restriction: present, parts: present},
 	InformationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, parts: present},
 	AccumulationRegisterKind:       {rights: present, registration: present, option: present, restriction: present, parts: present},
-	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven, parts: absent},
+	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven, restricted: readingAlone, parts: absent},
 }
 
 // The rights a role gives on the data of a kind. The prototype's rights of

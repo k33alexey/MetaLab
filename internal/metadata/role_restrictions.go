@@ -69,6 +69,19 @@ var restrictionRules = []RestrictionRule{
 	{Right: PermissionDelete},
 }
 
+// readingAlone is a kind whose reading alone is restricted, with no fields:
+// a sequence, a recalculation (rol-posledovatelnost-*, rol-pereraschet-*).
+var readingAlone = []RestrictionRule{{Right: PermissionRead}}
+
+// restrictionRulesOf is how the window of a role restricts an object of the
+// kind (kindUses.restricted).
+func restrictionRulesOf(kind Kind) []RestrictionRule {
+	if rules := usesOf(kind).restricted; rules != nil {
+		return rules
+	}
+	return restrictionRules
+}
+
 func restrictionRuleOf(right PermissionOperation) (RestrictionRule, bool) {
 	index := slices.IndexFunc(restrictionRules, func(rule RestrictionRule) bool { return rule.Right == right })
 	if index < 0 {

@@ -44,9 +44,6 @@ type PermissionSchema struct {
 	// for each, "" for none: a role saved before keeps them until
 	// «Убрать недоступные права» puts these in their place.
 	DroppedRights map[PermissionOperation]PermissionOperation `json:"droppedRights"`
-	// RestrictionRules are how each right a restriction may be on is
-	// restricted: the editor offers by them what saving keeps.
-	RestrictionRules []RestrictionRule `json:"restrictionRules"`
 	// Requires are, by right, the rights the window marks together with it,
 	// and clears it with (rightsRequired): a node takes of them the rights
 	// it has.
@@ -106,8 +103,14 @@ type PermissionObject struct {
 	// filter, the window of a restriction does not show it.
 	AbsentFields []PermissionField `json:"absentFields"`
 	// RestrictedRights are those of the rights a restriction of access to
-	// data may be put on: none on an object that keeps no data.
+	// data may be put on (restrictionRulesOf): none on an object that keeps
+	// no data, nor on a constant.
 	RestrictedRights []PermissionOperation `json:"restrictedRights"`
+	// RestrictedByFields are those of them restricted by fields: a
+	// restriction names the fields it checks, one per set of fields and one
+	// more on «Прочие поля» (RestrictionRule.ByFields); the rest take one
+	// restriction each, with no fields.
+	RestrictedByFields []PermissionOperation `json:"restrictedByFields"`
 }
 
 // PermissionField is one part of an object: under Fields, with the folder it
@@ -156,7 +159,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	if err != nil {
 		return PermissionSchema{}, err
 	}
-	result := PermissionSchema{Objects: []PermissionObject{}, RestrictionRules: slices.Clone(restrictionRules), DroppedRights: DroppedRights()}
+	result := PermissionSchema{Objects: []PermissionObject{}, DroppedRights: DroppedRights()}
 	for _, right := range roleRights {
 		result.Rights = append(result.Rights, PermissionRight{Key: right.operation, Title: right.title, Description: right.description, Name: right.russian})
 	}
@@ -181,18 +184,23 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
 			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
 			RestrictionFields: []PermissionField{}, RoleWindowFields: []PermissionField{}, AbsentFields: []PermissionField{},
-			RestrictedRights: []PermissionOperation{}}
+			RestrictedRights: []PermissionOperation{}, RestrictedByFields: []PermissionOperation{}}
 		for _, operation := range objectOperations {
 			if slices.Contains(offered.rights, operation) {
 				object.Operations = append(object.Operations, operation)
 			}
 		}
 		if usesOf(kind).restriction.accepted() {
-			for _, rule := range restrictionRules {
+			for _, rule := range restrictionRulesOf(kind) {
 				if slices.Contains(offered.rights, rule.Right) {
 					object.RestrictedRights = append(object.RestrictedRights, rule.Right)
+					if rule.ByFields {
+						object.RestrictedByFields = append(object.RestrictedByFields, rule.Right)
+					}
 				}
 			}
+		}
+		if len(object.RestrictedByFields) > 0 {
 			restrictionField := func(field objectPart) PermissionField {
 				return PermissionField{Key: field.key, Name: field.name, Title: cloneTitle(field.title), Parent: field.parent,
 					Operations: []PermissionOperation{}}
@@ -227,7 +235,8 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
 		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
 		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{},
-		RoleWindowFields: []PermissionField{}, AbsentFields: []PermissionField{}, RestrictedRights: []PermissionOperation{}})
+		RoleWindowFields: []PermissionField{}, AbsentFields: []PermissionField{}, RestrictedRights: []PermissionOperation{},
+		RestrictedByFields: []PermissionOperation{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.
 	formTitles := map[uuid.UUID]LocalizedText{}

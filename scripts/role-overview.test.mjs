@@ -22,18 +22,18 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
   return {
     defaultLanguage:'ru',
-    schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'input-by-string',title:'Ввод по строке'}],
+    schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'input-by-string',title:'Ввод по строке'}],
       partGroups:[{key:'attributes',title:'Реквизиты'},{key:'commands',title:'Команды'}],
       objects:[
       {id:'goods',kind:'catalogs',name:'Товары',title:{ru:'Товары'},rights:['read','insert','update','delete','view','edit','input-by-string'],operations:['read','insert','update','delete'],
         fields:[{key:'ref',operations:['view','edit']},{key:'owner',title:{ru:'Владелец'},group:'attributes',operations:['view','edit']},{key:'price',title:{ru:'Цена'},group:'attributes',operations:['view','edit']},
           {key:'print',title:{ru:'Печать'},group:'commands',operations:['view']}],
         restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}},{key:'owner',name:'Владелец',title:{ru:'Владелец'}},{key:'price',name:'Цена',title:{ru:'Цена'}}],
-        restrictedRights:['read','insert','update','delete']},
+        restrictedRights:['read','insert','update','delete'],restrictedByFields:['read']},
       {id:'users',kind:'catalogs',name:'Пользователи',title:{ru:'Пользователи'},rights:['read','view'],operations:['read'],
         fields:[{key:'ref',operations:['view','edit']},{key:'person',title:{ru:'Физлицо'},group:'attributes',operations:['view','edit']}],
         restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}},{key:'person',name:'Физлицо',title:{ru:'Физлицо'}}],
-        restrictedRights:['read']},
+        restrictedRights:['read'],restrictedByFields:['read']},
     ],
     parts:{goods:['ref','owner','price','print'],users:['ref','person']}},
     roles:[
@@ -439,7 +439,7 @@ test('the rights offered are those restricted on any of the objects, in the orde
 // подписано без части.
 test('the filter of restrictions offers only what the restrictions name',()=>{
   const source=filterFixture();
-  source.schema.objects.push({id:'orders',kind:'documents',name:'Заказы',title:{ru:'Заказы'},rights:['read'],operations:['read'],fields:[],restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}}],restrictedRights:['read']});
+  source.schema.objects.push({id:'orders',kind:'documents',name:'Заказы',title:{ru:'Заказы'},rights:['read'],operations:['read'],fields:[],restrictionFields:[{key:'ref',name:'Ссылка',title:{ru:'Ссылка'}}],restrictedRights:['read'],restrictedByFields:['read']});
   source.roles.push({path:'metadata/roles/c.yaml',revision:'rc',role:{id:'c',name:'Гость',title:{ru:'Гость'},objects:[{object:'orders',operations:['read']}]}});
   source.roles[1].role.objects[1].restrictions.unshift({right:'update',condition:'ГДЕ ИСТИНА'});
   const offered=create(source).restrictionFilterChoices();
@@ -544,6 +544,6 @@ test('several restrictions of one right go together, the last first',()=>{
 test('an object inside another is named with the one it lies in',()=>{
   const source=fixture();
   source.schema.objects.push({id:'source',kind:'external-data-sources',name:'Склад',title:{ru:'Склад'},rights:['use'],fields:[],restrictionFields:[],restrictedRights:[]},
-    {id:'table',kind:'external-data-source-tables',owner:'source',name:'Остатки',title:{ru:'Остатки'},rights:['read'],fields:[],restrictionFields:[],restrictedRights:['read']});
+    {id:'table',kind:'external-data-source-tables',owner:'source',name:'Остатки',title:{ru:'Остатки'},rights:['read'],fields:[],restrictionFields:[],restrictedRights:['read'],restrictedByFields:['read']});
   assert.equal(create(source).restrictable().find(item=>item.id==='table').title,'Склад.Остатки');
 });

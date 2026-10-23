@@ -1,10 +1,12 @@
 /* Role editor: explicit grants underneath, ordinary tree/checkboxes in Studio. */
-/* Whether a restriction of the right names the fields it checks - one per
-   set of fields, a field in one at most, and one more on «Прочие поля» - or
-   the right takes one restriction, on every field. The rules are the
-   server's (RestrictionRules), sent with the schema. */
-function restrictsByFields(schema, right) {
-  return !!(schema.restrictionRules || []).find(rule => rule.right === right)?.byFields;
+/* Whether a restriction of the right of the object - the schema's -
+   names the fields it checks - one per set of fields, a field in one at
+   most, and one more on «Прочие поля» - or the right takes one restriction,
+   on every field. The kind decides it on the server (restrictedByFields):
+   reading of a sequence or a recalculation is restricted with no fields,
+   of a catalog by them. */
+function restrictsByFields(object, right) {
+  return !!object?.restrictedByFields?.includes(right);
 }
 /* The box over many: marked when every one is, cleared when none is, the
    third state otherwise - 'all', 'none', 'some'. */
@@ -93,10 +95,10 @@ function createRoleModel(source) {
   // show, and what the change does not touch - the condition changed alone,
   // a restriction copied - keeps the field, as the prototype keeps it
   // (ACCESS-RIGHTS, «Ограничение по полю, которого у объекта нет»).
-  const byFields = right => restrictsByFields(value.schema, right);
+  const byFields = (id, right) => restrictsByFields(definitions.get(id), right);
   function restrictionEntry(id, right, restriction) {
     const entry = {right};
-    const chosen = byFields(right) ? restriction.fields || [] : [];
+    const chosen = byFields(id, right) ? restriction.fields || [] : [];
     if (chosen.length) entry.fields = [...new Set(chosen)];
     if (restriction.condition) entry.condition = restriction.condition;
     return entry;
@@ -118,8 +120,8 @@ function createRoleModel(source) {
   // (validateRestrictions on the server): any two on a right not restricted
   // by fields, two on «Прочие поля», two naming one field. What the restriction would take from another: the fields they
   // share, or the other whole.
-  function collision(right, entry, other) {
-    if (!byFields(right)) return {whole: true, shared: []};
+  function collision(id, right, entry, other) {
+    if (!byFields(id, right)) return {whole: true, shared: []};
     const theirs = other.fields || [], ours = entry.fields || [];
     if (!ours.length) return theirs.length ? null : {whole: true, shared: []};
     const shared = theirs.filter(field => ours.includes(field));
@@ -130,7 +132,7 @@ function createRoleModel(source) {
   function restrictionClashes(id, right, index, restriction) {
     const entry = restrictionEntry(id, right, restriction);
     return restrictionsOf(id, right).flatMap((other, at) => {
-      const clash = at === index ? null : collision(right, entry, other);
+      const clash = at === index ? null : collision(id, right, entry, other);
       return clash ? [{index: at, ...clash}] : [];
     });
   }
@@ -157,7 +159,7 @@ function createRoleModel(source) {
       if (target) before[change.index] = entry;
       const grant = objects.get(id);
       for (const other of restrictionsOf(id, right)) {
-        const clash = other === entry ? null : collision(right, entry, other);
+        const clash = other === entry ? null : collision(id, right, entry, other);
         if (!clash) continue;
         if (!named.has(other)) taken.push({...structuredClone(other), ...clash});
         // A restriction loses fields in place, so it stays the one the
@@ -982,7 +984,7 @@ function roleRestrictionSection({model, object, caption, title, state, changed})
   const right=object?.restrictedRights.includes(state.right)?state.right:null,list=right?model.restrictions(object.id,right):[];
   if(state.row>=list.length)state.row=-1;
   const others=list.some(item=>!item.fields?.length);
-  const canAdd=()=>!!right&&(model.restrictedByFields(right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length);
+  const canAdd=()=>!!right&&(model.restrictedByFields(object.id,right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length);
   const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
   section.append(roleListTable(['Поля','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
     ['add','Добавить',()=>open(list.length),canAdd],
@@ -1000,7 +1002,7 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
   const list=model.restrictions(object.id,right),current=list[index]||{right};
   const chosen=new Set(current.fields||[]);
   let fields=null;
-  if(model.restrictedByFields(right)){
+  if(model.restrictedByFields(object.id,right)){
     const taken=new Set(list.flatMap((item,other)=>other===index?[]:item.fields||[]));
     fields=restrictionFieldsChoice({chosen,taken:key=>taken.has(key)});
     fields.fill(object.roleWindowFields.map(field=>({key:field.key,name:field.name,parent:field.parent,hint:title(field)})));

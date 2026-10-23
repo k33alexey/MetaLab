@@ -11,7 +11,7 @@ vm.runInContext(readFileSync(new URL('../internal/studio/ui/studio-common.js',im
 vm.runInContext(script,context);
 const create=context.createRoleModel;
 const plain=value=>JSON.parse(JSON.stringify(value));
-function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{restrictionRules:[{right:'read',byFields:true},{right:'insert',byFields:false},{right:'update',byFields:false},{right:'delete',byFields:false}],rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','run-application'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},droppedRights:{'thin-client':'run-application','web-client':'run-application','thick-client':'','mobile-client':''}}};}
+function fixture(){return {role:{id:'role',name:'Продавец',title:{ru:'Продавец'}},schema:{rights:[{key:'read',title:'Чтение'},{key:'insert',title:'Добавление'},{key:'update',title:'Изменение'},{key:'delete',title:'Удаление'},{key:'view',title:'Просмотр'},{key:'edit',title:'Редактирование'},{key:'posting',title:'Проведение'}],objects:[{id:'base',root:true,rights:['administration','run-application'],operations:[],fields:[],restrictionFields:[]},{id:'goods',rights:['read','insert','update','delete','view','edit','input-by-string'],restrictedRights:['read','insert','update','delete'],restrictedByFields:['read'],operations:['read','insert','update','delete'],fields:[{key:'ref',group:'standard-attributes',operations:['view','edit']},{key:'name',group:'attributes',operations:['view','edit']},{key:'part',group:'table-parts',operations:['view','edit']},{key:'column',group:'attributes',parent:'part',operations:['view','edit']},{key:'print',group:'commands',operations:['view']}],restrictionFields:[{key:'ref'},{key:'dataversion'},{key:'name'},{key:'part'},{key:'column',parent:'part'},{key:'part.linenumber',parent:'part'}]},{id:'other',rights:['read','view'],operations:['read'],fields:[],restrictionFields:[]}],parts:{base:[],goods:['column','name','part','print','ref'],other:[]},droppedRights:{'thin-client':'run-application','web-client':'run-application','thick-client':'','mobile-client':''}}};}
 
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
@@ -297,18 +297,19 @@ test('only reading is restricted by fields, a field the object has not kept as w
   assert.equal(value.objects.some(item=>item.object==='other'||item.object==='base'),false);
 });
 // Which right is restricted by fields is the server's rule, sent with the
-// schema, not the editor's own: under a schema whose rules give fields to
-// changing and none to reading, changing keeps its fields and two
+// schema's object, not the editor's own: under an object whose rights give
+// fields to changing and none to reading, changing keeps its fields and two
 // restrictions of it on two fields stand side by side, while reading takes
-// one, without fields. Defect caught: the editor knowing «only reading» by
-// itself, so a change of the rule on the server leaves it offering what
-// saving refuses.
-test('the rules of the schema say which right is restricted by fields',()=>{
+// one, without fields - as a sequence's reading does. Defect caught: the
+// editor knowing «only reading» by itself, or one rule for every kind, so
+// the kind's own on the server leaves it offering what the prototype does
+// not.
+test('the object of the schema says which right is restricted by fields',()=>{
   const source=fixture();
-  source.schema.restrictionRules=[{right:'read',byFields:false},{right:'insert',byFields:false},{right:'update',byFields:true},{right:'delete',byFields:false}];
+  source.schema.objects.find(item=>item.id==='goods').restrictedByFields=['update'];
   const model=create(source);
-  assert.equal(model.restrictedByFields('update'),true);
-  assert.equal(model.restrictedByFields('read'),false);
+  assert.equal(model.restrictedByFields('goods','update'),true);
+  assert.equal(model.restrictedByFields('goods','read'),false);
   model.putRestriction('goods','update',0,{fields:['ref'],condition:'ГДЕ 1'});
   model.putRestriction('goods','update',1,{fields:['name'],condition:'ГДЕ 2'});
   model.putRestriction('goods','read',0,{fields:['ref'],condition:'ГДЕ 3'});

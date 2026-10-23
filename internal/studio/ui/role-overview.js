@@ -38,6 +38,7 @@ function createRoleOverviewModel(source) {
   const roleOf = entry => entry.model.value();
   return {
     objects() { return source.schema.objects || []; },
+    object(id) { return objects.get(id); },
     title(item) { return localized(item); },
     roleCount() { return entries.length; },
     roles: roleList,
@@ -171,7 +172,7 @@ function createRoleOverviewModel(source) {
       const choices = restrictionFieldChoices(objectIDs);
       return perform(trial, modelOf => roles.flatMap(role => objectIDs.flatMap(objectID =>
         rights.flatMap(right => {
-          const fields = restrictsByFields(source.schema, right) ? chosenFieldKeys(choices, paths, objectID) : [];
+          const fields = restrictsByFields(objects.get(objectID), right) ? chosenFieldKeys(choices, paths, objectID) : [];
           return fields ? taken(role, objectID, right, modelOf(role).writeRestrictions(objectID, right, [{restriction: {fields, condition}}])) : [];
         }))));
     },
@@ -624,7 +625,7 @@ function createRoleOverview(host, openRole, onChange) {
   // и тогда, когда условия нет у одной из них (такие приходят импортом;
   // владелец 22.10.2026, ACCESS-RIGHTS «Пустое ограничение в окне роли»).
   async function editRestrictions(rows) {
-    const reading = rows.filter(row => restrictsByFields(source.schema, row.operation)), single = rows.length === 1;
+    const reading = rows.filter(row => restrictsByFields(model.object(row.objectID), row.operation)), single = rows.length === 1;
     const change = {fields: false, condition: false}, chosen = new Set(), mixed = new Set(), marked = new Set();
     let fields = null, edited = false, marks = '';
     const marksOf = () => `${[...chosen].sort()}|${[...mixed].sort()}`;
@@ -647,7 +648,7 @@ function createRoleOverview(host, openRole, onChange) {
     const content = restrictionWindowContent({fields, editor, change, group: !single});
     // Поля пишутся только праву, ограничиваемому по полям (restrictionEntry
     // роли); у прочих они остаются как были.
-    const fieldsOf = row => !restrictsByFields(source.schema, row.operation) ? row.keys : choices
+    const fieldsOf = row => !restrictsByFields(model.object(row.objectID), row.operation) ? row.keys : choices
       .filter(choice => choice.keys.has(row.objectID) && (chosen.has(choice.path) || (mixed.has(choice.path) && names(row, choice))))
       .map(choice => choice.keys.get(row.objectID));
     const answer = await showDialog({title: 'Ограничение доступа', explanation: rows.length > 1 ? `Выбрано ограничений: ${rows.length}.` : '', content,
@@ -811,7 +812,9 @@ function createRoleOverview(host, openRole, onChange) {
     // с ограничением по полям, «Прочие поля» и текст ограничения. Отмеченное,
     // которого больше нет, снимается. Поля доступны, пока отмечено право,
     // ограничиваемое по полям.
-    const byFields = right => restrictsByFields(source.schema, right), fieldsChosen = () => [...rights].some(byFields);
+    // Право ограничивается по полям, если так — хотя бы у одного из
+    // выбранных объектов.
+    const byFields = right => [...chosenObjects].some(id => restrictsByFields(model.object(id), right)), fieldsChosen = () => [...rights].some(byFields);
     const rightList = node('div', undefined, 'role-restriction-fields role-fields-tree'), fields = restrictionFieldsChoice({chosen: paths});
     const fillRights = () => { rightList.replaceChildren(...rightBoxes(offered, rights, () => fields.disable(!fieldsChosen()))); fields.disable(!fieldsChosen()); };
     const editor = queryTextField(condition, value => { condition = value; }, 'Ограничение доступа');
@@ -823,7 +826,7 @@ function createRoleOverview(host, openRole, onChange) {
       const items = model.restrictable().filter(item => chosenObjects.has(item.id));
       offered = model.restrictedRights(items);
       for (const key of [...rights]) if (!offered.includes(key)) rights.delete(key);
-      fields.fill(choiceFields(model.restrictionFieldChoices(items.filter(item => item.rights.some(byFields)).map(item => item.id))));
+      fields.fill(choiceFields(model.restrictionFieldChoices(items.filter(item => item.rights.some(right => restrictsByFields(model.object(item.id), right))).map(item => item.id))));
       fillRights();
     }
     const show = () => { first.hidden = step !== 1; second.hidden = step !== 2; };
