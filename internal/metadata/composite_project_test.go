@@ -196,7 +196,7 @@ func compositeProject(t *testing.T) string {
 		"types: [{kind: catalog, reference: "+cmpUsers+"}]\ncontent: [{metadata: "+cmpDocument+", use: use}]\n")
 
 	// The interface: commands, templates, pictures, forms, styles.
-	writeMetadata(t, root, CommandGroupKind, cmpCommandGroup, head(cmpCommandGroup, "Сервис")+"category: actions-panel\n")
+	writeMetadata(t, root, CommandGroupKind, cmpCommandGroup, head(cmpCommandGroup, "Сервис")+"category: form-command-bar\n")
 	writeCommonCommand(t, root, "ОткрытьОстатки", head(cmpCommonCommand, "ОткрытьОстатки")+
 		"group_ref: "+cmpCommandGroup+"\nparameter: [{kind: catalog, reference: "+cmpGoods+"}]\nparameter_use: single\n", true)
 	writeCommonTemplate(t, root, cmpCommonTemplate, "Бланк", TextTemplate)

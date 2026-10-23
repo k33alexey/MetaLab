@@ -321,7 +321,7 @@ func writeCommandGroup(t *testing.T, root, id, name string) {
 id: `+id+`
 name: `+name+`
 title: {ru: `+name+`}
-category: actions-panel
+category: form-command-bar
 `)
 }
 

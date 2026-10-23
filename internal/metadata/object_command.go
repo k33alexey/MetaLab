@@ -52,12 +52,35 @@ func (representation CommandRepresentation) ShownAs(picture *PictureReference) C
 // Four more stood here once - an ordinary group of the form's navigation
 // panel and of its command bar, «see also» of the command bar and of the
 // actions panel - which the prototype does not have: a command placed in one
-// could never have come from it.
-var standardCommandGroups = map[string]bool{
-	"navigation-panel-important": true, "navigation-panel-ordinary": true, "navigation-panel-see-also": true,
-	"form-navigation-panel-important": true, "form-navigation-panel-see-also": true, "form-navigation-panel-go-to": true,
-	"form-command-bar-important": true, "form-command-bar-create-based-on": true,
-	"actions-panel-create": true, "actions-panel-reports": true, "actions-panel-tools": true,
+// could never have come from it. Each stands in one of the four categories a
+// group of the configuration chooses from.
+var standardCommandGroups = map[string]CommandCategory{
+	"navigation-panel-important": NavigationPanelCategory, "navigation-panel-ordinary": NavigationPanelCategory,
+	"navigation-panel-see-also":       NavigationPanelCategory,
+	"form-navigation-panel-important": FormNavigationPanelCategory, "form-navigation-panel-see-also": FormNavigationPanelCategory,
+	"form-navigation-panel-go-to": FormNavigationPanelCategory,
+	"form-command-bar-important":  FormCommandBarCategory, "form-command-bar-create-based-on": FormCommandBarCategory,
+	"actions-panel-create": ActionsPanelCategory, "actions-panel-reports": ActionsPanelCategory, "actions-panel-tools": ActionsPanelCategory,
+}
+
+// ofMainWindow says a category is a panel of the main window. A command
+// placed there takes no parameter: the designer makes the type of the
+// parameter, its mode and «Изменяет данные» unavailable for it, and leaves
+// them available in a form and with no group (opis of the common command,
+// 14.10.2026). Of 603 commands of such groups in the exports none has a
+// parameter; «Изменяет данные» is marked on 11 - kept though unavailable, and
+// carried - and the mode the prototype writes on every command.
+func ofMainWindow(category CommandCategory) bool {
+	return category == ActionsPanelCategory || category == NavigationPanelCategory
+}
+
+// mainWindowParameterIssue refuses a parameter of a command placed in a panel
+// of the main window.
+func mainWindowParameterIssue(prefix string, command ObjectCommand, category CommandCategory) []string {
+	if len(command.Parameter) == 0 || !ofMainWindow(category) {
+		return nil
+	}
+	return []string{prefix + ".parameter is not allowed: the command stands in a panel of the main window (" + string(category) + "), where the designer offers no parameter"}
 }
 
 // PictureReference names the picture shown beside a command. It is one the
@@ -218,8 +241,10 @@ func validateCommandShape(prefix string, command ObjectCommand, configuration pr
 	if command.Group != "" && command.GroupRef != nil {
 		issues = append(issues, prefix+" names both a standard group and a group of the configuration")
 	}
-	if command.Group != "" && !standardCommandGroups[command.Group] {
+	if category, ok := standardCommandGroups[command.Group]; command.Group != "" && !ok {
 		issues = append(issues, prefix+".group is not a standard group of the platform")
+	} else {
+		issues = append(issues, mainWindowParameterIssue(prefix, command, category)...)
 	}
 	if command.GroupRef != nil && command.GroupRef.IsZero() {
 		issues = append(issues, prefix+".group_ref must be a non-zero UUID")

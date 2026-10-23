@@ -164,6 +164,16 @@ func (catalog *Catalog) noteCommandGroupReferences() {
 // is a note.
 func (catalog *Catalog) validateCommandParameterReferences() error {
 	check := func(owner string, command ObjectCommand) error {
+		// A group of the configuration says its category only here; a
+		// standard group is checked with the command (validateCommandShape).
+		if command.GroupRef != nil {
+			if index, ok := catalog.commandGroupByID[*command.GroupRef]; ok {
+				group := catalog.CommandGroups[index]
+				if issues := mainWindowParameterIssue(owner+" command "+command.Name, command, group.Category); len(issues) != 0 {
+					return fmt.Errorf("%s of group %s", issues[0], group.Name)
+				}
+			}
+		}
 		return catalog.validateReferences(owner+" command "+command.Name+" parameter", command.Parameter)
 	}
 	for _, item := range catalog.CommonCommands {
