@@ -42,13 +42,11 @@ type CommonModuleDefinition struct {
 	// ExternalConnection lets the procedures of this module be used over an
 	// external connection.
 	ExternalConnection bool `yaml:"external_connection,omitempty"`
-	// ClientOrdinaryApplication is the prototype's flag of a module compiled
-	// in the client of an ordinary application. ML has no ordinary
-	// application, so the flag is carried and runs nothing: about 1600, 900
-	// and 1000 modules of the configurations being moved have it, nearly all
-	// beside the server flag, and dropping it would lose what the module was
-	// written for.
-	ClientOrdinaryApplication bool `yaml:"client_ordinary_application,omitempty"`
+	// The prototype's flag of a module of the client of an ordinary
+	// application is not carried: ML is a managed application only (owner,
+	// 14.10.2026), and the designer editing a configuration for it does not
+	// show the flag (opis of the common module). A description that writes
+	// client_ordinary_application is not read.
 	// ReturnValuesReuse caches what the exported functions of this module
 	// return. It is not a flag but a choice of three - see below.
 	ReturnValuesReuse ReturnValuesReuse `yaml:"return_values_reuse,omitempty"`
@@ -93,16 +91,27 @@ func validateCommonModule(value CommonModuleDefinition, configuration project.Pr
 		issues = append(issues, "module must be a non-zero UUID")
 	}
 	// Any one context is enough: the designer saves a module that is only
-	// for the external connection, or only for the ordinary application
-	// (checked by the owner, 01.10.2026).
-	if !value.Client && !value.Server && !value.ExternalConnection && !value.ClientOrdinaryApplication {
-		issues = append(issues, "at least one of client, server, external_connection or client_ordinary_application must be set")
+	// for the external connection (checked by the owner, 01.10.2026). A
+	// module of none it saves too, and nothing can call it: ML refuses it, a
+	// deviation of its own (METADATA-OBJECTS.md, «Общие: общие модули»).
+	if !value.Client && !value.Server && !value.ExternalConnection {
+		issues = append(issues, "at least one of client, server or external_connection must be set")
 	}
-	if value.ServerCall && !value.Server {
-		issues = append(issues, "server_call requires server")
-	}
+	// «Вызов сервера» is unavailable without «Сервер», and the designer keeps
+	// it marked when «Сервер» is cleared: lombard1 has four client modules so
+	// (ЦенообразованиеКлиент and three more). It is carried and means
+	// nothing there - a client module is called on the client.
 	if value.Privileged && !value.Server {
 		issues = append(issues, "privileged requires server")
+	}
+	// Marking «Клиент» clears «Привилегированный» and the other way round,
+	// and «Повторное использование возвращаемых значений» is unavailable on
+	// a global module (opis of the common module, 14.10.2026).
+	if value.Privileged && value.Client {
+		issues = append(issues, "privileged excludes client: the designer clears one when the other is marked")
+	}
+	if value.Global && value.ReturnValuesReuse != "" && value.ReturnValuesReuse != ReturnValuesReuseDontUse {
+		issues = append(issues, "return_values_reuse must be dont-use on a global module: the designer makes it unavailable there")
 	}
 	if !validReturnValuesReuse(value.ReturnValuesReuse) {
 		issues = append(issues, "return_values_reuse must be dont-use, during-request or during-session")
@@ -145,12 +154,8 @@ func cloneCommonModuleDefinition(value CommonModuleDefinition) CommonModuleDefin
 // default execution context, so its routines need no per-routine directive to
 // be classified correctly.
 //
-// The ordinary application's client is not a context of ML: beside any other
-// flag it changes nothing, and a module of the server and the ordinary client
-// stays a server module. A module of the ordinary client alone is compiled as
-// a client module and called by nobody, exactly as the ordinary application
-// module of the root is. A module of the external connection alone is a
-// server module: the external connection runs on the server.
+// A module of the external connection alone is a server module: the external
+// connection runs on the server.
 func (definition CommonModuleDefinition) DefaultContext() syntax.ExecutionContext {
 	switch {
 	case definition.Client && definition.Server:
@@ -159,8 +164,6 @@ func (definition CommonModuleDefinition) DefaultContext() syntax.ExecutionContex
 		return syntax.ContextClient
 	case definition.Server, definition.ExternalConnection:
 		return syntax.ContextServer
-	case definition.ClientOrdinaryApplication:
-		return syntax.ContextClient
 	default:
 		return syntax.ContextServer
 	}

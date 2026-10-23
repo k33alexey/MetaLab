@@ -38,10 +38,6 @@ func TestDecodeCommonModuleStrictAndBounded(t *testing.T) {
 		"no context at all": func(m *CommonModuleDefinition) {
 			m.Server, m.Client = false, false
 		},
-		"server_call without server": func(m *CommonModuleDefinition) {
-			m.Server, m.ServerCall = false, true
-			m.Client = true
-		},
 		"privileged without server": func(m *CommonModuleDefinition) {
 			m.Server, m.Privileged = false, true
 			m.Client = true
@@ -146,40 +142,60 @@ func TestLoadValidatesCommonModuleSourceAndUniqueness(t *testing.T) {
 }
 
 // A module of any one context is saved by the designer: the external
-// connection alone, or the ordinary application's client alone (checked by the
-// owner, 01.10.2026). Defect caught: "client or server" refused both, and with
-// them every configuration that has one. The ordinary client's flag is carried
-// and runs nothing: beside the server it leaves a server module, and alone it
-// gives a client module nobody calls, as the root's ordinary module is.
+// connection alone (checked by the owner, 01.10.2026). Defect caught: "client
+// or server" refused it, and with it every configuration that has one; a
+// module of the external connection compiled as anything but a server module.
 func TestCommonModuleOfAnyOneContextIsSaved(t *testing.T) {
 	t.Parallel()
-	for name, test := range map[string]struct {
-		set  func(*CommonModuleDefinition)
-		want syntax.ExecutionContext
-	}{
-		"только внешнее соединение": {func(m *CommonModuleDefinition) { m.ExternalConnection = true }, syntax.ContextServer},
-		"только обычное приложение": {func(m *CommonModuleDefinition) { m.ClientOrdinaryApplication = true }, syntax.ContextClient},
-		"сервер и обычное приложение": {func(m *CommonModuleDefinition) {
-			m.Server, m.ClientOrdinaryApplication = true, true
-		}, syntax.ContextServer},
+	module := commonModuleFixture()
+	module.Server, module.ExternalConnection = false, true
+	var encoded bytes.Buffer
+	if err := Encode(&encoded, module); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if got := decoded.DefaultContext(); got != syntax.ContextServer {
+		t.Errorf("context = %v, want the server's", got)
+	}
+}
+
+// The flags combine as the designer lets them (opis of the common module,
+// 14.10.2026): «Клиент» and «Привилегированный» clear each other; «Вызов
+// сервера» stays marked when «Сервер» is cleared (four modules of lombard1),
+// «Привилегированный» needs «Сервер»; a global
+// module has no reuse of return values; the ordinary application's client is
+// no flag of ML, and a description that writes it is not read. Every case is
+// written here with what the model must say.
+//
+// Defect caught: a client privileged module or a global module caching its
+// values taken, which the designer cannot save; the client modules of
+// lombard1 with «Вызов сервера» refused on import; the ordinary client's flag
+// carried again, or taken silently and dropped.
+func TestCommonModuleFlagsCombineAsTheDesignerLetsThem(t *testing.T) {
+	t.Parallel()
+	head := "format: 1\nid: " + uuid.MustNew().String() + "\nname: Модуль\ntitle: {ru: Модуль}\nmodule: " + uuid.MustNew().String() + "\n"
+	for flags, want := range map[string]string{
+		"server: true\nprivileged: true\n":                                  "",
+		"client: true\nserver_call: true\n":                                 "",
+		"client: true\nprivileged: true\n":                                  "privileged requires server",
+		"client: true\nserver: true\n":                                      "",
+		"server: true\nglobal: true\nreturn_values_reuse: dont-use\n":       "",
+		"server: true\nreturn_values_reuse: during-session\n":               "",
+		"client: true\nserver: true\nprivileged: true\n":                    "privileged excludes client",
+		"server: true\nglobal: true\nreturn_values_reuse: during-request\n": "return_values_reuse must be dont-use on a global module",
+		"server: true\nglobal: true\nreturn_values_reuse: during-session\n": "return_values_reuse must be dont-use on a global module",
+		"server: true\nclient_ordinary_application: true\n":                 "field client_ordinary_application not found",
+		"client_ordinary_application: true\n":                               "field client_ordinary_application not found",
 	} {
-		module := commonModuleFixture()
-		module.Server = false
-		test.set(&module)
-		var encoded bytes.Buffer
-		if err := Encode(&encoded, module); err != nil {
-			t.Fatal(err)
-		}
-		decoded, err := DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), metadataConfiguration())
-		if err != nil {
-			t.Errorf("%s: refused: %v", name, err)
-			continue
-		}
-		if decoded.ClientOrdinaryApplication != module.ClientOrdinaryApplication {
-			t.Errorf("%s: the ordinary client's flag was lost", name)
-		}
-		if got := decoded.DefaultContext(); got != test.want {
-			t.Errorf("%s: context = %v, want %v", name, got, test.want)
+		_, err := DecodeCommonModule("common-module.yaml", strings.NewReader(head+flags), metadataConfiguration())
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q refused: %v", flags, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%q: %v, want %q", flags, err, want)
 		}
 	}
 }

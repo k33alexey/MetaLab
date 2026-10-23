@@ -35,7 +35,7 @@ func TestCommonModuleCarriesItsExecutionContext(t *testing.T) {
 		Format: CurrentFormat, ID: uuid.MustNew(), Name: "ОбщегоНазначения",
 		Title: LocalizedText{"ru": "Общего назначения"}, Module: uuid.MustNew(),
 		Server: true, Global: true, ExternalConnection: true,
-		Comment: "Процедуры, нужные всем", ReturnValuesReuse: ReturnValuesReuseDuringSession,
+		Comment: "Процедуры, нужные всем",
 	}
 	var encoded bytes.Buffer
 	if err := Encode(&encoded, module); err != nil {
@@ -47,6 +47,17 @@ func TestCommonModuleCarriesItsExecutionContext(t *testing.T) {
 	}
 	if !decoded.Global || !decoded.ExternalConnection || decoded.Comment == "" {
 		t.Fatalf("module = %+v", decoded)
+	}
+
+	// A global module has no reuse (the designer makes it unavailable), so it
+	// is tried on a module that is not global.
+	module.Global, module.ReturnValuesReuse = false, ReturnValuesReuseDuringSession
+	encoded.Reset()
+	if err := Encode(&encoded, module); err != nil {
+		t.Fatal(err)
+	}
+	if decoded, err = DecodeCommonModule("common-module.yaml", bytes.NewReader(encoded.Bytes()), catchupConfiguration()); err != nil {
+		t.Fatal(err)
 	}
 	if decoded.ReturnValuesReuse != ReturnValuesReuseDuringSession {
 		t.Fatalf("return values reuse = %q", decoded.ReturnValuesReuse)
