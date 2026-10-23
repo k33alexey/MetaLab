@@ -198,10 +198,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, FilterCriterionKind, id, "format: 1\nid: "+id+"\nname: СтруктураПодчиненности\ntitle: {ru: Структура}\ntypes: []\n")
 	},
-	NoteHTTPRootsDifferInCase: func(t *testing.T, root string) {
-		writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\n")
-		writeHTTPService(t, root, secondHTTPServiceID, "БиллингНовый", "root_url: Billing\n")
-	},
 	NoteUnfilledParentWithoutTree: func(t *testing.T, root string) {
 		writeSalesCube(t, root, noteCubeBody(), strings.Replace(goodsDimTableBody, "hierarchical: true\n", "", 1))
 	},
@@ -486,7 +482,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	// Two services on roots that differ by more than case, a template without
 	// a leading slash - the help asks for none - a table of a source keyed,
 	// named, with Null for an unfilled parent, and a function with a parameter.
-	writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\ntemplates:\n  - {id: "+uuid.MustNew().String()+", name: Версия, title: {ru: Версия}, template: version}\n")
+	writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\ntemplates:\n  - {id: "+uuid.MustNew().String()+", name: Версия, title: {ru: Версия}, template: /version}\n")
 	writeHTTPService(t, root, secondHTTPServiceID, "Заказы", "root_url: orders\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
 	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Остаток\n    title: {ru: Остаток}\n    expression_in_data_source: \"SELECT f(&1, x&10)\"\n")

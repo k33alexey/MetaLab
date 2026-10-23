@@ -44,7 +44,6 @@ const (
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
 	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
-	NoteHTTPRootsDifferInCase      NoteKind = "http-roots-differ-in-case"
 	NoteUnfilledParentWithoutTree  NoteKind = "unfilled-parent-without-hierarchy"
 	NoteObjectTableWithoutKey      NoteKind = "object-table-without-key"
 	NoteEmptyNameInSource          NoteKind = "empty-name-in-source"
@@ -183,9 +182,6 @@ func init() {
 		NoteKindInfo{NoteCriterionWithoutType,
 			"Критерий отбора без типа при заполненном составе (sb: 190 полей).",
 			"Несётся как записан и ничего не находит."},
-		NoteKindInfo{NoteHTTPRootsDifferInCase,
-			"Корневые URL двух HTTP-сервисов различаются только регистром букв; различает ли их прототип, не известно.",
-			"Оба несутся как записаны; адреса сравниваются как написаны."},
 		NoteKindInfo{NoteUnfilledParentWithoutTree,
 			"Значение незаполненного родителя у таблицы измерения без иерархии.",
 			"Несётся как записано и не читается: родителя без иерархии нет."},
@@ -393,7 +389,6 @@ func init() {
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
 	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
-	noteRules[NoteHTTPRootsDifferInCase] = noteHTTPRootsDifferInCase
 	noteRules[NoteUnfilledParentWithoutTree] = noteUnfilledParentWithoutTree
 	noteRules[NoteObjectTableWithoutKey] = noteObjectTableWithoutKey
 	noteRules[NoteEmptyNameInSource] = noteEmptyNameInSource
@@ -1021,18 +1016,6 @@ func noteCriterionWithoutType(catalog *Catalog, note func(where, written string)
 		if len(criterion.Types) == 0 {
 			note("filter-criteria "+criterion.Name+" types", strconv.Itoa(len(criterion.Fields))+" fields")
 		}
-	}
-}
-
-func noteHTTPRootsDifferInCase(catalog *Catalog, note func(where, written string)) {
-	seen := map[string]string{}
-	for _, service := range catalog.HTTPServices {
-		folded := strings.ToLower(service.RootURL)
-		if previous, ok := seen[folded]; ok && previous != service.RootURL {
-			note("http-services "+service.Name+" root_url", service.RootURL+" and "+previous)
-			continue
-		}
-		seen[folded] = service.RootURL
 	}
 }
 

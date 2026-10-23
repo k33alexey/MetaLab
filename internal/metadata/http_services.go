@@ -106,12 +106,30 @@ func validateRootURL(value string) []string {
 	if strings.ContainsAny(value, "/?#") {
 		return []string{"root_url must be one segment of the address and not a path"}
 	}
-	for _, symbol := range value {
-		if !unicode.IsLetter(symbol) && !unicode.IsDigit(symbol) && !strings.ContainsRune("-~$()_.", symbol) {
-			return []string{"root_url may hold letters, digits and - ~ $ ( ) _ . only"}
-		}
+	if problem := addressSegmentProblem(value); problem != "" {
+		return []string{"root_url " + problem}
 	}
 	return nil
+}
+
+// addressSegmentProblem says what is wrong with one segment of an address
+// written as it is - a root, or a segment of a template that is neither a
+// parameter nor «*» - or nothing. It holds letters, digits and - ~ $ ( ) _ .
+// (the help; the designer refuses every other symbol tried, opis of
+// 15.10.2026, http-servis.md). A segment «.» or «..» the designer takes as a
+// root and the help does not forbid, but every client drops it from the
+// address before it is sent, so the call never reaches the service: ML
+// refuses it (an error of the platform not copied).
+func addressSegmentProblem(segment string) string {
+	for _, symbol := range segment {
+		if !unicode.IsLetter(symbol) && !unicode.IsDigit(symbol) && !strings.ContainsRune("-~$()_.", symbol) {
+			return "may hold letters, digits and - ~ $ ( ) _ . only"
+		}
+	}
+	if segment == "." || segment == ".." {
+		return "must not be «.» or «..»: a client drops such a segment from the address, and the call never reaches the service"
+	}
+	return ""
 }
 
 // validateURLTemplates checks the addresses of one service: each template, its
@@ -146,41 +164,47 @@ func validateURLTemplates(templates []URLTemplate, configuration project.Project
 	return issues
 }
 
-// validateTemplatePath checks one address: it starts where the root ends, and
-// what it holds is written the way the caller writes it.
+// validateTemplatePath checks one address by the grammar of the designer
+// (opis of 15.10.2026, http-servis.md, every form of it tried): «/» first,
+// then segments split by «/», each of them empty, a segment of an address
+// (addressSegmentProblem), a parameter in braces with any text but no brace,
+// slash or space as a whole segment - «/{1x}», «/{a.b}», «/{док}» - or «*»,
+// and «*» the last segment only. The designer takes «/x}» against its own
+// help, which wants braces with text between them; ML refuses it.
+//
+// No ceiling on the length: the help gives the template as a string and
+// names none.
 func validateTemplatePath(path, value string) []string {
 	if value == "" {
 		return []string{path + " must say which address it answers"}
 	}
-	// No ceiling on the length: the help gives the template as a string and
-	// names none.
-	// A leading slash is not required: the help lists what a template may
-	// hold - the characters of an identifier, «/», «{…}» and «*» - and asks
-	// for no slash first.
-	for _, symbol := range value {
-		if unicode.IsSpace(symbol) || !unicode.IsPrint(symbol) {
-			return []string{path + " must not contain spaces or control characters"}
-		}
+	rest, slashed := strings.CutPrefix(value, "/")
+	if !slashed {
+		return []string{path + " must start with «/»: the designer refuses a template that does not"}
 	}
-	// A parameter is a name in braces. An unclosed brace is a parameter that
-	// matches nothing, and the address then answers no call at all.
-	depth := 0
-	for _, symbol := range value {
-		switch symbol {
-		case '{':
-			depth++
-			if depth > 1 {
-				return []string{path + " opens a parameter inside a parameter"}
+	segments := strings.Split(rest, "/")
+	for index, segment := range segments {
+		switch {
+		case segment == "*":
+			if index != len(segments)-1 {
+				return []string{path + " puts «*» before the end: «*» stands only as the last segment"}
 			}
-		case '}':
-			depth--
-			if depth < 0 {
-				return []string{path + " closes a parameter that was never opened"}
+		case strings.HasPrefix(segment, "{") || strings.HasSuffix(segment, "}"):
+			name, whole := strings.CutPrefix(segment, "{")
+			name, closed := strings.CutSuffix(name, "}")
+			switch {
+			case !whole || !closed || strings.ContainsAny(name, "{}"):
+				return []string{fmt.Sprintf("%s holds the segment %q: a parameter is a name in braces standing as a whole segment", path, segment)}
+			case name == "":
+				return []string{path + " holds a parameter with no name"}
+			case strings.IndexFunc(name, func(symbol rune) bool { return unicode.IsSpace(symbol) || !unicode.IsPrint(symbol) }) >= 0:
+				return []string{path + " holds a parameter whose name has a space or a control character"}
+			}
+		default:
+			if problem := addressSegmentProblem(segment); problem != "" {
+				return []string{fmt.Sprintf("%s holds the segment %q, which %s, a parameter in braces or «*»", path, segment, problem)}
 			}
 		}
-	}
-	if depth != 0 {
-		return []string{path + " leaves a parameter unclosed"}
 	}
 	return nil
 }
@@ -255,9 +279,8 @@ func (catalog *Catalog) HTTPService(name string) (HTTPServiceDefinition, bool) {
 func (catalog *Catalog) validateHTTPServices() error {
 	roots := make(map[string]string, len(catalog.HTTPServices))
 	for _, service := range catalog.HTTPServices {
-		// Compared as written: whether the prototype tells «API» from «api» is
-		// not known, and refusing two services over it would refuse the
-		// configuration. Two roots that differ in case alone are a note.
+		// Compared as written: the designer takes «DT» beside «dt» and refuses
+		// a second «dt» (opis of 15.10.2026, http-servis.md).
 		root := service.RootURL
 		if previous, taken := roots[root]; taken {
 			return fmt.Errorf("HTTP services %s and %s both answer at %s", previous, service.Name, service.RootURL)

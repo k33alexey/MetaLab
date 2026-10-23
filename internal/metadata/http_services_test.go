@@ -211,3 +211,68 @@ templates:
 		t.Fatalf("a template of %d characters was refused: %v", len(long), err)
 	}
 }
+
+// A template is written by the grammar of the designer: every form the opis
+// of 15.10.2026 (http-servis.md) tried is here, with the answer it got, and
+// two deviations - «/x}», which the designer takes against its help, and a
+// segment «.» or «..», which no call reaches.
+//
+// Defect caught: a template the designer refuses - with no slash first, a
+// symbol outside the set, a parameter that is not a whole segment, «*» not
+// last - carried as an address; or one it takes - an empty segment, any text
+// of a parameter - refused.
+func TestHTTPServiceTemplateTakesTheDesignersGrammar(t *testing.T) {
+	t.Parallel()
+	for template, valid := range map[string]bool{
+		"abc": false, "/a b": false, "/{x": false, "/a?b": false, "/{}": false, "/a*b": false,
+		"/{a}{b}": false, "/{a}b": false, "/a,b": false, "/a;b": false, "/a+b": false, "/a=b": false,
+		"/a@b": false, "/*/a": false, "/x}y": false, "/a:b": false,
+		"/x}": false, "/.": false, "/a/../b": false, "/{a b}": false,
+		"/a.b": true, "/a-b": true, "/a~b": true, "/a$b": true, "/a(b)": true, "/a//b": true,
+		"/{1x}": true, "/{a.b}": true, "/{док}": true, "/*": true, "/": true, "/bill/{Версия}/*": true,
+		"/version/": true, "/a/*": true,
+	} {
+		t.Run(template, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\ntemplates:\n"+
+				"  - {id: f4000000-0000-4000-8000-000000000010, name: Шаблон, title: {ru: Шаблон}, template: '"+template+"'}\n")
+			_, err := Load(root)
+			switch {
+			case valid && err != nil:
+				t.Fatalf("a template the designer takes was refused: %v", err)
+			case !valid && err == nil:
+				t.Fatal("a template the designer refuses was accepted")
+			case !valid && !strings.Contains(err.Error(), "templates[0].template"):
+				t.Fatalf("refused for another reason: %v", err)
+			}
+		})
+	}
+}
+
+// A root «.» or «..» the designer takes, and no call reaches it: refused. Two
+// roots that differ in case alone the designer takes both («DT» beside «dt»,
+// «Ошибок не обнаружено») - read with no note.
+//
+// Defect caught: a root no call reaches carried; two roots of another case
+// refused or noted.
+func TestHTTPServiceRootsOfDotsAndOfCase(t *testing.T) {
+	t.Parallel()
+	for _, root := range []string{".", ".."} {
+		directory := metadataProject(t)
+		writeHTTPService(t, directory, httpServiceID, "Биллинг", "root_url: '"+root+"'\n")
+		if message := loadRefused(t, directory, "the root "+root); !strings.Contains(message, "root_url must not be «.» or «..»") {
+			t.Fatalf("the root %s refused for another reason: %v", root, message)
+		}
+	}
+	directory := metadataProject(t)
+	writeHTTPService(t, directory, httpServiceID, "Биллинг", "root_url: dt\n")
+	writeHTTPService(t, directory, secondHTTPServiceID, "БиллингНовый", "root_url: DT\n")
+	catalog, err := Load(directory)
+	if err != nil {
+		t.Fatalf("two roots of another case were refused: %v", err)
+	}
+	if notes := catalog.Notes(); len(notes) != 0 {
+		t.Fatalf("two roots of another case are noted: %+v", notes)
+	}
+}
