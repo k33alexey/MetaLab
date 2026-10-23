@@ -684,6 +684,10 @@ type Catalog struct {
 	// descriptions of the attributes of every form, kept for the notes.
 	commonFormsRead []ManagedForm
 	formTypeLists   []formTypeList
+	// formAttributeNames are the names of the attributes of every form, by
+	// the address of its module folded (foldedModuleAddress), for the
+	// module's code (ModuleNamer).
+	formAttributeNames map[project.ModuleAddress][]string
 	// formNotes are the notes about the elements of the forms - see
 	// formNote.
 	formNotes                       []formNote

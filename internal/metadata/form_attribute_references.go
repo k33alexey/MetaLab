@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -65,20 +67,22 @@ type formTitle struct {
 // file was read first.
 func (catalog *Catalog) checkFormAttributes() error {
 	type job struct {
-		where string
-		path  string
-		form  ManagedForm
-		texts []formTitle
-		err   error
+		where  string
+		path   string
+		module project.ModuleAddress
+		form   ManagedForm
+		texts  []formTitle
+		err    error
 	}
 	var jobs []*job
-	for _, objects := range catalog.objectForms {
+	for kind, objects := range catalog.objectForms {
 		for _, object := range objects {
 			for _, form := range object.forms {
 				if form.path == "" {
 					continue
 				}
-				jobs = append(jobs, &job{where: fmt.Sprintf("%s %s form %s", object.kind, object.object, form.name), path: form.path})
+				jobs = append(jobs, &job{where: fmt.Sprintf("%s %s form %s", object.kind, object.object, form.name), path: form.path,
+					module: project.ModuleAddress{Kind: string(kind), Object: object.object, Form: form.name, Module: kinds.FormModule}})
 			}
 		}
 	}
@@ -113,6 +117,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormAttributes(item.where, item.form.Attributes); err != nil {
 			return err
 		}
+		catalog.keepFormAttributeNames(item.module, item.form)
 		if err := catalog.resolveFormParameters(item.where, item.form.Parameters); err != nil {
 			return err
 		}
@@ -141,6 +146,7 @@ func (catalog *Catalog) checkFormAttributes() error {
 		if err := catalog.resolveFormAttributes("common form "+form.Name, form.Attributes); err != nil {
 			return err
 		}
+		catalog.keepFormAttributeNames(project.ModuleAddress{Kind: string(CommonFormKind), Object: form.Name, Module: kinds.FormModule}, form)
 		if err := catalog.resolveFormParameters("common form "+form.Name, form.Parameters); err != nil {
 			return err
 		}
@@ -163,6 +169,29 @@ func (catalog *Catalog) checkFormAttributes() error {
 		}
 	}
 	return nil
+}
+
+// keepFormAttributeNames keeps the names of a form's attributes for its
+// module, whose code names them as properties of the form (help,
+// ФормаКлиентскогоПриложения.<Имя реквизита>): Объект, Список. Only the
+// attributes of the form itself - a column is named through its table.
+func (catalog *Catalog) keepFormAttributeNames(module project.ModuleAddress, form ManagedForm) {
+	if catalog.formAttributeNames == nil {
+		catalog.formAttributeNames = map[project.ModuleAddress][]string{}
+	}
+	names := make([]string, 0, len(form.Attributes))
+	for _, attribute := range form.Attributes {
+		names = append(names, attribute.Name)
+	}
+	catalog.formAttributeNames[foldedModuleAddress(module)] = names
+}
+
+// foldedModuleAddress is the address with its names in lower case: a name is
+// unique among its siblings with case ignored, and the path of a module and
+// the description of its object may write it differently.
+func foldedModuleAddress(address project.ModuleAddress) project.ModuleAddress {
+	address.Object, address.Form, address.Command = strings.ToLower(address.Object), strings.ToLower(address.Form), strings.ToLower(address.Command)
+	return address
 }
 
 func readFormDescription(path string, catalog *Catalog) (ManagedForm, error) {

@@ -455,3 +455,42 @@ func TestCompleteBSLWalksTheManagersOfEveryKind(t *testing.T) {
 		}
 	}
 }
+
+// TestCompleteBSLNamesTheFormInItsModule catches the module of a form whose
+// completion does not offer what its code names without the form: the form's
+// own attributes and the properties of the form (help,
+// ФормаКлиентскогоПриложения) - the editor taken from the one ModuleNamer the
+// compiler names them by, and so offering what compiles. A form's module
+// offers no attribute of another form.
+func TestCompleteBSLNamesTheFormInItsModule(t *testing.T) {
+	t.Parallel()
+	root := copyDemoProjectForStudioTest(t)
+	description := filepath.Join(root, "metadata", "common-forms", "ДемоФормаТовара", project.FormMetadataFile)
+	content, err := os.ReadFile(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(description, append(content, "attributes:\n  - {id: 10000000-0000-4000-8000-0000000019a1, name: ВыбранныйТовар}\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module := "metadata/common-forms/ДемоФормаТовара/" + project.FormModuleFile
+	writeBSLTestSource(t, root, module, "")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ source, label string }{
+		{"Процедура Тест()\nВыбранный", "ВыбранныйТовар"},
+		{"Процедура Тест()\nМодифиц", "Модифицированность"},
+		{"Процедура Тест()\nReadO", "ReadOnly"},
+	} {
+		if completion := completeAt(t, workspace, module, test.source, len(test.source)); !hasCompletion(completion.Items, test.label, "variable") {
+			t.Errorf("%q does not offer %s: %+v", test.source, test.label, completion.Items)
+		}
+	}
+	other := "metadata/catalogs/Товары/" + project.ObjectModuleFile
+	writeBSLTestSource(t, root, other, "")
+	if completion := completeAt(t, workspace, other, "Процедура Тест()\nВыбранный", len("Процедура Тест()\nВыбранный")); hasCompletion(completion.Items, "ВыбранныйТовар", "variable") {
+		t.Errorf("the object module of a catalog offers the attribute of a form")
+	}
+}

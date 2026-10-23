@@ -450,3 +450,53 @@ func FuzzCompileControlFlowNeverProducesInvalidBytecode(f *testing.F) {
 		}
 	})
 }
+
+// TestCompileCallsContextMethodOfThisObject catches a form's module that calls
+// a method of its form by the name alone - Закрыть(), Модифицированность =
+// ЭтотОбъект.ПроверитьЗаполнение() - and does not compile, "unknown routine",
+// as the module of nearly every form moved from the prototype would not; and
+// a routine of the module by that name that loses to the form's method. A
+// name the module's object has no method by is still unknown.
+func TestCompileCallsContextMethodOfThisObject(t *testing.T) {
+	t.Parallel()
+
+	form := func(source string) (*bytecode.Program, []syntax.Diagnostic) {
+		return CompileModules([]ModuleSource{{
+			Name: "Форма", Filename: "form.bsl", Source: source,
+			PredefinedVariables: []string{"ЭтотОбъект", "ThisObject"},
+			ContextMethods:      []string{"Закрыть", "Close", "ПроверитьЗаполнение", "CheckFilling"},
+		}})
+	}
+	program, diagnostics := form(`Процедура Готово() Экспорт
+Если ПроверитьЗаполнение() Тогда close(); КонецЕсли;
+КонецПроцедуры`)
+	if len(diagnostics) != 0 {
+		t.Fatalf("calls of the form's methods by name alone = %v", diagnostics)
+	}
+	function, _ := program.Lookup("Форма.Готово")
+	var methods []string
+	for index, instruction := range function.Code {
+		if instruction.Opcode == bytecode.OpCallMethod {
+			if index == 0 || function.Code[index-1].Opcode != bytecode.OpLoadModule {
+				t.Errorf("the method %s is called on %s, not on ЭтотОбъект", function.Objects[instruction.Operand].Name, function.Code[index-1].Opcode)
+			}
+			methods = append(methods, function.Objects[instruction.Operand].Name)
+		}
+	}
+	if len(methods) != 2 || methods[0] != "ПроверитьЗаполнение" || methods[1] != "close" || len(function.CallSites) != 0 {
+		t.Fatalf("methods called = %v, routines called = %d", methods, len(function.CallSites))
+	}
+
+	program, diagnostics = form(`Процедура Закрыть() КонецПроцедуры
+Процедура Готово() Экспорт Закрыть(); КонецПроцедуры`)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	if function, _ := program.Lookup("Форма.Готово"); len(function.CallSites) != 1 {
+		t.Fatalf("a routine of the module named as a method of its form is not the one called: %+v", function)
+	}
+
+	if _, diagnostics := form(`Процедура Готово() Экспорт Открыть(); КонецПроцедуры`); len(diagnostics) != 1 || diagnostics[0].Code != "BSL3033" {
+		t.Fatalf("a method the form has not = %v, want unknown routine", diagnostics)
+	}
+}

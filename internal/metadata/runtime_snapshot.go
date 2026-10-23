@@ -103,6 +103,7 @@ type RuntimeModule struct {
 	Filename            string                  `json:"filename"`
 	Source              string                  `json:"source"`
 	PredefinedVariables []string                `json:"predefinedVariables,omitempty"`
+	ContextMethods      []string                `json:"contextMethods,omitempty"`
 	DefaultContext      syntax.ExecutionContext `json:"defaultContext,omitempty"`
 }
 

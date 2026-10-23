@@ -25,6 +25,12 @@ type ModuleSource struct {
 	// procedure. Object/form modules leave this at ContextUnspecified, so an
 	// undirected routine keeps today's ContextShared (usable everywhere).
 	DefaultContext syntax.ExecutionContext
+	// ContextMethods are the methods of the object the module runs around
+	// that its code calls by their name alone - Закрыть() in a form's module
+	// is the form's. Such a call is a call of the method of ЭтотОбъект, one
+	// of the module's PredefinedVariables; a routine of the module by the
+	// same name is called instead.
+	ContextMethods []string
 }
 
 // CompileSource performs the complete frontend and compilation pass.
@@ -58,7 +64,7 @@ func CompileModules(sources []ModuleSource) (*bytecode.Program, []syntax.Diagnos
 				}
 			}
 		}
-		parsed = append(parsed, parsedModule{name: name, filename: source.Filename, syntax: module})
+		parsed = append(parsed, parsedModule{name: name, filename: source.Filename, syntax: module, contextMethods: foldedSet(source.ContextMethods)})
 	}
 	if len(diagnostics) != 0 {
 		return nil, diagnostics
@@ -67,9 +73,22 @@ func CompileModules(sources []ModuleSource) (*bytecode.Program, []syntax.Diagnos
 }
 
 type parsedModule struct {
-	name     string
-	filename string
-	syntax   *syntax.Module
+	name           string
+	filename       string
+	syntax         *syntax.Module
+	contextMethods map[string]bool
+}
+
+// foldedSet is the names as a set of their lower case.
+func foldedSet(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
+	}
+	result := make(map[string]bool, len(names))
+	for _, name := range names {
+		result[strings.ToLower(name)] = true
+	}
+	return result
 }
 
 type routineEntry struct {
@@ -201,6 +220,8 @@ type functionCompiler struct {
 	exceptions []uint16
 	depth      int
 	maximum    int
+	// contextMethods are the module's ModuleSource.ContextMethods.
+	contextMethods map[string]bool
 }
 
 func (c *compiler) moduleByNameContains(name string) bool {
@@ -234,7 +255,7 @@ func (c *compiler) compileRoutine(entry routineEntry) bytecode.Function {
 		return bytecode.Function{Name: routine.Name, Module: entry.module}
 	}
 	state := functionCompiler{
-		owner: c, filename: entry.owner.filename, module: entry.module, routine: routine,
+		owner: c, filename: entry.owner.filename, module: entry.module, routine: routine, contextMethods: entry.owner.contextMethods,
 		function: bytecode.Function{
 			Name: routine.Name, Module: entry.module, IsFunction: routine.Function, Export: routine.Export,
 			Context: executionContext(routine.Context), Arity: uint16(len(routine.Parameters)),
@@ -767,6 +788,11 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 			return
 		}
 	}
+	if c.isContextMethod(call) {
+		call.Receiver = &syntax.IdentifierExpression{Name: kinds.ThisObject.Russian, SourceSpan: call.SourceSpan}
+		c.compileMethodCall(call)
+		return
+	}
 	entry, ok := c.resolveRoutine(call.Qualifier, call.Name, call.SourceSpan)
 	if !ok {
 		c.emitConstant(bytecode.Undefined(), call.SourceSpan)
@@ -825,6 +851,17 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 	}
 	c.function.CallSites = append(c.function.CallSites, bytecode.CallSite{Target: entry.index, Route: route, References: references})
 	c.emitCall(callSite, len(parameters), call.SourceSpan)
+}
+
+// isContextMethod says the call is of a method of the module's ЭтотОбъект
+// called by its name alone: one of ModuleSource.ContextMethods that no
+// routine of the module is called by.
+func (c *functionCompiler) isContextMethod(call *syntax.CallExpression) bool {
+	if call.Qualifier != "" || !c.contextMethods[strings.ToLower(call.Name)] {
+		return false
+	}
+	_, own := c.owner.routineByName[c.owner.routineKey(c.module, call.Name)]
+	return !own
 }
 
 func transactionBuiltin(name string) (string, bool, bool) {
@@ -894,41 +931,54 @@ func metadataMemberPath(member *syntax.MemberExpression) (string, bool) {
 	if len(parts) == 2 && metadataCollection(parts[0], kinds.SessionParameter) {
 		return "session-parameter/" + parts[1] + "/get", true
 	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимБлокировкиДанных") || strings.EqualFold(parts[0], "DataLockMode")) {
-		switch {
-		case strings.EqualFold(parts[1], "Исключительный"), strings.EqualFold(parts[1], "Exclusive"):
-			return "data-lock-mode/exclusive", true
-		case strings.EqualFold(parts[1], "Разделяемый"), strings.EqualFold(parts[1], "Shared"):
-			return "data-lock-mode/shared", true
-		}
-	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "ВидДвиженияНакопления") || strings.EqualFold(parts[0], "AccumulationMovementKind")) {
-		switch {
-		case strings.EqualFold(parts[1], "Приход"), strings.EqualFold(parts[1], "Receipt"):
-			return "accumulation-movement-kind/receipt", true
-		case strings.EqualFold(parts[1], "Расход"), strings.EqualFold(parts[1], "Expense"):
-			return "accumulation-movement-kind/expense", true
-		}
-	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимЗаписиДокумента") || strings.EqualFold(parts[0], "DocumentWriteMode")) {
-		switch {
-		case strings.EqualFold(parts[1], "Запись"), strings.EqualFold(parts[1], "Write"):
-			return "document-write-mode/write", true
-		case strings.EqualFold(parts[1], "Проведение"), strings.EqualFold(parts[1], "Post"):
-			return "document-write-mode/post", true
-		case strings.EqualFold(parts[1], "ОтменаПроведения"), strings.EqualFold(parts[1], "UndoPosting"):
-			return "document-write-mode/undo-posting", true
-		}
-	}
-	if len(parts) == 2 && (strings.EqualFold(parts[0], "РежимПроведенияДокумента") || strings.EqualFold(parts[0], "DocumentPostingMode")) {
-		switch {
-		case strings.EqualFold(parts[1], "Неоперативный"), strings.EqualFold(parts[1], "Regular"):
-			return "document-posting-mode/regular", true
-		case strings.EqualFold(parts[1], "Оперативный"), strings.EqualFold(parts[1], "RealTime"):
-			return "document-posting-mode/real-time", true
+	if len(parts) == 2 {
+		for _, enumeration := range systemEnumerations {
+			if !enumeration.name.Is(parts[0]) {
+				continue
+			}
+			for _, value := range enumeration.values {
+				if value.name.Is(parts[1]) {
+					return enumeration.path + "/" + value.path, true
+				}
+			}
 		}
 	}
 	return "", false
+}
+
+// systemEnumeration is an enumeration of the platform the language reaches
+// by its name from the global context - РежимБлокировкиДанных.Исключительный
+// - with the path its values are read by.
+type systemEnumeration struct {
+	name   kinds.Words
+	path   string
+	values []systemEnumerationValue
+}
+
+type systemEnumerationValue struct {
+	name kinds.Words
+	path string
+}
+
+// systemEnumerations are the enumerations of the platform the compiler knows.
+var systemEnumerations = []systemEnumeration{
+	{kinds.Words{Russian: "РежимБлокировкиДанных", English: "DataLockMode"}, "data-lock-mode", []systemEnumerationValue{
+		{kinds.Words{Russian: "Исключительный", English: "Exclusive"}, "exclusive"},
+		{kinds.Words{Russian: "Разделяемый", English: "Shared"}, "shared"},
+	}},
+	{kinds.Words{Russian: "ВидДвиженияНакопления", English: "AccumulationMovementKind"}, "accumulation-movement-kind", []systemEnumerationValue{
+		{kinds.Words{Russian: "Приход", English: "Receipt"}, "receipt"},
+		{kinds.Words{Russian: "Расход", English: "Expense"}, "expense"},
+	}},
+	{kinds.Words{Russian: "РежимЗаписиДокумента", English: "DocumentWriteMode"}, "document-write-mode", []systemEnumerationValue{
+		{kinds.Words{Russian: "Запись", English: "Write"}, "write"},
+		{kinds.Words{Russian: "Проведение", English: "Post"}, "post"},
+		{kinds.Words{Russian: "ОтменаПроведения", English: "UndoPosting"}, "undo-posting"},
+	}},
+	{kinds.Words{Russian: "РежимПроведенияДокумента", English: "DocumentPostingMode"}, "document-posting-mode", []systemEnumerationValue{
+		{kinds.Words{Russian: "Неоперативный", English: "Regular"}, "regular"},
+		{kinds.Words{Russian: "Оперативный", English: "RealTime"}, "real-time"},
+	}},
 }
 
 // sessionParameterAssignPath recognizes ПараметрыСеанса.Х/SessionParameters.X

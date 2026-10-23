@@ -284,6 +284,7 @@ func (workspace *Workspace) compileDebugProgramLocked(currentPath, currentConten
 		sources = append(sources, compiler.ModuleSource{
 			Name: descriptor.name, Filename: relative, Source: content,
 			PredefinedVariables: append([]string(nil), descriptor.predefined...),
+			ContextMethods:      append([]string(nil), descriptor.methods...),
 			DefaultContext:      descriptor.defaultContext,
 		})
 		return nil

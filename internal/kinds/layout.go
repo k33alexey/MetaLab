@@ -137,11 +137,17 @@ var (
 
 // moduleWords are the words of a module by its role. A manager, a service and
 // a WebSocket client have none: the help gives ЭтотОбъект to no manager
-// (СправочникМенеджер and the rest), to no service and to no client.
+// (СправочникМенеджер and the rest), to no service and to no client. A form's
+// module has ЭтаФорма and every property of the form (formProperties).
 var moduleWords = map[Module][]Words{
 	ObjectModule: {ThisObject}, RecordSetModule: {ThisObject}, ValueModule: {ThisObject},
-	CommandModule: {ThisObject}, FormModule: {ThisForm, ThisObject, Items},
+	CommandModule: {ThisObject}, FormModule: append([]Words{ThisForm}, formProperties...),
 }
+
+// moduleMethods are the methods a module of the role calls by their name
+// alone, as methods of the object it runs around: only a form's module calls
+// its form's (formMethods).
+var moduleMethods = map[Module][]Words{FormModule: formMethods}
 
 // objectModuleWords are the words an object module of a kind has beyond
 // those of its role: only a document's object has its register records.
@@ -159,6 +165,13 @@ func (descriptor Descriptor) ModuleWords(module Module) []Words {
 		result = append(result, objectModuleWords[descriptor.Kind]...)
 	}
 	return result
+}
+
+// ModuleMethods are the methods of ЭтотОбъект the code of a module of the
+// role calls without naming it: Закрыть() of a form. A routine of the module
+// by the same name is the module's own.
+func ModuleMethods(module Module) []Words {
+	return slices.Clone(moduleMethods[module])
 }
 
 // Layout is where the objects of a kind lie and what each keeps there.

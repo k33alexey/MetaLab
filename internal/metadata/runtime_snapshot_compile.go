@@ -20,6 +20,7 @@ func (snapshot RuntimeSnapshot) CompileModules() (*bytecode.Program, []syntax.Di
 		sources[index] = compiler.ModuleSource{
 			Name: module.Name, Filename: module.Filename, Source: module.Source,
 			PredefinedVariables: append([]string(nil), module.PredefinedVariables...),
+			ContextMethods:      append([]string(nil), module.ContextMethods...),
 			DefaultContext:      module.DefaultContext,
 		}
 	}

@@ -157,6 +157,7 @@ type moduleDescriptor struct {
 	name           string
 	public         bool
 	predefined     []string
+	methods        []string
 	defaultContext syntax.ExecutionContext
 	// object is what ЭтотОбъект has where the module runs around an object
 	// of data (metadata.Catalog.ThisObjectMembers).
@@ -283,7 +284,7 @@ type bslModuleDescriptors struct {
 func (descriptors bslModuleDescriptors) of(relative string) moduleDescriptor {
 	identity := descriptors.namer.Identify(relative)
 	result := moduleDescriptor{name: identity.Name, public: identity.Public, defaultContext: identity.DefaultContext,
-		predefined: identity.Predefined}
+		predefined: identity.Predefined, methods: identity.Methods}
 	if address, ok := project.ReadModulePath(relative); ok {
 		result.object = descriptors.objects[address]
 		if address.Kind == string(kinds.Document) && address.Module == kinds.ObjectModule {

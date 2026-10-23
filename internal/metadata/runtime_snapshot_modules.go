@@ -55,7 +55,7 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 		identity := namer.Identify(relative)
 		modules = append(modules, RuntimeModule{
 			Name: identity.Name, Filename: relative, Source: string(content),
-			PredefinedVariables: identity.Predefined, DefaultContext: identity.DefaultContext,
+			PredefinedVariables: identity.Predefined, ContextMethods: identity.Methods, DefaultContext: identity.DefaultContext,
 		})
 	}
 	return modules, nil
@@ -65,8 +65,12 @@ func LoadProjectModules(root string, catalog *Catalog) ([]RuntimeModule, error) 
 type ModuleIdentity struct {
 	Name string
 	// Predefined are the words its code finds defined without declaring
-	// them, each in both languages: ЭтотОбъект, ThisObject.
-	Predefined     []string
+	// them, each in both languages: ЭтотОбъект, ThisObject; a form's module
+	// besides names its form's attributes.
+	Predefined []string
+	// Methods are the methods of its ЭтотОбъект its code calls by their name
+	// alone, each in both languages (compiler.ModuleSource.ContextMethods).
+	Methods        []string
 	DefaultContext syntax.ExecutionContext
 	// Public is a common module: its exported routines are called by its
 	// name from any other module.
@@ -82,17 +86,22 @@ type ModuleIdentity struct {
 // find defined, so one reading of the path names a module of any kind, of a
 // form, of a command and of an object inside another alike. Only a common
 // module lies by its identifier and is named out of the catalog.
+//
+// A form's module names besides the attributes of its form, which only the
+// form's description knows: the catalog keeps them from reading the forms.
 type ModuleNamer struct {
-	common map[string]CommonModuleDefinition
+	common     map[string]CommonModuleDefinition
+	attributes map[project.ModuleAddress][]string
 }
 
 // ModuleNamer is the namer of the catalog's modules; a nil catalog names
-// every module but a common one.
+// every module but a common one, and no attribute of a form.
 func (catalog *Catalog) ModuleNamer() ModuleNamer {
 	namer := ModuleNamer{common: map[string]CommonModuleDefinition{}}
 	if catalog == nil {
 		return namer
 	}
+	namer.attributes = catalog.formAttributeNames
 	for _, item := range catalog.CommonModules {
 		if path, err := project.ModulePath(item.Module); err == nil {
 			namer.common[path] = item
@@ -127,6 +136,10 @@ func (namer ModuleNamer) Identify(relative string) ModuleIdentity {
 	}
 	kind := Kind(address.Kind)
 	result := ModuleIdentity{Name: ObjectModuleName(kind, address.Object, string(address.Module)), Predefined: moduleWords(kind, address.Module)}
+	for _, words := range kinds.ModuleMethods(address.Module) {
+		result.Methods = append(result.Methods, words.Russian, words.English)
+	}
+	result.Predefined = withNames(result.Predefined, namer.attributes[foldedModuleAddress(address)])
 	switch {
 	case address.Form != "":
 		result.Name = FormModuleName(kind, address.Object, address.Form)
@@ -136,6 +149,24 @@ func (namer ModuleNamer) Identify(relative string) ModuleIdentity {
 		result.Name = ObjectModuleName(kind, address.Object+"."+address.Command, string(address.Module))
 	}
 	return result
+}
+
+// withNames adds to the words the names not among them, case ignored: an
+// attribute of a form may be called as a property of the form is - acc, erp,
+// sb and lombard1 have forms with an attribute Заголовок or ТолькоПросмотр -
+// and the code names the two alike.
+func withNames(words, names []string) []string {
+	seen := make(map[string]bool, len(words)+len(names))
+	for _, word := range words {
+		seen[strings.ToLower(word)] = true
+	}
+	for _, name := range names {
+		if folded := strings.ToLower(name); !seen[folded] {
+			seen[folded] = true
+			words = append(words, name)
+		}
+	}
+	return words
 }
 
 // moduleWords are the words a module of an object of the kind in the role

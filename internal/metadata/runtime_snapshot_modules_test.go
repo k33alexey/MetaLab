@@ -128,7 +128,15 @@ func TestProjectModulesHaveNoCeilingOnCountOrSize(t *testing.T) {
 // not built by ObjectModuleName or read from the kinds package.
 func TestEveryModuleIsNamedByWhereItLies(t *testing.T) {
 	t.Parallel()
-	const this, form, records = "ЭтотОбъект ThisObject", "ЭтаФорма ThisForm ЭтотОбъект ThisObject Элементы Items", "ЭтотОбъект ThisObject Движения RegisterRecords"
+	// A form's module has ЭтаФорма and the 50 properties of the form, each in
+	// both languages (kinds.TestFormModuleNamesTheForm holds the list); here
+	// the first, two of the properties and the count stand for them.
+	const this, form, records = "ЭтотОбъект ThisObject", "form", "ЭтотОбъект ThisObject Движения RegisterRecords"
+	formWords := func(words []string) bool {
+		joined := " " + strings.Join(words, " ") + " "
+		return len(words) == 102 && strings.HasPrefix(joined, " ЭтаФорма ThisForm ") &&
+			strings.Contains(joined, " Элементы Items ") && strings.Contains(joined, " Модифицированность Modified ")
+	}
 	namer := (*Catalog)(nil).ModuleNamer()
 	for path, want := range map[string]struct{ name, words string }{
 		"metadata/catalogs/Банки/МодульОбъекта.bsl":                          {"МодульОбъектаСправочника.Банки", this},
@@ -167,7 +175,11 @@ func TestEveryModuleIsNamedByWhereItLies(t *testing.T) {
 		"tests/Проверка.bsl": {"Тест.Проверка", ""},
 	} {
 		got := namer.Identify(path)
-		if got.Name != want.name || strings.Join(got.Predefined, " ") != want.words {
+		words := strings.Join(got.Predefined, " ") == want.words
+		if want.words == form {
+			words = formWords(got.Predefined)
+		}
+		if got.Name != want.name || !words {
 			t.Errorf("%s is compiled as %q with %q, want %q with %q", path, got.Name, got.Predefined, want.name, want.words)
 		}
 	}

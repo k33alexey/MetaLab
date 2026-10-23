@@ -198,6 +198,52 @@ func TestBranchesAreTheConfigurators(t *testing.T) {
 	}
 }
 
+// formWords are the words of a form's module, written out from the help
+// (8.3.27, ФормаКлиентскогоПриложения: its 50 properties besides one per
+// attribute) and ЭтаФорма, the exports': Russian/English.
+const formWords = "ЭтаФорма/ThisForm АвтоЗаголовок/AutoTitle АвтоНавигационнаяСсылка/AutoURL АвтоматическоеСохранениеДанныхВНастройках/AutoSaveDataInSettings ВертикальнаяПрокрутка/VerticalScroll ВертикальноеПоложениеПодчиненных/ChildItemsVerticalAlign ВертикальныйИнтервал/VerticalSpacing ВладелецФормы/FormOwner ВыравниваниеЭлементовИЗаголовков/ItemsAndTitlesAlign Высота/Height ГоризонтальноеПоложениеПодчиненных/ChildItemsHorizontalAlign ГоризонтальныйИнтервал/HorizontalSpacing Группировка/Group Доступность/Enabled Заголовок/Title ЗакрыватьПриВыборе/CloseOnChoice ЗакрыватьПриЗакрытииВладельца/CloseOnOwnerClose ИмяФормы/FormName ИспользуемыйСерверФормы/UsedFormServer КлючНазначенияИспользования/PurposeUseKey КлючСохраненияПоложенияОкна/WindowOptionsKey КлючУникальности/UniqueKey КоманднаяПанель/CommandBar Команды/Commands Масштаб/Scale МодальныйРежим/ModalMode Модифицированность/Modified НавигационнаяСсылка/URL Окно/Window ОписаниеОповещенияОЗакрытии/CallbackDescriptionOnClose ОтображатьЗаголовок/ShowTitle ОтображатьКнопкуЗакрытия/ShowCloseButton ОтображениеОбсуждений/ConversationsRepresentation Параметры/Parameters ПоведениеКлавишиEnter/EnterKeyBehavior ПодчиненныеЭлементы/ChildItems ПоложениеКоманднойПанели/CommandBarLocation ПроверятьЗаполнениеАвтоматически/AutoFillCheck РежимОткрытияОкнаФормы/FormWindowOpeningMode СворачиваниеЭлементовПоВажности/CollapseItemsByImportance СоставКоманднойПанелиНаМобильномУстройстве/MobileDeviceCommandBarContent СохранениеДанныхВНастройках/SaveDataInSettings СохраняемыеВНастройкахДанныеМодифицированы/SavedInSettingsDataModified ТекущийЭлемент/CurrentItem ТолькоПросмотр/ReadOnly УникальныйИдентификатор/UUID УсловноеОформление/ConditionalAppearance Ширина/Width ШиринаПодчиненныхЭлементов/SlaveItemsWidth Элементы/Items ЭтотОбъект/ThisObject"
+
+// formMethods are the methods of ФормаКлиентскогоПриложения (help 8.3.27,
+// 41 of them).
+const formMethodWords = "Активизировать/Activate ВводДоступен/IsInputAvailable ВыбратьИзМеню/ChooseFromMenu ВыбратьИзМенюАсинх/ChooseFromMenuAsync ВыбратьИзСписка/ChooseFromList ВыбратьИзСпискаАсинх/ChooseFromListAsync ВыполнитьПереход/ExecuteNavigation ЗаблокироватьДанныеФормыДляРедактирования/LockFormDataForEdit Закрыть/Close ЗаполнитьПриПереоткрытииСДругогоСервера/FillOnReopenFromOtherServer ЗначениеВРеквизитФормы/ValueToFormAttribute ИзменитьРеквизиты/ChangeAttributes НачатьПолучениеОбсуждения/BeginGetConversation НачатьРедактированиеЭлемента/BeginEditingItem ОбновитьОтображениеДанных/RefreshDataRepresentation ОповеститьОВыборе/NotifyChoice ОповеститьОЗаписиНового/NotifyWritingNew ОповеститьОбАктивизации/NotifyActivate ОтключитьОбработчикОжидания/DetachIdleHandler ОтключитьОтметкуНезаполненного/ClearMarkIncomplete Открыта/IsOpen Открыть/Open ОткрытьМодально/DoModal ОткрытьСправкуФормы/OpenFormHelp ОтобразитьИзменениеДанных/RepresentDataChange ПереоткрытьСДругогоСервера/ReopenFromOtherServer ПодключитьОбработчикОжидания/AttachIdleHandler ПоказатьВыборИзМеню/ShowChooseFromMenu ПоказатьВыборИзСписка/ShowChooseFromList ПолучитьДействие/GetAction ПолучитьОбсуждениеАсинх/GetConversationAsync ПолучитьПараметрыФункциональныхОпцийФормы/GetFormFunctionalOptionParameters ПолучитьРеквизиты/GetAttributes ПолучитьФункциональнуюОпциюФормы/GetFormFunctionalOption ПроверитьЗаполнение/CheckFilling РазблокироватьДанныеФормыДляРедактирования/UnlockFormDataForEdit РеквизитФормыВЗначение/FormAttributeToValue УстановитьВыполнениеОбработчиковСобытия/SetEventHandlersExecution УстановитьВыполнениеПослеОбработчиковСобытия/SetExecutionAfterEventHandlers УстановитьДействие/SetAction УстановитьПараметрыФункциональныхОпцийФормы/SetFormFunctionalOptionParameters"
+
+// russianOf is the Russian halves of the pairs, joined by commas.
+func russianOf(pairs string) string {
+	var result []string
+	for _, pair := range strings.Fields(pairs) {
+		result = append(result, strings.Split(pair, "/")[0])
+	}
+	return strings.Join(result, ",")
+}
+
+// pairsOf writes words as formWords does.
+func pairsOf(words []Words) string {
+	var result []string
+	for _, word := range words {
+		result = append(result, word.Russian+"/"+word.English)
+	}
+	return strings.Join(result, " ")
+}
+
+// TestFormModuleNamesTheForm catches a property or a method of the form its
+// module's code is denied - Модифицированность, Закрыть() - or given one the
+// help does not give it, in either language: the module of a form moved from
+// the prototype would not compile. The expectation is the help's, written out
+// above; only a form's module calls methods by their name alone.
+func TestFormModuleNamesTheForm(t *testing.T) {
+	if got := pairsOf(Must(Catalog).ModuleWords(FormModule)); got != formWords {
+		t.Errorf("a form's module finds\n%s\nthe help gives\n%s", got, formWords)
+	}
+	if got := pairsOf(ModuleMethods(FormModule)); got != formMethodWords {
+		t.Errorf("a form's module calls\n%s\nthe help gives\n%s", got, formMethodWords)
+	}
+	for _, module := range []Module{ObjectModule, ManagerModule, RecordSetModule, ValueModule, CommandModule, ServiceModule, ClientModule} {
+		if methods := ModuleMethods(module); len(methods) != 0 {
+			t.Errorf("%s calls %v by name alone: only a form's module calls its object's methods so", module, methods)
+		}
+	}
+}
+
 // TestModuleWordsAreTheHelps catches a module whose code is denied a word the
 // prototype gives it - the module does not compile, as 333 common modules
 // of acc, erp and sb did not with ЭтотОбъект - or given one it does not have.
@@ -222,7 +268,7 @@ func TestModuleWordsAreTheHelps(t *testing.T) {
 		Enumeration:             "МодульМенеджера=", DocumentJournal: "МодульМенеджера=", FilterCriterion: "МодульМенеджера=",
 		SettingsStorage: "МодульМенеджера=", WebService: "МодульСервиса=", HTTPService: "МодульСервиса=",
 		WebSocketClient: "МодульКлиента=", CommonCommand: "МодульКоманды=ЭтотОбъект",
-		CommonForm: "МодульФормы=ЭтаФорма,ЭтотОбъект,Элементы",
+		CommonForm: "МодульФормы=" + russianOf(formWords),
 	}
 	russian := func(words []Words) string {
 		var result []string
@@ -247,8 +293,8 @@ func TestModuleWordsAreTheHelps(t *testing.T) {
 		module Module
 		want   string
 	}{
-		"a form of a catalog":    {Catalog, FormModule, "ЭтаФорма,ЭтотОбъект,Элементы"},
-		"a form of a document":   {Document, FormModule, "ЭтаФорма,ЭтотОбъект,Элементы"},
+		"a form of a catalog":    {Catalog, FormModule, russianOf(formWords)},
+		"a form of a document":   {Document, FormModule, russianOf(formWords)},
 		"a command of a catalog": {Catalog, CommandModule, "ЭтотОбъект"},
 		"a common module":        {CommonModule, "", "ЭтотОбъект"},
 	} {
