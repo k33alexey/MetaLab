@@ -38,7 +38,6 @@ const (
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
 	NoteJournalShowsNothing        NoteKind = "journal-shows-nothing"
 	NoteSequenceWithoutDocuments   NoteKind = "sequence-without-documents"
-	NoteRecalculationHalfSet       NoteKind = "recalculation-dimension-half-set"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
 	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
@@ -161,9 +160,6 @@ func init() {
 		NoteKindInfo{NoteSequenceWithoutDocuments,
 			"Последовательность без документов.",
 			"Несётся как записана и ни за чем не следит."},
-		NoteKindInfo{NoteRecalculationHalfSet,
-			"Измерение перерасчёта без измерения регистра или без данных ведущих регистров.",
-			"Несётся как записано и ничего не пересчитывает; без измерения регистра колонки у него нет."},
 		NoteKindInfo{NoteRegisterWithoutFields,
 			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
 				"после создания; конфигуратор его хранит и проверкой конфигурации не отвергает.",
@@ -379,7 +375,6 @@ func init() {
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
 	noteRules[NoteJournalShowsNothing] = noteJournalShowsNothing
 	noteRules[NoteSequenceWithoutDocuments] = noteSequenceWithoutDocuments
-	noteRules[NoteRecalculationHalfSet] = noteRecalculationHalfSet
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
 	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
@@ -875,22 +870,6 @@ func noteSequenceWithoutDocuments(catalog *Catalog, note func(where, written str
 	for _, sequence := range catalog.Sequences {
 		if len(sequence.Documents) == 0 {
 			note("sequences "+sequence.Name+" documents", "none")
-		}
-	}
-}
-
-func noteRecalculationHalfSet(catalog *Catalog, note func(where, written string)) {
-	for _, register := range catalog.CalculationRegisters {
-		for _, recalculation := range register.Recalculations {
-			for _, dimension := range recalculation.Dimensions {
-				where := "calculation-registers " + register.Name + " recalculations " + recalculation.Name + " dimensions " + dimension.Name
-				if dimension.RegisterDimension.IsZero() {
-					note(where+" register_dimension", "none")
-				}
-				if len(dimension.LeadingData) == 0 {
-					note(where+" leading_data", "none")
-				}
-			}
 		}
 	}
 }

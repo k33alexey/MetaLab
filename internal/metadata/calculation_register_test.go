@@ -593,3 +593,43 @@ periodicity: month
 		t.Fatalf("the schema of a register with no resource: %v", err)
 	}
 }
+
+// A dimension of a recalculation names the dimension of the register it finds
+// its records by: «Проверка конфигурации» refuses one naming none - «Не задано
+// измерение основного регистра» (opis of 15.10.2026, pereraschet.md). With no
+// leading data it is taken, and with no note: the check says nothing of it.
+// The text is written out here.
+//
+// Defect caught: a dimension naming no dimension of the register loaded, or
+// taken with a note; one with no leading data refused or noted.
+func TestARecalculationDimensionNamesADimensionOfTheRegister(t *testing.T) {
+	t.Parallel()
+	register := func(dimension string) string {
+		return `format: 1
+id: ` + calcRegister + `
+name: ОсновныеНачисления
+title: {ru: Основные начисления}
+chart_of_calculation_types: ` + calcChart + `
+periodicity: month
+dimensions:
+  - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}]}
+resources:
+  - {id: ` + calcResult + `, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
+recalculations:
+  - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}` + dimension + `}]}
+`
+	}
+	root := calculationProject(t, register(", leading_data: ["+calcPerson+"]"))
+	if message := loadRefused(t, root, "a dimension naming no dimension of the register"); !strings.Contains(message,
+		"recalculations[0].dimensions[0].register_dimension must name a dimension of the register: the designer refuses a dimension of a recalculation naming none") {
+		t.Fatalf("refused for another reason: %v", message)
+	}
+	root = calculationProject(t, register(", register_dimension: "+calcPerson))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a dimension with no leading data was refused: %v", err)
+	}
+	if notes := catalog.Notes(); len(notes) != 0 {
+		t.Fatalf("a dimension with no leading data is noted: %+v", notes)
+	}
+}

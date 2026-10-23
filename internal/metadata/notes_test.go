@@ -151,14 +151,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, SequenceKind, id, "format: 1\nid: "+id+"\nname: Последовательность\ntitle: {ru: Последовательность}\n")
 	},
-	NoteRecalculationHalfSet: func(t *testing.T, root string) {
-		chart := noteChart(t, root, ChartOfCalculationTypesKind, "")
-		id := uuid.MustNew().String()
-		writeMetadata(t, root, CalculationRegisterKind, id, "format: 1\nid: "+id+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
-			"chart_of_calculation_types: "+chart+"\nperiodicity: month\n"+
-			"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
-			"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: "+uuid.MustNew().String()+", name: Лицо, title: {ru: Лицо}}]}\n")
-	},
 	NoteStandardFieldOfDocument: func(t *testing.T, root string) {
 		document, journal, sequence := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
 		writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
@@ -642,18 +634,17 @@ func TestATablePartForFolderAndItemWithoutFoldersIsNoted(t *testing.T) {
 	}
 }
 
-// A numerator of length 0 is carried with no note, and a recalculation whose
-// dimension names no dimension of the register builds - the dimension simply
-// has no column.
+// A numerator of length 0 is carried with no note and the schema builds. A
+// recalculation whose dimension names no dimension of the register, which this
+// test once built too, is refused since 2.501
+// (TestARecalculationDimensionNamesADimensionOfTheRegister).
 //
-// Defect caught: the numerator refused, or accepted with a note; and the
-// schema refusing the whole configuration over a dimension that holds nothing.
+// Defect caught: the numerator refused, or accepted with a note.
 func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	numerator := uuid.MustNew().String()
 	writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\nnumber: {type: string, length: 0, periodicity: none}\n")
-	noteExamples[NoteRecalculationHalfSet](t, root)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatalf("refused: %v", err)
@@ -667,12 +658,8 @@ func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	if numeratorNoted {
 		t.Fatalf("a numerator of length 0 carries a note: %+v", catalog.Notes())
 	}
-	schema, err := catalog.ApplicationSchema()
-	if err != nil {
-		t.Fatalf("the schema refused a recalculation dimension that holds nothing: %v", err)
-	}
-	if len(schema.Tables) == 0 {
-		t.Fatal("no tables were built")
+	if _, err := catalog.ApplicationSchema(); err != nil {
+		t.Fatalf("the schema refused the project: %v", err)
 	}
 }
 

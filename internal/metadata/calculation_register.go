@@ -292,9 +292,14 @@ func validateRecalculations(value CalculationRegisterDefinition, configuration p
 			innerIDs[dimension.ID] = true
 			issues = append(issues, inner.take(path, dimension.Name)...)
 			issues = append(issues, validateTitle(path+".title", dimension.Title, configuration)...)
-			// A dimension with no dimension of the register, or with no
-			// leading data, is half set: carried, it computes nothing again,
-			// it has no column - see recalculationTable - and is a note.
+			// A dimension names the dimension of the register it finds its
+			// records by: «Проверка конфигурации» refuses one naming none -
+			// «Не задано измерение основного регистра» (opis of 15.10.2026,
+			// pereraschet.md). With no leading data it is taken: the check
+			// says nothing of it.
+			if dimension.RegisterDimension.IsZero() {
+				issues = append(issues, path+".register_dimension must name a dimension of the register: the designer refuses a dimension of a recalculation naming none")
+			}
 			issues = append(issues, validateUniqueIDs(path+".leading_data", dimension.LeadingData)...)
 		}
 	}
