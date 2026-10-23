@@ -606,8 +606,13 @@ function createRoleOverview(host, openRole, onChange) {
   const restrictionLine = item => `${item.role} · ${item.object} · ${caption(item.operation)}: ${item.field}${item.whole ? '' : ' (поле переходит к новому ограничению)'}`;
   // Окно группового «Изменить» (справка, form_EditRowLevelRightDlg; сверено
   // в конфигураторе 22.10.2026, ACCESS-RIGHTS «Групповое «Изменить» состава
-  // полей»): флажки «Изменять …» при расходящихся значениях сняты, и до их
-  // установки поле не правится. Поля — всех выбранных объектов, сначала
+  // полей»): флажки «Изменять …» при расходящихся значениях сняты, но поля
+  // и условие доступны и при снятых: отметка поля сама отмечает «Изменять
+  // состав полей», набор в условии — «Изменять ограничение» (восьмой заход,
+  // gruppa-pole-otmechaet-flag-sam; набор в условии — решение владельца
+  // 23.10.2026, у прототипа набранное не пишется); «Прочие поля» поля
+  // снимают, флажка не отмечая (gruppa-flag-snyat-prochie-polya-otmecheny).
+  // Поля — всех выбранных объектов, сначала
   // первого; поле отмечено, если его называют все выбранные ограничения,
   // серое — если часть. При записи отмеченное поле получает каждое
   // ограничение, у объекта которого оно есть, серое остаётся каждому как
@@ -638,13 +643,15 @@ function createRoleOverview(host, openRole, onChange) {
       }
       change.fields = single || !mixed.size;
       marks = marksOf();
-      fields = restrictionFieldsChoice({chosen, mixed, marked: (key, enabled) => { if (enabled) marked.add(key); else marked.delete(key); }});
+      fields = restrictionFieldsChoice({chosen, mixed, marked: (key, enabled) => {
+        if (enabled) { marked.add(key); content.mark('fields'); } else marked.delete(key);
+      }});
       fields.fill(choiceFields(choices));
     }
     const text = common(rows.map(row => row.condition));
     change.condition = single || text !== null;
     let condition = text ?? '';
-    const editor = queryTextField(condition, value => { condition = value; edited = true; }, 'Ограничение доступа');
+    const editor = queryTextField(condition, value => { condition = value; edited = true; content.mark('condition'); }, 'Ограничение доступа');
     const content = restrictionWindowContent({fields, editor, change, group: !single});
     // Поля пишутся только праву, ограничиваемому по полям (restrictionEntry
     // роли); у прочих они остаются как были.

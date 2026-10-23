@@ -936,24 +936,29 @@ function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false
    «Изменять состав полей» and «Изменять ограничение» over the fields on the
    left and the condition on the right. In the window of one restriction both
    are marked and cannot be taken away; in the group they change only what is
-   marked. fields is a restrictionFieldsChoice, or null where the right is not
-   restricted by fields. change.fields and change.condition hold whether each
-   is changed; group - whether they can be taken away. */
+   marked, and lock nothing: the fields and the condition stay open with the
+   flags clear (configurator 22.10.2026, absent-06), and the caller marks a
+   flag by mark(key) when its half is changed. fields is a
+   restrictionFieldsChoice, or null where the right is not restricted by
+   fields. change.fields and change.condition hold whether each is changed;
+   group - whether they can be taken away. */
 function restrictionWindowContent({fields, editor, change, group}) {
   const content = node('div', undefined, 'role-restriction-form role-restriction-window');
-  const flag = (label, key, controls) => {
-    const box = checkboxField(label, change[key], enabled => { change[key] = enabled; controls(enabled); }, 'role-check', !group);
-    controls(change[key]);
+  const boxes = {};
+  const flag = (label, key) => {
+    const box = checkboxField(label, change[key], enabled => { change[key] = enabled; }, 'role-check', !group);
+    boxes[key] = box.querySelector('input');
     return box;
   };
   const left = node('div', undefined, 'role-restriction-form'), right = node('div', undefined, 'role-restriction-form');
-  if (fields) left.append(flag('Изменять состав полей', 'fields', enabled => fields.disable(!enabled)), fields);
-  right.append(flag('Изменять ограничение', 'condition', enabled => { editor.textarea.disabled = !enabled; }),
-    node('div', 'Ограничение доступа:', 'role-restriction-caption'), editor);
+  if (fields) left.append(flag('Изменять состав полей', 'fields'), fields);
+  right.append(flag('Изменять ограничение', 'condition'), node('div', 'Ограничение доступа:', 'role-restriction-caption'), editor);
   if (fields) content.append(left);
   else content.classList.add('role-restriction-single');
   content.append(right);
-  return content;
+  return Object.assign(content, {
+    mark(key) { change[key] = true; if (boxes[key]) boxes[key].checked = true; },
+  });
 }
 
 /* A restriction without a condition is written by no window of

@@ -712,3 +712,86 @@ func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T)
 		t.Errorf("browser: %s", problem)
 	}
 }
+
+// restrictionGroupFlagsWalk opens the group «Изменить» over two rows whose
+// fields and conditions differ, so both flags open clear, and changes each
+// half with its flag clear.
+const restrictionGroupFlagsWalk = `(async () => {` + restrictionWalkTools + `
+  await overview('Все ограничения доступа');
+  const seen = {};
+  const flags = () => ['Изменять состав полей', 'Изменять ограничение'].map(caption => box(caption).checked ? 'marked' : 'off');
+  const open = async () => { await choose(row('Контрагенты')); await choose(row('Товары', 'ГДЕ А'), {ctrlKey: true}); await command('edit'); };
+  await open();
+  seen.openFlags = flags();
+  seen.fieldOpen = !box('Код').disabled;
+  seen.conditionOpen = !dialog().querySelector('textarea').disabled;
+  seen.okOpen = enabled('ОК');
+  await mark('Прочие поля', true);
+  seen.othersFlags = flags();
+  seen.okOthers = enabled('ОК');
+  await press('Отмена');
+  await open();
+  await mark('Код', true);
+  seen.fieldFlags = flags();
+  seen.okField = enabled('ОК');
+  const text = dialog().querySelector('textarea');
+  text.value = 'ГДЕ Н'; text.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  seen.typedFlags = flags();
+  await press('ОК');
+  seen.closed = !dialog();
+  seen.written = rows().filter(item => item.textContent.includes('ГДЕ Н')).map(item => item.textContent);
+  return seen;
+})()`
+
+// TestTheGroupWindowLocksNeitherHalfByItsFlag catches the group «Изменить»
+// of «Все ограничения доступа» locking the fields or the condition while
+// its flag is clear (until 2.459), where the prototype's keeps both open and
+// a field marked marks «Изменять состав полей» itself (configurator
+// 22.10.2026, absent-06, gruppa-pole-otmechaet-flag-sam), and the condition
+// typed marks «Изменять ограничение» and is written to every row, as the
+// owner decided on 23.10.2026 (question В4 of the series 2.455; the
+// prototype's leaves it unwritten). Caught too: «Прочие поля» marking the
+// flag of the fields (gruppa-flag-snyat-prochie-polya-otmecheny), and «ОК»
+// available on «Прочие поля» with the flag clear.
+func TestTheGroupWindowLocksNeitherHalfByItsFlag(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, addRestrictionRoles(t, root))
+	result, err := browser.evaluate(ctx, page, restrictionGroupFlagsWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen struct {
+		OpenFlags, OthersFlags, FieldFlags, TypedFlags []string
+		FieldOpen, ConditionOpen, OkOpen, OkOthers     bool
+		OkField, Closed                                bool
+		Written                                        []string
+	}
+	if err := json.Unmarshal(result, &seen); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	off, fields, both := []string{"off", "off"}, []string{"marked", "off"}, []string{"marked", "marked"}
+	for _, check := range []struct {
+		ok   bool
+		says string
+	}{
+		{slices.Equal(seen.OpenFlags, off), fmt.Sprintf("the flags open %v, want both clear", seen.OpenFlags)},
+		{seen.FieldOpen, "a field is locked while «Изменять состав полей» is clear"},
+		{seen.ConditionOpen, "the condition is locked while «Изменять ограничение» is clear"},
+		{!seen.OkOpen, "«ОК» is available before anything is changed"},
+		{slices.Equal(seen.OthersFlags, off), fmt.Sprintf("«Прочие поля» left the flags %v, want both clear", seen.OthersFlags)},
+		{!seen.OkOthers, "«ОК» is available on «Прочие поля» with the flag clear"},
+		{slices.Equal(seen.FieldFlags, fields), fmt.Sprintf("marking a field left the flags %v, want %v", seen.FieldFlags, fields)},
+		{seen.OkField, "«ОК» is unavailable after a field is marked"},
+		{slices.Equal(seen.TypedFlags, both), fmt.Sprintf("typing the condition left the flags %v, want %v", seen.TypedFlags, both)},
+		{seen.Closed, "«ОК» did not close the window"},
+		{len(seen.Written) == 2 && strings.Contains(seen.Written[0], "Код") && strings.Contains(seen.Written[1], "Код"),
+			fmt.Sprintf("the rows written with the condition typed: %v, want both, with Код", seen.Written)},
+	} {
+		if !check.ok {
+			t.Error(check.says)
+		}
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}
