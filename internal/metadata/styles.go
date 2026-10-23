@@ -154,8 +154,14 @@ const (
 )
 
 // BorderLine is how a border is drawn. A border that is not drawn is one of
-// the nine, not the absence of a border: an element told to have no border and
-// an element told nothing are different things.
+// the eight, not the absence of a border: an element told to have no border
+// and an element told nothing are different things.
+//
+// The eight are what the window «Выбор рамки» offers (opis of the style item,
+// 14.10.2026). The language has a ninth, the rounded border, and the help
+// gives it to the border of a group alone, of thickness 1 (ControlBorderType.
+// Rounded); a group of a managed form has no border, and no export writes
+// one - so nothing of the model takes it.
 type BorderLine string
 
 const (
@@ -167,7 +173,6 @@ const (
 	UnderlineBorderLine   BorderLine = "underline"
 	DoubleUnderlineBorder BorderLine = "double-underline"
 	OverlineBorderLine    BorderLine = "overline"
-	RoundedBorderLine     BorderLine = "rounded"
 )
 
 // maxBorderWidth is the thickest border there is: the configurator takes no
@@ -287,6 +292,13 @@ type StyleDefinition struct {
 // DecodeStyleItem reads and validates one style item.
 func DecodeStyleItem(source string, reader io.Reader, configuration project.Project) (StyleItemDefinition, error) {
 	return decodeDescription(source, reader, configuration, func(value StyleItemDefinition, configuration project.Project) []string {
+		// A border item may be left with no value: the designer gives a new
+		// one none when its type is switched to «Рамка», and «Проверка
+		// конфигурации» takes it (opis of the style item, 14.10.2026). A
+		// colour and a font always have one.
+		if value.Type == BorderStyleItem && value.Value == (StyleItemValue{}) {
+			return nil
+		}
 		return validateStyleItemValue("value", value.Type, value.Value, true)
 	})
 }
@@ -515,7 +527,7 @@ func validateStyleItemReference(path string, reference *StyleItemReference) []st
 func validBorderLine(line BorderLine) bool {
 	switch line {
 	case NoBorderLine, SingleBorderLine, DoubleBorderLine, IndentedBorderLine, EmbossedBorderLine,
-		UnderlineBorderLine, DoubleUnderlineBorder, OverlineBorderLine, RoundedBorderLine:
+		UnderlineBorderLine, DoubleUnderlineBorder, OverlineBorderLine:
 		return true
 	default:
 		return false
