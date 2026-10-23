@@ -10,9 +10,9 @@ import (
 )
 
 // The tables of a chart of accounts, a chart of calculation types and a task
-// without a description, and of an exchange plan without a code and a
-// description, are built by PostgreSQL itself, and a second preparation of the
-// same project plans nothing.
+// without a description are built by PostgreSQL itself, and a second
+// preparation of the same project plans nothing. An exchange plan takes no
+// length of 0 (2.494).
 //
 // Defect caught: a column PostgreSQL refuses - character varying(0) - which
 // stops the migration of the whole configuration; and a schema that reads back
@@ -30,7 +30,6 @@ func TestALengthOfZeroMigratesIntegration(t *testing.T) {
 		{ChartOfAccountsKind, "code: {type: string, length: 5}\ndescription_length: 0\n"},
 		{ChartOfCalculationTypesKind, "code: {type: string, length: 5}\ndescription_length: 0\n"},
 		{TaskKind, "number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 0\n"},
-		{ExchangePlanKind, "code: {type: string, length: 0}\ndescription_length: 0\n"},
 	} {
 		noteChartBody(t, root, item.kind, item.body)
 	}
