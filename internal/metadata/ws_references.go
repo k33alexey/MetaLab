@@ -28,12 +28,12 @@ const WSReferenceKind = kinds.WSReference
 // it, and none of them is an object of the configuration.
 const WSReferenceDefinitionFile = "definition.xml"
 
-// The two namespaces a service description may be written in: WSDL 1.1, whose
-// root is "definitions", and WSDL 2.0, whose root is "description".
-const (
-	wsdl11Namespace = "http://schemas.xmlsoap.org/wsdl/"
-	wsdl20Namespace = "http://www.w3.org/ns/wsdl"
-)
+// wsdl11Namespace is the namespace of the root "definitions" of a service
+// description. The designer imports WSDL 1.1 alone: a description in WSDL
+// 2.0, whose root is "description", and "definitions" in any other namespace
+// it refuses - «WSDL должен содержать элемент definitions» (opis of
+// 15.10.2026, ws-ssylka.md); one with no service at all it takes.
+const wsdl11Namespace = "http://schemas.xmlsoap.org/wsdl/"
 
 // WSReferenceDefinition is one description of a service somebody else runs.
 type WSReferenceDefinition struct {
@@ -131,7 +131,7 @@ func (catalog *Catalog) validateWSReferenceFiles(root string) error {
 }
 
 // checkWSDefinition reads a service description through to its end: it has to
-// be well-formed XML whose root is a WSDL document of either version.
+// be well-formed XML whose root is the "definitions" of WSDL 1.1.
 //
 // The description is not taken apart. What it describes - services, endpoints,
 // operations - is not an object of the configuration, and a reading that
@@ -162,12 +162,9 @@ func checkWSDefinition(path string) error {
 			continue
 		}
 		rooted = true
-		switch {
-		case element.Name.Space == wsdl11Namespace && element.Name.Local == "definitions":
-		case element.Name.Space == wsdl20Namespace && element.Name.Local == "description":
-		default:
-			return fmt.Errorf("the root element is {%s}%s, and a service description is WSDL 1.1 definitions or WSDL 2.0 description",
-				element.Name.Space, element.Name.Local)
+		if element.Name.Space != wsdl11Namespace || element.Name.Local != "definitions" {
+			return fmt.Errorf("the root element is {%s}%s, and a service description is the definitions of WSDL 1.1 {%s}: the designer imports no other",
+				element.Name.Space, element.Name.Local, wsdl11Namespace)
 		}
 	}
 	if !rooted {

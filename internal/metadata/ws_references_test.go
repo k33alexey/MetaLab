@@ -56,8 +56,10 @@ func TestWSReferenceCarriesItsAddressAndIsFoundByNameAndIdentifier(t *testing.T)
 	t.Parallel()
 	root := metadataProject(t)
 	writeWSReference(t, root, firstWSReference, "Склад", "comment: Остатки у поставщика\nlocation_url: https://stock.example.org/ws/stock?wsdl\n", wsdl11)
+	// A description with no service at all the designer imports (opis of
+	// 15.10.2026).
 	writeWSReference(t, root, secondWSReference, "Банк",
-		"", `<description xmlns="http://www.w3.org/ns/wsdl" targetNamespace="http://example.org/bank"/>`)
+		"", `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" targetNamespace="http://example.org/bank"/>`)
 
 	catalog, err := Load(root)
 	if err != nil {
@@ -111,7 +113,13 @@ func TestWSReferenceDescriptionMustBeWholeWSDL(t *testing.T) {
 		// The right local name in no namespace is not WSDL either: the
 		// namespace is what says which language the document is in.
 		"definitions without a namespace": {`<definitions name="Склад"/>`, "root element is {}definitions"},
-		"only a declaration":              {`<?xml version="1.0"?>`, "holds no document"},
+		// The designer imports WSDL 1.1 alone (opis of 15.10.2026): neither
+		// a description in WSDL 2.0 nor definitions in another namespace.
+		"WSDL 2.0": {`<description xmlns="http://www.w3.org/ns/wsdl" targetNamespace="http://example.org/bank"/>`,
+			"root element is {http://www.w3.org/ns/wsdl}description, and a service description is the definitions of WSDL 1.1"},
+		"definitions in a foreign namespace": {`<definitions xmlns="http://www.w3.org/ns/wsdl"/>`,
+			"root element is {http://www.w3.org/ns/wsdl}definitions"},
+		"only a declaration": {`<?xml version="1.0"?>`, "holds no document"},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
