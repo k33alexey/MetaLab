@@ -83,6 +83,13 @@ types: [{kind: number, precision: 10, scale: 4}]
 		// The prototype gives a constant no indexing: there is one row of one
 		// value, and nothing to find it by.
 		"индексирование": {`indexing: index`, "indexing"},
+		// Nor creation on input, whatever its value (owner, 14.10.2026): the
+		// prototype's palette does not show it at any type of a constant, and
+		// the help gives a constant none. Defect caught: a constant carried a
+		// setting nothing offers and nothing reads.
+		"создание при вводе: auto":     {`choice: {create_on_input: auto}`, "choice.create_on_input: a constant has no creation on input"},
+		"создание при вводе: use":      {`choice: {create_on_input: use}`, "choice.create_on_input: a constant has no creation on input"},
+		"создание при вводе: dont-use": {`choice: {create_on_input: dont-use}`, "choice.create_on_input: a constant has no creation on input"},
 	}
 	for name, testCase := range cases {
 		t.Run(name, func(t *testing.T) {

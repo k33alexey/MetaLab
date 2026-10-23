@@ -1063,6 +1063,14 @@ func DecodeConstant(source string, reader io.Reader, configuration project.Proje
 		issues = append(issues, validateValueSettings(Attribute{
 			Types: value.Types, Presentation: value.Presentation, Choice: value.Choice,
 		}, configuration)...)
+		// The choice of a constant is that of a field but for one setting: a
+		// constant has no creation on input - the palette does not show it at
+		// any type, the help does not give it, and no constant of the exports
+		// has one (2061 of them) (owner, 14.10.2026, METADATA-OBJECTS
+		// «Константы»). Like indexing, it is refused, whatever its value.
+		if value.Choice.CreateOnInput != "" {
+			issues = append(issues, "choice.create_on_input: a constant has no creation on input")
+		}
 		if !validFillCheck(value.FillChecking) {
 			issues = append(issues, "fill_checking must be dont-check or show-error")
 		}
