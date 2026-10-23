@@ -143,12 +143,14 @@ test('a restriction put through a role of the window is listed among all restric
 });
 
 // A restriction without fields is the one on «Прочие поля», as the prototype's
-// editor names it; a field the object no longer has is shown by its key.
+// editor names it; a field the object has not now is not named, and a
+// restriction only by such fields is not listed (configurator 23.10.2026,
+// absent-20…27).
 test('a restriction without fields is on the other fields',()=>{
   const source=fixture();
-  source.roles[0].role.objects[0].restrictions=[{right:'read',fields:['price','gone']},{right:'update',condition:'ГДЕ ЛОЖЬ'}];
+  source.roles[0].role.objects[0].restrictions=[{right:'read',fields:['price','gone']},{right:'read',fields:['lost'],condition:'ГДЕ Л'},{right:'update',condition:'ГДЕ ЛОЖЬ'}];
   const rows=create(source).allRestrictions();
-  assert.deepEqual(plain(rows.map(row=>[row.operation,row.field,row.condition])),[['read','Цена, gone',''],['update','Прочие поля','ГДЕ ЛОЖЬ']]);
+  assert.deepEqual(plain(rows.map(row=>[row.operation,row.field,row.condition,row.keys])),[['read','Цена','',['price']],['update','Прочие поля','ГДЕ ЛОЖЬ',[]]]);
 });
 
 test('the project-wide list carries every restriction of every role, ordered',()=>{

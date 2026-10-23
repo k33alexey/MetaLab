@@ -31,7 +31,8 @@ type RightRestriction struct {
 	// field by its identifier, a standard one by its prototype name in lower
 	// case, the line number of a table part after the part's identifier. A
 	// field the object does not have is kept and noted
-	// (restriction-absent-field).
+	// (restriction-absent-field) until Studio writes the role
+	// (DropAbsentRestrictionFields).
 	Fields    []string `yaml:"fields,omitempty" json:"fields,omitempty"`
 	Condition string   `yaml:"condition,omitempty" json:"condition,omitempty"`
 }
@@ -204,10 +205,9 @@ func (object ObjectPermission) restrictsData(right PermissionOperation) bool {
 // prototype does when an attribute or a table part is deleted (pass of
 // 22.10.2026, the fourth; ACCESS-RIGHTS.md, «Удаление реквизита, по которому
 // стоит ограничение роли»): the rights given or denied on them go, and every
-// restriction of the object loses them - a restriction keeps the rest of
-// its fields, and one that named only those goes away, it does not become
-// the restriction of «Прочие поля». A right on a field the object has not
-// would leave a role that does not load. Reports whether the role changed.
+// restriction of the object loses them (dropRestrictionFields). A right on a
+// field the object has not would leave a role that does not load. Reports
+// whether the role changed.
 func (role *RoleDefinition) DropFields(object uuid.UUID, keys []string) bool {
 	changed := false
 	for index := range role.Objects {
@@ -218,21 +218,68 @@ func (role *RoleDefinition) DropFields(object uuid.UUID, keys []string) bool {
 		before := len(permission.Fields)
 		permission.Fields = slices.DeleteFunc(permission.Fields, func(field FieldPermission) bool { return slices.Contains(keys, field.Field) })
 		changed = changed || len(permission.Fields) != before
-		kept := permission.Restrictions[:0]
-		for _, restriction := range permission.Restrictions {
-			fields := slices.DeleteFunc(slices.Clone(restriction.Fields), func(field string) bool { return slices.Contains(keys, field) })
-			if len(fields) == len(restriction.Fields) {
-				kept = append(kept, restriction)
-				continue
-			}
-			changed = true
-			if len(fields) > 0 {
-				restriction.Fields = fields
-				kept = append(kept, restriction)
+		changed = permission.dropRestrictionFields(func(field string) bool { return slices.Contains(keys, field) }) || changed
+	}
+	return changed
+}
+
+// DropAbsentRestrictionFields takes out of the restrictions of the roles the
+// fields their objects have not now - Родитель of a catalog whose hierarchy
+// was taken away -, as the prototype does whenever it writes a role (passes
+// of 23.10.2026, the ninth and the tenth, absent-20…27, v2-*; ACCESS-RIGHTS.md,
+// «Ограничение по полю, которого у объекта нет»): any change of the role, on
+// this object or another, writes its restrictions without them
+// (dropRestrictionFields); a role not written keeps them. An object the
+// project does not hold is left as it is.
+func DropAbsentRestrictionFields(root string, roles ...*RoleDefinition) error {
+	if !slices.ContainsFunc(roles, namesRestrictionFields) {
+		return nil
+	}
+	catalog, err := load(root, false)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for index := range role.Objects {
+			permission := &role.Objects[index]
+			if kind, ok := catalog.kindOfObject(permission.Object); ok && len(permission.Restrictions) > 0 {
+				present := catalog.restrictionFieldKeys(kind, permission.Object)
+				permission.dropRestrictionFields(func(field string) bool { return !present[field] })
 			}
 		}
-		permission.Restrictions = kept
 	}
+	return nil
+}
+
+// namesRestrictionFields says a restriction of the role names a field.
+func namesRestrictionFields(role *RoleDefinition) bool {
+	return slices.ContainsFunc(role.Objects, func(permission ObjectPermission) bool {
+		return slices.ContainsFunc(permission.Restrictions, func(restriction RightRestriction) bool { return len(restriction.Fields) > 0 })
+	})
+}
+
+// dropRestrictionFields takes the fields drop names out of every
+// restriction of the object: a restriction keeps the rest of its fields, and
+// one that named only those goes away, it does not become the restriction of
+// «Прочие поля», as the prototype does (ACCESS-RIGHTS.md, «Удаление
+// реквизита, по которому стоит ограничение роли», «Ограничение по полю,
+// которого у объекта нет»). Reports whether a restriction changed.
+func (permission *ObjectPermission) dropRestrictionFields(drop func(string) bool) bool {
+	changed := false
+	kept := permission.Restrictions[:0]
+	for _, restriction := range permission.Restrictions {
+		fields := slices.DeleteFunc(slices.Clone(restriction.Fields), drop)
+		if len(fields) == len(restriction.Fields) {
+			kept = append(kept, restriction)
+			continue
+		}
+		changed = true
+		if len(fields) > 0 {
+			restriction.Fields = fields
+			kept = append(kept, restriction)
+		}
+	}
+	permission.Restrictions = kept
 	return changed
 }
 

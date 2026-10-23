@@ -97,11 +97,6 @@ type PermissionObject struct {
 	// RoleWindowFields are the same fields in the order «Список полей» of
 	// the window of a role lists them (roleOrder), not the wizard's.
 	RoleWindowFields []PermissionField `json:"roleWindowFields"`
-	// AbsentFields are the fields the object's settings take away from the
-	// table now (absentRestrictionFieldsOf): a restriction naming one is
-	// kept, the list «Все ограничения доступа» names it and offers it in its
-	// filter, the window of a restriction does not show it.
-	AbsentFields []PermissionField `json:"absentFields"`
 	// RestrictedRights are those of the rights a restriction of access to
 	// data may be put on (restrictionRulesOf): none on an object that keeps
 	// no data, nor on a constant.
@@ -183,7 +178,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 		offered, _ := catalog.rightsTargetOf(id)
 		object := PermissionObject{ID: id, Kind: kind, Owner: catalog.objects[id].owner, Name: name, Title: cloneTitle(title),
 			Rights: offered.rights, Operations: []PermissionOperation{}, Fields: []PermissionField{},
-			RestrictionFields: []PermissionField{}, RoleWindowFields: []PermissionField{}, AbsentFields: []PermissionField{},
+			RestrictionFields: []PermissionField{}, RoleWindowFields: []PermissionField{},
 			RestrictedRights: []PermissionOperation{}, RestrictedByFields: []PermissionOperation{}}
 		for _, operation := range objectOperations {
 			if slices.Contains(offered.rights, operation) {
@@ -211,9 +206,6 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 			for _, field := range catalog.restrictionFieldsIn(kind, id, roleOrder) {
 				object.RoleWindowFields = append(object.RoleWindowFields, restrictionField(field))
 			}
-			for _, field := range catalog.absentRestrictionFieldsOf(kind, id) {
-				object.AbsentFields = append(object.AbsentFields, restrictionField(field))
-			}
 		}
 		// Every part of the object, from the one walk of its composition, with
 		// the rights the configurator offers on a part of its sort in an
@@ -235,7 +227,7 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	result.Objects = append(result.Objects, PermissionObject{ID: catalog.Project.ID, Root: true,
 		Name: catalog.Project.Name, Title: cloneTitle(catalog.Project.Title), Rights: configuration.rights,
 		Operations: []PermissionOperation{}, Fields: []PermissionField{}, RestrictionFields: []PermissionField{},
-		RoleWindowFields: []PermissionField{}, AbsentFields: []PermissionField{}, RestrictedRights: []PermissionOperation{},
+		RoleWindowFields: []PermissionField{}, RestrictedRights: []PermissionOperation{},
 		RestrictedByFields: []PermissionOperation{}})
 	// Then every object a role is offered rights on, kind by kind in the
 	// order of the tree. A common form is read apart from the catalog.

@@ -318,6 +318,10 @@ func (workspace *Workspace) SaveRole(relative string, role metadata.RoleDefiniti
 	if err != nil {
 		return RoleSource{}, err
 	}
+	// Written as every role is (writeRolesLocked), and answered as written.
+	if err := metadata.DropAbsentRestrictionFields(workspace.root, &role); err != nil {
+		return RoleSource{}, err
+	}
 	saved, err := workspace.writeRoleLocked(relative, role, revision)
 	if err != nil {
 		return RoleSource{}, err
@@ -382,7 +386,9 @@ func (workspace *Workspace) SaveRoles(saves []RoleSave) (RoleOverview, error) {
 	return workspace.readAllRolesLocked()
 }
 
-// writeRolesLocked writes the roles in order. A role refused puts back the
+// writeRolesLocked writes the roles in order, each without the fields of
+// restrictions its objects have not now, as SaveRole writes one
+// (metadata.DropAbsentRestrictionFields). A role refused puts back the
 // ones written before it, so a refused save leaves every role as it was;
 // after a save that went through, the answer puts them all back, for a
 // caller whose own step after the roles is refused.
@@ -390,6 +396,13 @@ func (workspace *Workspace) writeRolesLocked(saves []RoleSave) (func() error, er
 	type written struct {
 		path            string
 		before, current roleFiles
+	}
+	roles := make([]*metadata.RoleDefinition, len(saves))
+	for index := range saves {
+		roles[index] = &saves[index].Role
+	}
+	if err := metadata.DropAbsentRestrictionFields(workspace.root, roles...); err != nil {
+		return nil, err
 	}
 	var done []written
 	restore := func() error {

@@ -614,95 +614,98 @@ func TestTheWindowOfARoleKeepsToThePrototype(t *testing.T) {
 	}
 }
 
-// absentFieldWalk looks at a restriction of the reading of Товары, which have
-// no hierarchy, by Родитель: in «Все ограничения доступа», in its filter,
-// in the window of the role, and after the group «Изменить» of the
-// condition alone.
+// absentFieldWalk looks at the restrictions of the reading of Товары, which
+// have no hierarchy, of Аналитик - by Ссылка and Родитель, by ЭтоГруппа - and
+// of Ревизор - by Родитель: in «Все ограничения доступа», in its filter, in
+// the window of Аналитик and in the window of its restriction, then writes
+// that restriction unchanged and saves the role.
 const absentFieldWalk = `(async () => {` + restrictionWalkTools + `
   await overview('Все ограничения доступа');
   const seen = {};
-  seen.listField = row('Аналитик', 'Товары')?.children[3]?.textContent.trim() || '';
-  seen.listRow = row('Аналитик', 'Товары')?.textContent || '';
+  seen.listRows = rows().filter(item => item.textContent.includes('Товары')).map(item => [...item.children].map(cell => cell.textContent.trim()).join('|'));
   await command('filter');
-  seen.filterOffers = !!box('Родитель');
+  seen.filterOffers = ['Ссылка', 'Родитель', 'ЭтоГруппа'].filter(caption => !!box(caption));
   await press('Отмена');
   byText('#tree .studio-tree-row', 'Аналитик').click();
   await studio.settle();
   const editor = document.querySelector('#role-editor');
   seen.warning = !editor.querySelector('.role-warning').hidden;
   editor.querySelector('[data-object="` + demoGoods + `"]').click(); await studio.settle();
-  const restriction = all('.role-restrictions tbody tr', editor).find(item => item.textContent.includes('ГДЕ Г'));
-  seen.roleField = restriction?.firstChild?.textContent.trim() || '';
-  await choose(restriction);
+  const restrictions = () => all('.role-restrictions tbody tr', editor).filter(item => item.textContent.includes('ГДЕ')).map(item => [...item.children].map(cell => cell.textContent.trim()).join('|'));
+  seen.roleRows = restrictions();
+  await choose(all('.role-restrictions tbody tr', editor).find(item => item.textContent.includes('ГДЕ А')));
   editor.querySelector('.role-restrictions [data-command="edit"]').click(); await studio.settle();
-  seen.windowOffers = !!box('Родитель');
-  seen.othersMarked = box('Прочие поля').checked;
-  seen.okEnabled = enabled('ОК');
-  await press('Отмена');
-  await overview('Все ограничения доступа');
-  await choose(row('Аналитик', 'Товары'));
-  await command('edit');
-  const text = dialog().querySelector('textarea');
-  text.value = 'ГДЕ Д'; text.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  seen.windowOffers = ['Ссылка', 'Родитель', 'ЭтоГруппа'].filter(caption => !!box(caption));
+  seen.windowMarked = ['Ссылка', 'Прочие поля'].filter(caption => box(caption)?.checked);
+  await mark('Ссылка', false);
+  seen.othersAfterLast = box('Прочие поля').checked;
+  await mark('Ссылка', true);
   await press('ОК');
-  seen.groupClosed = !dialog();
-  seen.groupField = row('Аналитик', 'ГДЕ Д')?.children[3]?.textContent.trim() || '';
+  document.querySelector('#save').click(); await studio.settle();
+  seen.savedRows = restrictions();
   return seen;
 })()`
 
 // TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes catches
 // Studio going its own way with a restriction naming a field the object has
-// no longer - Родитель of a catalog with no hierarchy (configurator
-// 22.10.2026, vse-ogranicheniya-dostupa.md, the third pass; ACCESS-RIGHTS
-// «Ограничение по полю, которого у объекта нет»): the list «Все ограничения
-// доступа» and the list of the role name the field and the filter offers
-// it, the window of the restriction does not show it and marks «Прочие
-// поля», the group «Изменить» of the condition alone keeps it, and the role
-// is shown with no warning of rights it cannot keep.
-// Defects caught: the field named by its key (parent), left out of the
-// filter, shown in the window; the role offered «Убрать недоступные права»
-// (2.440); the group «Изменить» of the condition alone writing the fields
-// it offers and turning Родитель into «Прочие поля» (2.455).
+// no longer - Родитель and ЭтоГруппа of a catalog with no hierarchy
+// (configurator 22-23.10.2026, the eighth and the ninth passes, absent-08…14,
+// absent-20…27; ACCESS-RIGHTS «Ограничение по полю, которого у объекта
+// нет»): «Все ограничения доступа», its filter, the window of the role and
+// the window of the restriction know no such field, a restriction naming
+// only such fields is not shown, and the role is shown with no warning of
+// rights it cannot keep; writing the role takes the field away and the
+// restriction only by such fields with it, and a role not written keeps
+// both.
+// Defects caught: the field named in the lists (until 2.460) or offered by
+// the filter or the window, or counted by the window as marked; a restriction only by such fields shown, as
+// «Прочие поля» or by the key; the role offered «Убрать недоступные права»
+// (2.440); the window of the role written with the field kept, or answered
+// with it after the save; a role not written changed.
 func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
-	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
-		created, err := workspace.CreateRole("Аналитик")
-		if err != nil {
+	goods, err := uuid.Parse(demoGoods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := metadata.PermissionRead
+	written := map[string][]metadata.RightRestriction{
+		"Аналитик": {{Right: read, Fields: []string{"ref", "parent"}, Condition: "ГДЕ А"}, {Right: read, Fields: []string{"isfolder"}, Condition: "ГДЕ Б"}},
+		"Ревизор":  {{Right: read, Fields: []string{"parent"}, Condition: "ГДЕ В"}},
+	}
+	// Past Studio, which would take the fields away (a file edited by hand).
+	for name, restrictions := range written {
+		role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: name, Title: metadata.LocalizedText{"ru": name},
+			Objects: []metadata.ObjectPermission{{Object: goods, Operations: []metadata.PermissionOperation{read}, Restrictions: restrictions}}}
+		if err := metadata.WriteRole(root, role); err != nil {
 			t.Fatal(err)
 		}
-		goods, err := uuid.Parse(demoGoods)
-		if err != nil {
-			t.Fatal(err)
-		}
-		created.Role.Objects = []metadata.ObjectPermission{{Object: goods, Operations: []metadata.PermissionOperation{metadata.PermissionRead},
-			Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Fields: []string{"parent"}, Condition: "ГДЕ Г"}}}}
-		if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
-			t.Fatal(err)
-		}
-	})
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
 	result, err := browser.evaluate(ctx, page, absentFieldWalk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var seen struct {
-		ListField, ListRow, RoleField, GroupField                                 string
-		FilterOffers, GroupClosed, Warning, WindowOffers, OthersMarked, OkEnabled bool
+		ListRows, FilterOffers, RoleRows, WindowOffers, WindowMarked, SavedRows []string
+		Warning, OthersAfterLast                                                bool
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
 	}
+	list, rows := []string{"Товары|Аналитик|Чтение|Ссылка|ГДЕ А"}, []string{"Ссылка|ГДЕ А"}
 	for _, check := range []struct {
 		ok   bool
 		says string
 	}{
-		{seen.ListField == "Родитель", fmt.Sprintf("the list names the field %q, want Родитель (row %q)", seen.ListField, seen.ListRow)},
-		{seen.FilterOffers, "the filter of the list does not offer Родитель"},
-		{seen.GroupClosed && seen.GroupField == "Родитель", fmt.Sprintf("the group «Изменить» of the condition alone left the field %q (closed %v), want Родитель", seen.GroupField, seen.GroupClosed)},
+		{slices.Equal(seen.ListRows, list), fmt.Sprintf("«Все ограничения доступа» list %q, want %q", seen.ListRows, list)},
+		{slices.Equal(seen.FilterOffers, []string{"Ссылка"}), fmt.Sprintf("the filter offers %v, want Ссылка alone", seen.FilterOffers)},
 		{!seen.Warning, "the role is shown with the warning of rights it cannot keep"},
-		{seen.RoleField == "Родитель", fmt.Sprintf("the list of the role names the field %q, want Родитель", seen.RoleField)},
-		{!seen.WindowOffers, "the window of the restriction shows Родитель"},
-		{seen.OthersMarked, "the window of the restriction does not mark «Прочие поля»"},
-		{seen.OkEnabled, "«ОК» of the window of the restriction is not available on «Прочие поля»"},
+		{slices.Equal(seen.RoleRows, rows), fmt.Sprintf("the window of the role lists %q, want %q", seen.RoleRows, rows)},
+		{slices.Equal(seen.WindowOffers, []string{"Ссылка"}), fmt.Sprintf("the window of the restriction offers %v, want Ссылка alone", seen.WindowOffers)},
+		{slices.Equal(seen.WindowMarked, []string{"Ссылка"}), fmt.Sprintf("the window of the restriction marks %v, want Ссылка alone", seen.WindowMarked)},
+		{seen.OthersAfterLast, "the window of the restriction left «Прочие поля» clear with its last field taken away: it counts Родитель"},
+		{slices.Equal(seen.SavedRows, rows), fmt.Sprintf("the window of the role lists %q after the save, want %q", seen.SavedRows, rows)},
 	} {
 		if !check.ok {
 			t.Error(check.says)
@@ -710,6 +713,20 @@ func TestARestrictionByAFieldTheObjectHasNotIsShownAsThePrototypes(t *testing.T)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)
+	}
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"Аналитик": "[{read [ref] ГДЕ А}]", "Ревизор": "[{read [parent] ГДЕ В}]"}
+	for _, entry := range overview.Roles {
+		if got := fmt.Sprint(entry.Role.Objects[0].Restrictions); got != want[entry.Role.Name] {
+			t.Errorf("role %s lies with %s, want %s", entry.Role.Name, got, want[entry.Role.Name])
+		}
 	}
 }
 

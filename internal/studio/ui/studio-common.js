@@ -305,19 +305,33 @@ function rolePartRight(role, grant, written, part, right) {
   return !!role.grantNewObjectsByDefault;
 }
 
+/* restrictionShownFields is what the prototype's windows show of the fields
+   a restriction of access to data checks: those the object has now
+   (restrictionFields); a field a setting of the object took away - Родитель
+   of a catalog with no hierarchy - is not shown, and a restriction naming
+   only such fields is not shown at all: null (configurator 23.10.2026,
+   absent-20…27; ACCESS-RIGHTS, «Ограничение по полю, которого у объекта
+   нет»). Writing the role takes them away (DropAbsentRestrictionFields on
+   the server). [] is «Прочие поля». */
+function restrictionShownFields(object, restriction) {
+  const named = restriction.fields || [];
+  const shown = named.filter(key => object?.restrictionFields?.some(field => field.key === key));
+  return named.length && !shown.length ? null : shown;
+}
+
 /* restrictionFieldsCaption names the fields a restriction of access to data
    checks, as the prototype's role editor names them: a restriction with no
    fields is the one on «Прочие поля», a field of a table part is named after
-   the part, a field the object does not have now by the name it had
-   (absentFields: the prototype's list keeps naming it). object is the
-   schema's object, title gives a field its caption on the language shown. */
+   the part; a field the object does not have now is not named
+   (restrictionShownFields). object is the schema's object, title gives a
+   field its caption on the language shown. */
 function restrictionFieldsCaption(object, restriction, title) {
-  if (!restriction.fields?.length) return 'Прочие поля';
-  const own = new Map([...object?.restrictionFields || [], ...object?.absentFields || []].map(field => [field.key, field]));
+  const fields = restrictionShownFields(object, restriction);
+  if (!fields?.length) return 'Прочие поля';
+  const own = new Map(object.restrictionFields.map(field => [field.key, field]));
   const caption = field => title(field) || field.name || field.key;
-  return restriction.fields.map(key => {
+  return fields.map(key => {
     const field = own.get(key);
-    if (!field) return key;
     const parent = field.parent && own.get(field.parent);
     return parent ? `${caption(parent)}.${caption(field)}` : caption(field);
   }).join(', ');

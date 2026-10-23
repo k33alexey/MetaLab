@@ -942,6 +942,16 @@ func (catalog *Catalog) restrictionFieldsIn(kind Kind, id uuid.UUID, order func(
 	return table.fieldsOf(catalog.objectFieldsOf(kind, id), order(composition.windows))
 }
 
+// restrictionFieldKeys are the keys of restrictionFieldsOf: what a
+// restriction of the object may name now.
+func (catalog *Catalog) restrictionFieldKeys(kind Kind, id uuid.UUID) map[string]bool {
+	present := map[string]bool{}
+	for _, field := range catalog.restrictionFieldsOf(kind, id) {
+		present[field.key] = true
+	}
+	return present
+}
+
 // absentRestrictionFieldsOf is what the object keeps and the table a query
 // reads of it has not by the object's settings now - the parent of a
 // catalog with no hierarchy, the code of length 0 -, in the order of what
@@ -949,10 +959,7 @@ func (catalog *Catalog) restrictionFieldsIn(kind Kind, id uuid.UUID, order func(
 // when the setting changes (ACCESS-RIGHTS.md, «Ограничение по полю,
 // которого у объекта нет»): its list names it, its window does not show it.
 func (catalog *Catalog) absentRestrictionFieldsOf(kind Kind, id uuid.UUID) []objectPart {
-	present := map[string]bool{}
-	for _, field := range catalog.restrictionFieldsOf(kind, id) {
-		present[field.key] = true
-	}
+	present := catalog.restrictionFieldKeys(kind, id)
 	return slices.DeleteFunc(catalog.objectFieldsOf(kind, id), func(field objectPart) bool { return present[field.key] })
 }
 

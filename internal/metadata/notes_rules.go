@@ -534,10 +534,7 @@ func noteRestrictionAbsentField(catalog *Catalog, note func(where, written strin
 				continue
 			}
 			kind, _ := catalog.kindOfObject(permission.Object)
-			present, names := map[string]bool{}, map[string]string{}
-			for _, field := range catalog.restrictionFieldsOf(kind, permission.Object) {
-				present[field.key] = true
-			}
+			present, names := catalog.restrictionFieldKeys(kind, permission.Object), map[string]string{}
 			for _, field := range catalog.absentRestrictionFieldsOf(kind, permission.Object) {
 				names[field.key] = field.name
 			}

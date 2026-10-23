@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // savedRoleWithGrid is a role saved through Studio with a grid of rights and
@@ -388,5 +389,71 @@ func TestAGridOfRightsThatIsALinkIsRefused(t *testing.T) {
 	}
 	if _, err := workspace.ReadRole(saved.Path); !errors.Is(err, ErrInvalidSourcePath) {
 		t.Fatalf("a grid that is a link was read: %v", err)
+	}
+}
+
+// TestEveryWriteOfARoleTakesAwayTheFieldsItsObjectsHaveNot catches a write
+// of a role keeping in its restrictions a field the object has not now -
+// Родитель and ЭтоГруппа of a catalog with no hierarchy -, where the
+// prototype's takes it away at any write of the role, whatever right the
+// write changes, and a role not written keeps it (configurator 23.10.2026,
+// the ninth and the tenth passes, absent-25, v2-*; ACCESS-RIGHTS
+// «Ограничение по полю, которого у объекта нет»). The roles are written past
+// Studio, as a file edited by hand or a project loaded leaves them.
+// Defects caught: the window of a role (SaveRole) or «Все роли» (SaveRoles)
+// writing the field; a restriction naming only such fields kept, or turned
+// into one on «Прочие поля»; the role answered as it was sent, not as it was
+// written; a role not written changed.
+func TestEveryWriteOfARoleTakesAwayTheFieldsItsObjectsHaveNot(t *testing.T) {
+	t.Parallel()
+	workspace, object := roleWorkspace(t)
+	read := metadata.PermissionRead
+	for _, name := range []string{"Первая", "Вторая", "Третья"} {
+		role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: uuid.MustNew(), Name: name, Title: metadata.LocalizedText{"ru": name},
+			Objects: []metadata.ObjectPermission{{Object: object.ID, Operations: []metadata.PermissionOperation{read},
+				Restrictions: []metadata.RightRestriction{{Right: read, Fields: []string{"ref", "parent"}, Condition: "ГДЕ А"},
+					{Right: read, Fields: []string{"isfolder"}, Condition: "ГДЕ Б"}}}}}
+		if err := metadata.WriteRole(workspace.root, role); err != nil {
+			t.Fatal(err)
+		}
+	}
+	overview, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]RoleOverviewEntry{}
+	for _, entry := range overview.Roles {
+		byName[entry.Role.Name] = entry
+	}
+	written := []metadata.RightRestriction{{Right: read, Fields: []string{"ref"}, Condition: "ГДЕ А"}}
+	kept := []metadata.RightRestriction{{Right: read, Fields: []string{"ref", "parent"}, Condition: "ГДЕ А"},
+		{Right: read, Fields: []string{"isfolder"}, Condition: "ГДЕ Б"}}
+	same := func(left, right []metadata.RightRestriction) bool {
+		return slices.EqualFunc(left, right, func(a, b metadata.RightRestriction) bool {
+			return a.Right == b.Right && slices.Equal(a.Fields, b.Fields) && a.Condition == b.Condition
+		})
+	}
+	// The window of a role writes another right of the object.
+	first := withRight(byName["Первая"], metadata.PermissionInsert)
+	answered, err := workspace.SaveRole(first.Path, first.Role, first.ExpectedRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := answered.Role.Objects[0].Restrictions; !same(got, written) {
+		t.Errorf("the window of a role was answered %+v, want %+v", got, written)
+	}
+	// «Все роли» writes a right the restrictions do not touch.
+	if _, err := workspace.SaveRoles([]RoleSave{withRight(byName["Вторая"], metadata.PermissionView)}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := workspace.ReadAllRoles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range again.Roles {
+		want := map[string][]metadata.RightRestriction{"Первая": written, "Вторая": written, "Третья": kept}[entry.Role.Name]
+		if got := entry.Role.Objects[0].Restrictions; !same(got, want) {
+			t.Errorf("role %s lies with %+v, want %+v", entry.Role.Name, got, want)
+		}
 	}
 }

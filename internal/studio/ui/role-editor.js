@@ -90,11 +90,10 @@ function createRoleModel(source) {
   // The restrictions of access to data on one right of an object, in the
   // order the role writes them.
   const restrictionsOf = (id, right) => (objects.get(id)?.restrictions || []).filter(item => item.right === right);
-  // Only a right restricted by fields takes them. A field the object does
-  // not have now is taken as written: the windows pass only the fields they
-  // show, and what the change does not touch - the condition changed alone,
-  // a restriction copied - keeps the field, as the prototype keeps it
-  // (ACCESS-RIGHTS, «Ограничение по полю, которого у объекта нет»).
+  // Only a right restricted by fields takes them. The windows pass the
+  // fields they show; a field the object does not have now is taken away
+  // when the role is written (ACCESS-RIGHTS, «Ограничение по полю, которого у
+  // объекта нет»).
   const byFields = (id, right) => restrictsByFields(definitions.get(id), right);
   function restrictionEntry(id, right, restriction) {
     const entry = {right};
@@ -987,14 +986,18 @@ function roleRestrictionSection({model, object, caption, title, state, changed})
   const section=node('section',undefined,'role-restrictions');
   section.append(node('h4',roleRestrictionsCaption));
   const right=object?.restrictedRights.includes(state.right)?state.right:null,list=right?model.restrictions(object.id,right):[];
-  if(state.row>=list.length)state.row=-1;
+  // A restriction naming only fields the object has not now is not shown
+  // (restrictionShownFields); a row stands for the restriction at its place
+  // among all of the right.
+  const shown=list.flatMap((item,at)=>restrictionShownFields(object,item)?[at]:[]);
+  if(state.row>=shown.length)state.row=-1;
   const others=list.some(item=>!item.fields?.length);
   const canAdd=()=>!!right&&(model.restrictedByFields(object.id,right)?!others||object.restrictionFields.some(field=>!list.some(item=>item.fields?.includes(field.key))):!list.length);
-  const open=async index=>{if(await editRoleRestriction({model,object,right,index,caption,title})){state.row=index;changed();}};
-  section.append(roleListTable(['Поля','Ограничение доступа'],list.map(item=>[[restrictionFieldsCaption(object,item,title)],[item.condition||'','role-condition']]),state.row,index=>{state.row=index;},[
-    ['add','Добавить',()=>open(list.length),canAdd],
+  const open=async row=>{if(await editRoleRestriction({model,object,right,index:shown[row]??list.length,caption,title})){state.row=row;changed();}};
+  section.append(roleListTable(['Поля','Ограничение доступа'],shown.map(at=>[[restrictionFieldsCaption(object,list[at],title)],[list[at].condition||'','role-condition']]),state.row,row=>{state.row=row;},[
+    ['add','Добавить',()=>open(shown.length),canAdd],
     ['edit','Изменить',()=>{if(state.row>=0)open(state.row);},()=>state.row>=0],
-    ['remove','Удалить',()=>{if(state.row<0)return;model.removeRestriction(object.id,right,state.row);state.row=-1;changed();},()=>state.row>=0],
+    ['remove','Удалить',()=>{if(state.row<0)return;model.removeRestriction(object.id,right,shown[state.row]);state.row=-1;changed();},()=>state.row>=0],
   ],'Ограничений нет'));
   return section;
 }

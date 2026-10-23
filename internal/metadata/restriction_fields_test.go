@@ -324,11 +324,11 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 // 22.10.2026, question В4; ACCESS-RIGHTS.md, «Ограничение по полю, которого
 // у объекта нет»): the prototype keeps it and says nothing, so the load
 // accepts it and notes the role, the object, the right and the field by its
-// name; the schema of rights gives the window of a restriction the fields of
-// the table alone and the list «Все ограничения доступа» the name of the
-// field the object has no longer. Defects caught: the load refusing such a
-// role (2.440); the note naming the key, not the field; the field offered in
-// the window of the restriction, or left unnamed for the list.
+// name; the schema of rights gives the windows the fields of the table
+// alone, as the prototype's show no other (absent-20…27). Defects caught:
+// the load refusing such a role (2.440); the note naming the key, not the
+// field; the field offered in the windows; a field the catalog has taken
+// for one it has not.
 func TestARestrictionKeepsAFieldTheObjectHasNoLonger(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
@@ -370,10 +370,13 @@ func TestARestrictionKeepsAFieldTheObjectHasNoLonger(t *testing.T) {
 	if shown := keys(schema.Objects[index].RestrictionFields); shown["parent"] != "" {
 		t.Errorf("the window of a restriction of a catalog with no hierarchy offers Родитель: %v", shown)
 	}
-	absent := keys(schema.Objects[index].AbsentFields)
+	absent := map[string]string{}
+	for _, field := range catalog.absentRestrictionFieldsOf(CatalogKind, id) {
+		absent[field.key] = field.name
+	}
 	for key, name := range map[string]string{"parent": "Родитель", "isfolder": "ЭтоГруппа", "owner": "Владелец"} {
 		if absent[key] != name {
-			t.Errorf("the list cannot name %s of the catalog: %v", name, absent)
+			t.Errorf("a note cannot name %s of the catalog: %v", name, absent)
 		}
 	}
 	if absent["code"] != "" || absent["ref"] != "" {
