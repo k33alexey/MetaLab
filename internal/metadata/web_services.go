@@ -90,9 +90,12 @@ type WebServiceOperation struct {
 	// service's own module. The module lies in the service's folder under the
 	// name of its role, so nothing here names the module - only the routine.
 	Procedure string `yaml:"procedure" json:"procedure"`
-	// ReturnType is what the operation answers with, named by the schema.
-	ReturnType *XMLTypeName `yaml:"return_type,omitempty" json:"returnType,omitempty"`
-	Nillable   bool         `yaml:"nillable,omitempty" json:"nillable,omitempty"`
+	// ReturnType is what the operation answers with, named by the schema. It
+	// is required: the designer keeps no operation without one - a type
+	// cleared in the palette comes back - and every one of the 473 operations
+	// of the exports has it (opis of 15.10.2026, web-servis.md).
+	ReturnType XMLTypeName `yaml:"return_type" json:"returnType"`
+	Nillable   bool        `yaml:"nillable,omitempty" json:"nillable,omitempty"`
 	// Transactioned runs the whole operation in one transaction: either
 	// everything it did stays, or nothing does.
 	Transactioned   bool                        `yaml:"transactioned,omitempty" json:"transactioned,omitempty"`
@@ -198,18 +201,18 @@ func validateOperations(operations []WebServiceOperation, configuration project.
 		if !validIdentifier(operation.Procedure) || utf8.RuneCountInString(operation.Procedure) > maxNameLength {
 			issues = append(issues, where+".procedure must name a procedure of the service module")
 		}
-		if operation.ReturnType != nil {
-			issues = append(issues, validateSchemaType(where+".return_type", *operation.ReturnType)...)
+		if operation.ReturnType == (XMLTypeName{}) {
+			issues = append(issues, where+".return_type must name the type the operation answers with: the designer keeps no operation without one")
+		} else {
+			issues = append(issues, validateSchemaType(where+".return_type", operation.ReturnType)...)
 		}
-		// An operation that answers with nothing cannot answer with an empty
-		// something: there is no value for "nillable" to be about.
-		if operation.Nillable && operation.ReturnType == nil {
-			issues = append(issues, where+".nillable says the answer may be empty, and the operation answers with nothing")
-		}
+		// The palette of an operation offers two modes, not the third of
+		// РежимУправленияБлокировкойДанныхПоУмолчанию that an object of data
+		// takes (opis of 15.10.2026, web-servis.md).
 		switch operation.DataLockControl {
-		case "", project.AutomaticDataLock, project.ManagedDataLock, project.AutomaticAndManagedDataLock:
+		case "", project.AutomaticDataLock, project.ManagedDataLock:
 		default:
-			issues = append(issues, where+".data_lock_control must be automatic, managed or automatic-and-managed")
+			issues = append(issues, where+".data_lock_control must be automatic or managed: the designer offers an operation no other")
 		}
 		issues = append(issues, validateParameters(where, operation.Parameters, configuration)...)
 	}
@@ -292,10 +295,6 @@ func cloneWebService(value WebServiceDefinition) WebServiceDefinition {
 	operations := make([]WebServiceOperation, len(value.Operations))
 	for index, operation := range value.Operations {
 		operation.Title = cloneTitle(operation.Title)
-		if operation.ReturnType != nil {
-			copied := *operation.ReturnType
-			operation.ReturnType = &copied
-		}
 		parameters := make([]WebServiceParameter, len(operation.Parameters))
 		for position, parameter := range operation.Parameters {
 			parameter.Title = cloneTitle(parameter.Title)
@@ -321,7 +320,24 @@ func (catalog *Catalog) WebService(name string) (WebServiceDefinition, bool) {
 // packages it is described by. A package that is not there is carried and
 // noted, not refused (A3): the configuration keeps the reference, and the
 // service, once it runs, describes itself by what it has.
+//
+// The name a service is published under is unique among the services, case
+// aside: the designer refuses a second «exchange.1cws», and «EXCHANGE.1cws»
+// as well, the moment it is typed (opis of 15.10.2026, web-servis.md); a
+// service published under no name is no repeat.
 func (catalog *Catalog) validateWebServices() error {
+	published := make(map[string]string, len(catalog.WebServices))
+	for _, service := range catalog.WebServices {
+		if service.DescriptorFile == "" {
+			continue
+		}
+		folded := strings.ToLower(service.DescriptorFile)
+		if previous, taken := published[folded]; taken {
+			return fmt.Errorf("web services %s and %s are both published as %s: the designer takes a name of the file once, case aside",
+				previous, service.Name, service.DescriptorFile)
+		}
+		published[folded] = service.Name
+	}
 	for _, service := range catalog.WebServices {
 		for _, item := range service.Packages {
 			// A namespace of the platform is the platform's to provide.

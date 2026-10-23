@@ -105,12 +105,12 @@ func TestWebServiceOperationsAreChecked(t *testing.T) {
 	for name, body := range map[string]string{
 		"операция без процедуры": `namespace: http://example.org/exchange/1.0
 operations:
-  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: ""}
+  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: "", return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}}
 `,
 		"две операции одного имени": `namespace: http://example.org/exchange/1.0
 operations:
-  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: Проверка}
-  - {id: f3000000-0000-4000-8000-000000000011, name: проверка, title: {ru: Проверка}, procedure: Проверка2}
+  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: Проверка, return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}}
+  - {id: f3000000-0000-4000-8000-000000000011, name: проверка, title: {ru: Проверка}, procedure: Проверка2, return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}}
 `,
 		"параметр без типа": `namespace: http://example.org/exchange/1.0
 operations:
@@ -118,6 +118,7 @@ operations:
     name: Проверка
     title: {ru: Проверка}
     procedure: Проверка
+    return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}
     parameters:
       - {id: f3000000-0000-4000-8000-000000000011, name: Имя, title: {ru: Имя}, type: {name: ""}}
 `,
@@ -127,12 +128,9 @@ operations:
     name: Проверка
     title: {ru: Проверка}
     procedure: Проверка
+    return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}
     parameters:
       - {id: f3000000-0000-4000-8000-000000000011, name: Имя, title: {ru: Имя}, type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}, direction: назад}
-`,
-		"пустой ответ, который может быть пустым": `namespace: http://example.org/exchange/1.0
-operations:
-  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: Проверка, nillable: true}
 `,
 		"описание путём, а не именем файла": `namespace: http://example.org/exchange/1.0
 descriptor_file: /srv/services/exchange.1cws
@@ -189,8 +187,8 @@ operations:
 	switch {
 	case len(service.Packages) != 2 || service.Packages[0].Package == nil || service.Packages[1].Namespace != core:
 		t.Fatalf("the packages did not come back as written: %+v", service.Packages)
-	case len(service.Operations) != 1 || service.Operations[0].ReturnType == nil ||
-		*service.Operations[0].ReturnType != (XMLTypeName{Namespace: exchange, Name: "MessageExchange"}):
+	case len(service.Operations) != 1 ||
+		service.Operations[0].ReturnType != (XMLTypeName{Namespace: exchange, Name: "MessageExchange"}):
 		t.Fatalf("the type of the answer lost its namespace: %+v", service.Operations)
 	case service.Operations[0].Parameters[0].Type != (XMLTypeName{Namespace: exchange, Name: "MessageExchange"}):
 		t.Fatalf("the type of a parameter lost its namespace: %+v", service.Operations[0].Parameters[0])
@@ -211,6 +209,7 @@ func TestWebServiceTypeAndPackageShapeIsChecked(t *testing.T) {
     name: Проверка
     title: {ru: Проверка}
     procedure: Проверка
+    return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}
     parameters:
       - {id: f3000000-0000-4000-8000-000000000011, name: Имя, title: {ru: Имя}, type: ` + parameterType + `}
 `
@@ -244,5 +243,64 @@ func TestWebServiceTypeAndPackageShapeIsChecked(t *testing.T) {
 				t.Fatalf("refused for another reason: %v", err)
 			}
 		})
+	}
+}
+
+// Three refusals of the designer (opis of 15.10.2026, web-servis.md): an
+// operation answers with a type - one cleared in the palette comes back; its
+// lock mode is automatic or managed, the palette offers no third; and the
+// name a service is published under is taken once, case aside. The texts are
+// written out here.
+//
+// Defect caught: an operation answering with nothing, one locked
+// «automatic-and-managed», two services published as one file - all three
+// loaded.
+func TestWebServiceTakesWhatTheDesignerKeeps(t *testing.T) {
+	t.Parallel()
+	const answersString = `, return_type: {namespace: "http://www.w3.org/2001/XMLSchema", name: string}`
+	operation := func(rest string) string {
+		return "namespace: http://example.org/exchange/1.0\noperations:\n" +
+			"  - {id: f3000000-0000-4000-8000-000000000010, name: Проверка, title: {ru: Проверка}, procedure: Проверка" + rest + "}\n"
+	}
+	for name, test := range map[string]struct{ body, want string }{
+		"без типа ответа":          {operation(", nillable: true"), "operations[0].return_type must name the type the operation answers with"},
+		"тип ответа без имени":     {operation(", return_type: {namespace: \"http://www.w3.org/2001/XMLSchema\"}"), "operations[0].return_type.name must name the type"},
+		"блокировка третьего вида": {operation(answersString + ", data_lock_control: automatic-and-managed"), "operations[0].data_lock_control must be automatic or managed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := metadataProject(t)
+			writeWebService(t, root, test.body)
+			if message := loadRefused(t, root, name); !strings.Contains(message, test.want) {
+				t.Fatalf("refused for another reason: %v", message)
+			}
+		})
+	}
+	for _, mode := range []string{"automatic", "managed"} {
+		root := metadataProject(t)
+		writeWebService(t, root, operation(answersString+", data_lock_control: "+mode))
+		if _, err := Load(root); err != nil {
+			t.Fatalf("the mode %s was refused: %v", mode, err)
+		}
+	}
+	published := func(names ...string) string {
+		root := metadataProject(t)
+		for index, file := range names {
+			id := "f3000000-0000-4000-8000-00000000002" + string(rune('0'+index))
+			writeMetadata(t, root, WebServiceKind, id, "format: 1\nid: "+id+"\nname: Сервис"+string(rune('А'+index))+
+				"\ntitle: {ru: Сервис}\nnamespace: http://example.org/"+string(rune('a'+index))+"\ndescriptor_file: \""+file+"\"\n")
+		}
+		_, err := Load(root)
+		if err == nil {
+			return ""
+		}
+		return err.Error()
+	}
+	if message := published("exchange.1cws", "EXCHANGE.1cws"); !strings.Contains(message,
+		"web services СервисА and СервисБ are both published as EXCHANGE.1cws: the designer takes a name of the file once, case aside") {
+		t.Fatalf("two services published as one file: %q", message)
+	}
+	if message := published("", "", "exchange.1cws"); message != "" {
+		t.Fatalf("services published under no name were refused: %s", message)
 	}
 }

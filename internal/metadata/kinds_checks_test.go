@@ -684,7 +684,7 @@ func TestKindsAreHandedOutAsCopiesBehindPointers(t *testing.T) {
 		t.Error("the resources of a cube are shared with the copy")
 	}
 
-	service := WebServiceDefinition{Operations: []WebServiceOperation{{ReturnType: &XMLTypeName{Name: "string"}}}}
+	service := WebServiceDefinition{Operations: []WebServiceOperation{{ReturnType: XMLTypeName{Name: "string"}}}}
 	cloneWebService(service).Operations[0].ReturnType.Name = "boolean"
 	if service.Operations[0].ReturnType.Name != "string" {
 		t.Error("the answer type of an operation is shared with the copy")
