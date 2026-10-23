@@ -748,6 +748,22 @@ const restrictionGroupFlagsWalk = `(async () => {` + restrictionWalkTools + `
   seen.okOthers = enabled('ОК');
   await press('Отмена');
   await open();
+  seen.greyBefore = box('Артикул').indeterminate;
+  await choose(box('Артикул'));
+  seen.greyFlags = flags();
+  seen.greyCleared = !box('Артикул').checked && !box('Артикул').indeterminate;
+  seen.okGrey = enabled('ОК');
+  await press('Отмена');
+  await open();
+  byText('button', 'Отметить все', dialog()).click(); await studio.settle();
+  seen.allFlags = flags();
+  seen.allMarked = box('Код').checked && box('Артикул').checked;
+  seen.okAll = enabled('ОК');
+  byText('button', 'Снять все', dialog()).click(); await studio.settle();
+  seen.noneFlags = flags();
+  seen.noneOthers = box('Прочие поля').checked;
+  await press('Отмена');
+  await open();
   await mark('Код', true);
   seen.fieldFlags = flags();
   seen.okField = enabled('ОК');
@@ -769,7 +785,10 @@ const restrictionGroupFlagsWalk = `(async () => {` + restrictionWalkTools + `
 // owner decided on 23.10.2026 (question В4 of the series 2.455; the
 // prototype's leaves it unwritten). Caught too: «Прочие поля» marking the
 // flag of the fields (gruppa-flag-snyat-prochie-polya-otmecheny), and «ОК»
-// available on «Прочие поля» with the flag clear.
+// available on «Прочие поля» with the flag clear; a click on a grey field
+// leaving the flag clear, and «Отметить все» or «Снять все» marking it
+// (until 2.461), where the prototype's does the other way round in both
+// (configurator 23.10.2026, the ninth pass, v1-*).
 func TestTheGroupWindowLocksNeitherHalfByItsFlag(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, addRestrictionRoles(t, root))
@@ -779,8 +798,10 @@ func TestTheGroupWindowLocksNeitherHalfByItsFlag(t *testing.T) {
 	}
 	var seen struct {
 		OpenFlags, OthersFlags, FieldFlags, TypedFlags []string
+		GreyFlags, AllFlags, NoneFlags                 []string
 		FieldOpen, ConditionOpen, OkOpen, OkOthers     bool
-		OkField, Closed                                bool
+		GreyBefore, GreyCleared, OkGrey                bool
+		AllMarked, OkAll, NoneOthers, OkField, Closed  bool
 		Written                                        []string
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
@@ -797,6 +818,15 @@ func TestTheGroupWindowLocksNeitherHalfByItsFlag(t *testing.T) {
 		{!seen.OkOpen, "«ОК» is available before anything is changed"},
 		{slices.Equal(seen.OthersFlags, off), fmt.Sprintf("«Прочие поля» left the flags %v, want both clear", seen.OthersFlags)},
 		{!seen.OkOthers, "«ОК» is available on «Прочие поля» with the flag clear"},
+		{seen.GreyBefore, "Артикул, named by one of the two rows, does not open grey"},
+		{slices.Equal(seen.GreyFlags, fields), fmt.Sprintf("a click on the grey field left the flags %v, want %v", seen.GreyFlags, fields)},
+		{seen.GreyCleared, "a click on the grey field did not take it away"},
+		{!seen.OkGrey, "«ОК» is available after the grey field is taken away"},
+		{slices.Equal(seen.AllFlags, off), fmt.Sprintf("«Отметить все» left the flags %v, want both clear", seen.AllFlags)},
+		{seen.AllMarked, "«Отметить все» did not mark every field"},
+		{!seen.OkAll, "«ОК» is available after «Отметить все» with the flag clear"},
+		{slices.Equal(seen.NoneFlags, off), fmt.Sprintf("«Снять все» left the flags %v, want both clear", seen.NoneFlags)},
+		{seen.NoneOthers, "«Снять все» did not mark «Прочие поля»"},
 		{slices.Equal(seen.FieldFlags, fields), fmt.Sprintf("marking a field left the flags %v, want %v", seen.FieldFlags, fields)},
 		{seen.OkField, "«ОК» is unavailable after a field is marked"},
 		{slices.Equal(seen.TypedFlags, both), fmt.Sprintf("typing the condition left the flags %v, want %v", seen.TypedFlags, both)},

@@ -849,13 +849,16 @@ function restrictionTreeRow(depth, toggle, box) {
    полей»): a click on a grey box takes it away, marking «Прочие поля» takes
    the grey ones away too, and a grey one marks no field of its own, so
    «Прочие поля» stands marked beside it; marked(key, enabled) is told of
-   every field the developer marks or takes away. taken(key) - a field another restriction
+   every field the developer marks or takes away, clicked(key) only of a
+   click on the field itself, marking or taking it away, grey or not - not
+   of «Отметить все», «Снять все» or «Прочие поля», which the group
+   «Изменить» tells apart (configurator 23.10.2026, v1-*). taken(key) - a field another restriction
    names, which cannot be marked. One choice serves the window of one
    restriction, the group «Изменить» and the wizard. Answers the block with
    fill(fields) - the fields, {key, name, parent, hint}, parent the key of
    the table part; filled() - whether a field or «Прочие поля» is marked;
    disable(flag). */
-function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false, marked = () => {}}) {
+function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false, marked = () => {}, clicked = () => {}}) {
   let others = !chosen.size, disabled = false, fields = [];
   const boxes = new Map(), list = node('div', undefined, 'role-restriction-fields role-fields-tree');
   // «Прочие поля» take the marks of the fields, and the window is told of
@@ -894,7 +897,7 @@ function restrictionFieldsChoice({chosen, mixed = new Set(), taken = () => false
   function row(field, depth, under) {
     const children = fields.filter(item => item.parent === field.key), inside = [];
     const folding = children.length ? restrictionFold(field.name, inside) : null;
-    const box = checkboxField(field.name, false, enabled => mark(field.key, enabled), 'role-check');
+    const box = checkboxField(field.name, false, enabled => { mark(field.key, enabled); clicked(field.key); }, 'role-check');
     if (field.hint && field.hint !== field.name) box.title = field.hint;
     boxes.set(field.key, box.querySelector('input'));
     const line = restrictionTreeRow(depth, folding?.toggle, box);
