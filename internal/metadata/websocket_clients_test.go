@@ -1,8 +1,10 @@
 package metadata
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,8 +46,8 @@ predefined: true
 auto_connect: true
 server_url: wss://quotes.example.org/stream
 headers:
-  X-Api-Version: "2"
-  Sec-WebSocket-Protocol: quotes.v2
+  - {name: X-Api-Version, value: "2"}
+  - {name: Sec-WebSocket-Protocol, value: quotes.v2}
 use_os_authentication: true
 use_os_proxy: true
 user: robot
@@ -72,11 +74,8 @@ timeout: 0
 	if client.ServerURL != "wss://quotes.example.org/stream" || client.User != "robot" || client.Comment != "Котировки" {
 		t.Fatalf("a text property was lost: %+v", client)
 	}
-	if client.Headers["X-Api-Version"] != "2" || client.Headers["Sec-WebSocket-Protocol"] != "quotes.v2" {
+	if !slices.Equal(client.Headers, []WebSocketHeader{{Name: "X-Api-Version", Value: "2"}, {Name: "Sec-WebSocket-Protocol", Value: "quotes.v2"}}) {
 		t.Fatalf("the headers came back as %+v", client.Headers)
-	}
-	if names := client.HeaderNames(); strings.Join(names, ",") != "Sec-WebSocket-Protocol,X-Api-Version" {
-		t.Fatalf("the headers are not in a fixed order: %v", names)
 	}
 	// A zero somebody wrote is carried as written; only an omitted timeout is
 	// the default of thirty.
@@ -98,16 +97,16 @@ timeout: 0
 func TestWebSocketClientIsHandedOutAsACopy(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
-	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers: {X-Api-Version: \"2\"}\ntimeout: 10\n")
+	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers: [{name: X-Api-Version, value: \"2\"}]\ntimeout: 10\n")
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	given, _ := catalog.WebSocketClient("Биржа")
-	given.Headers["X-Api-Version"] = "3"
+	given.Headers[0].Value = "3"
 	*given.Timeout = 99
 	again, _ := catalog.WebSocketClient("Биржа")
-	if again.Headers["X-Api-Version"] != "2" || again.ConnectionTimeout() != 10 {
+	if again.Headers[0].Value != "2" || again.ConnectionTimeout() != 10 {
 		t.Fatalf("changing a copy changed the catalog: %+v, timeout %d", again.Headers, again.ConnectionTimeout())
 	}
 }
@@ -142,10 +141,10 @@ func TestWebSocketClientPasswordIsNotKeptInAFile(t *testing.T) {
 func TestWebSocketClientHeadersAreCheckedForTheHandshake(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct{ body, says string }{
-		"a line break in a value": {"headers:\n  X-Tenant: \"a\\r\\nAuthorization: Basic eA==\"\n", "headers.X-Tenant must be one line"},
-		"a name with a space":     {"headers:\n  \"X Tenant\": a\n", `"X Tenant" is not a header name`},
-		"a name with a colon":     {"headers:\n  \"X-Tenant:\": a\n", `"X-Tenant:" is not a header name`},
-		"names differing by case": {"headers:\n  X-Tenant: a\n  x-tenant: b\n", "are one header"},
+		"a line break in a value": {"headers:\n  - {name: X-Tenant, value: \"a\\r\\nAuthorization: Basic eA==\"}\n", "headers[0] X-Tenant must be one line"},
+		"a name with a space":     {"headers:\n  - {name: \"X Tenant\", value: a}\n", `"X Tenant" is not a header name`},
+		"a name with a colon":     {"headers:\n  - {name: \"X-Tenant:\", value: a}\n", `"X-Tenant:" is not a header name`},
+		"names differing by case": {"headers:\n  - {name: X-Tenant, value: a}\n  - {name: x-tenant, value: b}\n", `headers[1]: "X-Tenant" and "x-tenant" are one header`},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -158,7 +157,7 @@ func TestWebSocketClientHeadersAreCheckedForTheHandshake(t *testing.T) {
 	// A tab is allowed inside a value: it is whitespace to HTTP, not the end
 	// of a line.
 	root := metadataProject(t)
-	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers:\n  X-Tenant: \"a\\tb\"\n")
+	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers:\n  - {name: X-Tenant, value: \"a\\tb\"}\n")
 	if _, err := Load(root); err != nil {
 		t.Fatalf("a tab inside a header value was refused: %v", err)
 	}
@@ -252,8 +251,8 @@ func TestWebSocketClientCredentialHeadersAreNotKeptInAFile(t *testing.T) {
 	for _, name := range []string{"Authorization", "proxy-authorization", "COOKIE"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			message := refusedWebSocketClient(t, "headers:\n  "+name+": Bearer s3cret\n", "a credential in a header")
-			if !strings.Contains(message, "headers."+name+" carries credentials") || !strings.Contains(message, "secret_headers") {
+			message := refusedWebSocketClient(t, "headers:\n  - {name: "+name+", value: Bearer s3cret}\n", "a credential in a header")
+			if !strings.Contains(message, "headers[0] "+name+" carries credentials") || !strings.Contains(message, "marks it secret") {
 				t.Fatalf("the error does not say where the header goes: %v", message)
 			}
 			if strings.Contains(message, "s3cret") {
@@ -263,35 +262,63 @@ func TestWebSocketClientCredentialHeadersAreNotKeptInAFile(t *testing.T) {
 	}
 }
 
-// A header kept as a secret is named and not written out. Catches a name that
-// is not a header, a name given twice, and a header that is both written out and
-// declared a secret - which of the two would be sent nobody could say.
-func TestWebSocketClientSecretHeadersAreNamedOnly(t *testing.T) {
+// A header kept as a secret has no value in the file and keeps its place in
+// the list. Catches a secret that carries its value all the same, and a
+// secret header put apart from the others, losing the order the designer
+// keeps.
+func TestWebSocketClientSecretHeadersKeepTheirPlace(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
-	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "secret_headers: [Authorization, X-Api-Key]\nheaders: {X-Api-Version: \"2\"}\n")
+	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers:\n  - {name: X-Api-Version, value: \"2\"}\n"+
+		"  - {name: Authorization, secret: true}\n  - {name: X-Api-Key, secret: true}\n  - {name: Accept, value: text}\n")
 	catalog, err := Load(root)
 	if err != nil {
-		t.Fatalf("headers named as secrets were refused: %v", err)
+		t.Fatalf("headers marked secret were refused: %v", err)
 	}
 	client, _ := catalog.WebSocketClient("Биржа")
-	if strings.Join(client.SecretHeaders, ",") != "Authorization,X-Api-Key" {
-		t.Fatalf("the secret headers came back as %v", client.SecretHeaders)
+	want := []WebSocketHeader{{Name: "X-Api-Version", Value: "2"}, {Name: "Authorization", Secret: true},
+		{Name: "X-Api-Key", Secret: true}, {Name: "Accept", Value: "text"}}
+	if !slices.Equal(client.Headers, want) {
+		t.Fatalf("the headers came back as %+v", client.Headers)
 	}
-	client.SecretHeaders[0] = "Испорчено"
-	if again, _ := catalog.WebSocketClient("Биржа"); again.SecretHeaders[0] != "Authorization" {
-		t.Fatal("changing a copy changed the catalog")
+	message := refusedWebSocketClient(t, "headers:\n  - {name: X-Api-Key, value: s3cret, secret: true}\n", "a secret with its value")
+	if !strings.Contains(message, "headers[0] X-Api-Key is secret and has a value in the file") || strings.Contains(message, "s3cret") {
+		t.Fatalf("the error does not say what is wrong, or repeats the value: %v", message)
 	}
-	for name, test := range map[string]struct{ body, says string }{
-		"not a header name":        {"secret_headers: [\"X Api Key\"]\n", `"X Api Key" is not a header name`},
-		"one name twice":           {"secret_headers: [X-Api-Key, x-api-key]\n", "names \"x-api-key\" twice"},
-		"a secret written out too": {"secret_headers: [X-Api-Key]\nheaders: {x-api-key: abc}\n", "a header is either a secret or not"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if message := refusedWebSocketClient(t, test.body, name); !strings.Contains(message, test.says) {
-				t.Fatalf("the error does not say what is wrong: %v", message)
-			}
-		})
+}
+
+// The headers come back, and are written back, in the order of the file - not
+// sorted, as the dictionary they once were wrote them. Catches the order lost
+// on the way in or on the way out.
+func TestWebSocketClientHeadersKeepTheirOrder(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeWebSocketClient(t, root, firstWebSocketClient, "Биржа", "headers:\n  - {name: X-Zeta, value: \"1\"}\n"+
+		"  - {name: Accept, value: \"2\"}\n  - {name: X-Middle, value: \"3\"}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, _ := catalog.WebSocketClient("Биржа")
+	order := func(headers []WebSocketHeader) string {
+		names := make([]string, len(headers))
+		for index, header := range headers {
+			names[index] = header.Name
+		}
+		return strings.Join(names, ",")
+	}
+	if got := order(client.Headers); got != "X-Zeta,Accept,X-Middle" {
+		t.Fatalf("the headers were read as %s", got)
+	}
+	var written bytes.Buffer
+	if err := Encode(&written, client); err != nil {
+		t.Fatal(err)
+	}
+	again, err := DecodeWebSocketClient("client.yaml", bytes.NewReader(written.Bytes()), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := order(again.Headers); got != "X-Zeta,Accept,X-Middle" {
+		t.Fatalf("the headers were written as %s:\n%s", got, written.String())
 	}
 }

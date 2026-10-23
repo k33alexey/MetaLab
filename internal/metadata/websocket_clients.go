@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -48,14 +47,16 @@ type WebSocketClientDefinition struct {
 	// ServerURL is the server the client connects to. It is not required: a
 	// client created by code may be given its address there.
 	ServerURL string `yaml:"server_url,omitempty" json:"serverUrl,omitempty"`
-	// Headers are added to the GET request that opens the connection.
-	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
-	// SecretHeaders are headers whose values are credentials and so are kept
-	// where the password is, not here: only their names are in the file. Three
-	// names always carry credentials and are refused in Headers outright -
-	// see credentialHeaders; any other header may be put here by choice, an
-	// API key for one, because a name cannot tell a key from a version number.
-	SecretHeaders []string `yaml:"secret_headers,omitempty" json:"secretHeaders,omitempty"`
+	// Headers are added to the GET request that opens the connection, in the
+	// order the designer keeps them: its editor «Настройка заголовков» moves
+	// a row up and down, and the export writes a list (opis of 15.10.2026,
+	// websocket-klient.md). A header whose value is a credential is secret:
+	// its value is kept where the password is, not here, and it keeps its
+	// place in the list all the same. Three names always carry credentials
+	// and are refused unless secret - see credentialHeaders; any other header
+	// may be secret by choice, an API key for one, because a name cannot tell
+	// a key from a version number.
+	Headers []WebSocketHeader `yaml:"headers,omitempty" json:"headers,omitempty"`
 	// UseOSAuthentication signs in to the server as the operating system
 	// account. With no user and password it is the account of whatever
 	// process serves the connection.
@@ -93,15 +94,12 @@ func (client WebSocketClientDefinition) ConnectionTimeout() int {
 	return *client.Timeout
 }
 
-// HeaderNames returns the names of the additional headers in a fixed order, so
-// that whatever writes them writes the same request every time.
-func (client WebSocketClientDefinition) HeaderNames() []string {
-	names := make([]string, 0, len(client.Headers))
-	for name := range client.Headers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
+// WebSocketHeader is one header of the handshake: its name, and its value or,
+// for a secret one, the mark that the value lies in the store of secrets.
+type WebSocketHeader struct {
+	Name   string `yaml:"name" json:"name"`
+	Value  string `yaml:"value,omitempty" json:"value,omitempty"`
+	Secret bool   `yaml:"secret,omitempty" json:"secret,omitempty"`
 }
 
 // DecodeWebSocketClient reads and validates one WebSocket client.
@@ -113,7 +111,6 @@ func DecodeWebSocketClient(source string, reader io.Reader, configuration projec
 		}
 		issues = append(issues, validateWebSocketServerURL(value.ServerURL)...)
 		issues = append(issues, validateWebSocketHeaders(value.Headers)...)
-		issues = append(issues, validateSecretHeaders(value.SecretHeaders, value.Headers)...)
 		if strings.IndexFunc(value.User, unicode.IsControl) >= 0 {
 			issues = append(issues, "user must be one line without control characters")
 		}
@@ -146,66 +143,36 @@ func validateWebSocketServerURL(value string) []string {
 // password property would be.
 var credentialHeaders = []string{"authorization", "proxy-authorization", "cookie"}
 
-// validateSecretHeaders checks the names of the headers kept as secrets: each
-// a header name, none twice, none also among the headers written out.
-func validateSecretHeaders(names []string, headers map[string]string) []string {
-	written := make(map[string]bool, len(headers))
-	for name := range headers {
-		written[strings.ToLower(name)] = true
-	}
-	var issues []string
-	seen := map[string]bool{}
-	for index, name := range names {
-		prefix := fmt.Sprintf("secret_headers[%d]", index)
-		if !httpToken(name) {
-			issues = append(issues, fmt.Sprintf("%s: %q is not a header name", prefix, name))
-			continue
-		}
-		folded := strings.ToLower(name)
-		if seen[folded] {
-			issues = append(issues, fmt.Sprintf("%s names %q twice", prefix, name))
-		}
-		seen[folded] = true
-		if written[folded] {
-			issues = append(issues, fmt.Sprintf("%s names %q, which is also written out among the headers: a header is either a secret or not", prefix, name))
-		}
-	}
-	return issues
-}
-
 // validateWebSocketHeaders checks the additional headers: each name is a word
-// of HTTP, each value is one line, and no two names differ by case alone.
+// of HTTP, each value is one line, no two names differ by case alone, and a
+// secret one has no value in the file.
 //
 // The value is the part that matters. A line break in it would write into the
 // handshake a header nobody declared - and the handshake is where the server
 // decides who is calling.
-func validateWebSocketHeaders(headers map[string]string) []string {
+func validateWebSocketHeaders(headers []WebSocketHeader) []string {
 	var issues []string
 	seen := make(map[string]string, len(headers))
-	names := make([]string, 0, len(headers))
-	for name := range headers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		value := headers[name]
-		if !httpToken(name) {
-			issues = append(issues, fmt.Sprintf("headers: %q is not a header name", name))
+	for index, header := range headers {
+		where := fmt.Sprintf("headers[%d]", index)
+		if !httpToken(header.Name) {
+			issues = append(issues, fmt.Sprintf("%s: %q is not a header name", where, header.Name))
 			continue
 		}
-		folded := strings.ToLower(name)
+		folded := strings.ToLower(header.Name)
 		if previous, taken := seen[folded]; taken {
-			issues = append(issues, fmt.Sprintf("headers %q and %q are one header", previous, name))
+			issues = append(issues, fmt.Sprintf("%s: %q and %q are one header", where, previous, header.Name))
 		}
-		seen[folded] = name
-		if slices.Contains(credentialHeaders, folded) {
-			// The value is not repeated in the message, for the same reason
-			// it is refused: it is a credential.
-			issues = append(issues, fmt.Sprintf("headers.%s carries credentials and is not kept in project files: its value lies in the store of secrets, and the file names it in secret_headers", name))
-			continue
-		}
-		if strings.IndexFunc(value, func(symbol rune) bool { return symbol != '\t' && unicode.IsControl(symbol) }) >= 0 {
-			issues = append(issues, fmt.Sprintf("headers.%s must be one line without control characters", name))
+		seen[folded] = header.Name
+		// The value is not repeated in a message about a secret or a
+		// credential, for the reason it is refused: it is a credential.
+		switch {
+		case header.Secret && header.Value != "":
+			issues = append(issues, fmt.Sprintf("%s %s is secret and has a value in the file: its value lies in the store of secrets", where, header.Name))
+		case !header.Secret && slices.Contains(credentialHeaders, folded):
+			issues = append(issues, fmt.Sprintf("%s %s carries credentials and is not kept in project files: its value lies in the store of secrets, and the file marks it secret", where, header.Name))
+		case strings.IndexFunc(header.Value, func(symbol rune) bool { return symbol != '\t' && unicode.IsControl(symbol) }) >= 0:
+			issues = append(issues, fmt.Sprintf("%s %s must be one line without control characters", where, header.Name))
 		}
 	}
 	return issues
@@ -228,14 +195,7 @@ func httpToken(value string) bool {
 
 func cloneWebSocketClient(value WebSocketClientDefinition) WebSocketClientDefinition {
 	value.Title = cloneTitle(value.Title)
-	if value.Headers != nil {
-		headers := make(map[string]string, len(value.Headers))
-		for name, header := range value.Headers {
-			headers[name] = header
-		}
-		value.Headers = headers
-	}
-	value.SecretHeaders = slices.Clone(value.SecretHeaders)
+	value.Headers = slices.Clone(value.Headers)
 	if value.Timeout != nil {
 		timeout := *value.Timeout
 		value.Timeout = &timeout
