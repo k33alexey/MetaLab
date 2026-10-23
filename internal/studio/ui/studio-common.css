@@ -123,3 +123,20 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 /* A list of boxes with a current row (checkList), as the prototype's list of rights. */
 .check-list{display:flex;flex-direction:column;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 0;outline:none}.check-list:focus-visible{outline:1px solid #589df6;outline-offset:-1px}
 .check-list-row{display:flex;align-items:center;gap:7px;padding:3px 8px;font-size:13px;cursor:default;user-select:none}.check-list-row input{accent-color:#589df6;margin:0}.check-list-row:hover{background:#ffffff12}.check-list-row.current{background:#2f4a6d}
+/* The window «Редактирование типа данных» (showTypeEditor): the box of a
+   composite type and the search over the tree, the qualifiers of the current
+   row under it (docs/block-00/obshchee.md, «Окно «Редактирование типа
+   данных»»). */
+.localized-title-dialog.type-editor-dialog{width:min(640px,calc(100% - 40px))}
+.type-editor{display:grid;gap:8px}
+.type-editor-search{width:100%;box-sizing:border-box}
+.type-editor-tree{height:360px;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 0;outline:none}.type-editor-tree:focus-visible{outline:1px solid #589df6;outline-offset:-1px}
+.type-editor-row{display:flex;align-items:center;gap:5px;padding:2px 8px 2px calc(8px + var(--depth,0) * 20px);font-size:13px;cursor:default;user-select:none;white-space:nowrap}.type-editor-row:hover{background:#ffffff12}.type-editor-row.current{background:#2f4a6d}
+.type-editor-row input{accent-color:#589df6;margin:0}
+.type-editor-sign{width:14px;height:14px;padding:0;border:0;background:transparent;color:#aeb1b8;font-size:12px;line-height:14px}.type-editor-sign:disabled{visibility:hidden}
+.type-editor-nobox,.type-editor-noicon{display:inline-block;width:13px}.type-editor-noicon{width:16px}
+.type-editor-match{color:#f07c74}
+.type-editor-qualifiers{display:flex;flex-wrap:wrap;align-items:center;gap:12px;min-height:30px}
+.type-editor-field{display:flex!important;align-items:center;gap:6px}.type-editor-number{width:70px}
+.localized-title-dialog label.type-editor-composite,.localized-title-dialog label.type-editor-check{display:flex;align-items:center;gap:6px;font-size:12px;color:#dfe1e5}.type-editor-composite input,.type-editor-check input{margin:0;accent-color:#589df6}
+.field-buttons>button.field-choice{color:#dfe1e5;font-size:14px;line-height:1}

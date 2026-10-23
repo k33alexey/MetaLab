@@ -12,12 +12,10 @@ vm.runInContext(script,context);
 const create=context.createCatalogModel;
 function fixture(){return {
   catalog:{format:1,id:'cat',name:'Товары',title:{ru:'Товары'},code:{type:'string',length:9,auto:true,unique:true},descriptionLength:250,attributes:[],tableParts:[]},
-  typeChoices:[
-    {kind:'enumeration',name:{russian:'ПеречислениеСсылка',english:'EnumRef'},objects:[{id:'enum1',name:'ВидыНоменклатуры',title:{ru:'Виды номенклатуры'}}]},
-    {kind:'catalog',name:{russian:'СправочникСсылка',english:'CatalogRef'},objects:[{id:'cat2',name:'Контрагенты',title:{ru:'Контрагенты'}}]},
-    {kind:'document',name:{russian:'ДокументСсылка',english:'DocumentRef'},objects:[]},
-    {kind:'defined-type',name:{russian:'ОпределяемыйТип',english:'DefinedType'},objects:[]},
-  ],
+  typeOffer:{place:'stored-field',required:true,limits:{stringLength:1024,fixedStringLength:100,numberDigits:32},
+    newTypes:{string:{kind:'string',length:10},number:{kind:'number',precision:10},date:{kind:'date',dateParts:'date'}},
+    rows:[{kind:'number',name:{russian:'Число'}},{kind:'string',name:{russian:'Строка'}},
+      {kind:'catalog-ref',name:{russian:'СправочникСсылка'},objectKind:'catalog',objects:[{id:'cat2',name:'Контрагенты',title:{ru:'Контрагенты'}}]}]},
   languages:[{code:'ru',title:'Русский'},{code:'en',title:'English'}],defaultLanguage:'ru',
 };}
 
@@ -26,11 +24,11 @@ test('Studio inline script remains valid JavaScript',()=>{
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
   assert.match(html,/\/api\/catalog/);assert.match(html,/id="catalog-create-dialog"/);assert.match(html,/id="tree-add"/);
 });
-test('new attribute gets a unique name and a default single string(50) type',()=>{
+test('new attribute gets a unique name and the type a new field takes, from the model',()=>{
   const source=fixture(),model=create(source);
   const first=model.addAttribute('catalog'),second=model.addAttribute('catalog');
   assert.notEqual(first.name,second.name);
-  assert.equal(first.types.length,1);assert.equal(first.types[0].kind,'string');assert.equal(first.types[0].length,50);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.types)),[{kind:'string',length:10}]);
   assert.equal(model.value().attributes.length,2);
 });
 test('model mutates source in place but value() returns an independent clone',()=>{
@@ -59,23 +57,12 @@ test('an unindexed field says nothing instead of saying dont-index',()=>{
   model.setAttributeIndexing('catalog',attribute.id,'dont-index');
   assert.equal('indexing' in model.value().attributes[0],false);
 });
-test('a composite type can be added and the last type cannot be removed',()=>{
+test('the type the window chose replaces the attribute type, and the presentation names it',()=>{
   const model=create(fixture());
   const attribute=model.addAttribute('catalog');
-  model.addType('catalog',attribute.id);
-  assert.equal(model.value().attributes[0].types.length,2);
-  model.removeType('catalog',attribute.id,0);
-  assert.equal(model.value().attributes[0].types.length,1);
-  model.removeType('catalog',attribute.id,0);
-  assert.equal(model.value().attributes[0].types.length,1);
-});
-test('switching type kind replaces incompatible fields with sensible defaults',()=>{
-  const model=create(fixture());
-  const attribute=model.addAttribute('catalog');
-  model.setTypeKind('catalog',attribute.id,0,'number');
-  assert.deepEqual(model.value().attributes[0].types[0],{kind:'number',precision:15,scale:2});
-  model.setTypeKind('catalog',attribute.id,0,'catalog');
-  assert.deepEqual(model.value().attributes[0].types[0],{kind:'catalog',reference:'cat2'});
+  model.setAttributeTypes('catalog',attribute.id,[{kind:'number',precision:10},{kind:'catalog',reference:'cat2'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(model.value().attributes[0].types)),[{kind:'number',precision:10},{kind:'catalog',reference:'cat2'}]);
+  assert.equal(context.typePresentation(model.typeOffer,model.value().attributes[0].types),'Число, СправочникСсылка.Контрагенты');
 });
 test('table parts own their own attribute list, addressed by container id',()=>{
   const model=create(fixture());

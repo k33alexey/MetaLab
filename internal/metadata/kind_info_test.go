@@ -114,9 +114,6 @@ func TestEveryReferenceIsNamed(t *testing.T) {
 			t.Errorf("%s has %d reference types and %d names of them", item.kind, len(item.references), len(names))
 		}
 	}
-	if len((&Catalog{}).ReferenceTypeChoices()) == 0 {
-		t.Error("no reference type is offered")
-	}
 }
 
 // TestEveryKindFindsItsObjects catches an object found by the index of

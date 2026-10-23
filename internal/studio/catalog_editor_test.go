@@ -80,14 +80,14 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 		t.Fatalf("invalid save modified file: %v", err)
 	}
 
-	choices, err := loadTypeChoices(workspace.root)
+	offer, err := loadTypeOffer(workspace.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalogs := slices.IndexFunc(choices, func(choice metadata.ReferenceTypeChoice) bool { return choice.Kind == metadata.CatalogType })
-	if catalogs < 0 || choices[catalogs].Name.Russian != "СправочникСсылка" ||
-		len(choices[catalogs].Objects) != 1 || choices[catalogs].Objects[0].ID != created.Catalog.ID {
-		t.Fatalf("type choices did not include the new catalog: %+v", choices)
+	catalogs := slices.IndexFunc(offer.Rows, func(row metadata.TypeOfferRow) bool { return row.ObjectKind == metadata.CatalogType })
+	if catalogs < 0 || offer.Rows[catalogs].Name.Russian != "СправочникСсылка" ||
+		len(offer.Rows[catalogs].Objects) != 1 || offer.Rows[catalogs].Objects[0].ID != created.Catalog.ID {
+		t.Fatalf("the type offer does not hold the new catalog: %+v", offer.Rows)
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Fatal(err)

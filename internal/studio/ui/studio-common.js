@@ -168,18 +168,28 @@ function checkList(items, current, mark, choose) {
     row.append(input, node('span', item.caption));
     list.append(row);
   }
-  list.addEventListener('keydown', event => {
-    const at = items.findIndex(item => item.key === current);
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const next = items[Math.min(items.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))];
-      if (next) choose(next.key);
-    } else if (event.key === ' ' && at >= 0) {
-      event.preventDefault();
-      mark(current, !items[at].checked);
-    }
-  });
+  list.addEventListener('keydown', event => markListKey(event, items, current, choose, mark));
   return list;
+}
+
+/* markListKey is the keyboard of a list of marks, the prototype's: ↑ and ↓
+   move the current row, the space marks it or takes its mark away. rows are
+   {key, checked, checkable} as shown, checkable left out where every row has
+   a box; answers whether the key was the list's. */
+function markListKey(event, rows, current, choose, mark) {
+  const at = rows.findIndex(row => row.key === current);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const next = rows[Math.min(rows.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+    if (next) choose(next.key);
+    return true;
+  }
+  if (event.key === ' ' && at >= 0 && rows[at].checkable !== false) {
+    event.preventDefault();
+    mark(rows[at].key, !rows[at].checked);
+    return true;
+  }
+  return false;
 }
 
 /* fieldButton is a button of a field - the magnifier, the opening, the
@@ -188,6 +198,18 @@ function checkList(items, current, mark, choose) {
 function fieldButton(icon, title, act) {
   const button = iconButton(icon, title);
   button.classList.add('field-button');
+  button.addEventListener('click', act);
+  return button;
+}
+
+/* fieldChoiceButton is the button «…» of a field that opens a window of
+   choice - the type, a list of values: the prototype draws it as three dots,
+   a text and not a picture of the set. */
+function fieldChoiceButton(title, act) {
+  const button = node('button', '…', 'field-button field-choice');
+  button.type = 'button';
+  button.title = title;
+  button.setAttribute('aria-label', title);
   button.addEventListener('click', act);
   return button;
 }
@@ -752,4 +774,307 @@ function iconButton(name, title) {
   button.setAttribute('aria-label', title);
   button.append(iconElement(name));
   return button;
+}
+
+/* askCancelInput is the question of a value beyond the model's ceiling, the
+   prototype's «В поле введены некорректные данные. Отменить ввод?», asked
+   wherever such a value is entered (ML-STUDIO.md, «Поведение платформы»):
+   true is «Да» - the value before comes back, false is «Нет» - the field
+   stays to be put right. */
+function askCancelInput() {
+  return showDialog({title: 'В поле введены некорректные данные. Отменить ввод?',
+    explanation: 'Нажмите «Да» для отмены ввода или «Нет» для продолжения редактирования.',
+    answers: [['yes', 'Да'], ['no', 'Нет']]}).then(answer => answer !== 'no');
+}
+
+/* typeEditorModel is the window «Редактирование типа данных» without its
+   drawing, as the prototype's behaves (docs/block-00/obshchee.md, «Окно
+   «Редактирование типа данных»», 23.10.2026). offer is the model's
+   TypeOffer of the place: its rows, limits and the qualifiers of a type
+   marked anew; types is the description the window opens on. A key names a
+   row: the kind of its type, «arbitrary», «folder:<kind>» for a folder, and
+   «<kind>:<id>» for a type naming an object. The window answers result():
+   {types} in the order of the tree, or {refusal}. */
+function typeEditorModel(offer, types) {
+  const rows = [];
+  for (const [index, row] of offer.rows.entries()) {
+    const key = row.arbitrary ? 'arbitrary' : row.kind || `folder:${row.objectKind}:${index}`;
+    const children = (row.objects || []).map(object => ({key: `${row.objectKind}:${object.id}`, caption: object.name, icon: row.icon, checkable: true,
+      type: {kind: row.objectKind, reference: object.id}}));
+    rows.push({key, caption: row.name.russian, icon: row.icon, checkable: !!(row.kind || row.arbitrary),
+      type: row.kind ? {kind: row.kind} : null, children});
+  }
+  const order = rows.flatMap(row => [row, ...row.children]);
+  const typeKey = type => type.reference ? `${type.kind}:${type.reference}` : type.kind;
+  const marked = new Map(), drafts = new Map();
+  for (const type of types) if (order.some(row => row.key === typeKey(type))) marked.set(typeKey(type), structuredClone(type));
+  if (!types.length && rows.some(row => row.key === 'arbitrary')) marked.set('arbitrary', null);
+  let composite = marked.size > 1, search = '';
+  const expanded = new Set(rows.filter(row => row.children.some(child => marked.has(child.key))).map(row => row.key));
+  // The current row is the last one marked in the order of the tree, not the
+  // first and not the one marked last (snapshots tip-95…106).
+  let current = [...order].reverse().find(row => marked.has(row.key))?.key || order[0]?.key;
+  const find = key => order.find(row => row.key === key);
+  function fresh(row) {
+    if (!row.type) return null;
+    return drafts.get(row.key) || structuredClone(offer.newTypes?.[row.type.kind] || row.type);
+  }
+  function terms() {
+    const words = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    return words.join('').length >= 2 ? words : [];
+  }
+  function matches(caption, words) {
+    const lower = caption.toLocaleLowerCase();
+    if (!words.every(word => lower.includes(word))) return null;
+    return words.map(word => [lower.indexOf(word), word.length]).sort((a, b) => a[0] - b[0]);
+  }
+  return {
+    get composite() { return composite; },
+    get current() { return current; },
+    get search() { return search; },
+    /* visible is what the tree shows, row by row: {key, caption, icon,
+       depth, checkable, checked, folds, open, highlights}. A search of two
+       characters and more shows the rows whose caption holds every word of
+       it, a type naming an object under its group unfolded, and hides the
+       rest - the marked ones too. */
+    visible() {
+      const words = terms(), shown = [];
+      for (const row of rows) {
+        const own = words.length ? matches(row.caption, words) : [];
+        const inside = row.children.flatMap(child => {
+          const hit = words.length ? matches(child.caption, words) : [];
+          return hit ? [[child, hit]] : [];
+        });
+        if (words.length && !own && !inside.length) continue;
+        const folds = row.children.length > 0 && (!words.length || inside.length > 0);
+        const open = folds && (words.length ? true : expanded.has(row.key));
+        shown.push({key: row.key, caption: row.caption, icon: row.icon, depth: 0, checkable: row.checkable, checked: marked.has(row.key),
+          folds, open, highlights: words.length && own ? own : []});
+        if (open) for (const [child, hit] of (words.length ? inside : row.children.map(child => [child, []]))) {
+          shown.push({key: child.key, caption: child.caption, icon: child.icon, depth: 1, checkable: true, checked: marked.has(child.key),
+            folds: false, open: false, highlights: hit});
+        }
+      }
+      return shown;
+    },
+    setSearch(text) { search = text; },
+    fold(key, open) { if (open) expanded.add(key); else expanded.delete(key); },
+    choose(key) { if (find(key)) current = key; },
+    /* mark marks a type or takes it away, and makes its row current.
+       Without «Составной тип данных» a mark takes the one before away;
+       «Произвольный» stands alone. */
+    mark(key, checked) {
+      const row = find(key);
+      if (!row?.checkable) return;
+      current = key;
+      if (!checked) {
+        if (marked.has(key) && key !== 'arbitrary') drafts.set(key, marked.get(key));
+        marked.delete(key);
+        return;
+      }
+      if (!composite || key === 'arbitrary') {
+        for (const [other, type] of marked) if (type) drafts.set(other, type);
+        marked.clear();
+      }
+      marked.delete('arbitrary');
+      marked.set(key, key === 'arbitrary' ? null : fresh(row));
+    },
+    /* setComposite: taking «Составной тип данных» away leaves the first type
+       marked in the order of the tree, without asking, and makes it current. */
+    setComposite(on) {
+      composite = on;
+      if (on || marked.size < 2) return;
+      const first = order.find(row => marked.has(row.key));
+      for (const [key, type] of marked) if (key !== first.key && type) drafts.set(key, type);
+      for (const key of [...marked.keys()]) if (key !== first.key) marked.delete(key);
+      current = first.key;
+    },
+    /* qualifiers are those of the current row: {kind, type, enabled}, the
+       row unmarked showing them unavailable; null for a type without. */
+    qualifiers() {
+      const row = find(current);
+      if (!row?.type || !['string', 'number', 'date'].includes(row.type.kind)) return null;
+      return {kind: row.type.kind, type: marked.get(current) || fresh(row), enabled: marked.has(current)};
+    },
+    /* setQualifier writes one qualifier of the current type and answers
+       false for a value beyond the model's ceiling, which is not written.
+       A fraction longer than the number lengthens the number, a number
+       shorter than its fraction shortens the fraction; a string of length 0
+       is unlimited, and a string longer than a fixed one may be is of
+       variable length. */
+    setQualifier(field, value) {
+      const type = marked.get(current);
+      if (!type) return true;
+      const limits = offer.limits;
+      if (field === 'precision' || field === 'scale') {
+        if (!Number.isInteger(value) || value < (field === 'precision' ? 1 : 0) || value > limits.numberDigits) return false;
+        type[field] = value;
+        if (field === 'scale' && (type.precision || 0) < value) type.precision = value;
+        if (field === 'precision' && (type.scale || 0) > value) type.scale = value;
+      } else if (field === 'length') {
+        if (!Number.isInteger(value) || value < 0 || value > limits.stringLength) return false;
+        type.length = value;
+        if (!value || value > limits.fixedStringLength) delete type.fixedLength;
+      } else if (field === 'unlimited') {
+        type.length = value ? 0 : 10;
+        if (value) delete type.fixedLength;
+      } else if (field === 'fixedLength') {
+        if (value && (!type.length || type.length > limits.fixedStringLength)) return true;
+        if (value) type.fixedLength = true; else delete type.fixedLength;
+      } else if (field === 'nonNegative') {
+        if (value) type.nonNegative = true; else delete type.nonNegative;
+      } else if (field === 'dateParts') {
+        type.dateParts = value;
+      }
+      for (const name of ['scale', 'length']) if (type[name] === 0) delete type[name];
+      return true;
+    },
+    result() {
+      const chosen = order.filter(row => marked.has(row.key) && row.key !== 'arbitrary').map(row => marked.get(row.key));
+      if (!chosen.length && offer.required) return {refusal: 'Необходимо выбрать тип значения.'};
+      return {types: chosen};
+    },
+  };
+}
+
+/* typePresentation is a type description as the palette shows it: its types
+   by their names, a type naming an object with the object's name after a
+   point, in the order of the description. */
+function typePresentation(offer, types) {
+  if (!types.length) return offer.rows.find(row => row.arbitrary)?.name.russian || '';
+  return types.map(type => {
+    const row = offer.rows.find(item => type.reference ? item.objectKind === type.kind : item.kind === type.kind);
+    const name = row?.name.russian || type.kind;
+    if (!type.reference) return name;
+    const object = row?.objects?.find(item => item.id === type.reference);
+    return `${name}.${object?.name || type.reference}`;
+  }).join(', ');
+}
+
+/* showTypeEditor opens the window «Редактирование типа данных» on types,
+   offering what offer holds, and answers the description chosen, or null
+   for «Отмена». One window chooses every type of Studio. */
+function showTypeEditor(offer, types) {
+  const model = typeEditorModel(offer, types);
+  const content = node('div', undefined, 'type-editor');
+  const composite = checkboxField('Составной тип данных', model.composite, on => { model.setComposite(on); draw(); }, 'type-editor-composite');
+  const search = node('input', undefined, 'type-editor-search');
+  search.type = 'search';
+  search.placeholder = 'Поиск (Cmd+Option+M)';
+  search.addEventListener('input', () => { model.setSearch(search.value); draw(); });
+  search.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !search.value) return;
+    event.preventDefault();
+    search.value = '';
+    model.setSearch('');
+    draw();
+  });
+  const tree = node('div', undefined, 'type-editor-tree');
+  tree.tabIndex = 0;
+  tree.setAttribute('role', 'tree');
+  const qualifiers = node('div', undefined, 'type-editor-qualifiers');
+  content.append(composite, search, tree, qualifiers);
+  content.addEventListener('keydown', event => {
+    if (event.code === 'KeyM' && event.altKey && (event.metaKey || event.ctrlKey)) { event.preventDefault(); search.focus(); }
+  });
+  tree.addEventListener('keydown', event => {
+    const shown = model.visible(), at = shown.findIndex(row => row.key === model.current);
+    if (markListKey(event, shown, model.current, key => { model.choose(key); draw(); }, (key, checked) => { model.mark(key, checked); draw(); })) return;
+    if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && at >= 0 && shown[at].folds) {
+      event.preventDefault();
+      model.fold(shown[at].key, event.key === 'ArrowRight');
+      draw();
+    }
+  });
+  function caption(row) {
+    const text = node('span', undefined, 'type-editor-caption');
+    let from = 0;
+    for (const [start, length] of row.highlights) {
+      if (start < from) continue;
+      text.append(row.caption.slice(from, start), node('span', row.caption.slice(start, start + length), 'type-editor-match'));
+      from = start + length;
+    }
+    text.append(row.caption.slice(from));
+    return text;
+  }
+  function drawTree() {
+    tree.replaceChildren();
+    for (const row of model.visible()) {
+      const line = node('div', undefined, 'type-editor-row' + (row.key === model.current ? ' current' : ''));
+      line.style.setProperty('--depth', row.depth);
+      line.setAttribute('role', 'treeitem');
+      line.setAttribute('aria-selected', String(row.key === model.current));
+      const sign = node('button', row.folds ? (row.open ? '⊖' : '⊕') : '', 'type-editor-sign');
+      sign.type = 'button';
+      sign.tabIndex = -1;
+      if (row.folds) {
+        sign.setAttribute('aria-label', `${row.open ? 'Свернуть' : 'Развернуть'} ${row.caption}`);
+        sign.addEventListener('click', () => { model.fold(row.key, !row.open); draw(); });
+      } else sign.disabled = true;
+      line.append(sign);
+      if (row.checkable) {
+        const box = node('input');
+        box.type = 'checkbox';
+        box.checked = row.checked;
+        box.tabIndex = -1;
+        box.setAttribute('aria-label', row.caption);
+        box.addEventListener('change', () => { model.mark(row.key, box.checked); draw(); });
+        line.append(box);
+      } else line.append(node('span', undefined, 'type-editor-nobox'));
+      line.append(row.icon ? iconElement(row.icon) : node('span', undefined, 'type-editor-noicon'), caption(row));
+      line.addEventListener('click', event => {
+        if (event.target.tagName === 'INPUT' || event.target.closest('.type-editor-sign')) return;
+        model.choose(row.key);
+        draw();
+        tree.focus();
+      });
+      tree.append(line);
+    }
+    tree.querySelector('.type-editor-row.current')?.scrollIntoView?.({block: 'nearest'});
+  }
+  /* A number field of a qualifier: a value beyond the ceiling asks
+     askCancelInput, «Да» brings back the value before and «Нет» leaves the
+     field to be put right. */
+  function numberField(label, field, value, enabled) {
+    const input = node('input', undefined, 'type-editor-number');
+    input.type = 'number';
+    input.value = String(value || 0);
+    input.disabled = !enabled;
+    input.addEventListener('change', async () => {
+      if (model.setQualifier(field, Number(input.value))) { draw(); return; }
+      if (await askCancelInput()) draw(); else input.focus();
+    });
+    return labeledField(label, input, 'type-editor-field');
+  }
+  function drawQualifiers() {
+    qualifiers.replaceChildren();
+    const shown = model.qualifiers();
+    if (!shown) return;
+    const {kind, type, enabled} = shown;
+    if (kind === 'number') {
+      qualifiers.append(numberField('Длина', 'precision', type.precision, enabled), numberField('Точность', 'scale', type.scale, enabled),
+        checkboxField('Неотрицательное', !!type.nonNegative, on => { model.setQualifier('nonNegative', on); draw(); }, 'type-editor-check', !enabled));
+    } else if (kind === 'string') {
+      const unlimited = !type.length, fixedAllowed = !unlimited && type.length <= offer.limits.fixedStringLength;
+      const allowed = selectInput([['fixed', 'Фиксированная'], ['variable', 'Переменная']], type.fixedLength ? 'fixed' : 'variable',
+        value => { model.setQualifier('fixedLength', value === 'fixed'); draw(); }, 'Допустимая длина');
+      allowed.disabled = !enabled || !fixedAllowed;
+      qualifiers.append(numberField('Длина', 'length', type.length, enabled), allowed,
+        checkboxField('Неограниченная', unlimited, on => { model.setQualifier('unlimited', on); draw(); }, 'type-editor-check', !enabled));
+    } else if (kind === 'date') {
+      const parts = selectInput([['date', 'Дата'], ['time', 'Время'], ['date-time', 'Дата и время']], type.dateParts || 'date-time',
+        value => { model.setQualifier('dateParts', value); draw(); }, 'Состав даты');
+      parts.disabled = !enabled;
+      qualifiers.append(labeledField('Состав даты', parts, 'type-editor-field'));
+    }
+  }
+  function draw() {
+    composite.querySelector('input').checked = model.composite;
+    drawTree();
+    drawQualifiers();
+  }
+  draw();
+  return showDialog({title: 'Редактирование типа данных', content, className: 'type-editor-dialog',
+    answers: [['ok', 'OK'], [null, 'Отмена']], check: key => (key === 'ok' ? model.result().refusal || '' : '')})
+    .then(answer => (answer === 'ok' ? model.result().types : null));
 }

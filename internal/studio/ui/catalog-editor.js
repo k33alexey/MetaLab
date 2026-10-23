@@ -14,19 +14,9 @@ function createCatalogModel(source) {
     ['dont-index', 'Не индексировать'], ['index', 'Индексировать'],
     ['index-with-additional-order', 'Индексировать с доп. упорядочиванием'],
   ];
-  // The primitive types, then every type that names an object of metadata as
-  // the server lists them (ReferenceTypeChoices): what the save accepts.
-  const referenceTypes = source.typeChoices || [];
-  const typeKinds = [
-    ['string', 'Строка'], ['number', 'Число'], ['boolean', 'Булево'], ['date', 'Дата'], ['uuid', 'УникальныйИдентификатор'],
-    ...referenceTypes.map(choice => [choice.kind, choice.name.russian]),
-  ];
-  function referenceChoices(kind) {
-    return referenceTypes.find(choice => choice.kind === kind)?.objects || [];
-  }
-  function namesObject(kind) {
-    return referenceTypes.some(choice => choice.kind === kind);
-  }
+  // What the window «Редактирование типа данных» offers for a field the
+  // database stores, as the server reads it off the model (TypeOffer).
+  const typeOffer = source.typeOffer;
   function attributeList(container) {
     if (container === 'catalog') return catalog.attributes;
     return catalog.tableParts.find(part => part.id === container)?.attributes;
@@ -42,7 +32,7 @@ function createCatalogModel(source) {
   }
   return {
     value() { return structuredClone(catalog); },
-    typeKinds, indexingModes, referenceChoices, namesObject, attributeList,
+    typeOffer, indexingModes, attributeList,
     setName(name) { catalog.name = name; },
     setTitle(language, text) { catalog.title = setTranslation(catalog.title, language, text); },
     setCodeType(type) { catalog.code.type = type; },
@@ -53,7 +43,7 @@ function createCatalogModel(source) {
     addAttribute(container) {
       const list = attributeList(container);
       if (!list) return null;
-      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', usedNames()), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [{kind: 'string', length: 50}]};
+      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', usedNames()), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [structuredClone(typeOffer.newTypes.string)]};
       list.push(attribute);
       return attribute;
     },
@@ -77,29 +67,9 @@ function createCatalogModel(source) {
       if (!attribute) return;
       if (indexing === 'dont-index') delete attribute.indexing; else attribute.indexing = indexing;
     },
-    addType(container, id) {
+    setAttributeTypes(container, id, types) {
       const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute || attribute.types.length >= 32) return;
-      attribute.types.push({kind: 'string', length: 50});
-    },
-    removeType(container, id, index) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute || attribute.types.length <= 1) return;
-      attribute.types.splice(index, 1);
-    },
-    setTypeKind(container, id, index, kind) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute?.types[index]) return;
-      const type = {kind};
-      if (kind === 'string') type.length = 50;
-      else if (kind === 'number') { type.precision = 15; type.scale = 2; }
-      else if (namesObject(kind)) type.reference = referenceChoices(kind)[0]?.id;
-      attribute.types[index] = type;
-    },
-    setTypeField(container, id, index, field, fieldValue) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute?.types[index]) return;
-      attribute.types[index][field] = fieldValue;
+      if (attribute) attribute.types = types;
     },
     addTablePart() {
       const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', usedNames()), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
@@ -150,25 +120,20 @@ function createCatalogEditor(host, onChange) {
     titleFieldCleanups.push(field.destroy);
     return labeledField('Заголовок', field);
   }
-  function renderTypeRow(container, attribute, type, index) {
-    const row = node('div', undefined, 'catalog-type-row');
-    row.append(selectField('Тип', type.kind, model.typeKinds, kind => model.setTypeKind(container, attribute.id, index, kind)));
-    if (type.kind === 'string') {
-      row.append(textField('Длина', type.length, value => model.setTypeField(container, attribute.id, index, 'length', value), {type: 'number', min: 0, max: 1024}));
-    } else if (type.kind === 'number') {
-      row.append(textField('Точность', type.precision, value => model.setTypeField(container, attribute.id, index, 'precision', value), {type: 'number', min: 1, max: 32}));
-      row.append(textField('Масштаб', type.scale, value => model.setTypeField(container, attribute.id, index, 'scale', value), {type: 'number', min: 0, max: 32}));
-    } else if (model.namesObject(type.kind)) {
-      const choices = model.referenceChoices(type.kind).map(item => [item.id, title(item)]);
-      row.append(selectField('Ссылка на', type.reference, choices, value => model.setTypeField(container, attribute.id, index, 'reference', value)));
-    }
-    if (attribute.types.length > 1) {
-      const remove = node('button', 'Удалить тип');
-      remove.type = 'button';
-      remove.addEventListener('click', () => { model.removeType(container, attribute.id, index); rerender(); });
-      row.append(remove);
-    }
-    return row;
+  // The type of an attribute is a field of its presentation with «…», which
+  // opens the window «Редактирование типа данных» (showTypeEditor), as the
+  // palette of the prototype has it.
+  function renderTypeField(container, attribute) {
+    const shown = node('input');
+    shown.readOnly = true;
+    shown.value = typePresentation(model.typeOffer, attribute.types);
+    const choose = fieldChoiceButton('Редактирование типа данных', async () => {
+      const types = await showTypeEditor(model.typeOffer, attribute.types);
+      if (!types) return;
+      model.setAttributeTypes(container, attribute.id, types);
+      rerender();
+    });
+    return labeledField('Тип', fieldWithButtons(shown, [choose]));
   }
   function renderAttributePanel(container, attribute) {
     const panel = node('div', undefined, 'catalog-detail');
@@ -179,15 +144,7 @@ function createCatalogEditor(host, onChange) {
       value => model.setAttributeFillChecking(container, attribute.id, value)));
     panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', model.indexingModes,
       value => model.setAttributeIndexing(container, attribute.id, value)));
-    const types = node('div', undefined, 'catalog-types');
-    types.append(node('div', 'Типы значения', 'catalog-section-title'));
-    for (const [index, type] of attribute.types.entries()) types.append(renderTypeRow(container, attribute, type, index));
-    const addType = node('button', '+ Тип');
-    addType.type = 'button';
-    addType.disabled = attribute.types.length >= 32;
-    addType.addEventListener('click', () => { model.addType(container, attribute.id); rerender(); });
-    types.append(addType);
-    panel.append(types);
+    panel.append(renderTypeField(container, attribute));
     return panel;
   }
   // A list of the sidebar: a button per item, the one chosen marked, and a

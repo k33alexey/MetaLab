@@ -15,28 +15,28 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// loadTypeChoices is what the type picker of an attribute offers beside the
-// primitive types: every reference a stored attribute may hold, and every
-// defined type, each with the objects it may name. The model says which
-// types those are (ReferenceTypeChoices), so the editor offers what the save
-// accepts.
-func loadTypeChoices(root string) ([]metadata.ReferenceTypeChoice, error) {
+// loadTypeOffer is what the window «Редактирование типа данных» offers for
+// an attribute of a catalog, a field the database stores. The model says it
+// (TypeOffer), with the objects of the project its rows name, so the editor
+// offers what the save accepts.
+func loadTypeOffer(root string) (metadata.TypeOffer, error) {
 	catalog, err := metadata.Load(root)
 	if err != nil {
-		return nil, err
+		return metadata.TypeOffer{}, err
 	}
-	return catalog.ReferenceTypeChoices(), nil
+	offer, _ := catalog.TypeOffer(metadata.StoredFieldChoice)
+	return offer, nil
 }
 
 // CatalogEditorSource is the typed, revision-safe representation the
 // visual catalog editor reads and writes, in place of raw YAML.
 type CatalogEditorSource struct {
-	Path            string                         `json:"path"`
-	Revision        string                         `json:"revision"`
-	Catalog         metadata.CatalogDefinition     `json:"catalog"`
-	TypeChoices     []metadata.ReferenceTypeChoice `json:"typeChoices"`
-	Languages       []project.Language             `json:"languages"`
-	DefaultLanguage string                         `json:"defaultLanguage"`
+	Path            string                     `json:"path"`
+	Revision        string                     `json:"revision"`
+	Catalog         metadata.CatalogDefinition `json:"catalog"`
+	TypeOffer       metadata.TypeOffer         `json:"typeOffer"`
+	Languages       []project.Language         `json:"languages"`
+	DefaultLanguage string                     `json:"defaultLanguage"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -73,12 +73,12 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	choices, err := loadTypeChoices(workspace.root)
+	offer, err := loadTypeOffer(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
 	return CatalogEditorSource{
-		Path: relative, Revision: file.Revision, Catalog: value, TypeChoices: choices,
+		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }
@@ -263,12 +263,12 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		workspace.invalidateStudioIndexesLocked()
 		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
 	}
-	choices, err := loadTypeChoices(workspace.root)
+	offer, err := loadTypeOffer(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
 	return CatalogEditorSource{
-		Path: relative, Revision: sourceFile(relative, "yaml", encoded.Bytes()).Revision, Catalog: value, TypeChoices: choices,
+		Path: relative, Revision: sourceFile(relative, "yaml", encoded.Bytes()).Revision, Catalog: value, TypeOffer: offer,
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 	}, nil
 }

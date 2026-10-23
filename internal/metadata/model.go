@@ -201,6 +201,13 @@ const (
 	// maxStringLength is the longest limited string; longer is unlimited, a
 	// length of 0.
 	maxStringLength = 1024
+	// maxFixedStringLength is the longest string of fixed length: at a longer
+	// one the palette makes «Фиксированная» unavailable (checked in the
+	// designer on a constant and an attribute of a catalog, 14.10.2026,
+	// METADATA-OBJECTS.md «Пределы на состав»). The window of the type lets
+	// it through, a roughness of the platform Studio does not copy; the
+	// model's refusal is an item of block 2б.
+	maxFixedStringLength = 100
 	// maxDescriptionLength is the longest description of a catalog, a chart
 	// of characteristic types, of accounts or of calculation types and a task:
 	// 150 on all of them in the configurations being moved.

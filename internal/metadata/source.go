@@ -823,16 +823,6 @@ func sourceIdentity(value any) (uuid.UUID, string) {
 	return head.id, head.name
 }
 
-// ReferenceTypeChoice is one type a type editor offers for a stored field
-// that names an object of metadata - a reference, or a defined type - with
-// every object of the configuration it may name.
-type ReferenceTypeChoice struct {
-	Kind TypeKind `json:"kind"`
-	// Name is the prototype's name of the type: СправочникСсылка.
-	Name    kinds.Words           `json:"name"`
-	Objects []ReferenceTypeObject `json:"objects"`
-}
-
 // ReferenceTypeObject is one object a reference type may name.
 type ReferenceTypeObject struct {
 	ID    uuid.UUID     `json:"id"`
@@ -840,25 +830,9 @@ type ReferenceTypeObject struct {
 	Title LocalizedText `json:"title"`
 }
 
-// ReferenceTypeChoices is every type of a stored field that names an object
-// of metadata, kind by kind as kindInfos lists them: the references, a
-// reference to an external source aside (storedNowhere), and defined types.
-func (catalog *Catalog) ReferenceTypeChoices() []ReferenceTypeChoice {
-	var result []ReferenceTypeChoice
-	for _, item := range kindInfos {
-		names := kinds.Must(item.kind).References()
-		for index, reference := range item.references {
-			if !storedNowhere(reference.kind) {
-				result = append(result, ReferenceTypeChoice{Kind: reference.kind, Name: names[index], Objects: catalog.referenceTypeObjects(item.kind)})
-			}
-		}
-		if slices.Contains(item.namedBy, DefinedType) {
-			result = append(result, ReferenceTypeChoice{Kind: DefinedType, Name: kinds.Must(item.kind).Name, Objects: catalog.referenceTypeObjects(item.kind)})
-		}
-	}
-	return result
-}
-
+// referenceTypeObjects are the objects of the kind a type of the window
+// «Редактирование типа данных» names, in the order of the catalog
+// (TypeOffer).
 func (catalog *Catalog) referenceTypeObjects(kind Kind) []ReferenceTypeObject {
 	list, _ := catalog.objectsOf(kind)
 	result := make([]ReferenceTypeObject, 0, list.Len())

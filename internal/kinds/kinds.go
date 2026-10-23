@@ -194,6 +194,25 @@ var references = map[Kind][]Words{
 	ExternalDimensionTable:     {{"ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка", "ExternalDataSourceCubeDimensionTableRef"}},
 }
 
+// referenceOrder is the order the prototype's window «Редактирование типа
+// данных» lists the reference types of the configuration in - not the order
+// of the tree, where an exchange plan stands among the common objects and the
+// charts after the reports (docs/block-00/obshchee.md, «Окно «Редактирование
+// типа данных»», 23.10.2026). A business process gives two, its own and its
+// route point's, in the order References names them.
+var referenceOrder = []Kind{
+	Catalog, Document, Enumeration, ChartOfCharacteristicTypes, ChartOfAccounts, ChartOfCalculationTypes,
+	BusinessProcess, Task, ExchangePlan,
+}
+
+// ReferenceKinds are the kinds whose references a type is chosen among, in the
+// order the type editor lists them (referenceOrder). The tables of an external
+// source have references too and are not among them: the window offers them
+// only in the fields of their own source.
+func ReferenceKinds() []Kind {
+	return slices.Clone(referenceOrder)
+}
+
 // References name the types of a reference to an object of the kind (help:
 // СправочникСсылка.<Имя справочника>), the reference to the object itself
 // first; a business process has a second, to a point of its route. A kind
