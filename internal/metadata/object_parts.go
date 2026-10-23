@@ -496,7 +496,10 @@ var kindCompositionOf = map[Kind]kindComposition{
 	}),
 	// The addressing attributes of a task are no fields of its own sort:
 	// they stand between its attributes and its table parts.
-	TaskKind: {dataVersion: true, windows: taskWindows, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
+	TaskKind: {dataVersion: true, windows: taskWindows, queryTable: func(c *Catalog, id uuid.UUID) restrictionTable {
+		definition := c.Tasks[c.taskByID[id]]
+		return numberedTable(definition.Number, definition.DescriptionLength)
+	}, branches: []PartGroup{AddressingAttributesPart, AttributesPart, TablePartsPart},
 		rightsFolders: partFolders(AddressingAttributesPart, AttributesPart, TablePartsPart, StandardAttributesPart, CommandsPart), parts: func(c *Catalog, id uuid.UUID) []objectPart {
 			item := c.Tasks[c.taskByID[id]]
 			parts := declaredParts(item.Attributes, nil, nil)
@@ -543,7 +546,9 @@ var kindCompositionOf = map[Kind]kindComposition{
 		return table
 	}),
 	ExchangePlanKind: {dataVersion: true, described: true, windows: exchangePlanWindows, files: declaredFilesOf, rightsFolders: referenceFolders},
-	BusinessProcessKind: {dataVersion: true, described: true, windows: businessProcessWindows, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
+	BusinessProcessKind: {dataVersion: true, described: true, windows: businessProcessWindows, queryTable: func(c *Catalog, id uuid.UUID) restrictionTable {
+		return numberedTable(c.BusinessProcesses[c.businessProcessByID[id]].Number, 0)
+	}, identities: func(c *Catalog, id uuid.UUID) []heldIdentity {
 		return identitiesOf("route point", c.BusinessProcesses[c.businessProcessByID[id]].Route.Points)
 	}, rightsFolders: referenceFolders, files: func(c *Catalog, id uuid.UUID) objectFiles {
 		// The route map keeps the pictures its items draw in a folder of
@@ -553,7 +558,9 @@ var kindCompositionOf = map[Kind]kindComposition{
 		files.route = &c.BusinessProcesses[c.businessProcessByID[id]].Route
 		return files
 	}},
-	DocumentKind: {dataVersion: true, described: true, windows: documentWindows, files: declaredFilesOf, rightsFolders: referenceFolders},
+	DocumentKind: {dataVersion: true, described: true, windows: documentWindows, queryTable: func(c *Catalog, id uuid.UUID) restrictionTable {
+		return numberedTable(c.Documents[c.documentByID[id]].Number, 0)
+	}, files: declaredFilesOf, rightsFolders: referenceFolders},
 	// The table of a register of information has the period where the
 	// register is periodic, the recorder where it is subordinate to one, and
 	// neither the line number nor the activity (pola-42…44, pola-57).
@@ -565,6 +572,15 @@ var kindCompositionOf = map[Kind]kindComposition{
 				"recorder": definition.WriteMode != InformationRegisterRecorder, "linenumber": true, "active": true}}
 		}},
 	AccumulationRegisterKind: {described: true, files: declaredFilesOf, rightsFolders: registerFolders, queryTable: noFieldTable},
+}
+
+// numberedTable is the table of a document, a business process or a task:
+// Номер only with a number of a length, Наименование of a task only with a
+// description of one (the ninth pass, pola-60…62; a document and a business
+// process have no description, 0); the number of a document of a numerator
+// is the numerator's, put in its place on load.
+func numberedTable(number DocumentNumber, descriptionLength int) restrictionTable {
+	return restrictionTable{absent: map[string]bool{"number": number.Length == 0, "description": descriptionLength == 0}}
 }
 
 // noFieldTable is the table of a register a restriction names no field of
