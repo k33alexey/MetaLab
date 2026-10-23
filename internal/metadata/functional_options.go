@@ -80,8 +80,10 @@ func DecodeFunctionalOption(source string, reader io.Reader, configuration proje
 		seen := map[string]bool{}
 		for index, item := range value.Content {
 			prefix := fmt.Sprintf("content[%d]", index)
-			if !usesOf(item.Kind).option.accepted() {
+			if _, known := kindInfoOf(item.Kind); !known {
 				issues = append(issues, prefix+".kind is not a kind of metadata object")
+			} else if !usesOf(item.Kind).option.accepted() {
+				issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot be in the content of a functional option: the designer does not offer it")
 			}
 			if item.Object.IsZero() {
 				issues = append(issues, prefix+".object must be a non-zero UUID")

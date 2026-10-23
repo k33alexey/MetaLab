@@ -17,13 +17,14 @@ import (
 // that the note appears.
 var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteUseWithoutSample: func(t *testing.T, root string) {
-		constant, defined, option := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+		// A numerator: the window of the content was not walked for it.
+		constant, numerator, option := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
 		writeMetadata(t, root, ConstantKind, constant, "format: 1\nid: "+constant+"\nname: Склады\ntitle: {ru: Склады}\n"+
 			"types: [{kind: boolean}]\n")
-		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Сумма\ntitle: {ru: Сумма}\n"+
-			"types: [{kind: number, precision: 15, scale: 2}]\n")
+		writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\n"+
+			"number: {type: string, length: 11, periodicity: none}\n")
 		writeMetadata(t, root, FunctionalOptionKind, option, "format: 1\nid: "+option+"\nname: Опция\ntitle: {ru: Опция}\n"+
-			"location: {kind: constants, object: "+constant+"}\ncontent:\n  - {kind: defined-types, object: "+defined+"}\n")
+			"location: {kind: constants, object: "+constant+"}\ncontent:\n  - {kind: "+string(NumeratorKind)+", object: "+numerator+"}\n")
 	},
 	NoteRightWithoutSample: func(t *testing.T, root string) {
 		id := uuid.MustNew()

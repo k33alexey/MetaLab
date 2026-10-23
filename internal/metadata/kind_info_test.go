@@ -239,6 +239,13 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 	// ВнешнийИсточникДанныхКубТаблицаИзмеренияОбъект). The rest hold no part a
 	// right is given on.
 	partsUnshown := []Kind{EnumerationKind, FilterCriterionKind, ExternalCubeKind, ExternalDimensionTableKind}
+	// The common kinds the window «Выбор объекта» of the content of a
+	// functional option does not offer (opis of the session parameter,
+	// 14.10.2026).
+	optionRefused := []Kind{RoleKind, SessionParameterKind, CommonModuleKind, EventSubscriptionKind, ScheduledJobKind,
+		CommandGroupKind, CommonTemplateKind, XDTOPackageKind, WebServiceKind, WSReferenceKind, WebSocketClientKind,
+		HTTPServiceKind, CommonPictureKind, StyleItemKind, StyleKind, FunctionalOptionKind, FunctionalOptionParameterKind,
+		SettingsStorageKind, DefinedTypeKind, LanguageKind}
 	// The help restricts reading, adding, changing and deleting only: a kind
 	// offered none of the four keeps no data to restrict.
 	keepsData := func(kind Kind) bool {
@@ -264,6 +271,8 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			switch {
 			case slices.Contains(shown[use], item.Kind):
 				expected = present
+			case use == "option" && slices.Contains(optionRefused, item.Kind):
+				expected = absent
 			case use == "registration" && !slices.Contains(exchanged, item.Kind):
 				expected = absent
 			case use == "restriction" && !keepsData(item.Kind):

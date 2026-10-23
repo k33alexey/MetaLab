@@ -335,3 +335,46 @@ func TestFunctionalOptionSwitchesEveryKindThePrototypeDoes(t *testing.T) {
 		t.Fatal("an accounting flag became an attribute of the chart")
 	}
 }
+
+// The window «Выбор объекта» of the content of a functional option offers,
+// of the common objects, subsystems, common attributes, exchange plans,
+// filter criteria, common commands and common forms, and then the objects
+// with data, reports and data processors (opis of the session parameter,
+// 14.10.2026); the exports put exactly these twenty-two kinds into the
+// content of their options. The other twenty common kinds the designer does
+// not offer. Both lists are written here, not read from kindUsesOf.
+//
+// Defect caught: a kind the designer never offers taken into the content
+// silently, as when it was unproven; a kind the exports use refused.
+func TestFunctionalOptionContentTakesTheKindsTheDesignerOffers(t *testing.T) {
+	t.Parallel()
+	decode := func(kind string) error {
+		_, err := DecodeFunctionalOption("option.yaml", strings.NewReader(`format: 1
+id: `+uuid.MustNew().String()+`
+name: Опция
+title: {ru: Опция}
+location: {kind: constants, object: `+uuid.MustNew().String()+`}
+content: [{kind: `+kind+`, object: `+uuid.MustNew().String()+`}]
+`), metadataConfiguration())
+		return err
+	}
+	for _, kind := range []string{"roles", "session-parameters", "common-modules", "event-subscriptions", "scheduled-jobs",
+		"command-groups", "common-templates", "xdto-packages", "web-services", "ws-references", "websocket-clients",
+		"http-services", "common-pictures", "style-items", "styles", "functional-options", "functional-options-parameters",
+		"settings-storages", "defined-types", "languages"} {
+		if err := decode(kind); err == nil || !strings.Contains(err.Error(), "content[0].kind "+kind+" cannot be in the content of a functional option") {
+			t.Errorf("%s in the content: %v", kind, err)
+		}
+	}
+	for _, kind := range []string{"subsystems", "common-attributes", "exchange-plans", "filter-criteria", "common-commands",
+		"common-forms", "constants", "catalogs", "documents", "document-journals", "enumerations", "reports", "data-processors",
+		"charts-of-characteristic-types", "charts-of-accounts", "charts-of-calculation-types", "information-registers",
+		"accumulation-registers", "accounting-registers", "calculation-registers", "business-processes", "tasks"} {
+		if err := decode(kind); err != nil {
+			t.Errorf("%s in the content was refused: %v", kind, err)
+		}
+	}
+	if err := decode("no-such-kind"); err == nil || !strings.Contains(err.Error(), "content[0].kind is not a kind of metadata object") {
+		t.Errorf("an unknown kind: %v", err)
+	}
+}
