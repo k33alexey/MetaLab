@@ -157,9 +157,11 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		default:
 			issues = append(issues, "periodicity must be day, month, quarter or year")
 		}
-		if len(value.Resources) == 0 {
-			issues = append(issues, "resources must contain at least one item: a calculation with no result is not a calculation")
-		}
+		// A register with no resource the designer keeps: «Проверка
+		// конфигурации» names a missing chart and recorders, and not missing
+		// resources, which it does name on a register of accumulation or of
+		// accounting (opis of 15.10.2026, registr-rascheta.md). It is carried
+		// and noted (NoteRegisterWithoutFields): it calculates nothing.
 		// The three schedule settings are one setting in three parts. Two of them
 		// without the first point into nothing.
 		if value.Schedule == nil && (value.ScheduleValue != nil || value.ScheduleDate != nil) {
@@ -171,6 +173,11 @@ func DecodeCalculationRegister(source string, reader io.Reader, configuration pr
 		// schedule keep the period of action.
 		if (value.Schedule != nil || value.ScheduleValue != nil || value.ScheduleDate != nil) && !value.ActionPeriod {
 			issues = append(issues, "a schedule needs the period of action: without it a record spreads over nothing")
+		}
+		// Nor does a period of action go without a schedule: «Не назначен
+		// график регистру с периодом действия» (the same opis).
+		if value.ActionPeriod && value.Schedule == nil {
+			issues = append(issues, "action_period needs a schedule: the designer refuses a register with a period of action and no schedule")
 		}
 		if value.Schedule != nil && (value.ScheduleValue == nil || value.ScheduleDate == nil) {
 			issues = append(issues, "a schedule needs both the resource its value is in and the dimension its date is in")

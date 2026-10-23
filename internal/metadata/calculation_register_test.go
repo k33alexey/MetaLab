@@ -289,14 +289,19 @@ movements: [`+calcRegister+`]
 `)
 		return root
 	}
-	for name, body := range map[string]string{
-		"период действия без конкуренции": `action_period: true
-`,
-		"базовый период без зависимости от базы": `base_period: true
-`,
-		"базовое измерение без зависимости от базы": `dimensions:
+	// Each case names its reason: a period of action also needs a schedule
+	// (2.497), so without one the register would be refused for that instead.
+	for name, test := range map[string]struct{ body, want string }{
+		"период действия без конкуренции": {`action_period: true
+schedule: ` + calcSchedule + `
+schedule_value: ` + calcScheduleValue + `
+schedule_date: ` + calcScheduleDate + `
+`, "has no competition over it"},
+		"базовый период без зависимости от базы": {`base_period: true
+`, "takes no base, so the period would be gathered over nothing"},
+		"базовое измерение без зависимости от базы": {`dimensions:
   - {id: ` + calcPerson + `, name: ФизическоеЛицо, title: {ru: Физическое лицо}, types: [{kind: catalog, reference: ` + calcPeople + `}], base: true}
-`,
+`, "is a base dimension, but"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -309,9 +314,9 @@ chart_of_calculation_types: `+calcChart+`
 periodicity: month
 resources:
   - {id: `+calcResult+`, name: Результат, title: {ru: Результат}, types: [{kind: number, precision: 15, scale: 2}]}
-`+body)
-			if _, err := Load(root); err == nil {
-				t.Fatal("a register outrunning its chart was accepted")
+`+test.body)
+			if message := loadRefused(t, root, "a register outrunning its chart"); !strings.Contains(message, test.want) {
+				t.Fatalf("refused for another reason: %v", message)
 			}
 		})
 	}
@@ -545,5 +550,46 @@ types: `+value+`
 		if (err == nil) != (name == "число") {
 			t.Errorf("defined type of %s: err = %v", name, err)
 		}
+	}
+}
+
+// A register with a period of action has a schedule: the designer refuses one
+// without - «Не назначен график регистру с периодом действия» - and keeps a
+// register with no resource, which its check of the configuration does not
+// name (opis of 15.10.2026, registr-rascheta.md). The latter is carried and
+// noted: it calculates nothing.
+//
+// Defect caught: a period of action with no schedule loaded; a register with
+// no resource refused, as the rule this replaced did, or taken silently.
+func TestACalculationRegisterNeedsAScheduleAndNoResource(t *testing.T) {
+	t.Parallel()
+	root := calculationProject(t, strings.Replace(calcRegisterBody,
+		"schedule: "+calcSchedule+"\nschedule_value: "+calcScheduleValue+"\nschedule_date: "+calcScheduleDate+"\n", "", 1))
+	if message := loadRefused(t, root, "a period of action with no schedule"); !strings.Contains(message,
+		"action_period needs a schedule: the designer refuses a register with a period of action and no schedule") {
+		t.Fatalf("refused for another reason: %v", message)
+	}
+	root = calculationProject(t, `format: 1
+id: `+calcRegister+`
+name: ОсновныеНачисления
+title: {ru: Основные начисления}
+chart_of_calculation_types: `+calcChart+`
+periodicity: month
+`)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a register with no resource was refused: %v", err)
+	}
+	var noted []Note
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteRegisterWithoutFields {
+			noted = append(noted, note)
+		}
+	}
+	if len(noted) != 1 || noted[0].Where != "calculation-registers ОсновныеНачисления" || noted[0].Written != "no resources" {
+		t.Fatalf("notes = %+v, want the register with no resources", noted)
+	}
+	if _, err := catalog.ApplicationSchema(); err != nil {
+		t.Fatalf("the schema of a register with no resource: %v", err)
 	}
 }

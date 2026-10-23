@@ -165,8 +165,9 @@ func init() {
 			"Измерение перерасчёта без измерения регистра или без данных ведущих регистров.",
 			"Несётся как записано и ничего не пересчитывает; без измерения регистра колонки у него нет."},
 		NoteKindInfo{NoteRegisterWithoutFields,
-			"Регистр сведений без измерений, ресурсов и реквизитов — таким он бывает сразу после создания.",
-			"Несётся как записан: одна пустая запись на период."},
+			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
+				"после создания; конфигуратор его хранит и проверкой конфигурации не отвергает.",
+			"Несётся как записан: у регистра сведений — одна пустая запись на период, регистр расчёта ничего не считает."},
 		NoteKindInfo{NoteDuplicateAggregate,
 			"Два агрегата регистра накопления с теми же измерениями и той же периодичностью.",
 			"Оба несутся как записаны; второй повторяет первый."},
@@ -935,6 +936,11 @@ func noteRegisterWithoutFields(catalog *Catalog, note func(where, written string
 	for _, register := range catalog.InformationRegisters {
 		if len(register.Dimensions)+len(register.Resources)+len(register.Attributes) == 0 {
 			note("information-registers "+register.Name, "no fields")
+		}
+	}
+	for _, register := range catalog.CalculationRegisters {
+		if len(register.Resources) == 0 {
+			note("calculation-registers "+register.Name, "no resources")
 		}
 	}
 }
