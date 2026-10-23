@@ -410,7 +410,7 @@ func cloneCommonAttributeDefinition(value CommonAttributeDefinition) CommonAttri
 // (commonAttributeTargets), and not in a switch of its own per question.
 type commonAttributeTarget struct {
 	id   uuid.UUID
-	kind string
+	kind Kind
 	name string
 	// fields are the fields a common attribute may not share a name with,
 	// the ones propagated before among them.
@@ -461,74 +461,74 @@ func (catalog *Catalog) commonAttributeTargets() []commonAttributeTarget {
 	// object is a kind whose object keeps the field among its attributes;
 	// the rest of what holds a name is the other lists the kind passes. Only
 	// the attributes change while propagating, so the rest is read once.
-	object := func(kind string, id uuid.UUID, name string, attributes *[]Attribute, others ...[]Attribute) {
+	object := func(kind Kind, id uuid.UUID, name string, attributes *[]Attribute, others ...[]Attribute) {
 		targets = append(targets, commonAttributeTarget{id: id, kind: kind, name: name,
 			fields: func() []Attribute { return slices.Concat(append([][]Attribute{*attributes}, others...)...) },
 			add:    func(field Attribute) { *attributes = append(*attributes, field) }})
 	}
 	// record is a kind whose record gets the field in a list of its own.
-	record := func(kind string, id uuid.UUID, name string, fields *[]Attribute, others []Attribute,
+	record := func(kind Kind, id uuid.UUID, name string, fields *[]Attribute, others []Attribute,
 		takes func(CommonAttributeDefinition) bool) {
 		targets = append(targets, commonAttributeTarget{id: id, kind: kind, name: name, takes: takes,
 			fields: func() []Attribute { return slices.Concat(others, *fields) },
 			add:    func(field Attribute) { *fields = append(*fields, field) }})
 	}
 	eachItem(catalog.Catalogs, func(item *CatalogDefinition) {
-		object("catalog", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(CatalogKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	eachItem(catalog.Documents, func(item *DocumentDefinition) {
-		object("document", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(DocumentKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	eachItem(catalog.InformationRegisters, func(item *InformationRegisterDefinition) {
-		object("information register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
+		object(InformationRegisterKind, item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
 	})
 	eachItem(catalog.AccumulationRegisters, func(item *AccumulationRegisterDefinition) {
-		object("accumulation register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
+		object(AccumulationRegisterKind, item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), item.Resources)
 	})
 	eachItem(catalog.BusinessProcesses, func(item *BusinessProcessDefinition) {
-		object("business process", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(BusinessProcessKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	// The addressing attributes of a task and the flags of a chart of
 	// accounts are fields of their own table as well, and a name taken by
 	// one of them is taken.
 	eachItem(catalog.Tasks, func(item *TaskDefinition) {
-		object("task", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AddressingAttributes))
+		object(TaskKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AddressingAttributes))
 	})
 	eachItem(catalog.ChartsOfCharacteristicTypes, func(item *ChartOfCharacteristicTypesDefinition) {
-		object("chart of characteristic types", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(ChartOfCharacteristicTypesKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	eachItem(catalog.ChartsOfAccounts, func(item *ChartOfAccountsDefinition) {
-		object("chart of accounts", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AccountingFlags))
+		object(ChartOfAccountsKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts), identityFields(item.AccountingFlags))
 	})
 	eachItem(catalog.ChartsOfCalculationTypes, func(item *ChartOfCalculationTypesDefinition) {
-		object("chart of calculation types", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(ChartOfCalculationTypesKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	eachItem(catalog.ExchangePlans, func(item *ExchangePlanDefinition) {
-		object("exchange plan", item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
+		object(ExchangePlanKind, item.ID, item.Name, &item.Attributes, tablePartNames(item.TableParts))
 	})
 	eachItem(catalog.AccountingRegisters, func(item *AccountingRegisterDefinition) {
-		object("accounting register", item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources))
+		object(AccountingRegisterKind, item.ID, item.Name, &item.Attributes, RegisterDimensionAttributes(item.Dimensions), accountingResourceAttributes(item.Resources))
 	})
 	// A calculation register keeps its attributes in a list of its own type.
 	eachItem(catalog.CalculationRegisters, func(item *CalculationRegisterDefinition) {
 		others := slices.Concat(item.Resources, RegisterDimensionAttributes(item.Dimensions))
-		targets = append(targets, commonAttributeTarget{id: item.ID, kind: "calculation register", name: item.Name,
+		targets = append(targets, commonAttributeTarget{id: item.ID, kind: CalculationRegisterKind, name: item.Name,
 			fields: func() []Attribute { return slices.Concat(item.attributeFields(), others) },
 			add: func(field Attribute) {
 				item.Attributes = append(item.Attributes, CalculationRegisterAttribute{Attribute: field})
 			}})
 	})
 	eachItem(catalog.Sequences, func(item *SequenceDefinition) {
-		record("sequence", item.ID, item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions), CommonAttributeDefinition.recordField)
+		record(SequenceKind, item.ID, item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions), CommonAttributeDefinition.recordField)
 	})
 	eachItem(catalog.CalculationRegisters, func(register *CalculationRegisterDefinition) {
 		eachItem(register.Recalculations, func(item *Recalculation) {
-			record("recalculation", item.ID, register.Name+"."+item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions),
+			record(RecalculationKind, item.ID, register.Name+"."+item.Name, &item.CommonAttributeFields, identityFields(item.Dimensions),
 				CommonAttributeDefinition.recordField)
 		})
 	})
 	eachItem(catalog.Constants, func(item *Constant) {
-		record("constant", item.ID, item.Name, &item.CommonAttributeFields, nil, CommonAttributeDefinition.jointSeparator)
+		record(ConstantKind, item.ID, item.Name, &item.CommonAttributeFields, nil, CommonAttributeDefinition.jointSeparator)
 	})
 	return targets
 }
@@ -629,6 +629,15 @@ func (catalog *Catalog) propagateCommonAttributes() error {
 			}
 			if slices.ContainsFunc(fields, func(field Attribute) bool { return strings.EqualFold(field.Name, common.Name) }) {
 				return fmt.Errorf("common attribute %s collides with an existing field of %s %s", common.Name, target.kind, target.name)
+			}
+			// Nor the name of a standard attribute of the object, in either
+			// language, case aside: the designer refuses «Номер» on an
+			// attribute whose content takes a document - «Конфликт имени
+			// общего реквизита» (opis of 15.10.2026, obshchij-rekvizit.md) -
+			// by the names the object's own attribute may not take.
+			if reservedStandardName(target.kind, common.Name) {
+				return fmt.Errorf("common attribute %s is named as a standard attribute of %s %s: the designer refuses the name on an attribute whose content takes the object",
+					common.Name, target.kind, target.name)
 			}
 			// A copy per object, not the one attribute in all of them. The
 			// attribute is built once outside the loop, so every object it
