@@ -609,7 +609,7 @@ func (catalog *Catalog) chartOfAccountsTables(definition ChartOfAccountsDefiniti
 		},
 	}
 	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
-	appendCodeColumn(&table, definition.ID, definition.Code)
+	appendCodeColumn(&table, definition.ID, "code", definition.Code)
 	// The order is derived from the code and the mask, so it is stored rather
 	// than computed on every read: it is what the list sorts by. With neither
 	// an order nor a code there is nothing to order by, and no column.

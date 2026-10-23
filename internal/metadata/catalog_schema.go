@@ -219,7 +219,7 @@ func (catalog *Catalog) catalogTables(definition CatalogDefinition) (schemadiff.
 		},
 		Indexes: []schemadiff.Index{{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
-	appendCodeColumn(&table, definition.ID, definition.Code)
+	appendCodeColumn(&table, definition.ID, "code", definition.Code)
 	appendDescriptionColumn(&table, definition.DescriptionLength)
 	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
 	if err := catalog.ownerColumns(&table, definition); err != nil {
@@ -353,8 +353,13 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		return attributeStorage{sqlType: "jsonb", composite: true}, nil
 	}
 	resolved, err := catalog.expandTypes(types, nil)
-	if err != nil || len(resolved) == 0 {
+	if err != nil {
 		return attributeStorage{}, fmt.Errorf("resolve attribute types: %w", err)
+	}
+	// A defined type may be «Произвольный», and the designer lets it be given
+	// to a stored attribute; a column has to know what it keeps.
+	if len(resolved) == 0 {
+		return attributeStorage{}, fmt.Errorf("the type is arbitrary: a defined type of no type may hold anything for a form or a data processor, a stored field must say what it holds")
 	}
 	// A defined type may hold the object of a document or a value table, and
 	// the designer lets such a defined type be given to a stored attribute -
@@ -369,6 +374,9 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 		}
 		if storedNowhere(item.Kind) {
 			return attributeStorage{}, fmt.Errorf("type %s is not a type of anything the infobase stores: a defined type may hold it for a form or a command, not for a stored field", item.Kind)
+		}
+		if formOnlyKinds[item.Kind] {
+			return attributeStorage{}, fmt.Errorf("type %s is a type of what a form shows and cannot be stored: a defined type may hold it for a form, not for a stored field", item.Kind)
 		}
 	}
 	if len(resolved) != 1 {
@@ -424,18 +432,21 @@ func (catalog *Catalog) attributeStorage(types []Type) (attributeStorage, error)
 // from 0 adds the column to a table that already has rows, and the prototype
 // gives those rows an empty code - an empty string, checked the same day. A
 // column NOT NULL without a default could not be added there at all.
-func appendCodeColumn(table *schemadiff.Table, id uuid.UUID, code CatalogCode) {
+//
+// The number of a business process and of a task is the same column under
+// the name number - see appendNumberColumn.
+func appendCodeColumn(table *schemadiff.Table, id uuid.UUID, name string, code CatalogCode) {
 	if code.Length == 0 {
 		return
 	}
-	column := schemadiff.Column{Name: "code", Type: codeSQLType(code), Nullable: false, Default: emptyCodeDefault(code)}
+	column := schemadiff.Column{Name: name, Type: codeSQLType(code), Nullable: false, Default: emptyCodeDefault(code)}
 	// The code stands where it always stood, after the identity and the
 	// version, so a table built anew lays out as before.
 	table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
 	if code.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", id), Type: "unique", Definition: "UNIQUE (code)"})
+		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", id), Type: "unique", Definition: "UNIQUE (" + name + ")"})
 	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{"code"}})
+		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{name}})
 	}
 }
 

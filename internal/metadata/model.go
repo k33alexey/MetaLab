@@ -1898,6 +1898,18 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	return issues
 }
 
+// standsUnqualified checks a type of a kind that takes no qualifier: where the
+// place does not take the kind, the refusal says what the kind is.
+func standsUnqualified(prefix string, item Type, allowed bool, what string, place typePlace) []string {
+	if !allowed {
+		return []string{prefix + ".kind " + string(item.Kind) + " " + what + " and cannot stand " + placeName(place)}
+	}
+	if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
+		return []string{prefix + " has unsupported qualifiers"}
+	}
+	return nil
+}
+
 func validateTypes(path string, types []Type) []string {
 	return validateTypesIn(path, types, placeStored)
 }
@@ -1912,9 +1924,13 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 	// the prototype takes it as arbitrary: the configurations being moved do
 	// it 20, 16 and 15 times, every time on the object and never in a table
 	// part. An attribute of a form is left so 6253, 4910 and 2023 times. A
-	// stored field must say what it holds.
+	// defined type may be «Произвольный» too: the designer offers it first in
+	// the editor of the type and «Проверка конфигурации» takes it (opis of
+	// the defined type, 14.10.2026); a stored field given such a defined type
+	// is refused when the database is built. A stored field must say what it
+	// holds.
 	if len(types) == 0 {
-		if place == placeRunningObject || place == placeFormAttribute {
+		if place == placeRunningObject || place == placeFormAttribute || place == placeDefinedType {
 			return nil
 		}
 		return []string{path + " must contain at least one type"}
@@ -1959,11 +1975,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, prefix+".name belongs to a platform type")
 		}
 		if storedNowhere(item.Kind) {
-			if !mayStandUnstored(place) {
-				issues = append(issues, prefix+".kind "+string(item.Kind)+" is not a type of anything the infobase stores and cannot stand "+placeName(place))
-			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
-				issues = append(issues, prefix+" has unsupported qualifiers")
-			}
+			issues = append(issues, standsUnqualified(prefix, item, mayStandUnstored(place), "is not a type of anything the infobase stores", place)...)
 			continue
 		}
 		if place == placeDefinedType && IsTypeSet(item.Kind) {
@@ -1971,12 +1983,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			continue
 		}
 		if formOnlyKinds[item.Kind] {
-			// Null is the one of them a session parameter may hold too.
-			if place != placeFormAttribute && !(place == placeSessionParameter && sessionParameterValueTypes[item.Kind]) {
-				issues = append(issues, prefix+".kind "+string(item.Kind)+" is a type of an attribute of a form and cannot stand "+placeName(place))
-			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
-				issues = append(issues, prefix+" has unsupported qualifiers")
-			}
+			issues = append(issues, standsUnqualified(prefix, item, formKindAllowedIn(item.Kind, place), "is a type of an attribute of a form", place)...)
 			continue
 		}
 		// The designer does not offer binary data as the type of an attribute,
@@ -1987,11 +1994,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			continue
 		}
 		if isObjectType(item.Kind) || isValueType(item.Kind) {
-			if !allowedIn(item.Kind, place) {
-				issues = append(issues, prefix+".kind "+string(item.Kind)+" lives in memory only and cannot stand "+placeName(place))
-			} else if item.Length != 0 || item.Precision != 0 || item.Scale != 0 || item.FixedLength || item.NonNegative || item.DateParts != "" {
-				issues = append(issues, prefix+" has unsupported qualifiers")
-			}
+			issues = append(issues, standsUnqualified(prefix, item, allowedIn(item.Kind, place), "lives in memory only", place)...)
 			continue
 		}
 		if item.DateParts != "" && item.Kind != DateType {

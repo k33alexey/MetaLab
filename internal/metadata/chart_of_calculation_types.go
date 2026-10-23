@@ -262,7 +262,7 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 	// of every calculation type in the prototype, not of those that compete.
 	table.Columns = append(table.Columns, schemadiff.Column{Name: "action_period_is_base", Type: "boolean", Nullable: false, Default: "false"})
 	dropSwitchedOffColumn(&table, "description", definition.DescriptionLength)
-	appendCodeColumn(&table, definition.ID, definition.Code)
+	appendCodeColumn(&table, definition.ID, "code", definition.Code)
 	for _, attribute := range definition.Attributes {
 		if err := catalog.appendAttributeSchema(&table, attribute); err != nil {
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of calculation types %s attribute %s: %w", definition.Name, attribute.Name, err)

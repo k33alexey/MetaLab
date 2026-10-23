@@ -185,7 +185,7 @@ number: {type: number, length: 9, auto: true, periodicity: year, fixed_length: t
 	if got := codeSQLType(goods.Code); got != "numeric(9,0)" {
 		t.Fatalf("the code column is %s", got)
 	}
-	if got := documentNumberSQLType(invoice.Number); got != "numeric(9,0)" {
+	if got := codeSQLType(invoice.Number.asCode()); got != "numeric(9,0)" {
 		t.Fatalf("the number column is %s", got)
 	}
 }
@@ -213,7 +213,7 @@ number: {type: string, length: 11, unique: true, periodicity: year, fixed_length
 	}
 	// And a document that takes this numbering stores it the numerator's way:
 	// the column is the numerator's business, because the number is.
-	if column := documentNumberSQLType(numerator.Number); column != "character(11)" {
+	if column := codeSQLType(numerator.Number.asCode()); column != "character(11)" {
 		t.Fatalf("shared number column = %s", column)
 	}
 }

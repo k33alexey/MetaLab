@@ -32,8 +32,8 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 	// other than 0. The column has the empty number for a default, so that a
 	// number lengthened from 0 can be added to a table that has rows.
 	if documentHasNumber(definition) {
-		column := schemadiff.Column{Name: "number", Type: documentNumberSQLType(definition.Number), Nullable: false,
-			Default: emptyCodeDefault(CatalogCode{Type: definition.Number.Type, FixedLength: definition.Number.FixedLength})}
+		column := schemadiff.Column{Name: "number", Type: codeSQLType(definition.Number.asCode()), Nullable: false,
+			Default: emptyCodeDefault(definition.Number.asCode())}
 		table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
 		if definition.Number.Unique {
 			table.Constraints = append(table.Constraints, schemadiff.Constraint{
@@ -62,14 +62,10 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 	return table, parts, nil
 }
 
-func documentNumberSQLType(number DocumentNumber) string {
-	if number.Type == NumberType {
-		return fmt.Sprintf("numeric(%d,0)", number.Length)
-	}
-	if number.FixedLength {
-		return fmt.Sprintf("character(%d)", number.Length)
-	}
-	return fmt.Sprintf("character varying(%d)", number.Length)
+// asCode is the number as the code it is stored like: a column of the same
+// type, padded the same way, unique or indexed the same way.
+func (number DocumentNumber) asCode() CatalogCode {
+	return CatalogCode{Type: number.Type, Length: number.Length, Unique: number.Unique, FixedLength: number.FixedLength}
 }
 
 // documentHasNumber says the document's number is there at all: a length of 0
@@ -82,15 +78,5 @@ func documentHasNumber(definition DocumentDefinition) bool { return definition.N
 // uniqueness by it. The column's default is the empty number, so that a number
 // lengthened from 0 can be added to a table that has rows.
 func appendNumberColumn(table *schemadiff.Table, id uuid.UUID, number DocumentNumber) {
-	if number.Length == 0 {
-		return
-	}
-	column := schemadiff.Column{Name: "number", Type: documentNumberSQLType(number), Nullable: false,
-		Default: emptyCodeDefault(CatalogCode{Type: number.Type, FixedLength: number.FixedLength})}
-	table.Columns = append(table.Columns[:2], append([]schemadiff.Column{column}, table.Columns[2:]...)...)
-	if number.Unique {
-		table.Constraints = append(table.Constraints, schemadiff.Constraint{Name: physicalObjectName("uq", id), Type: "unique", Definition: "UNIQUE (number)"})
-	} else {
-		table.Indexes = append(table.Indexes, schemadiff.Index{Name: physicalObjectName("ic", id), Method: "btree", Keys: []string{"number"}})
-	}
+	appendCodeColumn(table, id, "number", number.asCode())
 }

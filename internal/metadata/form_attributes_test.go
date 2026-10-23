@@ -255,9 +255,10 @@ func TestAFormAttributeTakesTheLongestName(t *testing.T) {
 }
 
 // Every type only a form holds is accepted in an attribute of a form and in a
-// column of one, and refused everywhere else - a field the database stores, a
-// defined type, an attribute of a data processor - by a message that says
-// where it may stand.
+// column of one, and refused everywhere else - a field the database stores, an
+// attribute of a data processor, the parameter of a command - by a message
+// that says where it may stand. A defined type takes them but the planner:
+// TestADefinedTypeHoldsWhatItsEditorOffers.
 //
 // Defect caught: a form type left out of the model, so that the 3451 dynamic
 // lists and the rest of the forms being moved are refused; and a form type
@@ -282,7 +283,7 @@ func TestFormOnlyTypesStandInAFormAndNowhereElse(t *testing.T) {
 				t.Fatalf("a form refused its own type: %v", err)
 			}
 			for place, where := range map[typePlace]string{
-				placeStored: "in a field the database stores", placeDefinedType: "in a defined type",
+				placeStored:        "in a field the database stores",
 				placeRunningObject: "in an attribute of a data processor or a report", placeCommandParameter: "in the parameter of a command",
 			} {
 				issues := validateTypesIn("types", []Type{{Kind: kind}}, place)

@@ -239,6 +239,24 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 	NullType: true,
 }
 
+// formKindAllowedIn says whether a kind of formOnlyKinds may stand in the
+// place. A defined type holds every one of them but the planner: the designer
+// offers them in its editor of the type and saves them, and a search of that
+// editor finds no planner (opis of the defined type, 14.10.2026). Null is the
+// one of them a session parameter may hold too.
+func formKindAllowedIn(kind TypeKind, place typePlace) bool {
+	switch place {
+	case placeFormAttribute:
+		return true
+	case placeDefinedType:
+		return kind != PlannerType
+	case placeSessionParameter:
+		return sessionParameterValueTypes[kind]
+	default:
+		return false
+	}
+}
+
 // allowedIn says whether a kind that lives in memory may stand in the place.
 // Stored kinds are not asked: they may stand anywhere.
 func allowedIn(kind TypeKind, place typePlace) bool {

@@ -251,7 +251,7 @@ func (catalog *Catalog) chartOfCharacteristicTypesTables(definition ChartOfChara
 		},
 		Indexes: []schemadiff.Index{{Name: physicalObjectName("im", definition.ID), Method: "btree", Keys: []string{"deletion_mark"}}},
 	}
-	appendCodeColumn(&table, definition.ID, definition.Code)
+	appendCodeColumn(&table, definition.ID, "code", definition.Code)
 	appendDescriptionColumn(&table, definition.DescriptionLength)
 	appendHierarchyColumns(&table, definition.ID, definition.Hierarchy)
 	for _, attribute := range definition.Attributes {
