@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/k33alexey/MetaLab/internal/integrationtest"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -122,25 +123,7 @@ func forgetIntegrationProject(t *testing.T, pool *pgxpool.Pool, projectID uuid.U
 }
 
 // forgetIntegrationObjects removes, when the test ends, what the catalog's
-// objects leave in the platform's own tables: the counters of codes and
-// numbers, the marks of deletion, how the totals of a register are kept, the
-// values of constants. Those tables lie outside the application schema, so
-// dropping it does not.
+// objects leave in the platform's own tables (integrationtest.ForgetObjects).
 func forgetIntegrationObjects(t *testing.T, pool *pgxpool.Pool, catalog *Catalog) {
-	var ids []string
-	for _, item := range kindInfos {
-		objects, ok := catalog.objectsOf(item.kind)
-		if !ok {
-			continue
-		}
-		for index := range objects.Len() {
-			ids = append(ids, headOf(objects.Index(index).Interface()).id.String())
-		}
-	}
-	for table, column := range map[string]string{
-		"object_sequences": "metadata_id", "object_deletions": "metadata_id",
-		"register_totals_modes": "metadata_id", "constant_values": "constant_id",
-	} {
-		integrationCleanup(t, pool, "DELETE FROM ml_core."+table+" WHERE "+column+" = ANY($1::uuid[])", ids)
-	}
+	integrationtest.ForgetObjects(t, pool, catalog.ObjectIDs())
 }

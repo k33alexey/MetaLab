@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/k33alexey/MetaLab/internal/integrationtest"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/publication"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
@@ -143,14 +145,7 @@ func saveDataStudio(t *testing.T) (context.Context, *pgxpool.Pool, string, http.
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupContext, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanupContext, "DROP TABLE IF EXISTS ml_core.database_state")
-		_, _ = pool.Exec(cleanupContext, "DELETE FROM ml_core.migration_journal WHERE project_id = '10000000-0000-4000-8000-000000000001'")
-		pool.Close()
-	})
+	t.Cleanup(pool.Close)
 	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +154,11 @@ func saveDataStudio(t *testing.T) (context.Context, *pgxpool.Pool, string, http.
 	}
 
 	root := copyDemoProjectForStudioTest(t)
+	demo, err := metadata.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	integrationtest.ForgetSavedProject(t, pool, demo.Project.ID, demo.ObjectIDs())
 	runStudioGit(t, root, "init", "-b", "main")
 	runStudioGit(t, root, "config", "user.name", "MetaLab Test")
 	runStudioGit(t, root, "config", "user.email", "metalab-test@example.invalid")

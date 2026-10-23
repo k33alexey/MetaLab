@@ -845,6 +845,24 @@ func (catalog *Catalog) ConstantByID(id uuid.UUID) (Constant, bool) {
 	return cloneConstant(catalog.Constants[index]), true
 }
 
+// ObjectIDs is the identifier of every object the catalog holds, kind by
+// kind: the platform's own tables key what an object leaves in them by it.
+// It reads the objects themselves, not the index of a load, so a catalog
+// put together in place answers too.
+func (catalog *Catalog) ObjectIDs() []uuid.UUID {
+	var ids []uuid.UUID
+	for _, item := range kindInfos {
+		objects, ok := catalog.objectsOf(item.kind)
+		if !ok {
+			continue
+		}
+		for index := range objects.Len() {
+			ids = append(ids, headOf(objects.Index(index).Interface()).id)
+		}
+	}
+	return ids
+}
+
 func (catalog *Catalog) ConstantIDs() []uuid.UUID {
 	return itemIDs(catalog.Constants)
 }

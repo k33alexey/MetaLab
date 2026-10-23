@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/k33alexey/MetaLab/internal/integrationtest"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -33,14 +35,7 @@ func TestSaveDataIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupContext, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE")
-		_, _ = pool.Exec(cleanupContext, "DROP TABLE IF EXISTS ml_core.database_state")
-		_, _ = pool.Exec(cleanupContext, "DELETE FROM ml_core.migration_journal WHERE project_id = $1", projectID.String())
-		pool.Close()
-	})
+	t.Cleanup(pool.Close)
 	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schemadiff.ApplicationSchema}.Sanitize()+" CASCADE"); err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +44,11 @@ func TestSaveDataIntegration(t *testing.T) {
 	}
 
 	root := demoProjectCopy(t)
+	demo, err := metadata.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	integrationtest.ForgetSavedProject(t, pool, demo.Project.ID, demo.ObjectIDs())
 	runSaveDataGit(t, root, "init", "-b", "main")
 	runSaveDataGit(t, root, "config", "user.name", "MetaLab Test")
 	runSaveDataGit(t, root, "config", "user.email", "metalab-test@example.invalid")
@@ -95,7 +95,7 @@ func TestSaveDataIntegration(t *testing.T) {
 	// turnover and carry no format mark. Saving must rebuild them as balances
 	// in its own transaction - here from no movements at all, so the stale row
 	// has to go - and mark the register.
-	registerID := "10000000-0000-4000-8000-000000000301"
+	const registerID = "10000000-0000-4000-8000-000000000301"
 	totals := pgx.Identifier{schemadiff.ApplicationSchema, "ta_" + strings.ReplaceAll(registerID, "-", "")}.Sanitize()
 	if _, err := pool.Exec(ctx, "INSERT INTO "+totals+" (total_period, totals_split, dimension_key) VALUES ('2025-10-01T00:00:00Z', 0, repeat('a', 64))"); err != nil {
 		t.Fatal(err)
