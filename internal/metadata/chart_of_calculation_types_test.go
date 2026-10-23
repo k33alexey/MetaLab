@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -196,5 +197,43 @@ description_length: 100
 				t.Fatal("a rule that points at nothing was accepted")
 			}
 		})
+	}
+}
+
+// A plan depending on a base names a base chart: «Проверка конфигурации»
+// refuses one naming none (opis of 15.10.2026, plan-vidov-rascheta.md). Base
+// charts under no dependency the designer keeps and does not refuse: taken,
+// with no note. The texts are written out here.
+//
+// Defect caught: a dependency with no base chart loaded, or noted instead of
+// refused; base charts under no dependency refused or noted.
+func TestABaseDependencyNamesABaseChart(t *testing.T) {
+	t.Parallel()
+	chart := func(rest string) string {
+		return "format: 1\nid: " + calculationTypesID + "\nname: ОсновныеНачисления\ntitle: {ru: Основные}\n" +
+			"code: {type: string, length: 5}\ndescription_length: 100\naction_period_use: true\n" + rest
+	}
+	for _, dependency := range []string{"by-action-period", "by-registration-period"} {
+		root := metadataProject(t)
+		writeMetadata(t, root, ChartOfCalculationTypesKind, calculationTypesID, chart("base_dependency: "+dependency+"\n"))
+		if message := loadRefused(t, root, dependency+" with no base chart"); !strings.Contains(message,
+			"base_dependency "+dependency+" takes the base from base charts, and base_charts names none") {
+			t.Fatalf("%s with no base chart refused for another reason: %v", dependency, message)
+		}
+	}
+	for name, rest := range map[string]string{
+		"a dependency with its base chart": "base_dependency: by-action-period\nbase_charts: [" + calculationTypesID + "]\n",
+		"base charts under none":           "base_dependency: none\nbase_charts: [" + calculationTypesID + "]\n",
+		"base charts under nothing said":   "base_charts: [" + calculationTypesID + "]\n",
+	} {
+		root := metadataProject(t)
+		writeMetadata(t, root, ChartOfCalculationTypesKind, calculationTypesID, chart(rest))
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatalf("%s was refused: %v", name, err)
+		}
+		if notes := catalog.Notes(); len(notes) != 0 {
+			t.Fatalf("%s is noted: %+v", name, notes)
+		}
 	}
 }

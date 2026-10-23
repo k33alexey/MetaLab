@@ -3,6 +3,7 @@ package metadata
 import (
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -182,8 +183,10 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 		want []string
 	}
 	var objects []object
+	// «{self}» in the settings is the identifier of the object written.
 	write := func(kind Kind, name, settings string, want ...string) uuid.UUID {
 		id := uuid.MustNew()
+		settings = strings.ReplaceAll(settings, "{self}", id.String())
 		writeMetadata(t, root, kind, id.String(), "format: 1\nid: "+id.String()+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+settings)
 		objects = append(objects, object{kind, id, name, want})
 		return id
@@ -234,7 +237,7 @@ func TestTheFieldsOfARestrictionAreThoseOfTheTableOfItsObject(t *testing.T) {
 		return []string{part, "НомерСтроки", "ВидРасчета", "Предопределенный"}
 	}
 	write(ChartOfCalculationTypesKind, "Начисления", "code: {type: string, length: 5}\ndescription_length: 100\n"+
-		"action_period_use: true\nbase_dependency: by-action-period\nattributes:\n"+attribute("Категория")+tablePart("Показатели", "Показатель", "Значение"),
+		"action_period_use: true\nbase_dependency: by-action-period\nbase_charts: [{self}]\nattributes:\n"+attribute("Категория")+tablePart("Показатели", "Показатель", "Значение"),
 		list(slices.Concat([]string{"Код", "Наименование", "ПериодДействияБазовый"}, competition("БазовыеВидыРасчета"),
 			competition("ВедущиеВидыРасчета"), competition("ВытесняющиеВидыРасчета"),
 			[]string{"Категория", "Показатели", "НомерСтроки", "Показатель", "Значение"})...)...)

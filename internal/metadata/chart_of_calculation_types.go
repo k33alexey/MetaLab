@@ -132,10 +132,15 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 		default:
 			issues = append(issues, "base_dependency must be none, by-action-period or by-registration-period")
 		}
-		// A dependency on a base with no charts to take it from, and base charts
-		// under no dependency, are halves the configurator saves, as it saves the
-		// halves of a chart of accounts' analytics. Both are carried and noted:
-		// the base is gathered from the charts named, and none named gives none.
+		// A dependency on a base with no chart to take it from the designer
+		// refuses - «Проверка конфигурации»: no base chart is set for a plan
+		// that depends on a base (opis of 15.10.2026,
+		// plan-vidov-rascheta.md). Base charts under no dependency it keeps -
+		// the flags stay set and greyed - and does not refuse: they are
+		// carried and change nothing.
+		if takesABase(value) && len(value.BaseCharts) == 0 {
+			issues = append(issues, "base_dependency "+string(value.BaseDependency)+" takes the base from base charts, and base_charts names none: the designer refuses a dependency on a base with no base chart")
+		}
 		seen := map[uuid.UUID]bool{}
 		for index, chart := range value.BaseCharts {
 			if chart.IsZero() {

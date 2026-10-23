@@ -138,9 +138,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteAutoOrderWithoutLength: func(t *testing.T, root string) {
 		noteChart(t, root, ChartOfAccountsKind, "auto_order_by_code: true\n")
 	},
-	NoteBaseDependencyHalfSet: func(t *testing.T, root string) {
-		noteChart(t, root, ChartOfCalculationTypesKind, "base_dependency: by-action-period\n")
-	},
 	NoteLengthZeroUnchecked: func(t *testing.T, root string) {
 		id := uuid.MustNew().String()
 		writeMetadata(t, root, TaskKind, id, "format: 1\nid: "+id+"\nname: Задача1\ntitle: {ru: Задача}\n"+

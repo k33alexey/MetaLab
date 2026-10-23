@@ -35,7 +35,6 @@ const (
 	NoteFullTextInputOutsideIndex  NoteKind = "full-text-input-outside-index"
 	NoteExtDimensionsHalfSet       NoteKind = "ext-dimensions-half-set"
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
-	NoteBaseDependencyHalfSet      NoteKind = "base-dependency-half-set"
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
 	NoteJournalShowsNothing        NoteKind = "journal-shows-nothing"
 	NoteSequenceWithoutDocuments   NoteKind = "sequence-without-documents"
@@ -152,9 +151,6 @@ func init() {
 		NoteKindInfo{NoteAutoOrderWithoutLength,
 			"Автопорядок по коду у плана счетов без длины порядка.",
 			"Несётся как записан; порядок строится по ширине кода."},
-		NoteKindInfo{NoteBaseDependencyHalfSet,
-			"Зависимость от базы у плана видов расчёта без базовых планов или базовые планы без зависимости.",
-			"Несётся как записано; база собирается из названных базовых планов, без них — пуста."},
 		NoteKindInfo{NoteLengthZeroUnchecked,
 			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов, плана видов расчёта и задачи.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
@@ -379,7 +375,6 @@ func init() {
 	noteRules[NoteFullTextInputOutsideIndex] = noteFullTextInputOutsideIndex
 	noteRules[NoteExtDimensionsHalfSet] = noteExtDimensionsHalfSet
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
-	noteRules[NoteBaseDependencyHalfSet] = noteBaseDependencyHalfSet
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
 	noteRules[NoteJournalShowsNothing] = noteJournalShowsNothing
 	noteRules[NoteSequenceWithoutDocuments] = noteSequenceWithoutDocuments
@@ -839,18 +834,6 @@ func noteAutoOrderWithoutLength(catalog *Catalog, note func(where, written strin
 	for _, chart := range catalog.ChartsOfAccounts {
 		if chart.AutoOrderByCode && chart.OrderLength == 0 {
 			note("charts-of-accounts "+chart.Name+" auto_order_by_code", "without order_length")
-		}
-	}
-}
-
-func noteBaseDependencyHalfSet(catalog *Catalog, note func(where, written string)) {
-	for _, chart := range catalog.ChartsOfCalculationTypes {
-		where := "charts-of-calculation-types " + chart.Name
-		switch {
-		case takesABase(chart) && len(chart.BaseCharts) == 0:
-			note(where+" base_dependency", string(chart.BaseDependency)+" without base_charts")
-		case !takesABase(chart) && len(chart.BaseCharts) > 0:
-			note(where+" base_charts", "without base_dependency")
 		}
 	}
 }
