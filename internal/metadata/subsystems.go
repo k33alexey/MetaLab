@@ -115,9 +115,10 @@ func cloneSubsystemDefinition(value SubsystemDefinition) SubsystemDefinition {
 // subsystem is its own ancestor, builds the lookup by path, and notes the
 // members that point at nothing.
 //
-// A member may be an object of any kind of the top level, another subsystem
-// included - the prototype puts some forty kinds into a subsystem, common
-// modules, roles and pictures the most. A member naming nothing is carried,
+// A member may be an object of any kind the prototype puts into a subsystem
+// (kindUses.subsystem), another subsystem included - some forty kinds, common
+// modules, roles and pictures the most; a language and a WebSocket client are
+// refused, as the page «Подсистемы» of theirs is empty. A member naming nothing is carried,
 // not refused: the object was deleted and the subsystem kept it, which the
 // prototype saves (70/74/189 in the configurations being moved, none of them
 // resolving). It is listed for the import report - see UnresolvedReference.
@@ -129,8 +130,14 @@ func (catalog *Catalog) validateSubsystemReferences() error {
 			}
 		}
 		for _, member := range item.Members {
-			if !catalog.knownMetadataObject(member) {
+			kind, ok := catalog.kindOfObject(member)
+			if !ok {
 				catalog.noteUnresolved("subsystem "+item.Name+" member", member)
+				continue
+			}
+			if usesOf(kind).subsystem == absent {
+				return fmt.Errorf("subsystem %s holds %s: the designer puts no object of the kind into a subsystem",
+					item.Name, catalog.noteObjectName(kind, member))
 			}
 		}
 	}

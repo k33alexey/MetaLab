@@ -334,12 +334,13 @@ func init() {
 				"под каким именем и в какой записи его сохраняет конфигуратор, не проверено.",
 			"Свойство несётся как записано и не исполняется; при импорте место сверяется с тем, как конфигуратор его записал."},
 		NoteKindInfo{NoteUseWithoutSample,
-			"Право роли, регистрация в плане обмена или элемент состава функциональной опции на объекте вида, который ни одна " +
-				"известная выгрузка конфигуратора в этом месте не пишет (права на перечисление, общий модуль, стиль; план обмена " +
-				"в составе плана обмена; роль в составе опции). Справка видов здесь не перечисляет, так что не известно, " +
-				"сохраняет ли такое конфигуратор.",
+			"Право роли, регистрация в плане обмена, элемент состава функциональной опции или подсистемы на объекте вида, " +
+				"который ни одна известная выгрузка конфигуратора в этом месте не пишет и окно которого в этом месте не снято " +
+				"(права на перечисление, общий модуль, стиль; план обмена в составе плана обмена; роль в составе опции; " +
+				"перерасчёт и функция внешнего источника в составе подсистемы). Справка видов здесь не перечисляет, так что не " +
+				"известно, сохраняет ли такое конфигуратор.",
 			"Несётся как записано и ничего не меняет: права на объекты этих видов не проверяются, состав плана обмена и " +
-				"функциональной опции ML пока не исполняет."},
+				"функциональной опции ML пока не исполняет, подсистема показывает такой объект в своём составе."},
 		NoteKindInfo{NoteRightWithoutSample,
 			"Право роли — данное или запрещённое — на конфигурацию, объект или его часть, которого ни одна известная " +
 				"выгрузка конфигуратора на таком месте не пишет: изменение у отчёта, проведение у справочника, редактирование " +
@@ -466,8 +467,9 @@ func init() {
 	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
 }
 
-// noteUseWithoutSample notes every object a role, an exchange plan or a
-// functional option names whose kind no export shows in that place.
+// noteUseWithoutSample notes every object a role, an exchange plan, a
+// functional option or a subsystem names whose kind nothing shows in that
+// place.
 func noteUseWithoutSample(catalog *Catalog, note func(where, written string)) {
 	for _, role := range catalog.Roles {
 		for _, permission := range role.Objects {
@@ -487,6 +489,13 @@ func noteUseWithoutSample(catalog *Catalog, note func(where, written string)) {
 		for _, item := range option.Content {
 			if usesOf(item.Kind).option == unproven {
 				note("functional-options "+option.Name+" content", catalog.noteObjectName(item.Kind, item.Object))
+			}
+		}
+	}
+	for _, subsystem := range catalog.Subsystems {
+		for _, member := range subsystem.Members {
+			if kind, ok := catalog.kindOfObject(member); ok && usesOf(kind).subsystem == unproven {
+				note("subsystems "+subsystem.Name+" members", catalog.noteObjectName(kind, member))
 			}
 		}
 	}
