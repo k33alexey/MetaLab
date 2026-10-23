@@ -131,7 +131,7 @@ description_length: 150
 		"документ": {DocumentKind, `number: {type: string, length: 11, auto: true, periodicity: year}
 `, "Номер"},
 		"бизнес-процесс": {BusinessProcessKind, `number: {type: string, length: 11, auto: true, periodicity: year}
-`, "Номер"},
+` + processTaskLine, "Номер"},
 		"задача": {TaskKind, `number: {type: string, length: 11, auto: true, periodicity: none}
 description_length: 150
 addressing_attributes: []
@@ -140,6 +140,7 @@ addressing_attributes: []
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, body.content)
 			writeMetadata(t, root, body.kind, inputCatalog, `format: 1
 id: `+inputCatalog+`
 name: Объект
@@ -175,7 +176,7 @@ description_length: 150
 addressing_attributes: []
 `, "Наименование", true},
 		"у бизнес-процесса нет наименования": {BusinessProcessKind,
-			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "Наименование", false},
+			"number: {type: string, length: 11, auto: true, periodicity: year}\n" + processTaskLine, "Наименование", false},
 		"у документа нет кода": {DocumentKind,
 			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "Код", false},
 		"справочник по номеру не ищут": {CatalogKind, `code: {type: string, length: 9, auto: true}
@@ -188,6 +189,7 @@ description_length: 150
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, want.body)
 			writeMetadata(t, root, want.kind, inputCatalog, `format: 1
 id: `+inputCatalog+`
 name: Объект

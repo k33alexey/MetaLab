@@ -110,7 +110,7 @@ description_length: 150
 		"документ": {DocumentKind, `number: {type: string, length: 11, auto: true, periodicity: year}
 `},
 		"бизнес-процесс": {BusinessProcessKind, `number: {type: string, length: 11, auto: true, periodicity: year}
-`},
+` + processTaskLine},
 		"задача": {TaskKind, `number: {type: string, length: 11, auto: true, periodicity: none}
 description_length: 150
 addressing_attributes: []
@@ -119,6 +119,7 @@ addressing_attributes: []
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := basisProject(t)
+			writeProcessTask(t, root, body.content)
 			writeMetadata(t, root, body.kind, basisSale, `format: 1
 id: `+basisSale+`
 name: Объект
@@ -171,8 +172,9 @@ id: `+basisProcess+`
 name: Задание
 title: {ru: Задание}
 number: {type: string, length: 11, auto: true, periodicity: year}
-based_on: [`+basisReceipt+`]
+`+processTaskLine+`based_on: [`+basisReceipt+`]
 `)
+	writeProcessTask(t, root, processTaskLine)
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)

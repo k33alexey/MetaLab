@@ -455,7 +455,9 @@ description_length: 150`+part)
 id: `+businessProcessID+`
 name: Задание
 title: {ru: Задание}
-number: {type: string, length: 11, auto: true, periodicity: year}`+part)
+number: {type: string, length: 11, auto: true, periodicity: year}
+`+processTaskLine+strings.TrimPrefix(part, "\n"))
+			writeProcessTask(t, root, processTaskLine)
 		},
 		"план обмена": func(root string) {
 			writeMetadata(t, root, ExchangePlanKind, exchangePlanID, `format: 1
@@ -613,5 +615,42 @@ func TestRouteMayHaveSeveralStarts(t *testing.T) {
 	process, _ := catalog.BusinessProcess("Задание")
 	if process.Route.Points[3].Handlers[OnCreateSubBusinessProcesses] == "" {
 		t.Fatal("a nested process lost its binding")
+	}
+}
+
+// processTask is a kind of task a process of a test creates: the designer
+// refuses a process naming none (2.498). processTaskLine names it in the
+// description of the process, and writeProcessTask writes the task into the
+// project when the content given names it.
+const (
+	processTask     = "b1000000-0000-4000-8000-0000000000aa"
+	processTaskLine = "task: " + processTask + "\n"
+)
+
+func writeProcessTask(t *testing.T, root, content string) {
+	t.Helper()
+	if !strings.Contains(content, processTask) {
+		return
+	}
+	writeMetadata(t, root, TaskKind, processTask, "format: 1\nid: "+processTask+"\nname: ЗадачаПроцесса\ntitle: {ru: Задача процесса}\n"+
+		"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 150\naddressing_attributes: []\n")
+}
+
+// A process names the kind of task its route creates: «Проверка
+// конфигурации» refuses one naming none - «Не выбрана задача
+// бизнес-процесса» (opis of 15.10.2026, biznes-process.md). The text is
+// written out here.
+//
+// Defect caught: a process with no task loaded, which no activity point of
+// it could ever give work to.
+func TestABusinessProcessNamesItsTask(t *testing.T) {
+	t.Parallel()
+	body := "format: 1\nid: " + businessProcessID + "\nname: Задание\ntitle: {ru: Задание}\nnumber: {type: string, length: 11, auto: true, periodicity: year}\n"
+	_, err := DecodeBusinessProcess("object.yaml", strings.NewReader(body), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "task must name the kind of task the process creates: the designer refuses a process with no task") {
+		t.Fatalf("a process with no task: %v", err)
+	}
+	if _, err := DecodeBusinessProcess("object.yaml", strings.NewReader(body+processTaskLine), metadataConfiguration()); err != nil {
+		t.Fatalf("a process naming its task was refused: %v", err)
 	}
 }

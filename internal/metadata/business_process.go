@@ -271,7 +271,13 @@ func DecodeBusinessProcess(source string, reader io.Reader, configuration projec
 	return decodeDescription(source, reader, configuration, func(value BusinessProcessDefinition, configuration project.Project) []string {
 		var issues []string
 		issues = append(issues, validateNumberedObjectShape(numberedShapeOf(value, BusinessProcessKind, reservedBusinessProcessName), configuration)...)
-		if value.Task != nil && value.Task.IsZero() {
+		// A process names the kind of task its route creates: «Проверка
+		// конфигурации» refuses one naming none - «Не выбрана задача
+		// бизнес-процесса» (opis of 15.10.2026, biznes-process.md).
+		switch {
+		case value.Task == nil:
+			issues = append(issues, "task must name the kind of task the process creates: the designer refuses a process with no task")
+		case value.Task.IsZero():
 			issues = append(issues, "task must be a non-zero UUID")
 		}
 		if !validEditType(value.EditType) {

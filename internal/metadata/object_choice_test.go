@@ -139,11 +139,11 @@ func TestNumberedKindsCarryOnlyWhatTheyHave(t *testing.T) {
 		accepts bool
 	}{
 		"бизнес-процесс редактируется": {BusinessProcessKind,
-			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "edit_type: in-dialog", true},
+			"number: {type: string, length: 11, auto: true, periodicity: year}\n" + processTaskLine, "edit_type: in-dialog", true},
 		"у бизнес-процесса нет представления": {BusinessProcessKind,
-			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "default_presentation: as-code", false},
+			"number: {type: string, length: 11, auto: true, periodicity: year}\n" + processTaskLine, "default_presentation: as-code", false},
 		"у бизнес-процесса нет быстрого выбора": {BusinessProcessKind,
-			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "quick_choice: true", false},
+			"number: {type: string, length: 11, auto: true, periodicity: year}\n" + processTaskLine, "quick_choice: true", false},
 		"документ создаётся при вводе": {DocumentKind,
 			"number: {type: string, length: 11, auto: true, periodicity: year}\n", "create_on_input: use", true},
 		"документ в списке не правят": {DocumentKind,
@@ -154,6 +154,7 @@ func TestNumberedKindsCarryOnlyWhatTheyHave(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, want.body)
 			writeMetadata(t, root, want.kind, choiceID, `format: 1
 id: `+choiceID+`
 name: Объект

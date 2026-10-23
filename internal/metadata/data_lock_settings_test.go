@@ -192,7 +192,7 @@ description_length: 150
 		"документ": {DocumentKind, `number: {type: string, length: 11, auto: true, periodicity: year}
 `, "Дата"},
 		"бизнес-процесс": {BusinessProcessKind, `number: {type: string, length: 11, auto: true, periodicity: year}
-`, "ВедущаяЗадача"},
+` + processTaskLine, "ВедущаяЗадача"},
 		"задача": {TaskKind, `number: {type: string, length: 11, auto: true, periodicity: none}
 description_length: 150
 addressing_attributes: []
@@ -201,6 +201,7 @@ addressing_attributes: []
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, body.content)
 			writeMetadata(t, root, body.kind, lockCatalogID, `format: 1
 id: `+lockCatalogID+`
 name: Объект

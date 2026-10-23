@@ -31,7 +31,7 @@ func TestTheOtherKindsTakeALengthOfZeroAsTheDesignerDoes(t *testing.T) {
 			return err
 		}, ""},
 		"номер бизнес-процесса": {func() error {
-			_, err := DecodeBusinessProcess("object.yaml", strings.NewReader("format: 1\nid: "+businessProcessID+"\nname: Задание\ntitle: {ru: Задание}\nnumber: {type: string, length: 0, periodicity: none}\n"), configuration)
+			_, err := DecodeBusinessProcess("object.yaml", strings.NewReader("format: 1\nid: "+businessProcessID+"\nname: Задание\ntitle: {ru: Задание}\nnumber: {type: string, length: 0, periodicity: none}\n"+processTaskLine), configuration)
 			return err
 		}, ""},
 		"номер задачи": {func() error {

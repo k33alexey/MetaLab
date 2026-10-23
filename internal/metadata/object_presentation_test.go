@@ -86,11 +86,12 @@ description_length: 150
 addressing_attributes: []
 `},
 		"бизнес-процесс": {BusinessProcessKind, presentationID, `number: {type: string, length: 11, auto: true, periodicity: year}
-`},
+` + processTaskLine},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, body.content)
 			writeMetadata(t, root, body.kind, presentationID, `format: 1
 id: `+presentationID+`
 name: Объект
@@ -190,6 +191,7 @@ resources: [{id: ` + registerPropsResource + `, name: Количество, titl
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := metadataProject(t)
+			writeProcessTask(t, root, body.content)
 			writeMetadata(t, root, body.kind, presentationID, `format: 1
 id: `+presentationID+`
 name: Объект

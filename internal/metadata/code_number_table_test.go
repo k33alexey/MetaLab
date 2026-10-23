@@ -58,7 +58,7 @@ var codeNumberTable = map[string]codeNumberRow{
 	// exchange plan (opis of 15.10.2026, plan-obmena.md).
 	"план обмена":    {kind: ExchangePlanKind, allowedLength: true, descriptionCeiling: 250},
 	"документ":       {kind: DocumentKind, numbered: true, allowedLength: true, codeZero: true},
-	"бизнес-процесс": {kind: BusinessProcessKind, numbered: true, allowedLength: true, codeZero: true},
+	"бизнес-процесс": {kind: BusinessProcessKind, numbered: true, allowedLength: true, codeZero: true, extra: processTaskLine},
 	"задача": {kind: TaskKind, numbered: true, allowedLength: true, codeZero: true,
 		descriptionZeroUntil: untilDescriptionZero, descriptionCeiling: 150, extra: "addressing_attributes: []\n"},
 }
@@ -113,6 +113,7 @@ func TestCodeNumberAndDescriptionFollowTheTable(t *testing.T) {
 				t.Helper()
 				root := metadataProject(t)
 				id := uuid.MustNew().String()
+				writeProcessTask(t, root, row.extra)
 				writeMetadata(t, root, row.kind, id, row.body(id, field, description))
 				return Load(root)
 			}

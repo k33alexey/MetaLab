@@ -240,7 +240,7 @@ func writeEveryRestrictableKind(t *testing.T, root string) func(*Workspace) {
 	sum := func() string {
 		return "resources:\n  - {id: " + id() + ", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"
 	}
-	document, chart, calculation := id(), id(), id()
+	document, chart, calculation, task := id(), id(), id(), id()
 	write("metadata/catalogs/Справочник", head("Справочник", id())+code)
 	write("metadata/documents/Документ", head("Документ", document)+number)
 	write("metadata/document-journals/Журнал", head("Журнал", id())+"documents: ["+document+"]\n")
@@ -252,8 +252,8 @@ func writeEveryRestrictableKind(t *testing.T, root string) func(*Workspace) {
 	write("metadata/accounting-registers/Бухгалтерия", head("Бухгалтерия", id())+"chart_of_accounts: "+chart+"\n"+sum())
 	write("metadata/calculation-registers/Начисления", head("Начисления", id())+"chart_of_calculation_types: "+calculation+
 		"\nperiodicity: month\n"+sum()+"recalculations:\n  - {id: "+everyRecalculation+", name: Перерасчет, title: {ru: Перерасчет}}\n")
-	write("metadata/business-processes/Процесс", head("Процесс", id())+number)
-	write("metadata/tasks/Задача", head("Задача", id())+number+"description_length: 50\n")
+	write("metadata/business-processes/Процесс", head("Процесс", id())+number+"task: "+task+"\n")
+	write("metadata/tasks/Задача", head("Задача", task)+number+"description_length: 50\n")
 	write("metadata/exchange-plans/Обмен", head("Обмен", id())+code)
 	write("metadata/constants/Константа", head("Константа", id())+"types: [{kind: boolean}]\n")
 	write("metadata/sequences/Последовательность", head("Последовательность", everySequence))
