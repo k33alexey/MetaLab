@@ -87,13 +87,15 @@ func TestEditTypeTakesOnlyItsThreeValues(t *testing.T) {
 	}
 }
 
-// A non-periodic register may still say these things. In the demonstration
-// configuration every register that sets one of them is periodic and all 234
-// non-periodic ones leave all three off - but the help states no such rule, and
-// the export proves nothing by silence. Refusing a configuration the prototype
-// accepts is a worse failure than carrying a setting that says little, so this
-// test pins the permissiveness rather than leaving it to chance.
-func TestSlicesAndPeriodFilterDoNotRequirePeriodicity(t *testing.T) {
+// A non-periodic register may still ask for the slices of totals. In the
+// demonstration configuration every register that sets one is periodic and
+// all 234 non-periodic ones leave them off - but the help states no such rule,
+// and the export proves nothing by silence. Refusing a configuration the
+// prototype accepts is a worse failure than carrying a setting that says
+// little, so this test pins the permissiveness rather than leaving it to
+// chance. The main filter by the period is another matter: the designer
+// clears it on a non-periodic register (TestTheMainFilterOnPeriodNeedsAnIndependentPeriodicRegister).
+func TestSlicesDoNotRequirePeriodicity(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeMetadata(t, root, InformationRegisterKind, registerPropsID, `format: 1
@@ -112,11 +114,42 @@ resources:
     name: Цена
     title: {ru: Цена}
     types: [{kind: number, precision: 15, scale: 2}]
-main_filter_on_period: true
 totals: {slice_first: true, slice_last: true}
 `)
 	if _, err := Load(root); err != nil {
 		t.Fatalf("a rule the help does not state refused a configuration: %v", err)
+	}
+}
+
+// The main filter by the period belongs to an independent periodic register:
+// the designer offers it there alone and clears it on a register subordinate
+// to a recorder or non-periodic (opis of 15.10.2026, registr-svedenij.md). The
+// text is written out here.
+//
+// Defect caught: the filter carried on a register that has no period to
+// filter by, or none the user sets.
+func TestTheMainFilterOnPeriodNeedsAnIndependentPeriodicRegister(t *testing.T) {
+	t.Parallel()
+	register := func(writeMode, periodicity string) string {
+		return strings.Replace(strings.Replace(informationRegisterYAML("main_filter_on_period: true\n"),
+			"write_mode: independent", "write_mode: "+writeMode, 1), "periodicity: day", "periodicity: "+periodicity, 1)
+	}
+	for _, test := range []struct{ writeMode, periodicity string }{
+		{"recorder", "day"}, {"recorder", "recorder-position"}, {"independent", "none"}, {"recorder", "none"},
+	} {
+		root := metadataProject(t)
+		writeMetadata(t, root, InformationRegisterKind, registerPropsID, register(test.writeMode, test.periodicity))
+		if message := loadRefused(t, root, test.writeMode+" "+test.periodicity); !strings.Contains(message,
+			"main_filter_on_period belongs to an independent periodic register") {
+			t.Fatalf("%s %s refused for another reason: %v", test.writeMode, test.periodicity, message)
+		}
+	}
+	for _, periodicity := range []string{"second", "day", "month", "quarter", "year"} {
+		root := metadataProject(t)
+		writeMetadata(t, root, InformationRegisterKind, registerPropsID, register("independent", periodicity))
+		if _, err := Load(root); err != nil {
+			t.Fatalf("an independent register by the %s was refused: %v", periodicity, err)
+		}
 	}
 }
 

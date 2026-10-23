@@ -83,5 +83,13 @@ func validateInformationRegisterProperties(value InformationRegisterDefinition) 
 	if !validEditType(value.EditType) {
 		issues = append(issues, "edit_type must be in-dialog, in-list or both-ways")
 	}
+	// The designer offers the main filter by the period on an independent
+	// periodic register alone, and clears it when the register becomes
+	// subordinate to a recorder or non-periodic (opis of 15.10.2026,
+	// registr-svedenij.md); every one of the 349 registers of the exports
+	// setting it is independent and periodic.
+	if value.MainFilterOnPeriod && (value.WriteMode != InformationRegisterIndependent || value.Periodicity == InformationRegisterPeriodNone) {
+		issues = append(issues, "main_filter_on_period belongs to an independent periodic register: the designer clears it on any other")
+	}
 	return issues
 }
