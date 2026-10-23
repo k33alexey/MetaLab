@@ -65,6 +65,10 @@ func (catalog *Catalog) validateRoleReferences() error {
 					// read; the snapshot carries the rights and runs none.
 					continue
 				}
+				if kind, known := catalog.kindOfObject(permission.Object); !ok && known {
+					return fmt.Errorf("role %s gives rights on %s: the designer gives no rights on an object of the kind",
+						role.Name, catalog.noteObjectName(kind, permission.Object))
+				}
 				if !ok {
 					return fmt.Errorf("role %s references unknown or unsupported object %s", role.Name, permission.Object)
 				}

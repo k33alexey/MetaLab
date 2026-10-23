@@ -202,7 +202,7 @@ func kindInfoMust(kind Kind) kindInfo {
 // omission), and a use given to the wrong kinds: a right on a recalculation
 // refused (demo-base and energy give them), a registration of an enumeration
 // accepted, a kind the exports never show taken silently instead of with a
-// note, a right on a dimension of a cube offered as on one of a register. The expectation is written out here, not read from kindUsesOf: what
+// note, a right on a kind whose page «Права» is empty accepted, a right on a dimension of a cube offered as on one of a register. The expectation is written out here, not read from kindUsesOf: what
 // the exports of the configurator write (the Rights.xml of every role, the
 // Content.xml of every exchange plan, the Content of every functional option
 // of the four checked, demo-base and energy), and for registration the help
@@ -249,6 +249,13 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 		CommandGroupKind, CommonTemplateKind, XDTOPackageKind, WebServiceKind, WSReferenceKind, WebSocketClientKind,
 		HTTPServiceKind, CommonPictureKind, StyleItemKind, StyleKind, FunctionalOptionKind, FunctionalOptionParameterKind,
 		SettingsStorageKind, DefinedTypeKind, LanguageKind}
+	// The kinds whose page «Права» of «Дополнительно» is empty (opis of 14
+	// and 15.10.2026); an enumeration's is empty too, but the window of a
+	// role shows it for its commands (pass of 21.10.2026, prava/42-44).
+	rightsRefused := []Kind{DefinedTypeKind, FunctionalOptionParameterKind, LanguageKind, StyleKind,
+		FunctionalOptionKind, EventSubscriptionKind, CommonModuleKind, SettingsStorageKind, StyleItemKind,
+		CommonPictureKind, CommonTemplateKind, CommandGroupKind, ScheduledJobKind, XDTOPackageKind, WSReferenceKind,
+		WebSocketClientKind, RoleKind, NumeratorKind}
 	// The help restricts reading, adding, changing and deleting only: a kind
 	// offered none of the four keeps no data to restrict.
 	keepsData := func(kind Kind) bool {
@@ -274,6 +281,8 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			switch {
 			case slices.Contains(shown[use], item.Kind):
 				expected = present
+			case use == "rights" && slices.Contains(rightsRefused, item.Kind):
+				expected = absent
 			case use == "option" && slices.Contains(optionRefused, item.Kind):
 				expected = absent
 			case use == "registration" && !slices.Contains(exchanged, item.Kind):

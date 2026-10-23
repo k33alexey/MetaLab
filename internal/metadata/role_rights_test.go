@@ -354,11 +354,13 @@ func TestLoaderReadsTheGridBesideTheRole(t *testing.T) {
 // A right no export writes where it stands - on the configuration, on an
 // object of its kind, on a part of its sort - granted or denied, is carried
 // with the note right-without-sample, which names the role, the place and the
-// right.
+// right. A role naming an object of a kind the designer gives no rights on is
+// refused.
 //
 // Defect caught: a role of the prototype refused for naming a subsystem, the
 // configuration or a recalculation (demo-base, energy); one naming a common
-// module refused without a reason, or accepted silently; a right outside the
+// module, a numerator, a role or a defined type accepted, or refused without
+// naming the object; a right outside the
 // exports' lists accepted silently, or one inside them noted; a right on a
 // part of a cube or a dimension table, which no export gives, refused as a
 // part of nothing or accepted silently; a right on a command of an
@@ -401,11 +403,7 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"a recalculation":       grant(cmpRecalculation, PermissionRead, PermissionUpdate),
 	}
 	noted := map[string]ObjectPermission{
-		"a common module": grant(cmpCommonModule, PermissionView),
-		"a numerator":     grant(cmpNumerator, PermissionRead),
-		"a role":          grant(cmpRole, PermissionView),
-		"a defined type":  grant(cmpDefinedType, PermissionView),
-		"an enumeration":  grant(cmpEnumeration, PermissionView),
+		"an enumeration": grant(cmpEnumeration, PermissionView),
 		// The window gives the viewing of an enumeration's command, no export
 		// writes it; the object is noted, not the right on its part as well.
 		"a command of an enumeration": part(grant(cmpEnumeration), cmpEnumCommand, PermissionView),
@@ -494,6 +492,25 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		}
 		if _, err := Load(root); err == nil {
 			t.Errorf("rights on %s were accepted", name)
+		}
+	}
+	// The page «Права» of these kinds is empty (opis of 14 and 15.10.2026):
+	// the role is refused, naming the object.
+	kindless := map[string]ObjectPermission{
+		"common-modules Общий":         grant(cmpCommonModule, PermissionView),
+		"document-numerators Сквозной": grant(cmpNumerator, PermissionRead),
+		"roles Кладовщик":              grant(cmpRole, PermissionView),
+		"defined-types ДенежнаяСумма":  grant(cmpDefinedType),
+	}
+	for object, permission := range kindless {
+		role, _ := project.Role("Кладовщик")
+		role.Objects = append(role.Objects, permission)
+		if err := WriteRole(root, role); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(root)
+		if err == nil || !strings.Contains(err.Error(), "role Кладовщик gives rights on "+object+": the designer gives no rights") {
+			t.Errorf("rights on %s: %v, want the refusal naming the object", object, err)
 		}
 	}
 }
