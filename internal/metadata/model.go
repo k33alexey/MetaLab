@@ -1978,6 +1978,9 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, standsUnqualified(prefix, item, mayStandUnstored(place), "is not a type of anything the infobase stores", place)...)
 			continue
 		}
+		if len(types) > 1 && standsAlone(item.Kind, place) {
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" stands only by itself "+placeName(place)+": the designer excludes every other type beside it")
+		}
 		if place == placeDefinedType && IsTypeSet(item.Kind) {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
 			continue

@@ -198,6 +198,10 @@ const (
 	// a table of an external source and the type of a vanished object may
 	// stand there - and never an object or a value of memory.
 	placeCommandParameter
+	// placeFilterCriterion is the type of a filter criterion: what its
+	// content is searched by. It takes what a stored field takes; what may
+	// stand beside what in it the designer was not asked (aloneTypes).
+	placeFilterCriterion
 	// placeFormAttribute is an attribute of a form or a column of one: data
 	// the form holds while it is open. Like a running object's attribute it
 	// may be left with no type, which is an arbitrary one, and may hold what
@@ -238,6 +242,32 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 	AccountKindType: true, AccountingRecordKindType: true, AccumulationRecordKindType: true,
 	NullType: true,
 }
+
+// aloneTypes are, by place, the types that stand in a type description only by
+// themselves: the editor of the type asked to put one beside another type
+// warns «Выбран тип, который не может быть включен в составной тип данных»
+// and excludes the others (opis of 14.10.2026, every type tried one by one,
+// snapshots sostavnoj-tip 04, 05, 10, 11; METADATA-OBJECTS.md, «Типы,
+// которые не входят в составной»). «Произвольный» is one too, and alone by
+// being no type at all. A session parameter has none - the designer takes
+// all of its types in a composite. The managers of a defined type are the
+// kinds' (kindInfo.aloneInDefinedType), added in init. Not here yet, for
+// want of a pass in the designer: an attribute of a form and of a data
+// processor, the type of a filter criterion, and the types of the platform
+// known by name - the PDF document, the line, the border, the parts of a
+// chart (question В2 of the series 2.480).
+var aloneTypes = map[typePlace]map[TypeKind]bool{
+	placeStored: {ValueStorageType: true, UUIDType: true},
+	placeDefinedType: {
+		ValueStorageType: true, UUIDType: true, BinaryDataType: true, NullType: true,
+		DynamicListType: true, SpreadsheetDocumentType: true, FormattedDocumentType: true, TextDocumentType: true,
+		PictureType: true, ColorType: true, FontType: true, GraphicalSchemaType: true, GeographicalSchemaType: true,
+		ChartType: true, GanttChartType: true, DendrogramType: true, SettingsComposerType: true, StandardPeriodType: true,
+	},
+}
+
+// standsAlone says a type stands in the place only by itself.
+func standsAlone(kind TypeKind, place typePlace) bool { return aloneTypes[place][kind] }
 
 // formKindAllowedIn says whether a kind of formOnlyKinds may stand in the
 // place. A defined type holds every one of them but the planner: the designer
@@ -282,6 +312,8 @@ func placeName(place typePlace) string {
 		return "in the parameter of a command"
 	case placeFormAttribute:
 		return "in an attribute of a form"
+	case placeFilterCriterion:
+		return "in the type of a filter criterion"
 	default:
 		return "in a field the database stores"
 	}

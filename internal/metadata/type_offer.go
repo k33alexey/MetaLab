@@ -74,7 +74,7 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
 	CommandParameterChoice:    {model: placeCommandParameter, references: referencesInFolders, definedTypes: true},
 	CharacteristicValueChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType}, references: referencesInFolders, definedTypes: true, required: true},
-	FilterCriterionChoice: {model: placeStored, arbitrary: true, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType},
+	FilterCriterionChoice: {model: placeFilterCriterion, arbitrary: true, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true},
 }
 
@@ -112,8 +112,11 @@ type TypeOfferRow struct {
 	Kind TypeKind `json:"kind,omitempty"`
 	// Arbitrary is the row of no type: marking it leaves the description
 	// empty.
-	Arbitrary bool        `json:"arbitrary,omitempty"`
-	Name      kinds.Words `json:"name"`
+	Arbitrary bool `json:"arbitrary,omitempty"`
+	// Alone is a type the place takes only by itself: marked beside another,
+	// the window asks whether to exclude the others (aloneTypes).
+	Alone bool        `json:"alone,omitempty"`
+	Name  kinds.Words `json:"name"`
 	// Icon is the picture of the kind of object the row's types name, empty
 	// where there is none.
 	Icon string `json:"icon,omitempty"`
@@ -157,7 +160,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Arbitrary: true, Name: arbitraryName})
 	}
 	for _, kind := range at.primitives {
-		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: kind, Name: typeNames[kind]})
+		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: kind, Name: typeNames[kind], Alone: standsAlone(kind, at.model)})
 	}
 	if at.references != noReferences {
 		for _, kind := range kinds.ReferenceKinds() {

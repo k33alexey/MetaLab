@@ -47,6 +47,13 @@ type kindInfo struct {
 	// objectTypes are the types of what an object of the kind is in memory
 	// and never in a column: the object, the record set, the manager.
 	objectTypes []TypeKind
+	// aloneInDefinedType are those of objectTypes the editor of the type of a
+	// defined type takes only by themselves: put beside another type, it
+	// excludes the others (opis of the defined type, 14.10.2026, «Не входят
+	// в составной тип»). The managers of some kinds are, of others are not,
+	// and the help says nothing of why - the owner decided on 14.10.2026 to
+	// follow the designer.
+	aloneInDefinedType []TypeKind
 	// namedBy are the other elements of a type description that name an
 	// object of the kind through Type.Reference: a defined type, the
 	// characteristics of a chart.
@@ -323,6 +330,19 @@ var kindPartRightsOf = map[Kind]map[PartGroup][]PermissionOperation{
 	// prava/44); no export gives rights on them, so every one a role gives
 	// is noted.
 	EnumerationKind: {CommandsPart: {PermissionView}},
+}
+
+// kindAloneInDefinedType is kindInfo.aloneInDefinedType by kind: the
+// managers the editor of the type of a defined type takes only by themselves
+// (opis of 14.10.2026). The managers of a chart, a business process, a task,
+// an exchange plan, an accounting register and a constant it takes in a
+// composite. Those of a report, a data processor and a filter criterion are
+// alone too, and the model has no such types yet (BLOCKS 2б, «подписка на
+// событие — составной источник и четыре менеджера»).
+var kindAloneInDefinedType = map[Kind][]TypeKind{
+	CatalogKind: {CatalogManagerType}, DocumentKind: {DocumentManagerType}, EnumerationKind: {EnumerationManagerType},
+	DocumentJournalKind: {DocumentJournalManagerType}, InformationRegisterKind: {InformationRegisterManagerType},
+	AccumulationRegisterKind: {AccumulationRegisterManagerType}, CalculationRegisterKind: {CalculationRegisterManagerType},
 }
 
 // configurationRights are the rights the configurator offers on the
@@ -609,6 +629,7 @@ func init() {
 			kindInfos[index].uses.offered = inPrototypeOrder(offered)
 		}
 		kindInfos[index].uses.partsOffered = kindPartRightsOf[kindInfos[index].kind]
+		kindInfos[index].aloneInDefinedType = kindAloneInDefinedType[kindInfos[index].kind]
 	}
 	for _, item := range kindInfos {
 		owned := slices.Concat(item.objectTypes, item.namedBy)
@@ -624,6 +645,9 @@ func init() {
 		}
 		for _, kind := range item.objectTypes {
 			objectTypes[kind] = true
+		}
+		for _, kind := range item.aloneInDefinedType {
+			aloneTypes[placeDefinedType][kind] = true
 		}
 	}
 }
