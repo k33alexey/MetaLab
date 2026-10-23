@@ -25,14 +25,14 @@ func TestCatalogDescriptionEdges(t *testing.T) {
 		body string
 		says string
 	}{
-		"пять уровней без ограничения":    {catalog + "hierarchy: {enabled: true, kind: items, level_count: 5}\n", ""},
-		"шесть уровней без ограничения":   {catalog + "hierarchy: {enabled: true, kind: items, level_count: 6}\n", "hierarchy.level_count must be 0..5"},
-		"предопределённый с именем в 255": {predefined("П" + strings.Repeat("р", 254)), ""},
-		"предопределённый с именем в 256": {predefined("П" + strings.Repeat("р", 255)), "predefined[0].name must be a valid identifier of at most 255 characters"},
-		"реквизит числом в одну цифру":    {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 1}]}\n", ""},
-		"реквизит числом без цифр":        {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 0}]}\n", "precision must be 1..32"},
-		"поиск по коду, когда код есть":   {catalog + "list: {search_fields: [code]}\n", ""},
-		"поиск по коду, когда кода нет":   {ceilingCatalog("{type: string, length: 0}", "100") + "list: {search_fields: [code]}\n", "list.search_fields[0] references an unknown field"},
+		"десять уровней без ограничения":      {catalog + "hierarchy: {enabled: true, kind: items, level_count: 10}\n", ""},
+		"одиннадцать уровней без ограничения": {catalog + "hierarchy: {enabled: true, kind: items, level_count: 11}\n", "hierarchy.level_count must be 0..10"},
+		"предопределённый с именем в 255":     {predefined("П" + strings.Repeat("р", 254)), ""},
+		"предопределённый с именем в 256":     {predefined("П" + strings.Repeat("р", 255)), "predefined[0].name must be a valid identifier of at most 255 characters"},
+		"реквизит числом в одну цифру":        {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 1}]}\n", ""},
+		"реквизит числом без цифр":            {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 0}]}\n", "precision must be 1..32"},
+		"поиск по коду, когда код есть":       {catalog + "list: {search_fields: [code]}\n", ""},
+		"поиск по коду, когда кода нет":       {ceilingCatalog("{type: string, length: 0}", "100") + "list: {search_fields: [code]}\n", "list.search_fields[0] references an unknown field"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

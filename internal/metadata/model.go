@@ -191,8 +191,12 @@ const (
 // most 1024 and descriptions of at most 150 characters. A ceiling of ours
 // without such a source refuses on import what the prototype saves.
 const (
-	// maxHierarchyLevelCount is the most levels a hierarchy may be limited to.
-	maxHierarchyLevelCount = 5
+	// maxHierarchyLevelCount is the most levels a hierarchy may be limited to:
+	// 10, at either kind of hierarchy - 6 and 10 taken, 11 «Отменить ввод?»
+	// (opis of the catalog, 14.10.2026, docs/block-00/spravochnik.md). The 5
+	// it once was is the most the exports keep, read as a ceiling. Only a
+	// catalog has a count of levels.
+	maxHierarchyLevelCount = 10
 	// maxCodeLength is the longest code of a reference object and the longest
 	// number of a document, a business process or a task, string or numeric.
 	maxCodeLength = 50

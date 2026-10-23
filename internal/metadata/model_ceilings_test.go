@@ -40,10 +40,17 @@ func TestTheCeilingsOfTheModelHoldOnBothSides(t *testing.T) {
 		"числовой код 51":  {ceilingCatalog("{type: number, length: 51}", "100"), true, "code.length must be 0..50"},
 		"наименование 150": {ceilingCatalog("{type: string, length: 9}", "150"), false, ""},
 		"наименование 151": {ceilingCatalog("{type: string, length: 9}", "151"), true, "description_length must be 0..150"},
-		"пять уровней":     {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 5}\n", false, ""},
-		"шесть уровней":    {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 6}\n", true, "level_count must be 1..5"},
-		"имя 255":          {strings.Replace(ceilingCatalog("{type: string, length: 9}", "100"), "name: Товары", "name: Т"+strings.Repeat("о", 254), 1), false, ""},
-		"имя 256":          {strings.Replace(ceilingCatalog("{type: string, length: 9}", "100"), "name: Товары", "name: Т"+strings.Repeat("о", 255), 1), true, "name must not exceed 255 characters"},
+		// Levels: 10 at either kind of hierarchy, 11 refused (opis of the
+		// catalog, 14.10.2026); 6 to 10, which the prototype saves, were
+		// refused while the ceiling was the 5 of the exports.
+		"шесть уровней, элементы":       {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 6}\n", false, ""},
+		"десять уровней, элементы":      {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 10}\n", false, ""},
+		"десять уровней, группы":        {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: folders-and-items, limit_levels: true, level_count: 10}\n", false, ""},
+		"одиннадцать уровней, элементы": {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, limit_levels: true, level_count: 11}\n", true, "level_count must be 1..10"},
+		"одиннадцать уровней, группы":   {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: folders-and-items, limit_levels: true, level_count: 11}\n", true, "level_count must be 1..10"},
+		"одиннадцать без ограничения":   {ceilingCatalog("{type: string, length: 9}", "100") + "hierarchy: {enabled: true, kind: items, level_count: 11}\n", true, "level_count must be 0..10"},
+		"имя 255": {strings.Replace(ceilingCatalog("{type: string, length: 9}", "100"), "name: Товары", "name: Т"+strings.Repeat("о", 254), 1), false, ""},
+		"имя 256": {strings.Replace(ceilingCatalog("{type: string, length: 9}", "100"), "name: Товары", "name: Т"+strings.Repeat("о", 255), 1), true, "name must not exceed 255 characters"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
