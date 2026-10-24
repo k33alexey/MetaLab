@@ -206,3 +206,27 @@ title: {ru: Критерий}
 		})
 	}
 }
+
+// The type of a filter criterion takes a unique identifier only by itself:
+// beside a string the editor of the type warns «Выбран тип, который не может
+// быть включен в составной тип данных» (opis of 23.10.2026, kriterij-otbora.md,
+// «Досъёмка»). The expectation is written here. Defects caught: a unique
+// identifier taken beside another type; one taken alone refused.
+func TestACriterionTakesAUniqueIdentifierOnlyByItself(t *testing.T) {
+	t.Parallel()
+	decode := func(types string) error {
+		_, err := DecodeFilterCriterion("object.yaml", strings.NewReader("format: 1\nid: "+criterionID+
+			"\nname: Критерий\ntitle: {ru: Критерий}\ntypes: "+types+"\n"), metadataConfiguration())
+		return err
+	}
+	if err := decode("[{kind: uuid}]"); err != nil {
+		t.Fatalf("a unique identifier alone was refused: %v", err)
+	}
+	if err := decode("[{kind: uuid}, {kind: string, length: 10}]"); err == nil ||
+		!strings.Contains(err.Error(), "types[0].kind uuid stands only by itself in the type of a filter criterion") {
+		t.Fatalf("a unique identifier beside a string: %v", err)
+	}
+	if err := decode("[{kind: string, length: 10}, {kind: number, precision: 10}]"); err != nil {
+		t.Fatalf("a string beside a number was refused: %v", err)
+	}
+}

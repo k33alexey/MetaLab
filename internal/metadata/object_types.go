@@ -264,13 +264,16 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // которые не входят в составной»). «Произвольный» is one too, and alone by
 // being no type at all. A session parameter has none - the designer takes
 // all of its types in a composite. The managers of a defined type are the
-// kinds' (kindInfo.aloneInDefinedType), added in init. Not here yet, for
-// want of a pass in the designer: an attribute of a form and of a data
-// processor, the type of a filter criterion, and the types of the platform
-// known by name - the PDF document, the line, the border, the parts of a
-// chart (question В2 of the series 2.480).
+// kinds' (kindInfo.aloneInDefinedType), added in init. The type of a filter
+// criterion takes a unique identifier alone: beside a string the editor warns
+// «Выбран тип, который не может быть включен в составной тип данных» (opis
+// of 23.10.2026, kriterij-otbora.md, «Досъёмка»). Not here yet, for want of a
+// pass in the designer: an attribute of a form and of a data processor, and
+// the types of the platform known by name - the PDF document, the line, the
+// border, the parts of a chart (question В2 of the series 2.480).
 var aloneTypes = map[typePlace]map[TypeKind]bool{
-	placeStored: {ValueStorageType: true, UUIDType: true},
+	placeStored:          {ValueStorageType: true, UUIDType: true},
+	placeFilterCriterion: {UUIDType: true},
 	placeDefinedType: {
 		ValueStorageType: true, UUIDType: true, BinaryDataType: true, NullType: true,
 		DynamicListType: true, SpreadsheetDocumentType: true, FormattedDocumentType: true, TextDocumentType: true,
