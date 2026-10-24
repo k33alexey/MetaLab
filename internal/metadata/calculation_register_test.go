@@ -244,6 +244,10 @@ schedule_date: ` + calcScheduleDate + `
   - {id: ` + calcRecalc + `, name: Перерасчет, title: {ru: Перерасчёт}, dimensions: [{id: ` + calcRecalcDim + `, name: Лицо, title: {ru: Лицо}, register_dimension: ` + calcScheduleValue + `, leading_data: [` + calcPerson + `]}]}
 `, "which is not a dimension of this register"},
 		"график без периода действия": {strings.Replace(calcRegisterBody, "action_period: true\n", "", 1), "a schedule needs the period of action"},
+		// «Проверка конфигурации»: «Не назначен план видов расчета»
+		// (docs/block-00/registr-rascheta.md).
+		"без плана видов расчёта": {strings.Replace(calcRegisterBody, "chart_of_calculation_types: "+calcChart+"\n", "", 1),
+			"chart_of_calculation_types is required"},
 		"неизвестная периодичность": {`format: 1
 id: ` + calcRegister + `
 name: ОсновныеНачисления

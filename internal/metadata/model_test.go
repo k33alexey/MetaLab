@@ -1062,3 +1062,19 @@ predefined:
 		}
 	}
 }
+
+// TestRecorderPositionNeedsASubordinateRegister catches the periodicity «по
+// позиции регистратора» taken on an independent register: the window offers it
+// only in subordination to a recorder (docs/block-00/registr-svedenij.md).
+func TestRecorderPositionNeedsASubordinateRegister(t *testing.T) {
+	t.Parallel()
+	body := "format: 1\nid: " + informationRegisterID + "\nname: Цены\ntitle: {ru: Цены}\nwrite_mode: WRITE\nperiodicity: recorder-position\n" +
+		"resources:\n  - {id: " + registerResourceID + ", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}\n"
+	_, err := DecodeInformationRegister("object.yaml", strings.NewReader(strings.Replace(body, "WRITE", "independent", 1)), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "recorder-position periodicity requires recorder write mode") {
+		t.Fatalf("an independent register by the position of its recorder: %v", err)
+	}
+	if _, err := DecodeInformationRegister("object.yaml", strings.NewReader(strings.Replace(body, "WRITE", "recorder", 1)), metadataConfiguration()); err != nil {
+		t.Fatalf("a subordinate register by the position of its recorder was refused: %v", err)
+	}
+}
