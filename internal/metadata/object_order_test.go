@@ -121,3 +121,59 @@ func TestOrderLineNamingNothingIsAReferenceToNothing(t *testing.T) {
 		})
 	}
 }
+
+// The windows that list the objects of a kind list them in the order of the
+// tree: the tree of rights of a role and «Все роли» (opis of 24.10.2026,
+// obolochka.md, «Досъёмка 24.10.2026»: a catalog moved up stands up there
+// too), the folders of the window «Редактирование типа данных» (obshchee.md,
+// «Группы»: the objects in the order of the tree) and the filter by
+// subsystems. Defects caught: a window sorting the objects by name, or
+// taking the catalog's list in the order of identifiers, so that what the
+// developer moved up stands where it was.
+func TestTheWindowsListObjectsInTheOrderOfTheTree(t *testing.T) {
+	t.Parallel()
+	const (
+		subsystemA = "e5000000-0000-4000-8000-0000000005a1"
+		subsystemB = "e5000000-0000-4000-8000-0000000005b1"
+	)
+	root := orderProject(t, map[string][]uuid.UUID{
+		"catalogs":   ids(t, orderCatalogC, orderCatalogA, orderCatalogB),
+		"subsystems": ids(t, subsystemB, subsystemA),
+	})
+	for id, name := range map[string]string{subsystemA: "Продажи", subsystemB: "Склад"} {
+		writeMetadata(t, root, SubsystemKind, id, "format: 1\nid: "+id+"\nname: "+name+"\ntitle: {ru: "+name+"}\n")
+	}
+	want := []string{"Гамма", "Альфа", "Бета"}
+	schema, err := LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rights []string
+	for _, object := range schema.Objects {
+		if object.Kind == CatalogKind {
+			rights = append(rights, object.Name)
+		}
+	}
+	if !slices.Equal(rights, want) {
+		t.Errorf("the tree of rights lists the catalogs %v, the tree %v", rights, want)
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, _ := catalog.TypeOffer(StoredFieldChoice)
+	var offered []string
+	for _, object := range offer.Rows[6].Objects {
+		offered = append(offered, object.Name)
+	}
+	if offer.Rows[6].Name.Russian != "СправочникСсылка" || !slices.Equal(offered, want) {
+		t.Errorf("the window of the type lists under %s %v, the tree %v", offer.Rows[6].Name.Russian, offered, want)
+	}
+	var subsystems []string
+	for _, object := range catalog.SubsystemFilter().Objects {
+		subsystems = append(subsystems, object.Name)
+	}
+	if !slices.Equal(subsystems, []string{"Склад", "Продажи"}) {
+		t.Errorf("the filter by subsystems lists %v, the tree Склад, Продажи", subsystems)
+	}
+}

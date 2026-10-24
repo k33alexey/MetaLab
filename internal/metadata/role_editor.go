@@ -292,9 +292,12 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 	return result, nil
 }
 
-// objectsToShow lists the objects of a kind by name: from the kind's list in
-// the catalog, or, for a kind read apart from it - a common form - from the
-// index of identifiers, titled by what was read.
+// objectsToShow lists the objects of a kind in the order of the tree: from
+// the kind's list in the catalog, or, for a kind read apart from it - a common
+// form - from the index of identifiers, titled by what was read. The windows
+// of roles follow the tree - a catalog moved up stands up in the tree of
+// rights and in «Все роли» too (opis of 24.10.2026, obolochka.md,
+// «Досъёмка 24.10.2026») - and so does the filter by subsystems.
 func (catalog *Catalog) objectsToShow(kind Kind, titles map[uuid.UUID]LocalizedText) []ReferenceTypeObject {
 	var result []ReferenceTypeObject
 	if _, ok := catalog.objectsOf(kind); ok {
@@ -312,10 +315,8 @@ func (catalog *Catalog) objectsToShow(kind Kind, titles map[uuid.UUID]LocalizedT
 			}
 			result = append(result, item)
 		}
+		result = catalog.inTreeOrder(kind, result)
 	}
-	slices.SortFunc(result, func(a, b ReferenceTypeObject) int {
-		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-	})
 	return result
 }
 

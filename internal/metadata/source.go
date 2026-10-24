@@ -901,8 +901,9 @@ type ReferenceTypeObject struct {
 }
 
 // referenceTypeObjects are the objects of the kind a type of the window
-// «Редактирование типа данных» names, in the order of the catalog
-// (TypeOffer).
+// «Редактирование типа данных» names, in the order of the tree: the window
+// lists them so (opis, obshchee.md, «Группы»), and so does the tree of rights
+// of a role (inTreeOrder).
 func (catalog *Catalog) referenceTypeObjects(kind Kind) []ReferenceTypeObject {
 	list, _ := catalog.objectsOf(kind)
 	result := make([]ReferenceTypeObject, 0, list.Len())
@@ -913,5 +914,27 @@ func (catalog *Catalog) referenceTypeObjects(kind Kind) []ReferenceTypeObject {
 			Title: object.FieldByName("Title").Interface().(LocalizedText),
 		})
 	}
-	return result
+	return catalog.inTreeOrder(kind, result)
+}
+
+// inTreeOrder puts objects of a kind in the order of the configuration's tree
+// (ObjectsOrder): what the developer moved up stands up wherever the objects
+// are listed. An object the tree does not know keeps its place after them.
+func (catalog *Catalog) inTreeOrder(kind Kind, objects []ReferenceTypeObject) []ReferenceTypeObject {
+	place := map[uuid.UUID]int{}
+	for index, id := range catalog.ObjectsOrder(kind) {
+		place[id] = index
+	}
+	slices.SortStableFunc(objects, func(a, b ReferenceTypeObject) int {
+		left, known := place[a.ID]
+		if !known {
+			left = len(place)
+		}
+		right, known := place[b.ID]
+		if !known {
+			right = len(place)
+		}
+		return left - right
+	})
+	return objects
 }
