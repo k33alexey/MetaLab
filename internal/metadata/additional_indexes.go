@@ -64,9 +64,18 @@ type AdditionalIndex struct {
 }
 
 // indexableTables is what one object offers an index: the folded name of each
-// table against the folded names of the fields in it. The object's own table
-// is the empty key.
-type indexableTables map[string]map[string]bool
+// table against the table. The object's own table is the empty key.
+type indexableTables map[string]indexTable
+
+// indexTable is one table an index may be built over: the folded name it is
+// known by whichever of its names an index uses, and the folded names of its
+// fields against the folded name each is known by - a standard field answers
+// to its Russian name and to its English one, and the exports write the
+// English (mdclasses: Code, Ref, Predefined).
+type indexTable struct {
+	name   string
+	fields map[string]string
+}
 
 // virtualIndexTables is the name of every virtual table the prototype gives a
 // kind, taken from its catalogue of query tables. A virtual table may be named
@@ -112,14 +121,15 @@ func virtualIndexTables(kind Kind) []string {
 // account is built over a real table like any other, and refusing it because
 // the developer did not declare that part would refuse a working index.
 func objectIndexTables(kind Kind, attributes []Attribute, parts []TablePart) indexableTables {
-	tables := indexableTables{"": fieldNameSet(standardFieldsOfKind(kind), attributeNames(attributes))}
+	tables := indexableTables{"": {"", fieldNameSet(standardFieldsOfKind(kind), attributeNames(attributes))}}
 	for _, part := range parts {
-		tables[strings.ToLower(part.Name)] = fieldNameSet(tablePartStandardFields, attributeNames(part.Attributes))
+		name := strings.ToLower(part.Name)
+		tables[name] = indexTable{name, fieldNameSet(tablePartStandardFields, attributeNames(part.Attributes))}
 	}
 	for _, part := range standardTablePartsOfKind(kind) {
-		fields := fieldNameSet(part.fields, nil)
-		tables[strings.ToLower(part.ru)] = fields
-		tables[strings.ToLower(part.en)] = fields
+		table := indexTable{strings.ToLower(part.ru), fieldNameSet(part.fields, nil)}
+		tables[strings.ToLower(part.ru)] = table
+		tables[strings.ToLower(part.en)] = table
 	}
 	return tables
 }
@@ -137,7 +147,7 @@ func recordIndexTables(standard []standardField, groups ...[]string) indexableTa
 	for _, group := range groups {
 		all = append(all, group...)
 	}
-	return indexableTables{"": fieldNameSet(standard, all)}
+	return indexableTables{"": {"", fieldNameSet(standard, all)}}
 }
 
 // attributeNames is the names of ordinary fields, for the callers whose fields
@@ -150,13 +160,13 @@ func attributeNames(attributes []Attribute) []string {
 	return names
 }
 
-func fieldNameSet(standard []standardField, fields []string) map[string]bool {
-	names := make(map[string]bool, len(standard)*2+len(fields))
-	for folded := range standardNames(standard) {
-		names[folded] = true
+func fieldNameSet(standard []standardField, fields []string) map[string]string {
+	names := make(map[string]string, len(standard)*2+len(fields))
+	for folded, ru := range standardNames(standard) {
+		names[folded] = foldStandardName(ru)
 	}
 	for _, field := range fields {
-		names[foldStandardName(field)] = true
+		names[foldStandardName(field)] = foldStandardName(field)
 	}
 	return names
 }
@@ -191,6 +201,7 @@ func validateAdditionalIndexes(indexes []AdditionalIndex, kind Kind, tables inde
 	}
 	var issues []string
 	named := make(map[string]int, len(indexes))
+	keyed := make(map[string]int, len(indexes))
 	for position, index := range indexes {
 		prefix := fmt.Sprintf("additional_indexes[%d]", position)
 		switch folded := strings.ToLower(index.Name); {
@@ -211,8 +222,37 @@ func validateAdditionalIndexes(indexes []AdditionalIndex, kind Kind, tables inde
 			issues = append(issues, fmt.Sprintf(
 				"%s names %d fields, and an index takes at most %d", prefix, total, maxAdditionalIndexFields))
 		}
-		table, known := tables[strings.ToLower(index.Table)]
-		if !known {
+		table, found := tables[strings.ToLower(index.Table)]
+		// A field by the name its table knows it by; a field of a virtual
+		// table, or of none, by the name written.
+		known := func(field string) string {
+			folded := foldStandardName(field)
+			if name, ok := table.fields[folded]; ok {
+				return name
+			}
+			return folded
+		}
+		// Two indexes of one table and one key in one order are one index to
+		// the database, whatever they carry besides: the prototype keeps both
+		// (opis of 15.10.2026, docs/block-00/dopolnitelnyj-indeks.md), ML
+		// refuses the second (owner, 15.10.2026; METADATA-OBJECTS.md,
+		// «Дополнительные индексы»).
+		if len(index.IndexedFields) > 0 {
+			key := strings.ToLower(index.Table)
+			if found {
+				key = table.name
+			}
+			for _, field := range index.IndexedFields {
+				key += "\x00" + known(field)
+			}
+			if previous, exists := keyed[key]; exists {
+				issues = append(issues, fmt.Sprintf("%s %s repeats the table and the indexed fields of additional_indexes[%d] %s: one key is one index",
+					prefix, index.Name, previous, indexes[previous].Name))
+			} else {
+				keyed[key] = position
+			}
+		}
+		if !found {
 			if virtual[strings.ToLower(index.Table)] {
 				// Named a virtual table of this kind. The index is carried and
 				// its fields are left alone - see virtualIndexTables.
@@ -229,15 +269,16 @@ func validateAdditionalIndexes(indexes []AdditionalIndex, kind Kind, tables inde
 			for at, field := range list.fields {
 				where := fmt.Sprintf("%s.%s[%d]", prefix, list.name, at)
 				folded := foldStandardName(field)
+				_, inTable := table.fields[folded]
 				switch {
 				case field == "":
 					issues = append(issues, where+" must name a field")
-				case !table[folded]:
+				case !inTable:
 					issues = append(issues, where+" names "+field+", which is not a field of "+describeIndexTable(index.Table))
-				case seen[folded]:
+				case seen[known(field)]:
 					issues = append(issues, where+" names "+field+", which is already in this index")
 				default:
-					seen[folded] = true
+					seen[known(field)] = true
 				}
 			}
 		}

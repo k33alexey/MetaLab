@@ -18,6 +18,7 @@ const (
 	indexDimensionID = "d0e00000-0000-4000-8000-000000000014"
 	indexResourceID  = "d0e00000-0000-4000-8000-000000000015"
 	indexColumnID    = "d0e00000-0000-4000-8000-000000000016"
+	indexPartINNID   = "d0e00000-0000-4000-8000-000000000017"
 )
 
 func indexCatalogBody(body string) string {
@@ -36,6 +37,7 @@ table_parts:
     title: {ru: Контакты}
     attributes:
       - {id: ` + indexPartFieldID + `, name: Телефон, title: {ru: Телефон}, types: [{kind: string, length: 20}]}
+      - {id: ` + indexPartINNID + `, name: ИНН, title: {ru: ИНН}, types: [{kind: string, length: 12}]}
 ` + body
 }
 
@@ -117,9 +119,25 @@ func TestAnIndexIsRefusedWhenItCannotBeBuilt(t *testing.T) {
   - {name: Первый, indexed_fields: [ИНН, КПП]}
   - {name: Второй, indexed_fields: [КПП, ИНН]}
 `, ""},
-		"два индекса по тем же полям не копия": {`additional_indexes:
+		// One key in one order is one index whatever else the two carry
+		// (owner, 15.10.2026; the prototype keeps both); the refusal names
+		// both.
+		"два индекса по тем же полям": {`additional_indexes:
   - {name: Первый, indexed_fields: [ИНН]}
-  - {name: Второй, indexed_fields: [ИНН], additional_fields: [КПП]}
+  - {name: Второй, indexed_fields: [инн], additional_fields: [КПП]}
+`, "additional_indexes[1] Второй repeats the table and the indexed fields of additional_indexes[0] Первый"},
+		// The exports name a standard field in English (mdclasses: Code,
+		// Ref); it is the same field as its Russian name.
+		"один ключ двумя языками": {`additional_indexes:
+  - {name: Первый, indexed_fields: [Код]}
+  - {name: Второй, indexed_fields: [Code]}
+`, "additional_indexes[1] Второй repeats the table and the indexed fields of additional_indexes[0] Первый"},
+		"поле дважды двумя языками": {`additional_indexes:
+  - {name: ПоКоду, indexed_fields: [Код], additional_fields: [Code]}
+`, "names Code, which is already in this index"},
+		"те же поля в другой таблице": {`additional_indexes:
+  - {name: Первый, indexed_fields: [ИНН]}
+  - {name: Второй, table: Контакты, indexed_fields: [ИНН]}
 `, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
