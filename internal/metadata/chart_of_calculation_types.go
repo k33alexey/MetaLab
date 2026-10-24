@@ -110,7 +110,8 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 			codeAllowedLength: true,
 			codeType:          true,
 			codeMayBeAbsent:   true,
-			// As on a chart of accounts - see NoteLengthZeroUnchecked.
+			// A description of length 0 the designer takes (opis of
+			// 24.10.2026, plan-vidov-rascheta.md, «Досъёмка»).
 			descriptionMayBeAbsent: true,
 			predefinedDataUpdate:   value.PredefinedDataUpdate,
 			presentation:           value.Presentations,
@@ -125,6 +126,13 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 			standardAttributes:     value.StandardAttributes,
 			standardTableParts:     value.StandardTableParts,
 		}, configuration)...)
+		// The window of the chart turns the main presentation to «В виде
+		// кода» itself when the description gets length 0 (opis of
+		// 24.10.2026, plan-vidov-rascheta.md, «Досъёмка»): a chart with no
+		// description presented by it is one the designer does not save.
+		if value.DescriptionLength == 0 && value.DefaultPresentation == PresentAsDescription {
+			issues = append(issues, "default_presentation as-description needs a description, and description_length is 0")
+		}
 		switch value.BaseDependency {
 		case "", NoBaseDependency, ActionPeriodBase, RegistrationPeriodBase:
 		default:

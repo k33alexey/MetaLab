@@ -1255,8 +1255,9 @@ type referenceObjectShape struct {
 	// chart of calculation types may have no code either, the owner checked
 	// the same day, and so may a chart of characteristic types and a chart of
 	// accounts by the opis of 15.10.2026. The description of a chart of
-	// accounts and of calculation types was not checked: a length of 0 there
-	// is carried the same way and is a note (NoteLengthZeroUnchecked). An
+	// accounts and of calculation types may have length 0 as well: the window
+	// of both takes 0, and «Проверка конфигурации» says nothing of it (opis of
+	// 24.10.2026, plan-schetov.md, plan-vidov-rascheta.md, «Досъёмка»). An
 	// exchange plan has neither of length 0: the designer refuses both.
 	codeMayBeAbsent        bool
 	descriptionMayBeAbsent bool

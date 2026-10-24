@@ -145,11 +145,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteAutoOrderWithoutLength: func(t *testing.T, root string) {
 		noteChart(t, root, ChartOfAccountsKind, "auto_order_by_code: true\n")
 	},
-	NoteLengthZeroUnchecked: func(t *testing.T, root string) {
-		id := uuid.MustNew().String()
-		writeMetadata(t, root, ChartOfCalculationTypesKind, id, "format: 1\nid: "+id+"\nname: Начисления\ntitle: {ru: Начисления}\n"+
-			"code: {type: string, length: 5}\ndescription_length: 0\n")
-	},
 	NoteStandardFieldOfDocument: func(t *testing.T, root string) {
 		document, journal, sequence := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
 		writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
@@ -642,7 +637,7 @@ func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	}
 	var numeratorNoted bool
 	for _, note := range catalog.Notes() {
-		numeratorNoted = numeratorNoted || (note.Kind == NoteLengthZeroUnchecked && strings.Contains(note.Where, "Сквозной"))
+		numeratorNoted = numeratorNoted || strings.Contains(note.Where, "Сквозной")
 	}
 	// The designer takes a numerator of length 0 (opis of 15.10.2026,
 	// numerator.md): no note.

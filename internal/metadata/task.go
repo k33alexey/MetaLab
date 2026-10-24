@@ -103,8 +103,8 @@ func DecodeTask(source string, reader io.Reader, configuration project.Project) 
 		shape := numberedShapeOf(value, TaskKind, reservedTaskName)
 		shape.extraFields = []fieldGroup{{"addressing_attributes", addressingAttributeFields(value.AddressingAttributes)}}
 		issues = append(issues, validateNumberedObjectShape(shape, configuration)...)
-		// A description of length 0 switches it off, as on a catalog; on a task
-		// the owner did not check it, so it is a note (NoteLengthZeroUnchecked).
+		// A description of length 0 switches it off, as on a catalog; the
+		// designer takes it on a task (2.512).
 		if value.DescriptionLength < 0 || value.DescriptionLength > maxDescriptionLength {
 			issues = append(issues, fmt.Sprintf("description_length must be 0..%d", maxDescriptionLength))
 		}

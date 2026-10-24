@@ -35,7 +35,6 @@ const (
 	NoteFullTextInputOutsideIndex  NoteKind = "full-text-input-outside-index"
 	NoteExtDimensionsHalfSet       NoteKind = "ext-dimensions-half-set"
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
-	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
@@ -147,9 +146,6 @@ func init() {
 		NoteKindInfo{NoteAutoOrderWithoutLength,
 			"Автопорядок по коду у плана счетов без длины порядка.",
 			"Несётся как записан; порядок строится по ширине кода."},
-		NoteKindInfo{NoteLengthZeroUnchecked,
-			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов и плана видов расчёта.",
-			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
 		NoteKindInfo{NoteRegisterWithoutFields,
 			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
 				"после создания; конфигуратор его хранит и проверкой конфигурации не отвергает.",
@@ -360,7 +356,6 @@ func init() {
 	noteRules[NoteFullTextInputOutsideIndex] = noteFullTextInputOutsideIndex
 	noteRules[NoteExtDimensionsHalfSet] = noteExtDimensionsHalfSet
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
-	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
@@ -815,19 +810,6 @@ func noteAutoOrderWithoutLength(catalog *Catalog, note func(where, written strin
 	for _, chart := range catalog.ChartsOfAccounts {
 		if chart.AutoOrderByCode && chart.OrderLength == 0 {
 			note("charts-of-accounts "+chart.Name+" auto_order_by_code", "without order_length")
-		}
-	}
-}
-
-func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string)) {
-	for _, chart := range catalog.ChartsOfAccounts {
-		if chart.DescriptionLength == 0 {
-			note("charts-of-accounts "+chart.Name+" description_length", "0")
-		}
-	}
-	for _, chart := range catalog.ChartsOfCalculationTypes {
-		if chart.DescriptionLength == 0 {
-			note("charts-of-calculation-types "+chart.Name+" description_length", "0")
 		}
 	}
 }

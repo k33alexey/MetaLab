@@ -28,11 +28,6 @@ type codeNumberRow struct {
 	// switches the field off.
 	codeZero        bool
 	descriptionZero bool
-	// codeZeroUntil and descriptionZeroUntil name the item of docs/BLOCKS.md
-	// that brings the model to the table where it does not agree yet: until
-	// it lands, a length of 0 there is taken with NoteLengthZeroUnchecked.
-	codeZeroUntil        string
-	descriptionZeroUntil string
 	// auto and unique are «Автонумерация» and «Контроль уникальности».
 	auto   bool
 	unique bool
@@ -42,8 +37,6 @@ type codeNumberRow struct {
 	extra string
 }
 
-const untilDescriptionZero = "2б «длина наименования 0 у плана счетов и плана видов расчёта — сверить в конфигураторе»"
-
 var codeNumberTable = map[string]codeNumberRow{
 	"справочник": {kind: CatalogKind, numericCode: true, allowedLength: true,
 		codeZero: true, descriptionZero: true, auto: true, unique: true, descriptionCeiling: 150},
@@ -51,9 +44,9 @@ var codeNumberTable = map[string]codeNumberRow{
 		codeZero: true, descriptionZero: true, auto: true, unique: true, descriptionCeiling: 150,
 		extra: "value_type: [{kind: string, length: 100}]\n"},
 	"план счетов": {kind: ChartOfAccountsKind,
-		codeZero: true, descriptionZeroUntil: untilDescriptionZero, unique: true, descriptionCeiling: 150},
+		codeZero: true, descriptionZero: true, unique: true, descriptionCeiling: 150},
 	"план видов расчёта": {kind: ChartOfCalculationTypesKind, numericCode: true, allowedLength: true,
-		codeZero: true, descriptionZeroUntil: untilDescriptionZero, descriptionCeiling: 150},
+		codeZero: true, descriptionZero: true, descriptionCeiling: 150},
 	// The designer refuses a code and a description of length 0 on an
 	// exchange plan (opis of 15.10.2026, plan-obmena.md).
 	"план обмена":    {kind: ExchangePlanKind, allowedLength: true, descriptionCeiling: 250},
@@ -148,47 +141,65 @@ func TestCodeNumberAndDescriptionFollowTheTable(t *testing.T) {
 			} else {
 				expect(t, "the ceiling of the description", true, "", plain, row.descriptionCeiling)
 				lowest := 1
-				if row.descriptionZero || row.descriptionZeroUntil != "" {
+				if row.descriptionZero {
 					lowest = 0
 				}
 				expect(t, "a description past the ceiling", false, fmt.Sprintf("description_length must be %d..%d", lowest, row.descriptionCeiling),
 					plain, row.descriptionCeiling+1)
 			}
-			zero := func(t *testing.T, what string, taken bool, until string, field codeNumberField, description int) {
+			zero := func(t *testing.T, what string, taken bool, field codeNumberField, description int) {
 				t.Helper()
-				if until == "" {
-					catalog, err := load(t, field, description)
-					switch {
-					case taken && err != nil:
-						t.Fatalf("%s of 0 is in the table and was refused: %v", what, err)
-					case !taken && (err == nil || !strings.Contains(err.Error(), "length must be 1..")):
-						t.Fatalf("%s of 0 is not in the table: error = %v", what, err)
-					case taken && hasNote(catalog, NoteLengthZeroUnchecked):
-						t.Fatalf("%s of 0 is in the table and was taken with a note", what)
-					}
-					return
-				}
-				if taken {
-					t.Fatalf("%s of 0 is in the table, and nothing waits for %s", what, until)
-				}
 				catalog, err := load(t, field, description)
-				if err != nil || !hasNote(catalog, NoteLengthZeroUnchecked) {
-					t.Fatalf("%s of 0 waits for %s and is to be taken with a note: err = %v", what, until, err)
+				switch {
+				case taken && err != nil:
+					t.Fatalf("%s of 0 is in the table and was refused: %v", what, err)
+				case !taken && (err == nil || !strings.Contains(err.Error(), "length must be 1..")):
+					t.Fatalf("%s of 0 is not in the table: error = %v", what, err)
+				case taken && len(catalog.Notes()) != 0:
+					t.Fatalf("%s of 0 is in the table and was taken with a note: %+v", what, catalog.Notes())
 				}
 			}
-			zero(t, "the code or number", row.codeZero, row.codeZeroUntil, codeNumberField{}, description)
+			zero(t, "the code or number", row.codeZero, codeNumberField{}, description)
 			if row.descriptionCeiling != 0 {
-				zero(t, "the description", row.descriptionZero, row.descriptionZeroUntil, plain, 0)
+				zero(t, "the description", row.descriptionZero, plain, 0)
 			}
 		})
 	}
 }
 
-func hasNote(catalog *Catalog, kind NoteKind) bool {
-	for _, note := range catalog.Notes() {
-		if note.Kind == kind {
-			return true
+// A chart of calculation types with no description is not presented by it:
+// the window of the chart turns the main presentation to «В виде кода» itself
+// when the description gets length 0 (opis of 24.10.2026,
+// plan-vidov-rascheta.md, «Досъёмка»). Presented by the code, or with no
+// presentation said, it is taken; a description of length 0 on a chart of
+// accounts is taken with no note. The expectation is written here. Defects
+// caught: a chart with no description presented by it taken; one presented by
+// its code refused; the note of a length 0 left in place.
+func TestAChartOfCalculationTypesWithNoDescriptionIsPresentedByItsCode(t *testing.T) {
+	t.Parallel()
+	decode := func(presentation string) error {
+		_, err := DecodeChartOfCalculationTypes("object.yaml", strings.NewReader("format: 1\nid: e7000000-0000-4000-8000-000000000001"+
+			"\nname: Начисления\ntitle: {ru: Начисления}\ncode: {type: string, length: 5}\ndescription_length: 0\n"+presentation), metadataConfiguration())
+		return err
+	}
+	if err := decode("default_presentation: as-description\n"); err == nil ||
+		!strings.Contains(err.Error(), "default_presentation as-description needs a description, and description_length is 0") {
+		t.Fatalf("presented by a description it has not: %v", err)
+	}
+	for _, presentation := range []string{"default_presentation: as-code\n", ""} {
+		if err := decode(presentation); err != nil {
+			t.Fatalf("%q: refused: %v", presentation, err)
 		}
 	}
-	return false
+	root := metadataProject(t)
+	id := "e7000000-0000-4000-8000-000000000002"
+	writeMetadata(t, root, ChartOfAccountsKind, id, "format: 1\nid: "+id+"\nname: Хозрасчетный\ntitle: {ru: Хозрасчетный}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 0\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a chart of accounts with no description was refused: %v", err)
+	}
+	if notes := catalog.Notes(); len(notes) != 0 {
+		t.Fatalf("a chart of accounts with no description carries notes: %+v", notes)
+	}
 }
