@@ -884,3 +884,38 @@ func TestBinaryDataTakesItsQualifiersWhereTheWindowOffersIt(t *testing.T) {
 		t.Error("binary data of length 16 taken in an attribute of a data processor, whose window offers no binary data")
 	}
 }
+
+// The key field of a table of object data is of a simple type: typed by a
+// reference to a table «Проверка конфигурации» refuses it (opis of 24.10.2026,
+// vneshnij-istochnik.md, snapshots series-2.531/23-25). Binary data it takes
+// - the configurator saves such keys (lombard1) - and a table of records keys
+// by references freely (stockBody). The expectations are the opis's and the
+// export's, written here.
+//
+// Defect caught: a table of object data keyed by a reference loaded, which
+// the designer refuses; the rule refusing a key of binary data, as a narrow
+// reading of «примитивных» would, or reaching a table of records.
+func TestTheKeyOfAnObjectTableIsOfASimpleType(t *testing.T) {
+	t.Parallel()
+	keyed := func(types string) string {
+		body := strings.Replace(goodsBody, "    types: [{kind: string, length: 20}]\n    name_in_data_source: code", "    types: "+types+"\n    name_in_data_source: code", 1)
+		body = strings.Replace(body, "input_by_string: [Наименование, Код]", "input_by_string: [Наименование]", 1)
+		return strings.Replace(body, "unfilled_parent_value: {kind: string, data: \"\"}\n", "", 1)
+	}
+	root := metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", keyed("[{kind: external-data-source-table, reference: "+goodsTable+"}]"))
+	if message := loadRefused(t, root, "an object table keyed by a reference"); !strings.Contains(message, `key_fields[0] names "Код", and the key of a table of object data is of a simple type`) {
+		t.Fatalf("the error does not say what is wrong: %v", message)
+	}
+	root = metadataProject(t)
+	writeExternalSource(t, root, warehouseSource, "Склад", "")
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", keyed("[{kind: binary-data, length: 16, fixed_length: true}]"))
+	if _, err := Load(root); err != nil {
+		t.Fatalf("an object table keyed by binary data was refused: %v", err)
+	}
+	if _, err := DecodeExternalTable("table.yaml", strings.NewReader("format: 1\nid: "+uuid.MustNew().String()+"\nname: Остатки\ntitle: {ru: Остатки}\n"+stockBody),
+		metadataConfiguration()); err != nil && strings.Contains(err.Error(), "the key of a table of object data") {
+		t.Fatalf("a table of records keyed by a reference was refused as one of object data: %v", err)
+	}
+}
