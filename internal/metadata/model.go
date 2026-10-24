@@ -1901,6 +1901,28 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	return issues
 }
 
+// validateBinaryQualifiers checks binary data where it takes qualifiers - a
+// field of an external data source: a length, «Фиксированная» or
+// «Переменная» and «Неограниченная», as a string has (opis, obshchee.md,
+// «Окно «Редактирование типа данных»»: by default 0 and unlimited), written
+// by the configurator (lombard1: 58 fields, lengths 16, 1, 4 and 8, nearly
+// all fixed). No ceiling was seen on the prototype, so none is set. The
+// column is the other database's: the length says what it is, and ML keeps
+// a value read from it whole.
+func validateBinaryQualifiers(prefix string, item Type) []string {
+	var issues []string
+	if item.Length < 0 {
+		issues = append(issues, prefix+".length must not be negative, 0 being unlimited")
+	}
+	if item.FixedLength && item.Length == 0 {
+		issues = append(issues, prefix+".fixed_length requires a length")
+	}
+	if item.Precision != 0 || item.Scale != 0 || item.NonNegative || item.DateParts != "" {
+		issues = append(issues, prefix+" has qualifiers binary data has not")
+	}
+	return issues
+}
+
 // standsUnqualified checks a type of a kind that takes no qualifier: where the
 // place does not take the kind, the refusal says what the kind is.
 func standsUnqualified(prefix string, item Type, allowed bool, what string, place typePlace) []string {
@@ -1999,6 +2021,10 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, prefix+".kind binary-data cannot stand in an attribute of a form: the designer does not offer it")
 			continue
 		}
+		if item.Kind == BinaryDataType && place == placeExternalField {
+			issues = append(issues, validateBinaryQualifiers(prefix, item)...)
+			continue
+		}
 		if isObjectType(item.Kind) || isValueType(item.Kind) {
 			issues = append(issues, standsUnqualified(prefix, item, allowedIn(item.Kind, place), "lives in memory only", place)...)
 			continue
@@ -2006,8 +2032,8 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		if item.DateParts != "" && item.Kind != DateType {
 			issues = append(issues, prefix+".date_parts is allowed for dates only")
 		}
-		if item.FixedLength && item.Kind != StringType {
-			issues = append(issues, prefix+".fixed_length is allowed for strings only")
+		if item.FixedLength && item.Kind != StringType && item.Kind != BinaryDataType {
+			issues = append(issues, prefix+".fixed_length is allowed for strings and binary data only")
 		}
 		if item.NonNegative && item.Kind != NumberType {
 			issues = append(issues, prefix+".non_negative is allowed for numbers only")

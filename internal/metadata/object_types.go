@@ -216,6 +216,12 @@ const (
 	// names a reference to a table of an external source as allowed in an
 	// attribute of a managed form.
 	placeFormAttribute
+	// placeExternalField is a field of a table of an external data source: a
+	// column of the other database, never one of ours. It takes what a stored
+	// field takes and binary data besides, with its qualifiers - the
+	// configurator writes such fields (lombard1, 58), and the editor of the
+	// field's type gives the simple types (opis, vneshnij-istochnik.md).
+	placeExternalField
 )
 
 // storedNowhere says a kind may stand in a type description of something the
@@ -302,6 +308,8 @@ func allowedIn(kind TypeKind, place typePlace) bool {
 		return true
 	case placeSessionParameter:
 		return sessionParameterValueTypes[kind]
+	case placeExternalField:
+		return kind == BinaryDataType
 	default:
 		return false
 	}
@@ -321,6 +329,8 @@ func placeName(place typePlace) string {
 		return "in an attribute of a form"
 	case placeFilterCriterion:
 		return "in the type of a filter criterion"
+	case placeExternalField:
+		return "in a field of an external data source"
 	default:
 		return "in a field the database stores"
 	}

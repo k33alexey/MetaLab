@@ -795,3 +795,54 @@ fields:
 		t.Fatalf("the empty string did not come back as an empty string: %+v", table.UnfilledParentValue)
 	}
 }
+
+// TestABinaryFieldOfASourceTakesALengthAndFixedness catches binary data
+// refused as the type of a field of an external source, or its qualifiers
+// refused or let loose: the configurator writes such fields with a length,
+// fixed or variable (lombard1: 58 fields, 16, 1, 4, 8), and the window of the
+// type gives binary data a length, «Фиксированная» and «Неограниченная», as a
+// string (docs/block-00/obshchee.md). No ceiling was seen. A stored attribute
+// of binary data stays refused: the designer offers none.
+func TestABinaryFieldOfASourceTakesALengthAndFixedness(t *testing.T) {
+	t.Parallel()
+	field := func(types string) string {
+		return goodsBody + "  - {id: " + uuid.MustNew().String() + ", name: Фото, title: {ru: Фото}, types: " + types + ", name_in_data_source: photo}\n"
+	}
+	for types, want := range map[string]string{
+		"[{kind: binary-data}]":                                 "",
+		"[{kind: binary-data, length: 16, fixed_length: true}]": "",
+		"[{kind: binary-data, length: 100000}]":                 "",
+		"[{kind: binary-data, fixed_length: true}]":             "fields[4].types[0].fixed_length requires a length",
+		"[{kind: binary-data, length: -1}]":                     "fields[4].types[0].length must not be negative",
+		"[{kind: binary-data, length: 4, precision: 2}]":        "fields[4].types[0] has qualifiers binary data has not",
+	} {
+		root := metadataProject(t)
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", field(types))
+		catalog, err := Load(root)
+		if want == "" && err != nil {
+			t.Errorf("%s refused: %v", types, err)
+		}
+		if want == "" && err == nil {
+			if _, err := catalog.ApplicationSchema(); err != nil {
+				t.Errorf("%s: the schema refused the project: %v", types, err)
+			}
+		}
+		if want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%s: want %q, got %v", types, want, err)
+		}
+	}
+	// A field of a table of a dimension was not seen with binary data: it
+	// stands as a stored field.
+	root := metadataProject(t)
+	writeSalesCube(t, root, noteCubeBody(), strings.Replace(goodsDimTableBody, "types: [{kind: string, length: 20}]", "types: [{kind: binary-data, length: 16}]", 1))
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "kind binary-data lives in memory only") {
+		t.Errorf("a field of a dimension table of binary data: %v", err)
+	}
+	_, err := DecodeInformationRegister("register.yaml", strings.NewReader("format: 1\nid: "+uuid.MustNew().String()+"\nname: Цены\ntitle: {ru: Цены}\n"+
+		"write_mode: independent\nperiodicity: none\nresources:\n  - {id: "+uuid.MustNew().String()+", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+		"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Фото, title: {ru: Фото}, types: [{kind: binary-data, length: 16}]}\n"), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "kind binary-data lives in memory only and cannot stand in a field the database stores") {
+		t.Fatalf("a stored attribute of binary data: %v", err)
+	}
+}

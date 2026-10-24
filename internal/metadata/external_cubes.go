@@ -191,7 +191,7 @@ func DecodeExternalDimensionTable(source string, reader io.Reader, configuration
 		// it there too (mdclasses), so it is carried and is a note.
 		issues = append(issues, validateObjectCommands(value.Commands, configuration)...)
 		issues = append(issues, validateObjectTemplates(value.Templates, configuration)...)
-		issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields})...)
+		issues = append(issues, validateExternalFieldGroups(configuration, externalFieldGroup{"fields", value.Fields, placeStored})...)
 		if value.PresentationField != "" && !slices.ContainsFunc(value.Fields, func(field ExternalField) bool {
 			return strings.EqualFold(field.Name, value.PresentationField)
 		}) {
@@ -221,7 +221,7 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 		}
 		names[strings.ToLower(field.Name)] = true
 		issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
-		issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
+		issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types, placeStored)...)
 		issues = append(issues, validateFieldSettings(prefix, field, configuration)...)
 		issues = append(issues, validateFieldStorage(prefix, field)...)
 		for _, property := range []struct {

@@ -308,7 +308,7 @@ func validateNameInDataSource(path, value string) []string {
 // validateExternalFields checks every field on its own and returns them by
 // folded name for the checks of the lists that name them.
 func validateExternalFields(table ExternalTable, configuration project.Project) (map[string]ExternalField, []string) {
-	return checkExternalFieldGroups(configuration, externalFieldGroup{"fields", table.Fields})
+	return checkExternalFieldGroups(configuration, externalFieldGroup{"fields", table.Fields, placeExternalField})
 }
 
 // externalFieldGroup is one list of fields of a source's object under the
@@ -317,6 +317,10 @@ func validateExternalFields(table ExternalTable, configuration project.Project) 
 type externalFieldGroup struct {
 	path   string
 	fields []ExternalField
+	// place is where the types of the fields stand: a field of a table of the
+	// source takes binary data (placeExternalField); a field of a table of
+	// a dimension was not seen with it and stands as a stored field.
+	place typePlace
 }
 
 // validateExternalFieldGroups checks the lists of fields of one object as one
@@ -355,7 +359,7 @@ func checkExternalFieldGroups(configuration project.Project, groups ...externalF
 			}
 			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
 			issues = append(issues, validateRequiredNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource, "the field")...)
-			issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
+			issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types, group.place)...)
 			issues = append(issues, validateFieldSettings(prefix, field.Attribute, configuration)...)
 			issues = append(issues, validateFieldStorage(prefix, field.Attribute)...)
 			issues = append(issues, validateExternalFieldStorage(prefix, field)...)
@@ -380,7 +384,7 @@ func isExternalReference(kind TypeKind) bool {
 // writes for a column with no limit of its own.
 const maxExternalStringLength = 1<<32 - 1
 
-func validateExternalFieldTypes(path string, types []Type) []string {
+func validateExternalFieldTypes(path string, types []Type, place typePlace) []string {
 	var issues []string
 	var rest []Type
 	var restIndexes []int
@@ -415,7 +419,7 @@ func validateExternalFieldTypes(path string, types []Type) []string {
 	}
 	// The rest is checked by the one function every type goes through, and
 	// its messages are put back under the index the type has in the field.
-	for _, issue := range validateTypes(path, rest) {
+	for _, issue := range validateTypesIn(path, rest, place) {
 		for position := len(rest) - 1; position >= 0; position-- {
 			issue = strings.ReplaceAll(issue, fmt.Sprintf("%s[%d]", path, position), fmt.Sprintf("%s[%d]", path, restIndexes[position]))
 		}

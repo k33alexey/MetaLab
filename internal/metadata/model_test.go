@@ -747,7 +747,7 @@ func TestAttributeQualifiersConstrainValuesAndKinds(t *testing.T) {
 		want  string
 	}{
 		{"date parts on a number", "[{kind: number, precision: 5, scale: 0, date_parts: date}]", "date_parts is allowed for dates only"},
-		{"fixed length on a number", "[{kind: number, precision: 5, scale: 0, fixed_length: true}]", "fixed_length is allowed for strings only"},
+		{"fixed length on a number", "[{kind: number, precision: 5, scale: 0, fixed_length: true}]", "fixed_length is allowed for strings and binary data only"},
 		{"non-negative on a string", "[{kind: string, length: 5, non_negative: true}]", "non_negative is allowed for numbers only"},
 		{"fixed length without a length", "[{kind: string, fixed_length: true}]", "fixed_length requires a length"},
 		{"unknown date parts", "[{kind: date, date_parts: quarter}]", "date_parts must be date, time or date-time"},

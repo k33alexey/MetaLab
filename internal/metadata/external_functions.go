@@ -60,7 +60,7 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 		names[strings.ToLower(function.Name)] = true
 		issues = append(issues, validateTitle(prefix+".title", function.Title, configuration)...)
 		if len(function.Types) > 0 {
-			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types)...)
+			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeStored)...)
 		}
 		issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
 	}
