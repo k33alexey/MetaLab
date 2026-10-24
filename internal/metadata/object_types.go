@@ -342,6 +342,10 @@ const (
 	// validateEventSubscription, not by validateTypesIn; the window of the
 	// type offers what that takes.
 	placeSubscriptionSource
+	// placeNumericResource is a resource of a register of accumulation, of
+	// accounting or of calculation: one number or one defined type, checked
+	// by validateNumericResource, not by validateTypesIn.
+	placeNumericResource
 )
 
 // storedNowhere says a kind may stand in a type description of something the
@@ -393,8 +397,13 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // rule of a stored field it was checked by until 2.538 - what its editor
 // takes beside what was not tried.
 var aloneTypes = map[typePlace]map[TypeKind]bool{
-	placeStored:          {ValueStorageType: true, UUIDType: true},
-	placeExternalField:   {ValueStorageType: true, UUIDType: true},
+	placeStored:        {ValueStorageType: true, UUIDType: true},
+	placeExternalField: {ValueStorageType: true, UUIDType: true},
+	// A resource of a register: any defined type beside the number or
+	// another defined type - «Выбран тип, который не может быть включен в
+	// составной тип данных» (opis of 24.10.2026, resurs.md, snapshots
+	// series-2.531/12, 13); validateNumericResource takes one type only.
+	placeNumericResource: {DefinedType: true},
 	placeFilterCriterion: {UUIDType: true},
 	placeDefinedType: {
 		ValueStorageType: true, UUIDType: true, BinaryDataType: true, NullType: true,
@@ -474,6 +483,8 @@ func placeName(place typePlace) string {
 		return "in a field of an external data source"
 	case placeSubscriptionSource:
 		return "in the source of a subscription"
+	case placeNumericResource:
+		return "in a resource of a register"
 	default:
 		return "in a field the database stores"
 	}

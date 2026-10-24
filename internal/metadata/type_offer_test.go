@@ -121,13 +121,16 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 	// A dimension of a cube (snapshots 18, 20): the defined types and the
 	// dimension tables, here none.
 	expected[CubeDimensionChoice] = []string{"▸ОпределяемыйТип"}
+	// A resource of a register (snapshots 11-15): the number and the defined
+	// types.
+	expected[NumericResourceChoice] = []string{"□Число", "▸ОпределяемыйТип"}
 	// The folder of the enumerations of the platform by place (opis,
 	// «Системные перечисления по местам»): 24 in an attribute of a data
 	// processor, a form and a defined type, the three of accounting in a
 	// session parameter.
 	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true,
-		ExternalFieldChoice: true, CubeDimensionChoice: true}
+		ExternalFieldChoice: true, CubeDimensionChoice: true, NumericResourceChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -199,6 +202,9 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 				issues := validateTypesIn("types", []Type{item}, at.model)
 				if len(at.sourceReferences) > 0 {
 					issues = validateExternalFieldTypes("types", []Type{item}, at.model)
+				}
+				if at.model == placeNumericResource {
+					issues = validateNumericResource("resource", Attribute{Types: []Type{item}})
 				}
 				if at.model == placeSubscriptionSource {
 					issues = validateEventSubscription(EventSubscriptionDefinition{Source: []Type{item}, Event: "before-write",
@@ -423,5 +429,40 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 	}
 	if want := []string{"ОпределяемыйТип", "ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"}; !slices.Equal(rows, want) {
 		t.Errorf("a dimension of a cube offers %v, want %v", rows, want)
+	}
+}
+
+// The window of a resource of a register marks the folder of the defined
+// types as standing alone - beside the number or another defined type the
+// prototype's asks «Будут исключены остальные типы данных» (opis of
+// 24.10.2026, resurs.md, snapshots series-2.531/12, 13) - and the number not;
+// no other place marks the defined types so. What it offers the check of a
+// resource takes, one type at a time, and refuses two (TestEveryOfferedType-
+// IsAccepted holds the one).
+//
+// Defect caught: a resource the window lets have a number and a defined type,
+// which the save refuses; the mark leaking to the defined types of a stored
+// field, where they stand beside any type.
+func TestTheWindowOfAResourceTakesADefinedTypeAlone(t *testing.T) {
+	t.Parallel()
+	catalog, err := Load(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for place, want := range map[TypeChoicePlace]bool{NumericResourceChoice: true, StoredFieldChoice: false, DefinedTypeChoice: false} {
+		offer, _ := catalog.TypeOffer(place)
+		for _, row := range offer.Rows {
+			if row.ObjectKind == DefinedType && row.Alone != want {
+				t.Errorf("%s marks the defined types alone %v, want %v", place, row.Alone, want)
+			}
+			if row.Kind == NumberType && row.Alone {
+				t.Errorf("%s marks the number alone", place)
+			}
+		}
+	}
+	defined := catalog.referenceTypeObjects(DefinedTypeKind)[0].ID
+	both := Attribute{Types: []Type{{Kind: NumberType, Precision: 10}, {Kind: DefinedType, Reference: &defined}}}
+	if issues := validateNumericResource("resource", both); len(issues) == 0 {
+		t.Error("a resource of a number and a defined type was taken")
 	}
 }

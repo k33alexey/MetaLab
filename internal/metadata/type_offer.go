@@ -49,6 +49,9 @@ const (
 	ExternalFunctionChoice TypeChoicePlace = "external-function"
 	// CubeDimensionChoice is a dimension of a cube of an external source.
 	CubeDimensionChoice TypeChoicePlace = "cube-dimension"
+	// NumericResourceChoice is a resource of a register of accumulation, of
+	// accounting or of calculation: one window for the three.
+	NumericResourceChoice TypeChoicePlace = "numeric-resource"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -107,8 +110,7 @@ type choicePlace struct {
 }
 
 // choicePlaces are the places the prototype's window was gone through in,
-// with what it offered there (the opis, «Состав по местам»). The place of a
-// resource of a register is the next item of block 2б.
+// with what it offered there (the opis, «Состав по местам»).
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -191,6 +193,11 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// the rest.
 	CubeDimensionChoice: {model: placeStored, definedTypes: true, sourceReferences: []Kind{ExternalDimensionTableKind},
 		required: true, single: true},
+	// A resource of a register of accumulation, of accounting or of
+	// calculation: the number and every defined type, each of them alone
+	// (opis of 24.10.2026, resurs.md, snapshots series-2.531/11-15). The
+	// window has «Составной тип данных», and nothing reaches a composite.
+	NumericResourceChoice: {model: placeNumericResource, primitives: []TypeKind{NumberType}, definedTypes: true, required: true},
 }
 
 // sourceTables are the kinds whose references a field and a function of a
@@ -428,7 +435,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	if at.definedTypes {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Name: kinds.Must(DefinedTypeKind).Name, ObjectKind: DefinedType,
-			Objects: catalog.referenceTypeObjects(DefinedTypeKind)})
+			Objects: catalog.referenceTypeObjects(DefinedTypeKind), Alone: standsAlone(DefinedType, at.model)})
 	}
 	offer.Rows = append(offer.Rows, catalog.sourceReferenceRows(at.sourceReferences)...)
 	if at.anyReference {
