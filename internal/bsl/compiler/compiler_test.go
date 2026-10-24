@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/bsl/bytecode"
@@ -487,13 +488,18 @@ func TestCompileCallsContextMethodOfThisObject(t *testing.T) {
 		t.Fatalf("methods called = %v, routines called = %d", methods, len(function.CallSites))
 	}
 
-	program, diagnostics = form(`Процедура Закрыть() КонецПроцедуры
-Процедура Готово() Экспорт Закрыть(); КонецПроцедуры`)
-	if len(diagnostics) != 0 {
-		t.Fatal(diagnostics)
+	// A routine named as a method of the form is defined already, in either
+	// language: the designer refuses it (block-00/forma.md, «Имена формы в
+	// коде её модуля»). A routine named as a property of the form is not a
+	// method and compiles.
+	for _, source := range []string{"Процедура Закрыть() КонецПроцедуры", "Функция close() Возврат 1; КонецФункции"} {
+		_, diagnostics := form(source + "\nПроцедура Готово() Экспорт Закрыть(); КонецПроцедуры")
+		if len(diagnostics) != 1 || diagnostics[0].Code != "BSL3001" || !strings.Contains(diagnostics[0].Message, "the object of the module has a method of the name") {
+			t.Fatalf("a routine named as a method of its form = %v, want a duplicate routine", diagnostics)
+		}
 	}
-	if function, _ := program.Lookup("Форма.Готово"); len(function.CallSites) != 1 {
-		t.Fatalf("a routine of the module named as a method of its form is not the one called: %+v", function)
+	if _, diagnostics := form("Процедура Заголовок() КонецПроцедуры\nПроцедура Готово() Экспорт Заголовок(); КонецПроцедуры"); len(diagnostics) != 0 {
+		t.Fatalf("a routine named as no method of the form = %v", diagnostics)
 	}
 
 	if _, diagnostics := form(`Процедура Готово() Экспорт Открыть(); КонецПроцедуры`); len(diagnostics) != 1 || diagnostics[0].Code != "BSL3033" {

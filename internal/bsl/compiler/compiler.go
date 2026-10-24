@@ -29,7 +29,7 @@ type ModuleSource struct {
 	// that its code calls by their name alone - Закрыть() in a form's module
 	// is the form's. Such a call is a call of the method of ЭтотОбъект, one
 	// of the module's PredefinedVariables; a routine of the module by the
-	// same name is called instead.
+	// same name is refused, as the designer refuses it.
 	ContextMethods []string
 }
 
@@ -146,6 +146,15 @@ func compileParsed(modules []parsedModule) (*bytecode.Program, []syntax.Diagnost
 			folded := strings.ToLower(routine.Name)
 			if seen[folded] {
 				state.report(module.filename, routine.SourceSpan, "BSL3001", "duplicate routine "+routine.Name)
+				continue
+			}
+			// A routine named as a method of the module's object is defined
+			// already: the designer refuses Процедура Закрыть() in a form's
+			// module, «Процедура или функция с указанным именем уже
+			// определена» (pass of 23.10.2026, block-00/forma.md, «Имена
+			// формы в коде её модуля»), in either language.
+			if module.contextMethods[folded] {
+				state.report(module.filename, routine.SourceSpan, "BSL3001", "duplicate routine "+routine.Name+": the object of the module has a method of the name")
 				continue
 			}
 			if len(entries) > math.MaxUint16 {
@@ -854,14 +863,10 @@ func (c *functionCompiler) compileCall(call *syntax.CallExpression, requireFunct
 }
 
 // isContextMethod says the call is of a method of the module's ЭтотОбъект
-// called by its name alone: one of ModuleSource.ContextMethods that no
-// routine of the module is called by.
+// called by its name alone: one of ModuleSource.ContextMethods, which no
+// routine of the module may be named as.
 func (c *functionCompiler) isContextMethod(call *syntax.CallExpression) bool {
-	if call.Qualifier != "" || !c.contextMethods[strings.ToLower(call.Name)] {
-		return false
-	}
-	_, own := c.owner.routineByName[c.owner.routineKey(c.module, call.Name)]
-	return !own
+	return call.Qualifier == "" && c.contextMethods[strings.ToLower(call.Name)]
 }
 
 func transactionBuiltin(name string) (string, bool, bool) {
