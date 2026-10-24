@@ -64,16 +64,7 @@ func TestCatalogEditorOffersWhatAStoredFieldHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, node, "--input-type=module", "-e", offerInNode, "ui/catalog-editor.js")
-	command.Stdin = bytes.NewReader(payload)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	output, err := command.Output()
-	if err != nil {
-		t.Fatalf("node: %v\n%s", err, stderr.String())
-	}
+	output := runInNode(t, node, offerInNode, payload, "ui/catalog-editor.js")
 	var answer struct {
 		Rows    []string                   `json:"rows"`
 		Catalog metadata.CatalogDefinition `json:"catalog"`
@@ -163,17 +154,8 @@ func TestTheTypeWindowOffersFoldersOfObjectsAndOfTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
 	id := created.Catalog.ID
-	command := exec.CommandContext(ctx, node, "--input-type=module", "-e", foldersInNode, id.String())
-	command.Stdin = bytes.NewReader(payload)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	output, err := command.Output()
-	if err != nil {
-		t.Fatalf("node: %v\n%s", err, stderr.String())
-	}
+	output := runInNode(t, node, foldersInNode, payload, id.String())
 	var answer struct {
 		Inside  []string        `json:"inside"`
 		Types   []metadata.Type `json:"types"`
@@ -198,4 +180,102 @@ func TestTheTypeWindowOffersFoldersOfObjectsAndOfTypes(t *testing.T) {
 	if len(answer.Open) != 1 || answer.Open[0] != "Системные перечисления" || answer.Current != "vertical-align" {
 		t.Errorf("opened on an enumeration, the window has open %v and current %q", answer.Open, answer.Current)
 	}
+}
+
+// binaryInNode opens the window on the offer read from stdin with nothing
+// marked: asks for the answer of «ОК» first, then unfolds the folder of the
+// enumerations of the platform, marks binary data, gives it a length beyond
+// the ceiling, then one of 16, fixed, and prints what each step answered.
+const binaryInNode = `
+const {readFileSync} = await import('node:fs');
+const vm = await import('node:vm');
+const context = vm.createContext({structuredClone, crypto});
+vm.runInContext(readFileSync('ui/studio-common.js', 'utf8'), context);
+context.offer = JSON.parse(readFileSync(0, 'utf8'));
+process.stdout.write(JSON.stringify(vm.runInContext(` + "`" + `
+  const window = typeEditorModel(offer, []);
+  const empty = window.result().refusal;
+  window.fold(window.visible().find(row => row.caption === 'Системные перечисления').key, true);
+  const inside = window.visible().filter(row => row.depth === 1).map(row => row.caption);
+  window.mark('binary-data', true);
+  const fresh = structuredClone(window.qualifiers());
+  const beyond = window.setQualifier('length', 4294967296);
+  const ceiling = window.setQualifier('length', 4294967295);
+  window.setQualifier('length', 16);
+  window.setQualifier('fixedLength', true);
+  ({empty, inside, fresh, beyond, ceiling, types: window.result().types});
+` + "`" + `, context)));
+`
+
+// The window of the type of a session parameter requires a type, offers the
+// three enumerations of accounting, and gives binary data a length, fixed or
+// variable, under the model's ceiling - unlimited when marked anew (opis,
+// parametr-seansa.md; obshchee.md, «Окно «Редактирование типа данных»»;
+// snapshot tip-85). Defects caught: binary data offered without its
+// qualifiers or a length past four bytes taken, which the model refuses; a
+// session parameter left with no type; the 24 enumerations offered where the
+// prototype offers three.
+func TestTheTypeWindowOfASessionParameterGivesBinaryDataItsQualifiers(t *testing.T) {
+	t.Parallel()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for this test")
+	}
+	catalog, err := metadata.Load(createProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, _ := catalog.TypeOffer(metadata.SessionParameterChoice)
+	payload, err := json.Marshal(offer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := runInNode(t, node, binaryInNode, payload)
+	var answer struct {
+		Empty  string   `json:"empty"`
+		Inside []string `json:"inside"`
+		Fresh  struct {
+			Kind    string        `json:"kind"`
+			Type    metadata.Type `json:"type"`
+			Enabled bool          `json:"enabled"`
+		} `json:"fresh"`
+		Beyond  bool            `json:"beyond"`
+		Ceiling bool            `json:"ceiling"`
+		Types   []metadata.Type `json:"types"`
+	}
+	if err := json.Unmarshal(output, &answer); err != nil {
+		t.Fatalf("node answered %q: %v", output, err)
+	}
+	if answer.Empty != "Необходимо выбрать тип значения." {
+		t.Errorf("with nothing marked «ОК» answers %q", answer.Empty)
+	}
+	if !slices.Equal(answer.Inside, []string{"ВидДвиженияНакопления", "ВидСчета", "ВидДвиженияБухгалтерии"}) {
+		t.Errorf("the folder of the enumerations of the platform holds %v", answer.Inside)
+	}
+	if answer.Fresh.Kind != "binary-data" || answer.Fresh.Type.Length != 0 || !answer.Fresh.Enabled {
+		t.Errorf("binary data marked anew shows %+v", answer.Fresh)
+	}
+	if answer.Beyond || !answer.Ceiling {
+		t.Errorf("a length of 4294967296 taken %v, of 4294967295 %v", answer.Beyond, answer.Ceiling)
+	}
+	if len(answer.Types) != 1 || answer.Types[0] != (metadata.Type{Kind: metadata.BinaryDataType, Length: 16, FixedLength: true}) {
+		t.Errorf("the window built %+v", answer.Types)
+	}
+}
+
+// runInNode runs a script of a module in Node.js from the package's folder,
+// with input on stdin and the arguments given, and answers what it printed.
+func runInNode(t *testing.T, node, script string, input []byte, arguments ...string) []byte {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, node, append([]string{"--input-type=module", "-e", script}, arguments...)...)
+	command.Stdin = bytes.NewReader(input)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("node: %v\n%s", err, stderr.String())
+	}
+	return output
 }

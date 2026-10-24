@@ -1,12 +1,9 @@
 package studio
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/k33alexey/MetaLab/internal/project"
 )
@@ -77,14 +74,7 @@ func TestStudioShowsTextLikeTheServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, node, "--input-type=module", "-e", presentInNode, "ui/studio-common.js")
-	command.Stdin = bytes.NewReader(payload)
-	output, err := command.Output()
-	if err != nil {
-		t.Fatalf("node: %v", err)
-	}
+	output := runInNode(t, node, presentInNode, payload, "ui/studio-common.js")
 	var answers []string
 	if err := json.Unmarshal(output, &answers); err != nil {
 		t.Fatalf("node answered %q: %v", output, err)

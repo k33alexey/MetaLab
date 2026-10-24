@@ -64,7 +64,17 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		[]string{"▸Системные перечисления"})
 	expected[RunningObjectChoice] = memory
 	expected[FormAttributeChoice] = memory
-	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true}
+	// A session parameter (snapshots parametr-seansa/04, 05).
+	expected[SessionParameterChoice] = slices.Concat(
+		marked("□", []string{"Число", "Строка", "Дата", "Булево", "ХранилищеЗначения", "УникальныйИдентификатор", "ДвоичныеДанные", "Null"}),
+		marked("□", references), []string{"▸Характеристика", "▸ОпределяемыйТип", "□ЛюбаяСсылка"},
+		marked("□", []string{"ОписаниеТипов", "ФиксированныйМассив", "ФиксированноеСоответствие", "ФиксированнаяСтруктура"}),
+		[]string{"▸Системные перечисления"})
+	// The folder of the enumerations of the platform by place (opis,
+	// «Системные перечисления по местам»): 24 in an attribute of a data
+	// processor and a form, the three of accounting in a session parameter.
+	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, SessionParameterChoice: 3}
+	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -77,12 +87,17 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		if offer.Required != required[place] {
 			t.Errorf("%s: a type required %v, the prototype %v", place, offer.Required, required[place])
 		}
-		// The folder of the enumerations of the platform holds the 24 of
-		// the window, each a type with a box (TestTheSystemEnumerationsAreTheWindows
-		// holds their names and order).
-		if last := offer.Rows[len(offer.Rows)-1]; slices.Contains(rows, "▸Системные перечисления") &&
-			(len(last.Types) != len(systemEnumerationsOfTheWindow) || slices.ContainsFunc(last.Types, func(row TypeOfferRow) bool { return row.Kind == "" })) {
-			t.Errorf("%s: the folder of the enumerations of the platform holds %+v", place, last.Types)
+		// The folder holds as many enumerations as the window there, the
+		// first of them first, each a type with a box
+		// (TestTheSystemEnumerationsAreTheWindows holds their names and
+		// order).
+		var inside []TypeOfferRow
+		if slices.Contains(rows, "▸Системные перечисления") {
+			inside = offer.Rows[len(offer.Rows)-1].Types
+		}
+		if len(inside) != enumerations[place] || len(inside) > 0 && inside[0].Kind != "accumulation-record-kind" ||
+			slices.ContainsFunc(inside, func(row TypeOfferRow) bool { return row.Kind == "" }) {
+			t.Errorf("%s: the folder of the enumerations of the platform holds %+v", place, inside)
 		}
 	}
 	if len(choicePlaces) != len(expected) {

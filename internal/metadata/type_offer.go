@@ -32,6 +32,8 @@ const (
 	// each where it stands.
 	RunningObjectChoice TypeChoicePlace = "running-object"
 	FormAttributeChoice TypeChoicePlace = "form-attribute"
+	// SessionParameterChoice is the type of a session parameter.
+	SessionParameterChoice TypeChoicePlace = "session-parameter"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -67,11 +69,13 @@ type choicePlace struct {
 	// folders are the folders of the types living in memory that name an
 	// object - the object of a catalog, the record set of a register - each
 	// holding the objects of its kind; then come the types living in memory
-	// that name none, values, and last the folder «Системные перечисления»
-	// when systemEnumerations.
-	folders            []TypeKind
-	values             []TypeKind
-	systemEnumerations bool
+	// that name none, values, and last the folder «Системные перечисления»,
+	// holding the enumerations of the platform the model takes in the place:
+	// 24 in an attribute of a form or a data processor, three in a session
+	// parameter, and no folder where it takes none (opis, «Системные
+	// перечисления по местам»).
+	folders []TypeKind
+	values  []TypeKind
 	// required says the window does not close on «ОК» with nothing marked:
 	// «Необходимо выбрать тип значения.». Where the type may be empty it
 	// closes silently.
@@ -92,6 +96,14 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true},
 	RunningObjectChoice: memoryChoice(placeRunningObject),
 	FormAttributeChoice: memoryChoice(placeFormAttribute),
+	// A session parameter: the stored primitives, binary data and Null, the
+	// references with their sets, a type description, the fixed collections
+	// and the three enumerations of accounting; no arbitrary, a type
+	// required (opis, parametr-seansa.md; snapshots parametr-seansa/04, 05).
+	SessionParameterChoice: {model: placeSessionParameter,
+		primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType, BinaryDataType, NullType},
+		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true,
+		values: []TypeKind{TypeDescriptionType, FixedArrayType, FixedMapType, FixedStructureType}, required: true},
 }
 
 // memoryChoice is what the window offers an attribute of a data processor, a
@@ -114,8 +126,7 @@ func memoryChoice(model typePlace) choicePlace {
 			AccumulationRegisterRecordSetType, AccountingRegisterRecordSetType, CalculationRegisterRecordSetType},
 		values: []TypeKind{ConstantsSetType, ReportObjectType, SettingsComposerType, GraphicalSchemaType,
 			GeographicalSchemaType, ChartType, GanttChartType, DendrogramType, PlannerType, TypeDescriptionType, PictureType,
-			ColorType, FontType, StandardBeginningDateType, StandardPeriodType},
-		systemEnumerations: true}
+			ColorType, FontType, StandardBeginningDateType, StandardPeriodType}}
 }
 
 // typeNames are the names of the types the window shows by a word of their own
@@ -150,6 +161,10 @@ var typeNames = map[TypeKind]kinds.Words{
 	FontType:                  {Russian: "Шрифт", English: "Font"},
 	StandardBeginningDateType: {Russian: "СтандартнаяДатаНачала", English: "StandardBeginningDate"},
 	StandardPeriodType:        {Russian: "СтандартныйПериод", English: "StandardPeriod"},
+	BinaryDataType:            {Russian: "ДвоичныеДанные", English: "BinaryData"},
+	FixedArrayType:            {Russian: "ФиксированныйМассив", English: "FixedArray"},
+	FixedMapType:              {Russian: "ФиксированноеСоответствие", English: "FixedMap"},
+	FixedStructureType:        {Russian: "ФиксированнаяСтруктура", English: "FixedStructure"},
 	// The manager of a record has no module, so no ЭтотОбъект names it
 	// (typeName).
 	InformationRegisterRecordManagerType: {Russian: "РегистрСведенийМенеджерЗаписи", English: "InformationRegisterRecordManager"},
@@ -233,6 +248,7 @@ type TypeLimits struct {
 	StringLength      int `json:"stringLength"`
 	FixedStringLength int `json:"fixedStringLength"`
 	NumberDigits      int `json:"numberDigits"`
+	BinaryLength      int `json:"binaryLength"`
 }
 
 // newTypes are the qualifiers of a type marked anew: a string of 10 of
@@ -254,7 +270,8 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	offer := TypeOffer{
 		Place: place, Required: at.required,
-		Limits:   TypeLimits{StringLength: maxStringLength, FixedStringLength: maxFixedStringLength, NumberDigits: maxNumberDigits},
+		Limits: TypeLimits{StringLength: maxStringLength, FixedStringLength: maxFixedStringLength, NumberDigits: maxNumberDigits,
+			BinaryLength: maxExternalStringLength},
 		NewTypes: newTypes,
 	}
 	if at.arbitrary {
@@ -296,11 +313,13 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	for _, kind := range at.values {
 		offer.Rows = append(offer.Rows, typeRow(kind))
 	}
-	if at.systemEnumerations {
-		folder := TypeOfferRow{Name: systemEnumerationsName}
-		for _, enumeration := range kinds.SystemEnumerations {
-			folder.Types = append(folder.Types, TypeOfferRow{Kind: TypeKind(enumeration.Kind), Name: enumeration.Name})
+	folder := TypeOfferRow{Name: systemEnumerationsName}
+	for _, enumeration := range kinds.SystemEnumerations {
+		if kind := TypeKind(enumeration.Kind); allowedIn(kind, at.model) {
+			folder.Types = append(folder.Types, TypeOfferRow{Kind: kind, Name: enumeration.Name})
 		}
+	}
+	if len(folder.Types) > 0 {
 		offer.Rows = append(offer.Rows, folder)
 	}
 	return offer, true

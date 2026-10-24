@@ -853,3 +853,34 @@ func TestABinaryFieldOfASourceTakesALengthAndFixedness(t *testing.T) {
 		t.Fatalf("a stored attribute of binary data: %v", err)
 	}
 }
+
+// Binary data takes its qualifiers wherever the window of the type offers it -
+// a session parameter (snapshot tip-85, 23.10.2026) and a defined type as a
+// field of a source - and under the same ceilings; where binary data stands
+// with no window offering it, an attribute of a data processor, its
+// qualifiers stay refused.
+//
+// Defect caught: a session parameter of binary data of length 16, which the
+// window lets the designer write, refused; a ceiling of one place not kept in
+// another.
+func TestBinaryDataTakesItsQualifiersWhereTheWindowOffersIt(t *testing.T) {
+	t.Parallel()
+	for _, place := range []typePlace{placeSessionParameter, placeDefinedType, placeExternalField} {
+		for item, want := range map[Type]string{
+			{Kind: BinaryDataType}:                                    "",
+			{Kind: BinaryDataType, Length: 16, FixedLength: true}:     "",
+			{Kind: BinaryDataType, Length: 4294967295}:                "",
+			{Kind: BinaryDataType, Length: 4294967296}:                "length must be at most 4294967295",
+			{Kind: BinaryDataType, Length: 101, FixedLength: true}:    "fixed_length allows a length of at most 100",
+			{Kind: BinaryDataType, Length: 4, Precision: 2, Scale: 0}: "has qualifiers binary data has not",
+		} {
+			issues := validateTypesIn("types", []Type{item}, place)
+			if want == "" && len(issues) != 0 || want != "" && (len(issues) != 1 || !strings.Contains(issues[0], want)) {
+				t.Errorf("%+v %s: want %q, got %v", item, placeName(place), want, issues)
+			}
+		}
+	}
+	if issues := validateTypesIn("types", []Type{{Kind: BinaryDataType, Length: 16}}, placeRunningObject); len(issues) == 0 {
+		t.Error("binary data of length 16 taken in an attribute of a data processor, whose window offers no binary data")
+	}
+}

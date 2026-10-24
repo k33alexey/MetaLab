@@ -1905,14 +1905,23 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	return issues
 }
 
-// validateBinaryQualifiers checks binary data where it takes qualifiers - a
-// field of an external data source: a length, «Фиксированная» or
-// «Переменная» and «Неограниченная», as a string has (opis, obshchee.md,
-// «Окно «Редактирование типа данных»»: by default 0 and unlimited), written
-// by the configurator (lombard1: 58 fields, lengths 16, 1, 4 and 8, nearly
-// all fixed). The ceilings are the prototype's, seen on 24.10.2026 - see
-// below. The column is the other database's: the length says what it is, and
-// ML keeps a value read from it whole.
+// binaryQualified says binary data takes its qualifiers in the place: the
+// window «Редактирование типа данных» shows them under binary data wherever
+// it offers binary data - a field of an external data source, a session
+// parameter (snapshot tip-85, 23.10.2026), a defined type - one window with
+// one set of qualifiers (opis, obshchee.md, «Окно «Редактирование типа
+// данных»»).
+func binaryQualified(place typePlace) bool {
+	return place == placeExternalField || place == placeSessionParameter || place == placeDefinedType
+}
+
+// validateBinaryQualifiers checks binary data where it takes qualifiers
+// (binaryQualified): a length, «Фиксированная» or «Переменная» and
+// «Неограниченная», as a string has (opis, obshchee.md, «Окно
+// «Редактирование типа данных»»: by default 0 and unlimited), written by the
+// configurator (lombard1: 58 fields of a source, lengths 16, 1, 4 and 8,
+// nearly all fixed). The ceilings are the prototype's, seen on 24.10.2026 -
+// see below. The length says what the value is, and ML keeps a value whole.
 func validateBinaryQualifiers(prefix string, item Type) []string {
 	var issues []string
 	if item.Length < 0 {
@@ -2057,7 +2066,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, prefix+".kind binary-data cannot stand in an attribute of a form: the designer does not offer it")
 			continue
 		}
-		if item.Kind == BinaryDataType && place == placeExternalField {
+		if item.Kind == BinaryDataType && binaryQualified(place) {
 			issues = append(issues, validateBinaryQualifiers(prefix, item)...)
 			continue
 		}

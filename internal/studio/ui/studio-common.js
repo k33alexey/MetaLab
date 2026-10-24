@@ -898,7 +898,7 @@ function typeEditorModel(offer, types) {
        row unmarked showing them unavailable; null for a type without. */
     qualifiers() {
       const row = find(current);
-      if (!row?.type || !['string', 'number', 'date'].includes(row.type.kind)) return null;
+      if (!row?.type || !['string', 'binary-data', 'number', 'date'].includes(row.type.kind)) return null;
       return {kind: row.type.kind, type: marked.get(current) || fresh(row), enabled: marked.has(current)};
     },
     /* setQualifier writes one qualifier of the current type and answers
@@ -906,7 +906,8 @@ function typeEditorModel(offer, types) {
        A fraction longer than the number lengthens the number, a number
        shorter than its fraction shortens the fraction; a string of length 0
        is unlimited, and a string longer than a fixed one may be is of
-       variable length. */
+       variable length. Binary data takes what a string does, under a
+       ceiling of its own. */
     setQualifier(field, value) {
       const type = marked.get(current);
       if (!type) return true;
@@ -917,7 +918,8 @@ function typeEditorModel(offer, types) {
         if (field === 'scale' && (type.precision || 0) < value) type.precision = value;
         if (field === 'precision' && (type.scale || 0) > value) type.scale = value;
       } else if (field === 'length') {
-        if (!Number.isInteger(value) || value < 0 || value > limits.stringLength) return false;
+        const ceiling = type.kind === 'binary-data' ? limits.binaryLength : limits.stringLength;
+        if (!Number.isInteger(value) || value < 0 || value > ceiling) return false;
         type.length = value;
         if (!value || value > limits.fixedStringLength) delete type.fixedLength;
       } else if (field === 'unlimited') {
@@ -1060,7 +1062,7 @@ function showTypeEditor(offer, types) {
     if (kind === 'number') {
       qualifiers.append(numberField('Длина', 'precision', type.precision, enabled), numberField('Точность', 'scale', type.scale, enabled),
         checkboxField('Неотрицательное', !!type.nonNegative, on => { model.setQualifier('nonNegative', on); draw(); }, 'type-editor-check', !enabled));
-    } else if (kind === 'string') {
+    } else if (kind === 'string' || kind === 'binary-data') {
       const unlimited = !type.length, fixedAllowed = !unlimited && type.length <= offer.limits.fixedStringLength;
       const allowed = selectInput([['fixed', 'Фиксированная'], ['variable', 'Переменная']], type.fixedLength ? 'fixed' : 'variable',
         value => { model.setQualifier('fixedLength', value === 'fixed'); draw(); }, 'Допустимая длина');
