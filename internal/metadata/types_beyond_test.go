@@ -31,7 +31,14 @@ func TestEachNewKindOfTypeStandsWhereItMay(t *testing.T) {
 	}{
 		{Type{Kind: ReportObjectType, Reference: &id}, map[string]bool{"running": true, "defined": true}},
 		{Type{Kind: DataProcessorObjectType, Reference: &id}, map[string]bool{"running": true, "defined": true}},
-		{Type{Kind: InformationRegisterRecordManagerType, Reference: &id}, map[string]bool{"running": true, "defined": true}},
+		// The editor of a defined type does not offer a manager of a record
+		// (opis of 14.10.2026, opredelyaemyj-tip.md, «Нет в редакторе»).
+		{Type{Kind: InformationRegisterRecordManagerType, Reference: &id}, map[string]bool{"running": true}},
+		// Nor the record sets of a recalculation and of a sequence (the same
+		// opis), while that of a register of information it does.
+		{Type{Kind: RecalculationRecordSetType, Reference: &id}, map[string]bool{"running": true}},
+		{Type{Kind: SequenceRecordSetType, Reference: &id}, map[string]bool{"running": true}},
+		{Type{Kind: InformationRegisterRecordSetType, Reference: &id}, map[string]bool{"running": true, "defined": true}},
 		{Type{Kind: PlatformType, Name: "cfg:Filter"}, map[string]bool{"running": true, "defined": true}},
 		{Type{Kind: ExternalTableType, Reference: &id}, map[string]bool{"running": true, "defined": true, "command": true}},
 		{Type{Kind: VanishedType, Reference: &id}, map[string]bool{"running": true, "defined": true, "command": true}},

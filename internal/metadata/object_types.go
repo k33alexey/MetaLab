@@ -300,11 +300,22 @@ func formKindAllowedIn(kind TypeKind, place typePlace) bool {
 	}
 }
 
+// notInDefinedType are the kinds living in memory a defined type does not hold.
+var notInDefinedType = map[TypeKind]bool{
+	InformationRegisterRecordManagerType: true, RecalculationRecordSetType: true, SequenceRecordSetType: true,
+}
+
 // allowedIn says whether a kind that lives in memory may stand in the place.
 // Stored kinds are not asked: they may stand anywhere.
 func allowedIn(kind TypeKind, place typePlace) bool {
 	switch place {
-	case placeDefinedType, placeRunningObject, placeFormAttribute:
+	case placeDefinedType:
+		// The editor of the type of a defined type does not offer the
+		// manager of a record of a register of information, nor the record
+		// sets of a recalculation and of a sequence: its search finds none
+		// of them (opis of the defined type, 14.10.2026, «Нет в редакторе»).
+		return !notInDefinedType[kind]
+	case placeRunningObject, placeFormAttribute:
 		return true
 	case placeSessionParameter:
 		return sessionParameterValueTypes[kind]
