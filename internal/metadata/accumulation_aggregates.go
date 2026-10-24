@@ -105,11 +105,11 @@ type AccumulationRegisterAggregate struct {
 // that carries it.
 //
 // A dimension that is not there is refused, for the reason any dangling name
-// is refused: it describes a cut nothing can build. Two aggregates holding the
-// same dimensions at the same periodicity are not: an aggregate has no name of
-// its own, so the copy is one answer stored twice, but nothing shows the
-// configurator refusing to save it. The copy is carried and is a note
-// (NoteDuplicateAggregate).
+// is refused: it describes a cut nothing can build. So are two aggregates
+// holding the same dimensions at the same periodicity, whatever their use:
+// the designer of aggregates answers «Имеются агрегаты с одинаковым составом
+// измерений и периодичности» and keeps its window open (opis of 15.10.2026,
+// docs/block-00/registr-nakopleniya.md).
 //
 // An aggregate over no dimensions at all is not refused: folded only by
 // period, it is the coarsest cut there is and the most effective one when a
@@ -151,9 +151,9 @@ func validateAccumulationAggregates(aggregates []AccumulationRegisterAggregate, 
 		// The order of dimensions inside an aggregate says nothing - the same
 		// set folded the same way is the same cut - so the key is sorted.
 		key := strings.Join(sortedStrings(folded), ",") + "|" + string(aggregate.Periodicity)
-		// The same cut twice is carried and noted: nothing shows the
-		// configurator refusing it, and a second copy computes the same.
-		if _, exists := seen[key]; !exists {
+		if previous, exists := seen[key]; exists {
+			issues = append(issues, fmt.Sprintf("%s holds the dimensions and the periodicity of aggregates[%d]: the designer refuses two aggregates of one cut", prefix, previous))
+		} else {
 			seen[key] = index
 		}
 	}

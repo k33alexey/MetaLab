@@ -94,8 +94,12 @@ func DecodeAccumulationRegister(source string, reader io.Reader, configuration p
 		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, accumulationStandardFields(value.Kind), configuration)...)
 		issues = append(issues, validateFieldLinks(accumulationStandardFields(value.Kind), registerFields, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
 		issues = append(issues, validateAttributeUse(registerFields, nil, false, false)...)
-		if len(value.Resources) == 0 {
-			issues = append(issues, "resources must contain at least one numeric item")
+		// A register of balances keeps nothing without a resource, and the
+		// designer's check of the configuration says «У регистра не определено
+		// ни одного ресурса»; a turnover register it takes with none (opis of
+		// 15.10.2026, docs/block-00/registr-nakopleniya.md).
+		if len(value.Resources) == 0 && value.Kind == AccumulationRegisterBalance {
+			issues = append(issues, "resources must contain at least one numeric item: the designer refuses a register of balances with none")
 		}
 		issues = append(issues, validateRegisterFieldsApart(registerFields)...)
 		for index, resource := range value.Resources {

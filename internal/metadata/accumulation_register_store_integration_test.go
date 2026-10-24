@@ -346,3 +346,73 @@ func TestAccumulationRegisterRepositoryIntegration(t *testing.T) {
 		t.Fatalf("references=%+v error=%v", uses, err)
 	}
 }
+
+// TestATurnoverRegisterWithNoResourceIsWrittenAndRead catches a turnover
+// register with no resource, which the designer takes
+// (docs/block-00/registr-nakopleniya.md), taken by the model and broken in
+// the base: its table made, a movement written, read back and counted in the
+// turnovers with no column of a resource anywhere.
+func TestATurnoverRegisterWithNoResourceIsWrittenAndRead(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pool := integrationDatabase(t, ctx, 0)
+	documentID, registerID, productID := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	catalog := &Catalog{
+		Documents: []DocumentDefinition{{ID: documentID, Name: "Продажа", Number: DocumentNumber{Type: StringType, Length: 20, Unique: true, Periodicity: NumberPeriodYear},
+			Movements: []uuid.UUID{registerID}}},
+		AccumulationRegisters: []AccumulationRegisterDefinition{{
+			ID: registerID, Name: "Отгрузки", Kind: AccumulationRegisterTurnover,
+			Dimensions: []RegisterDimension{{Attribute: Attribute{ID: productID, Name: "Товар", Types: []Type{{Kind: StringType, Length: 100}}}}},
+		}},
+		documentByName: map[string]int{"продажа": 0}, documentByID: map[uuid.UUID]int{documentID: 0},
+		accumulationRegisterByName: map[string]int{"отгрузки": 0}, accumulationRegisterByID: map[uuid.UUID]int{registerID: 0},
+	}
+	migrateIntegrationSchema(t, ctx, pool, catalog, uuid.MustNew())
+	documents, err := NewDocumentRepository(pool, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewAccumulationRegisterRepository(pool, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	january := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
+	document, err := documents.New(ctx, "Продажа", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Number, document.Date = "S-1", january
+	if err := documents.Save(ctx, document, nil); err != nil {
+		t.Fatal(err)
+	}
+	set, _ := repository.NewRecordSet("Отгрузки")
+	set.Filter.Recorder = &document.Reference
+	row, _ := set.Add()
+	row.Period, row.Recorder = january, document.Reference
+	row.Dimensions[productID] = Value{Kind: StringType, Data: "A"}
+	if err := repository.Write(ctx, set, true); err != nil {
+		t.Fatalf("a movement of a register with no resource was not written: %v", err)
+	}
+	loaded, _ := repository.NewRecordSet("Отгрузки")
+	loaded.Filter.Recorder = &document.Reference
+	if err := repository.Read(ctx, loaded); err != nil || len(loaded.Records) != 1 || loaded.Records[0].Dimensions[productID].Data != "A" {
+		t.Fatalf("loaded=%+v error=%v", loaded, err)
+	}
+	// What the virtual table of turnovers shows of a register with nothing
+	// to turn over is not known from the prototype; it is asked without
+	// breaking, and no amount comes out of it.
+	turnovers, err := repository.Turnovers(ctx, "Отгрузки", january.Add(-time.Hour), january.Add(time.Hour), nil)
+	if err != nil {
+		t.Fatalf("the turnovers of a register with no resource: %v", err)
+	}
+	for _, row := range turnovers {
+		if len(row.Turnover) != 0 {
+			t.Fatalf("a register with no resource turned over %+v", row.Turnover)
+		}
+	}
+	// Written again, the movement takes its row of totals rather than
+	// making another.
+	if err := repository.Write(ctx, set, true); err != nil {
+		t.Fatalf("a movement of a register with no resource was not written again: %v", err)
+	}
+}

@@ -37,7 +37,6 @@ const (
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
-	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
 	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
 	NoteUnfilledParentWithoutTree  NoteKind = "unfilled-parent-without-hierarchy"
@@ -154,9 +153,6 @@ func init() {
 			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
 				"после создания; конфигуратор его хранит и проверкой конфигурации не отвергает.",
 			"Несётся как записан: у регистра сведений — одна пустая запись на период, регистр расчёта ничего не считает."},
-		NoteKindInfo{NoteDuplicateAggregate,
-			"Два агрегата регистра накопления с теми же измерениями и той же периодичностью.",
-			"Оба несутся как записаны; второй повторяет первый."},
 		NoteKindInfo{NoteAggregatesOfBalance,
 			"Агрегаты у регистра остатков. Правит агрегаты только оборотный регистр; заданные у оборотного, после смены " +
 				"вида на «Остатки» конфигуратор хранит скрытыми и проверкой конфигурации не отвергает.",
@@ -360,7 +356,6 @@ func init() {
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
-	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
 	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
 	noteRules[NoteUnfilledParentWithoutTree] = noteUnfilledParentWithoutTree
@@ -892,24 +887,6 @@ func noteChartHoldsNothing(catalog *Catalog, note func(where, written string)) {
 		}
 		if types, err := catalog.expandTypes(chart.ValueType, nil); err == nil && len(types) == 0 {
 			note("charts-of-characteristic-types "+chart.Name, "value type: characteristics only")
-		}
-	}
-}
-
-func noteDuplicateAggregate(catalog *Catalog, note func(where, written string)) {
-	for _, register := range catalog.AccumulationRegisters {
-		seen := map[string]int{}
-		for index, aggregate := range register.Aggregates {
-			folded := make([]string, 0, len(aggregate.Dimensions))
-			for _, name := range aggregate.Dimensions {
-				folded = append(folded, strings.ToLower(name))
-			}
-			key := strings.Join(sortedStrings(folded), ",") + "|" + string(aggregate.Periodicity)
-			if previous, exists := seen[key]; exists {
-				note(fmt.Sprintf("accumulation-registers %s aggregates[%d]", register.Name, index), fmt.Sprintf("the same as aggregates[%d]", previous))
-				continue
-			}
-			seen[key] = index
 		}
 	}
 }

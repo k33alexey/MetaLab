@@ -766,6 +766,11 @@ func (repository *AccumulationRegisterRepository) totalRowTakeOrMake(definition 
 		quoted := pgx.Identifier{column}.Sanitize()
 		updates = append(updates, fmt.Sprintf("%s = %s + $%d", quoted, quoted, firstResource+index))
 	}
+	// A turnover register may have no resource (2.510): its row of totals
+	// still stands for its combination, and taking it changes nothing.
+	if len(updates) == 0 {
+		updates = append(updates, "totals_split = totals_split")
+	}
 	locking := "FOR UPDATE"
 	if race {
 		locking = "FOR UPDATE SKIP LOCKED"
