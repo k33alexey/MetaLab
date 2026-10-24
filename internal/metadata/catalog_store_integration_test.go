@@ -24,7 +24,6 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	catalog := &Catalog{
 		Catalogs: []CatalogDefinition{{
 			ID: catalogID, Name: "Контрагенты", Code: CatalogCode{Type: StringType, Length: 9, Unique: true}, DescriptionLength: 250,
-			List: ListSettings{PageSize: 20, SearchFields: []string{"Description", "Email"}},
 			Attributes: []Attribute{
 				{ID: emailID, Name: "Email", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},
 				{ID: parentID, Name: "Родитель", Indexing: IndexField, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}},
@@ -158,7 +157,7 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 	if err != nil || len(secondDynamic.Records) != 2 || secondDynamic.NextCursor != nil {
 		t.Fatalf("second dynamic page records=%d cursor=%v error=%v", len(secondDynamic.Records), secondDynamic.NextCursor, err)
 	}
-	searched, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "bsl@"})
+	searched, err := repository.ListDynamic(ctx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "K003"})
 	if err != nil || len(searched.Records) != 1 || searched.Records[0].Code != "K003" {
 		t.Fatalf("searched=%+v error=%v", searched, err)
 	}
@@ -194,7 +193,7 @@ func TestCatalogRepositoryLifecycleIntegration(t *testing.T) {
 		t.Fatalf("filter reached a row the restriction hides: %+v error=%v", hidden, err)
 	}
 	// Neither must search.
-	searchedRestricted, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "bsl@"})
+	searchedRestricted, err := repository.ListDynamic(restrictedCtx, "Контрагенты", DynamicListRequest{Limit: 20, Search: "K003"})
 	if err != nil || len(searchedRestricted.Records) != 0 {
 		t.Fatalf("search reached a row the restriction hides: %+v error=%v", searchedRestricted, err)
 	}

@@ -232,7 +232,7 @@ func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, d
 		if err != nil {
 			return ApplicationListPage{}, err
 		}
-		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit, definition.List), page.NextCursor
+		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit), page.NextCursor
 		for _, record := range page.Records {
 			values := map[string]string{
 				"Ref": record.Reference.ObjectID.String(), "Code": record.Code, "Description": record.Description,
@@ -254,7 +254,7 @@ func (runtime *Runtime) LoadApplicationList(ctx context.Context, token string, d
 		if err != nil {
 			return ApplicationListPage{}, err
 		}
-		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit, definition.List), page.NextCursor
+		result.PageSize, result.NextCursor = effectiveListPageSize(request.Limit), page.NextCursor
 		for _, record := range page.Records {
 			values := map[string]string{
 				"Ref": record.Reference.ObjectID.String(), "Number": record.Number,
@@ -280,14 +280,13 @@ func appendApplicationAttributes(target map[string]string, attributes []metadata
 	}
 }
 
-func effectiveListPageSize(requested int, settings metadata.ListSettings) int {
+// effectiveListPageSize is the page a list was read by: the one asked for,
+// or the constant page of a list (metadata.DynamicListPageSize).
+func effectiveListPageSize(requested int) int {
 	if requested != 0 {
 		return requested
 	}
-	if settings.PageSize != 0 {
-		return settings.PageSize
-	}
-	return 20
+	return metadata.DynamicListPageSize
 }
 
 func (runtime *Runtime) loadPublishedMetadata(ctx context.Context, databaseID uuid.UUID) (metadata.RuntimeSnapshot, *pgxpool.Pool, error) {

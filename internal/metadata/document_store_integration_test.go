@@ -28,7 +28,6 @@ func TestDocumentRepositoryLifecycleIntegration(t *testing.T) {
 		Documents: []DocumentDefinition{{
 			ID: documentID, Name: "Продажа", Posting: DocumentPosting{Allowed: true},
 			Number:     DocumentNumber{Type: StringType, Length: 11, Unique: true, Periodicity: NumberPeriodYear},
-			List:       ListSettings{PageSize: 20, SearchFields: []string{"Number"}},
 			Attributes: []Attribute{{ID: partnerID, Name: "Контрагент", FillChecking: ShowFillingError, Types: []Type{{Kind: CatalogType, Reference: &catalogID}}}},
 			TableParts: []TablePart{{ID: linesID, Name: "Товары", Attributes: []Attribute{
 				{ID: productID, Name: "Товар", FillChecking: ShowFillingError, Types: []Type{{Kind: StringType, Length: 100}}},

@@ -87,7 +87,6 @@ type DocumentDefinition struct {
 	Forms              ObjectForms            `yaml:"forms,omitempty"`
 	Commands           []ObjectCommand        `yaml:"commands,omitempty"`
 	Templates          []ObjectTemplate       `yaml:"templates,omitempty"`
-	List               ListSettings           `yaml:"list,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
@@ -128,7 +127,6 @@ type numberedObjectShape struct {
 	attributes   []Attribute
 	tableParts   []TablePart
 	forms        ObjectForms
-	list         ListSettings
 	reservedName func(string) bool
 	// numberFromElsewhere says the number is not declared here and will be
 	// filled in from the object that owns it.
@@ -185,7 +183,6 @@ func numberedShapeOf(description any, kind Kind, reservedName func(string) bool)
 		attributes:         field("Attributes").([]Attribute),
 		tableParts:         field("TableParts").([]TablePart),
 		forms:              field("Forms").(ObjectForms),
-		list:               field("List").(ListSettings),
 		reservedName:       reservedName,
 		kind:               kind,
 		standardAttributes: field("StandardAttributes").([]StandardAttribute),
@@ -274,12 +271,7 @@ func validateNumberedObjectShape(shape numberedObjectShape, configuration projec
 	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
 	issues = append(issues, validateFieldLinks(standardFieldsOfKind(shape.kind), fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts, false, false)...)
-	issues = append(issues, validateFormSlots(shape.forms.slots())...)
-	listFields := map[string]TypeKind{"number": shape.number.Type}
-	if len(switchedOff) > 0 {
-		delete(listFields, "number")
-	}
-	return append(issues, validateListSettings(shape.list, shape.attributes, listFields)...)
+	return append(issues, validateFormSlots(shape.forms.slots())...)
 }
 
 // tablePartRules are the things about a table part that its owner decides rather
@@ -392,7 +384,6 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)

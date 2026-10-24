@@ -31,7 +31,10 @@ type FormDescriptor struct {
 	Fields     []FormField
 	TableParts []FormTablePart
 	Commands   []FormCommand
-	List       ListSettings
+	// ListSearchFields are the fields a list of the object is searched by:
+	// the fields of its presentation. A list form of its own gives them in
+	// block 7; until then they are these.
+	ListSearchFields []string
 }
 
 type FormField struct {
@@ -60,15 +63,12 @@ func (catalog *Catalog) CatalogForm(name string, kind FormKind, language string)
 		return FormDescriptor{}, fmt.Errorf("unknown catalog %q", name)
 	}
 	form, err := catalog.baseForm(CatalogKind, definition.ID, definition.Name, definition.Title, definition.Forms.ObjectForms, kind, language)
-	form.List = definition.List
-	var searched []string
 	if catalogHasDescription(definition) {
-		searched = append(searched, "Description")
+		form.ListSearchFields = append(form.ListSearchFields, "Description")
 	}
 	if catalogHasCode(definition) {
-		searched = append(searched, "Code")
+		form.ListSearchFields = append(form.ListSearchFields, "Code")
 	}
-	form.List.SearchFields = effectiveListSearchFields(definition.List, searched)
 	if err != nil || !form.Generated {
 		return form, err
 	}
@@ -96,12 +96,9 @@ func (catalog *Catalog) DocumentForm(name string, kind FormKind, language string
 		return FormDescriptor{}, fmt.Errorf("unknown document %q", name)
 	}
 	form, err := catalog.baseForm(DocumentKind, definition.ID, definition.Name, definition.Title, definition.Forms, kind, language)
-	form.List = definition.List
-	var searched []string
 	if documentHasNumber(definition) {
-		searched = []string{"Number"}
+		form.ListSearchFields = []string{"Number"}
 	}
-	form.List.SearchFields = effectiveListSearchFields(definition.List, searched)
 	if err != nil || !form.Generated {
 		return form, err
 	}

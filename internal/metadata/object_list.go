@@ -64,12 +64,12 @@ func (repository *CatalogRepository) ListDynamic(ctx context.Context, name strin
 	if !ok {
 		return CatalogListPage{}, fmt.Errorf("unknown catalog %q", name)
 	}
-	request, err := normalizeDynamicListRequest(request, definition.List)
+	request, err := normalizeDynamicListRequest(request)
 	if err != nil {
 		return CatalogListPage{}, err
 	}
 	table, _ := PhysicalCatalogTable(definition.ID)
-	statement, arguments, err := buildDynamicListSQL(ctx, table, request, effectiveListSearchFields(definition.List, []string{"Description", "Code"}), func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(ctx, table, request, []string{"Description", "Code"}, func(field string) (string, bool) {
 		return catalogListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return catalogListField(definition, field)
@@ -90,27 +90,13 @@ func (repository *CatalogRepository) listPageArguments(ctx context.Context, defi
 		return CatalogListPage{}, recordDataError(ctx, repository.pool, fmt.Errorf("list catalog %s: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := CatalogListPage{Records: make([]*CatalogRecord, 0, limit)}
-	for rows.Next() {
-		var encoded []byte
-		if err := rows.Scan(&encoded); err != nil {
-			return CatalogListPage{}, err
-		}
-		record, err := repository.decodeRecord(definition, encoded)
-		if err != nil {
-			return CatalogListPage{}, err
-		}
-		if len(result.Records) == limit {
-			next := result.Records[len(result.Records)-1].Reference.ObjectID
-			result.NextCursor = &next
-			break
-		}
-		result.Records = append(result.Records, record)
-	}
-	if err := rows.Err(); err != nil {
+	records, next, err := readKeysetPage(rows, limit, func(encoded []byte) (*CatalogRecord, error) {
+		return repository.decodeRecord(definition, encoded)
+	}, func(record *CatalogRecord) uuid.UUID { return record.Reference.ObjectID })
+	if err != nil {
 		return CatalogListPage{}, recordDataError(ctx, repository.pool, err)
 	}
-	return result, nil
+	return CatalogListPage{Records: records, NextCursor: next}, nil
 }
 
 // List returns one bounded, stable UUID-keyset page without loading table parts.
@@ -134,27 +120,13 @@ func (repository *DocumentRepository) List(ctx context.Context, name string, cur
 		return DocumentListPage{}, recordDataError(ctx, repository.pool, fmt.Errorf("list document %s: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := DocumentListPage{Records: make([]*DocumentRecord, 0, limit)}
-	for rows.Next() {
-		var encoded []byte
-		if err := rows.Scan(&encoded); err != nil {
-			return DocumentListPage{}, err
-		}
-		record, err := repository.decodeRecord(definition, encoded)
-		if err != nil {
-			return DocumentListPage{}, err
-		}
-		if len(result.Records) == limit {
-			next := result.Records[len(result.Records)-1].Reference.ObjectID
-			result.NextCursor = &next
-			break
-		}
-		result.Records = append(result.Records, record)
-	}
-	if err := rows.Err(); err != nil {
+	records, next, err := readKeysetPage(rows, limit, func(encoded []byte) (*DocumentRecord, error) {
+		return repository.decodeRecord(definition, encoded)
+	}, func(record *DocumentRecord) uuid.UUID { return record.Reference.ObjectID })
+	if err != nil {
 		return DocumentListPage{}, recordDataError(ctx, repository.pool, err)
 	}
-	return result, nil
+	return DocumentListPage{Records: records, NextCursor: next}, nil
 }
 
 // ListDynamic returns a filtered keyset page using only metadata-owned fields.
@@ -163,12 +135,12 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 	if !ok {
 		return DocumentListPage{}, fmt.Errorf("unknown document %q", name)
 	}
-	request, err := normalizeDynamicListRequest(request, definition.List)
+	request, err := normalizeDynamicListRequest(request)
 	if err != nil {
 		return DocumentListPage{}, err
 	}
 	table, _ := PhysicalDocumentTable(definition.ID)
-	statement, arguments, err := buildDynamicListSQL(ctx, table, request, effectiveListSearchFields(definition.List, []string{"Number"}), func(field string) (string, bool) {
+	statement, arguments, err := buildDynamicListSQL(ctx, table, request, []string{"Number"}, func(field string) (string, bool) {
 		return documentListColumn(definition, field)
 	}, func(field string) (listColumn, bool) {
 		return documentListField(definition, field)
@@ -185,27 +157,47 @@ func (repository *DocumentRepository) ListDynamic(ctx context.Context, name stri
 		return DocumentListPage{}, recordDataError(ctx, repository.pool, fmt.Errorf("list document %s: %w", definition.Name, err))
 	}
 	defer rows.Close()
-	result := DocumentListPage{Records: make([]*DocumentRecord, 0, request.Limit)}
+	records, next, err := readKeysetPage(rows, request.Limit, func(encoded []byte) (*DocumentRecord, error) {
+		return repository.decodeRecord(definition, encoded)
+	}, func(record *DocumentRecord) uuid.UUID { return record.Reference.ObjectID })
+	if err != nil {
+		return DocumentListPage{}, recordDataError(ctx, repository.pool, err)
+	}
+	return DocumentListPage{Records: records, NextCursor: next}, nil
+}
+
+// keysetRows are the rows of a query a keyset page reads.
+type keysetRows interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}
+
+// readKeysetPage reads a keyset page of records the statement asked limit+1
+// rows for, each row one record as JSON: the first limit records, and the
+// reference of the last of them as the cursor of the next page when the
+// statement found one more. The rows are closed by the caller.
+func readKeysetPage[R any](rows keysetRows, limit int, decode func([]byte) (R, error), reference func(R) uuid.UUID) ([]R, *uuid.UUID, error) {
+	records := make([]R, 0, limit)
 	for rows.Next() {
 		var encoded []byte
 		if err := rows.Scan(&encoded); err != nil {
-			return DocumentListPage{}, err
+			return nil, nil, err
 		}
-		record, err := repository.decodeRecord(definition, encoded)
+		record, err := decode(encoded)
 		if err != nil {
-			return DocumentListPage{}, err
+			return nil, nil, err
 		}
-		if len(result.Records) == request.Limit {
-			next := result.Records[len(result.Records)-1].Reference.ObjectID
-			result.NextCursor = &next
-			break
+		if len(records) == limit {
+			next := reference(records[len(records)-1])
+			return records, &next, nil
 		}
-		result.Records = append(result.Records, record)
+		records = append(records, record)
 	}
 	if err := rows.Err(); err != nil {
-		return DocumentListPage{}, recordDataError(ctx, repository.pool, err)
+		return nil, nil, err
 	}
-	return result, nil
+	return records, nil, nil
 }
 
 func validateBasicListPage(cursor *uuid.UUID, limit int) error {
@@ -225,9 +217,9 @@ func basicListCursor(cursor *uuid.UUID) string {
 	return cursor.String()
 }
 
-func normalizeDynamicListRequest(request DynamicListRequest, settings ListSettings) (DynamicListRequest, error) {
+func normalizeDynamicListRequest(request DynamicListRequest) (DynamicListRequest, error) {
 	if request.Limit == 0 {
-		request.Limit = defaultDynamicListPageSize(settings)
+		request.Limit = DynamicListPageSize
 	}
 	if request.Cursor != nil && request.Cursor.IsZero() {
 		return DynamicListRequest{}, fmt.Errorf("list cursor must be a non-zero UUID")

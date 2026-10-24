@@ -37,7 +37,7 @@ func TestAutomaticDocumentFormsAndCommands(t *testing.T) {
 		}
 	}
 	list, err := catalog.DocumentForm("Продажа", ListForm, "en")
-	if err != nil || !list.Generated || len(list.Fields) != 3 || !hasFormCommand(list.Commands, "Create") || !slices.Equal(list.List.SearchFields, []string{"Number"}) {
+	if err != nil || !list.Generated || len(list.Fields) != 3 || !hasFormCommand(list.Commands, "Create") || !slices.Equal(list.ListSearchFields, []string{"Number"}) {
 		t.Fatalf("list=%+v error=%v", list, err)
 	}
 }
@@ -83,5 +83,26 @@ func TestBasicListPageValidation(t *testing.T) {
 	}
 	if err := validateBasicListPage(nil, 20); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A list of a catalog is searched by the fields of its presentation, the
+// description and the code, when neither is switched off (2.521: the object no
+// longer names its search fields). Defect caught: the code left out of the
+// search, which no test of a switched-off field sees.
+func TestACatalogListIsSearchedByItsDescriptionAndCode(t *testing.T) {
+	t.Parallel()
+	catalogID := uuid.MustNew()
+	catalog := &Catalog{
+		Project: project.Project{Languages: []project.Language{{Code: "ru"}}},
+		Catalogs: []CatalogDefinition{{
+			ID: catalogID, Name: "Товары", Title: LocalizedText{"ru": "Товары"},
+			Code: CatalogCode{Type: StringType, Length: 9}, DescriptionLength: 25,
+		}},
+		catalogByName: map[string]int{"товары": 0}, catalogByID: map[uuid.UUID]int{catalogID: 0},
+	}
+	list, err := catalog.CatalogForm("Товары", ListForm, "ru")
+	if err != nil || !slices.Equal(list.ListSearchFields, []string{"Description", "Code"}) {
+		t.Fatalf("the list is searched by %v (error %v)", list.ListSearchFields, err)
 	}
 }

@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,23 +67,25 @@ func TestARouteMapGridMayHaveNoStep(t *testing.T) {
 	}
 }
 
-// A field of the list's search gets an index whether it is a column of the
-// object's own or an attribute.
+// Every field of the presentation a list searches by gets an index, under the
+// name it had before the search fields left the object (2.521): the schema of
+// a project that named none does not change. Defect caught: a field of the
+// search left without an index, or an index renamed - a migration dropping
+// and making it again on every base.
 func TestEverySearchFieldOfAListGetsAnIndex(t *testing.T) {
 	t.Parallel()
-	owner, attribute := uuid.MustNew(), uuid.MustNew()
-	attributes := []Attribute{{ID: attribute, Name: "Артикул", Types: []Type{{Kind: StringType, Length: 20}}}}
-	system := map[string]listColumn{"code": {name: "code", kind: StringType}}
+	owner := parseTestUUID(t, "40000000-0000-4000-8000-0000000000aa")
+	system := map[string]listColumn{"code": {name: "code", kind: StringType}, "description": {name: "description", kind: StringType}}
 	var table schemadiff.Table
-	appendListSearchIndexes(&table, owner, ListSettings{SearchFields: []string{"Code", "Артикул"}}, nil, attributes, system)
-	column, _ := PhysicalAttributeColumn(attribute)
-	var keys []string
+	appendListSearchIndexes(&table, owner, []string{"Description", "Code"}, system)
+	var names, keys []string
 	for _, index := range table.Indexes {
+		names = append(names, index.Name)
 		keys = append(keys, strings.Join(index.Keys, ","))
 	}
-	joined := strings.Join(keys, ";")
-	if len(table.Indexes) != 2 || !strings.Contains(joined, "lower(code::text)") || !strings.Contains(joined, column) {
-		t.Fatalf("indexes = %v", keys)
+	want := []string{physicalObjectName("isdescript", owner), physicalObjectName("iscode", owner)}
+	if !slices.Equal(names, want) || keys[0] != "lower(description::text) text_pattern_ops" || keys[1] != "lower(code::text) text_pattern_ops" {
+		t.Fatalf("indexes = %v %v, want %v", names, keys, want)
 	}
 }
 

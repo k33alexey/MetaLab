@@ -66,7 +66,6 @@ type ChartOfCharacteristicTypesDefinition struct {
 	Forms                HierarchicalObjectForms    `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands             []ObjectCommand            `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates            []ObjectTemplate           `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                 ListSettings               `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined           []PredefinedCharacteristic `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	PredefinedDataUpdate PredefinedDataUpdate       `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
@@ -140,7 +139,6 @@ func DecodeChartOfCharacteristicTypes(source string, reader io.Reader, configura
 			attributes:             value.Attributes,
 			tableParts:             value.TableParts,
 			forms:                  value.Forms,
-			list:                   value.List,
 			hierarchy:              value.Hierarchy,
 			predefined:             predefinedCharacteristicItems(value.Predefined),
 			reservedName:           reservedChartOfCharacteristicTypesName,
@@ -194,7 +192,6 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 		value.AdditionalValues = &id
 	}
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {
 		value.Predefined[index].ValueType = cloneTypes(value.Predefined[index].ValueType)
@@ -259,7 +256,7 @@ func (catalog *Catalog) chartOfCharacteristicTypesTables(definition ChartOfChara
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of characteristic types %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
+	appendListSearchIndexes(&table, definition.ID, []string{"Description", "Code"}, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("chart of characteristic types", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

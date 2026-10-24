@@ -122,14 +122,10 @@ func applyListOptions(form *Form, descriptor metadata.FormDescriptor) {
 	if descriptor.Kind != metadata.ListForm && descriptor.Kind != metadata.ChoiceForm {
 		return
 	}
-	pageSize := descriptor.List.PageSize
-	if pageSize == 0 {
-		pageSize = 20
-	}
 	fields := make([]ListField, 0, len(descriptor.Fields))
 	searchFields := make([]ListField, 0, len(descriptor.Fields))
-	searchable := make(map[string]bool, len(descriptor.List.SearchFields))
-	for _, name := range descriptor.List.SearchFields {
+	searchable := make(map[string]bool, len(descriptor.ListSearchFields))
+	for _, name := range descriptor.ListSearchFields {
 		searchable[strings.ToLower(name)] = true
 	}
 	for _, field := range descriptor.Fields {
@@ -139,7 +135,7 @@ func applyListOptions(form *Form, descriptor metadata.FormDescriptor) {
 			searchFields = append(searchFields, item)
 		}
 	}
-	form.List = &ListOptions{PageSize: pageSize, SearchEnabled: len(descriptor.List.SearchFields) > 0, SearchFields: searchFields, FilterFields: fields}
+	form.List = &ListOptions{PageSize: metadata.DynamicListPageSize, SearchEnabled: len(descriptor.ListSearchFields) > 0, SearchFields: searchFields, FilterFields: fields}
 }
 
 func customElements(source []metadata.ManagedFormElement, language metadata.TitleLanguage, commands map[string]string) []Element {

@@ -79,8 +79,8 @@ func TestANumberOfLengthZeroIsSwitchedOff(t *testing.T) {
 			t.Fatal("the generated form shows a number")
 		}
 	}
-	if len(form.List.SearchFields) != 0 {
-		t.Fatalf("the list is searched by %v", form.List.SearchFields)
+	if len(form.ListSearchFields) != 0 {
+		t.Fatalf("the list is searched by %v", form.ListSearchFields)
 	}
 	object := &documentObject{definition: definition, runtime: runtime,
 		record: &DocumentRecord{Reference: DocumentReference{DocumentID: docID, ObjectID: uuid.MustNew()}}}

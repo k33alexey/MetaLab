@@ -94,7 +94,6 @@ type TaskDefinition struct {
 	Forms              ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List               ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeTask reads and validates one kind of task.
@@ -228,7 +227,6 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 		}
 	}
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
@@ -312,7 +310,7 @@ func (catalog *Catalog) taskTables(definition TaskDefinition) (schemadiff.Table,
 	if definition.DescriptionLength > 0 {
 		searched["description"] = listColumn{name: "description", kind: StringType}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number", "Description"}, definition.Attributes, searched)
+	appendListSearchIndexes(&table, definition.ID, []string{"Number", "Description"}, searched)
 	parts, err := catalog.tablePartTables("task", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

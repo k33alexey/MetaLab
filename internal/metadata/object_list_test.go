@@ -35,7 +35,7 @@ func TestDynamicListBuildsBoundedParameterizedQuery(t *testing.T) {
 
 func TestDynamicListRejectsInvalidRequests(t *testing.T) {
 	t.Parallel()
-	if _, err := normalizeDynamicListRequest(DynamicListRequest{Limit: 25}, ListSettings{}); err == nil {
+	if _, err := normalizeDynamicListRequest(DynamicListRequest{Limit: 25}); err == nil {
 		t.Fatal("unsupported page size was accepted")
 	}
 	if _, _, err := buildDynamicListSQL(context.Background(), "t_demo", DynamicListRequest{Limit: 20, Search: "value"}, nil, func(string) (string, bool) { return "", false }, func(string) (listColumn, bool) { return listColumn{}, false }, false); err == nil {
@@ -73,17 +73,38 @@ func TestDynamicListSearchesNumericFieldByExactValue(t *testing.T) {
 	}
 }
 
-func TestListSettingsRequireSearchableFields(t *testing.T) {
+// A list asked for no page is read by the constant page of a list, 100 rows
+// (owner, 24.10.2026): the object no longer says its page. Defect caught: the
+// former default of 20 left in place.
+func TestAListAskedForNoPageReadsAHundredRows(t *testing.T) {
 	t.Parallel()
-	attributes := []Attribute{
-		{ID: uuid.MustNew(), Name: "ИНН", Types: []Type{{Kind: StringType}}},
-		{ID: uuid.MustNew(), Name: "Сумма", Types: []Type{{Kind: NumberType}}},
-		{ID: uuid.MustNew(), Name: "Активен", Types: []Type{{Kind: BooleanType}}},
+	request, err := normalizeDynamicListRequest(DynamicListRequest{})
+	if err != nil || request.Limit != 100 {
+		t.Fatalf("limit=%d error=%v", request.Limit, err)
 	}
-	if issues := validateListSettings(ListSettings{PageSize: 20, SearchFields: []string{"Description", "ИНН"}}, attributes, map[string]TypeKind{"description": StringType}); len(issues) != 0 {
-		t.Fatalf("valid settings issues=%v", issues)
-	}
-	if issues := validateListSettings(ListSettings{PageSize: 25, SearchFields: []string{"Активен", "НетПоля"}}, attributes, nil); len(issues) != 3 {
-		t.Fatalf("invalid settings issues=%v", issues)
+}
+
+// The page and the search fields of a list are not a property of an object in
+// the prototype - its form and dynamic list give them - so no kind reads them
+// (owner, 24.10.2026, BLOCKS 2б «размер страницы и поля поиска у ссылочных
+// видов — убрать»). A description naming them is refused by the key rather
+// than read with it dropped. The nine kinds are written out here, the ones
+// that carried the key. Defect caught: a kind still reading the settings.
+func TestNoKindReadsTheSettingsOfAList(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []Kind{CatalogKind, DocumentKind, DocumentJournalKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+		ChartOfCharacteristicTypesKind, BusinessProcessKind, TaskKind, ExchangePlanKind} {
+		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
+			body := "format: 1\nid: d5000000-0000-4000-8000-000000000001\nname: Объект\ntitle: {ru: Объект}\n" +
+				"list: {page_size: 50, search_fields: [Description]}\n"
+			_, described, err := DecodeSource("metadata/"+string(kind)+"/Объект/object.yaml", strings.NewReader(body), nil, metadataConfiguration())
+			if !described {
+				t.Fatalf("the description of %s was not read as one", kind)
+			}
+			if err == nil || !strings.Contains(err.Error(), "field list not found") {
+				t.Fatalf("the settings of a list of %s were not refused by the key: %v", kind, err)
+			}
+		})
 	}
 }

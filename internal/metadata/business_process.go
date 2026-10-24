@@ -263,7 +263,6 @@ type BusinessProcessDefinition struct {
 	Forms                 ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands              []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates             []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                  ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeBusinessProcess reads and validates one business process.
@@ -691,7 +690,6 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 		value.Task = &task
 	}
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
@@ -766,7 +764,7 @@ func (catalog *Catalog) businessProcessTables(definition BusinessProcessDefiniti
 			return schemadiff.Table{}, nil, fmt.Errorf("business process %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number"}, definition.Attributes, map[string]listColumn{
+	appendListSearchIndexes(&table, definition.ID, []string{"Number"}, map[string]listColumn{
 		"number": {name: "number", kind: definition.Number.Type},
 	})
 	parts, err := catalog.tablePartTables("business process", definition.Name, definition.ID, definition.TableParts)

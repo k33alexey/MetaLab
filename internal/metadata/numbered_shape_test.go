@@ -16,7 +16,6 @@ func TestNumberedShapeCarriesEveryField(t *testing.T) {
 		"attributes":         "Attributes",
 		"tableParts":         "TableParts",
 		"forms":              "Forms",
-		"list":               "List",
 		"standardAttributes": "StandardAttributes",
 		"presentation":       "Presentations",
 		"input":              "ObjectInput",

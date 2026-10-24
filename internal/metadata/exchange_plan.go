@@ -85,7 +85,6 @@ type ExchangePlanDefinition struct {
 	Forms               ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands            []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates           []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                ListSettings           `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // RecalculationKind names a recalculation where a reference has to say what it
@@ -112,7 +111,6 @@ func DecodeExchangePlan(source string, reader io.Reader, configuration project.P
 			attributes:        value.Attributes,
 			tableParts:        value.TableParts,
 			forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-			list:              value.List,
 			reservedName:      reservedExchangePlanName,
 			codeAllowedLength: true,
 			// A code and a description of length 0 the designer refuses on an
@@ -187,7 +185,6 @@ func cloneExchangePlan(value ExchangePlanDefinition) ExchangePlanDefinition {
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
@@ -262,7 +259,7 @@ func (catalog *Catalog) exchangePlanTables(definition ExchangePlanDefinition) (s
 			return schemadiff.Table{}, nil, fmt.Errorf("exchange plan %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
+	appendListSearchIndexes(&table, definition.ID, []string{"Description", "Code"}, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("exchange plan", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

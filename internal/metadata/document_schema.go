@@ -54,7 +54,7 @@ func (catalog *Catalog) documentTables(definition DocumentDefinition) (schemadif
 	if documentHasNumber(definition) {
 		numberColumns["number"] = listColumn{name: "number", kind: definition.Number.Type}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Number"}, definition.Attributes, numberColumns)
+	appendListSearchIndexes(&table, definition.ID, []string{"Number"}, numberColumns)
 	parts, err := catalog.tablePartTables("document", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err

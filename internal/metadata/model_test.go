@@ -264,9 +264,6 @@ name: Контрагенты
 title: {ru: Контрагенты}
 code: {type: string, length: 9, auto: true, unique: true}
 description_length: 150
-list:
-  page_size: 50
-  search_fields: [Description]
 attributes:
   - id: `+attributeID+`
     name: ГоловнойКонтрагент
@@ -288,13 +285,12 @@ table_parts:
 		t.Fatal(err)
 	}
 	definition, ok := catalog.CatalogDefinition("контрагенты")
-	if !ok || definition.ID.String() != catalogID || len(definition.TableParts) != 1 || definition.List.PageSize != 50 || !slices.Equal(definition.List.SearchFields, []string{"Description"}) {
+	if !ok || definition.ID.String() != catalogID || len(definition.TableParts) != 1 {
 		t.Fatalf("catalog = %+v, found=%v", definition, ok)
 	}
 	definition.Attributes[0].Name = "Changed"
-	definition.List.SearchFields[0] = "Changed"
 	again, _ := catalog.CatalogDefinition("Контрагенты")
-	if again.Attributes[0].Name != "ГоловнойКонтрагент" || again.List.SearchFields[0] != "Description" {
+	if again.Attributes[0].Name != "ГоловнойКонтрагент" {
 		t.Fatal("catalog lookup exposed mutable attribute storage")
 	}
 }

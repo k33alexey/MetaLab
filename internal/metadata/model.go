@@ -576,12 +576,6 @@ type TablePart struct {
 	Use AttributeUse `yaml:"use,omitempty" json:"use,omitempty"`
 }
 
-// ListSettings controls bounded server-side lists without embedding SQL in metadata.
-type ListSettings struct {
-	PageSize     int      `yaml:"page_size,omitempty" json:"pageSize,omitempty"`
-	SearchFields []string `yaml:"search_fields,omitempty" json:"searchFields,omitempty"`
-}
-
 // CatalogDefinition describes one ML catalog and its persistent record shape.
 type CatalogDefinition struct {
 	Format int           `yaml:"format" json:"format"`
@@ -626,7 +620,6 @@ type CatalogDefinition struct {
 	Forms              HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List               ListSettings            `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined         []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	// PredefinedDataUpdate decides what happens to the rows behind Predefined
 	// when the configuration is updated - see predefined_data_update.go.
@@ -1160,7 +1153,6 @@ func DecodeCatalog(source string, reader io.Reader, configuration project.Projec
 			attributes:             value.Attributes,
 			tableParts:             value.TableParts,
 			forms:                  value.Forms,
-			list:                   value.List,
 			hierarchy:              value.Hierarchy,
 			predefined:             value.Predefined,
 			reservedName:           reservedCatalogObjectName,
@@ -1209,7 +1201,6 @@ type referenceObjectShape struct {
 	// whose hierarchy has no folders - a chart of accounts, where every row is
 	// an account - simply leaves them empty.
 	forms      HierarchicalObjectForms
-	list       ListSettings
 	hierarchy  Hierarchy
 	predefined []PredefinedCatalogItem
 	// reservedName says which attribute names the kind keeps for itself. A
@@ -1473,14 +1464,6 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
-	listFields := map[string]TypeKind{"code": shape.code.Type, "description": StringType}
-	if shape.code.Length == 0 {
-		delete(listFields, "code")
-	}
-	if shape.descriptionLength == 0 {
-		delete(listFields, "description")
-	}
-	issues = append(issues, validateListSettings(shape.list, shape.attributes, listFields)...)
 	return append(issues, validatePredefinedItems(shape)...)
 }
 
@@ -2236,7 +2219,6 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Attributes = cloneAttributes(value.Attributes)
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)

@@ -146,8 +146,8 @@ func TestACodelessCatalogHasNoCodeAnywhere(t *testing.T) {
 			t.Fatal("the generated form shows a code")
 		}
 	}
-	if len(form.List.SearchFields) != 1 || form.List.SearchFields[0] != "Description" {
-		t.Fatalf("the list is searched by %v", form.List.SearchFields)
+	if len(form.ListSearchFields) != 1 || form.ListSearchFields[0] != "Description" {
+		t.Fatalf("the list is searched by %v", form.ListSearchFields)
 	}
 	if _, ok := catalogListField(definition, "Code"); ok {
 		t.Fatal("the list sorts or filters by a code that is not there")
@@ -225,8 +225,8 @@ func TestADescriptionOfLengthZeroIsSwitchedOff(t *testing.T) {
 			t.Fatal("the generated form shows a description")
 		}
 	}
-	if len(form.List.SearchFields) != 1 || form.List.SearchFields[0] != "Code" {
-		t.Fatalf("the list is searched by %v", form.List.SearchFields)
+	if len(form.ListSearchFields) != 1 || form.ListSearchFields[0] != "Code" {
+		t.Fatalf("the list is searched by %v", form.ListSearchFields)
 	}
 	object := &catalogObject{definition: definition, runtime: runtime,
 		record: &CatalogRecord{Reference: CatalogReference{CatalogID: goodsID, ObjectID: uuid.MustNew()}, Code: "001"}}

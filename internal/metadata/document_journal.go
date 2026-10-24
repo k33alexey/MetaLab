@@ -55,7 +55,6 @@ type DocumentJournalDefinition struct {
 	Forms              SingleRoleForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List               ListSettings        `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 // DecodeDocumentJournal reads and validates one journal.
@@ -93,11 +92,6 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 			issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
 			issues = append(issues, validateDocumentStandardFields(prefix+".standard_references", column.StandardReferences)...)
 		}
-		// A journal shows documents, so the fields a list of it can be searched by
-		// are the ones every document has.
-		issues = append(issues, validateListSettings(value.List, nil, map[string]TypeKind{
-			"number": StringType, "date": DateType,
-		})...)
 		issues = append(issues, validateListPresentations(value.ListPresentations, configuration)...)
 		issues = append(issues, validateStandardAttributes("standard_attributes", value.StandardAttributes, standardFieldsOfKind(DocumentJournalKind), configuration)...)
 		issues = append(issues, validateFieldLinks(standardFieldsOfKind(DocumentJournalKind), nil, nil, standardAttributeChoices("standard_attributes", value.StandardAttributes)...)...)
@@ -118,7 +112,6 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 		value.Columns[index].StandardReferences = slices.Clone(value.Columns[index].StandardReferences)
 	}
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)

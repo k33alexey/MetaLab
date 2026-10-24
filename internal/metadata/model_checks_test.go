@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,8 +30,6 @@ func TestCatalogDescriptionEdges(t *testing.T) {
 		"предопределённый с именем в 256":     {predefined("П" + strings.Repeat("р", 255)), "predefined[0].name must be a valid identifier of at most 255 characters"},
 		"реквизит числом в одну цифру":        {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 1}]}\n", ""},
 		"реквизит числом без цифр":            {catalog + "attributes:\n  - {id: " + uuid.MustNew().String() + ", name: Цифра, title: {ru: Цифра}, types: [{kind: number, precision: 0}]}\n", "precision must be 1..32"},
-		"поиск по коду, когда код есть":       {catalog + "list: {search_fields: [code]}\n", ""},
-		"поиск по коду, когда кода нет":       {ceilingCatalog("{type: string, length: 0}", "100") + "list: {search_fields: [code]}\n", "list.search_fields[0] references an unknown field"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -44,34 +41,6 @@ func TestCatalogDescriptionEdges(t *testing.T) {
 				t.Fatalf("want %q, got %v", test.says, err)
 			}
 		})
-	}
-}
-
-// A document, a business process or a task with its number switched off has
-// no number to search a list by; with a number it has.
-//
-// Defect caught: search by a number that is not there accepted, or by one
-// that is there refused.
-func TestListSearchByNumberFollowsTheNumber(t *testing.T) {
-	t.Parallel()
-	search := func(length int) []string {
-		var found []string
-		issues := validateNumberedObjectShape(numberedObjectShape{
-			kind: DocumentKind, number: DocumentNumber{Type: StringType, Length: length},
-			list: ListSettings{SearchFields: []string{"number"}}, reservedName: reservedDocumentObjectName,
-		}, metadataConfiguration())
-		for _, issue := range issues {
-			if strings.HasPrefix(issue, "list.") {
-				found = append(found, issue)
-			}
-		}
-		return found
-	}
-	if found := search(9); len(found) != 0 {
-		t.Fatalf("search by a number that is there: %v", found)
-	}
-	if found := search(0); !slices.Equal(found, []string{"list.search_fields[0] references an unknown field"}) {
-		t.Fatalf("search by a number that is switched off: %v", found)
 	}
 }
 

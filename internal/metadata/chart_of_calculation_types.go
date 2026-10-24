@@ -92,7 +92,6 @@ type ChartOfCalculationTypesDefinition struct {
 	Forms                ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands             []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates            []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
-	List                 ListSettings                `yaml:"list,omitempty" json:"list,omitempty"`
 	Predefined           []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	PredefinedDataUpdate PredefinedDataUpdate        `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
@@ -107,7 +106,6 @@ func DecodeChartOfCalculationTypes(source string, reader io.Reader, configuratio
 			attributes:        value.Attributes,
 			tableParts:        value.TableParts,
 			forms:             HierarchicalObjectForms{ObjectForms: value.Forms},
-			list:              value.List,
 			reservedName:      reservedCalculationTypeName,
 			codeAllowedLength: true,
 			codeType:          true,
@@ -199,7 +197,6 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 	value.TableParts = cloneTableParts(value.TableParts)
 	value.BaseCharts = slices.Clone(value.BaseCharts)
 	value.Forms = cloneFormSet(value.Forms)
-	value.List.SearchFields = slices.Clone(value.List.SearchFields)
 	value.Predefined = slices.Clone(value.Predefined)
 	for index := range value.Predefined {
 		value.Predefined[index].Leading = slices.Clone(value.Predefined[index].Leading)
@@ -273,7 +270,7 @@ func (catalog *Catalog) chartOfCalculationTypesTables(definition ChartOfCalculat
 			return schemadiff.Table{}, nil, fmt.Errorf("chart of calculation types %s attribute %s: %w", definition.Name, attribute.Name, err)
 		}
 	}
-	appendListSearchIndexes(&table, definition.ID, definition.List, []string{"Description", "Code"}, definition.Attributes, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
+	appendListSearchIndexes(&table, definition.ID, []string{"Description", "Code"}, codeAndDescriptionColumns(definition.Code, definition.DescriptionLength))
 	parts, err := catalog.tablePartTables("chart of calculation types", definition.Name, definition.ID, definition.TableParts)
 	if err != nil {
 		return schemadiff.Table{}, nil, err
