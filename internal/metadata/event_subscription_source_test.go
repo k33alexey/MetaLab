@@ -151,3 +151,67 @@ func TestASubscriptionReachesTheObjectsItsSourceNames(t *testing.T) {
 		})
 	}
 }
+
+// The forming by a version of data history is an event a catalog has in common
+// with an exchange plan, a task and a manager of a constant: the designer
+// offers it to a source of a catalog and any of them, whatever the pages of the
+// help say of its parameters there. A record set of a register of information
+// is the one kind whose handler gets more - the key of the record - and the
+// designer offers a catalog and such a set the check of filling alone (opis of
+// 23.10.2026, podpiska-na-sobytie.md, «Досъёмка»). The expectation is written
+// here. Defects caught: the three refused, as they were before 2.524, and the
+// register taken.
+func TestFormingByAVersionIsCommonButForARegisterOfInformation(t *testing.T) {
+	t.Parallel()
+	const event = "generate-from-data-history-version-processing"
+	for name, test := range map[string]struct{ source, refusal string }{
+		"справочник и план обмена":        {"[{kind: catalog-object}, {kind: exchange-plan-object}]", ""},
+		"справочник и задача":             {"[{kind: catalog-object}, {kind: task-object}]", ""},
+		"справочник и константа":          {"[{kind: catalog-object}, {kind: constant-value-manager, reference: " + sourceConstant + "}]", ""},
+		"справочник и план видов расчёта": {"[{kind: catalog-object}, {kind: chart-of-calculation-types-object}]", ""},
+		"справочник и набор регистра":     {"[{kind: catalog-object}, {kind: information-register-record-set}]", "a source of several kinds takes only an event whose handler gets the same on all of them"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := subscriptionSourceProject(t)
+			writeSubscription(t, root, test.source, event)
+			_, err := Load(root)
+			switch {
+			case test.refusal == "" && err != nil:
+				t.Fatalf("refused: %v", err)
+			case test.refusal != "" && (err == nil || !strings.Contains(err.Error(), test.refusal)):
+				t.Fatalf("error = %v, expected it to say %q", err, test.refusal)
+			}
+		})
+	}
+}
+
+// The handler of a subscription is a procedure of a module with «Сервер»: the
+// window «Выбор обработчика события» offers the server modules, those of the
+// client and the server and those with the call of the server, and none of the
+// client alone (opis of 23.10.2026, podpiska-na-sobytie.md, «Досъёмка»).
+// Defects caught: a module of the client and the server, or with the call of
+// the server, refused; a module of the client alone taken.
+func TestASubscriptionHandlerIsInAModuleWithTheServer(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct{ flags, refusal string }{
+		"клиент и сервер": {"client: true\nserver: true\n", ""},
+		"вызов сервера":   {"server: true\nserver_call: true\n", ""},
+		"только клиент":   {"client: true\n", "must be a server module"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := subscriptionSourceProject(t)
+			writeMetadata(t, root, CommonModuleKind, sourceModule, "format: 1\nid: "+sourceModule+
+				"\nname: Подписки\ntitle: {ru: Подписки}\n"+test.flags+"module: "+sourceCode+"\n")
+			writeSubscription(t, root, "[{kind: catalog-object}]", "before-write")
+			_, err := Load(root)
+			switch {
+			case test.refusal == "" && err != nil:
+				t.Fatalf("refused: %v", err)
+			case test.refusal != "" && (err == nil || !strings.Contains(err.Error(), test.refusal)):
+				t.Fatalf("error = %v, expected it to say %q", err, test.refusal)
+			}
+		})
+	}
+}

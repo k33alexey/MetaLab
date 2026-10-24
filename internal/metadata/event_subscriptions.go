@@ -129,18 +129,22 @@ var handlerParameters = map[string][]string{
 	"UndoPosting":                              {"Отказ"},
 }
 
+// The forming by a version of data history is one event on every kind that has
+// it but a record set of a register of information, whose handler gets the key
+// of the record besides. The help gives it no parameters on a chart of
+// calculation types, an exchange plan and a manager of a constant, and other
+// order of them on a task; the designer offers it all the same to a source of
+// a catalog and any of these (opis of 23.10.2026, podpiska-na-sobytie.md,
+// «Досъёмка»): those pages of the help are incomplete, and the event is the
+// catalog's.
 var handlerParametersOf = map[TypeKind]map[string][]string{
 	DocumentObjectType:                {"BeforeWrite": {"Отказ", "РежимЗаписи", "РежимПроведения"}},
-	CalculationTypesObjectType:        {"GenerateFromDataHistoryVersionProcessing": {}},
-	ExchangePlanObjectType:            {"GenerateFromDataHistoryVersionProcessing": {}},
-	TaskObjectType:                    {"GenerateFromDataHistoryVersionProcessing": {"ДанныеВерсии", "НомерВерсии", "СтандартнаяОбработка", "ИсключитьДанные"}},
 	InformationRegisterRecordSetType:  {"BeforeWrite": {"Отказ", "Замещение"}, "Filling": {"ДанныеЗаполнения", "СтандартнаяОбработка"}, "GenerateFromDataHistoryVersionProcessing": {"ДанныеВерсии", "НомерВерсии", "КлючЗаписи", "ИсключитьДанные", "СтандартнаяОбработка"}, "OnWrite": {"Отказ", "Замещение"}},
 	AccumulationRegisterRecordSetType: {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
 	AccountingRegisterRecordSetType:   {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
 	CalculationRegisterRecordSetType:  {"BeforeWrite": {"Отказ", "Замещение", "ТолькоЗапись", "ЗаписьФактическогоПериодаДействия", "ЗаписьПерерасчетов"}, "OnWrite": {"Отказ", "Замещение", "ТолькоЗапись", "ЗаписьФактическогоПериодаДействия", "ЗаписьПерерасчетов"}},
 	SequenceRecordSetType:             {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
 	RecalculationRecordSetType:        {"BeforeWrite": {"Отказ", "Замещение"}, "OnWrite": {"Отказ", "Замещение"}},
-	ConstantValueManagerType:          {"GenerateFromDataHistoryVersionProcessing": {}},
 }
 
 // handlerParametersFor are the parameters the handler of the event of the
@@ -336,6 +340,10 @@ func (catalog *Catalog) validateEventSubscriptionReferences() error {
 			return fmt.Errorf("event subscription %s references unknown common module %s", item.Name, item.Module)
 		}
 		module := catalog.CommonModules[index]
+		// The window «Выбор обработчика события» offers the procedures of the
+		// modules with «Сервер» - server only, client and server, with the
+		// call of the server - and none of a module of the client alone (opis
+		// of 23.10.2026, podpiska-na-sobytie.md, «Досъёмка»).
 		if !module.Server {
 			return fmt.Errorf("event subscription %s handler module %s must be a server module", item.Name, module.Name)
 		}
