@@ -186,10 +186,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeExternalSource(t, root, warehouseSource, "Склад", "")
 		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "key_fields: [Код]\n", "", 1))
 	},
-	NoteEmptyNameInSource: func(t *testing.T, root string) {
-		writeExternalSource(t, root, warehouseSource, "Склад", "")
-		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "", 1))
-	},
 	NoteAmpersandZero: func(t *testing.T, root string) {
 		writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Флаги\n    title: {ru: Флаги}\n    expression_in_data_source: \"flags&0\"\n")
 	},
@@ -652,32 +648,6 @@ func TestHalfSetRegistersAndNumeratorsBuild(t *testing.T) {
 	}
 	if _, err := catalog.ApplicationSchema(); err != nil {
 		t.Fatalf("the schema refused the project: %v", err)
-	}
-}
-
-// A cube and a resource with no name in the source are carried and noted, as
-// a table and a field are.
-//
-// Defect caught: the cube refused over the empty name, or accepted without a
-// note for either of the two places.
-func TestACubeWithNoNameInTheSourceIsNoted(t *testing.T) {
-	t.Parallel()
-	root := metadataProject(t)
-	cube := strings.Replace(noteCubeBody(), "name_in_data_source: '[Sales]'\n", "", 1)
-	cube = strings.Replace(cube, "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1)
-	writeSalesCube(t, root, cube, goodsDimTableBody)
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatalf("refused: %v", err)
-	}
-	var places []string
-	for _, note := range catalog.Notes() {
-		if note.Kind == NoteEmptyNameInSource {
-			places = append(places, note.Where)
-		}
-	}
-	if len(places) != 2 {
-		t.Fatalf("notes on empty names = %v, want the cube and its resource", places)
 	}
 }
 

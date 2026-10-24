@@ -85,29 +85,6 @@ func TestARegisterWithoutFieldsIsNoted(t *testing.T) {
 	}
 }
 
-// A table of a source must name its table in the source when it is a table -
-// the type written out or left empty - and not when it is an expression.
-//
-// Defect caught: a table with its type written out not noted, or an
-// expression noted for having no table name.
-func TestATableOfASourceWithoutItsNameIsNoted(t *testing.T) {
-	t.Parallel()
-	catalog := &Catalog{ExternalDataSources: []ExternalDataSourceDefinition{{Name: "Склад", Tables: []ExternalTable{
-		{Name: "БезТипа"},
-		{Name: "Таблица", TableType: ExternalTableFromTable},
-		{Name: "Выражение", TableType: ExternalTableFromExpression, ExpressionInDataSource: "SELECT 1"},
-	}}}}
-	var tables []string
-	for _, place := range notedBy(catalog, noteEmptyNameInSource) {
-		if strings.HasSuffix(place, "name_in_data_source") && !strings.Contains(place, " fields ") {
-			tables = append(tables, place)
-		}
-	}
-	if len(tables) != 2 || !strings.Contains(tables[0], "БезТипа") || !strings.Contains(tables[1], "Таблица") {
-		t.Fatalf("tables noted %v, want the two tables and not the expression", tables)
-	}
-}
-
 // A string of a source longer than a string the configuration can hold is
 // noted; one of exactly 1024 fits and is not.
 //

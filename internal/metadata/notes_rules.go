@@ -42,7 +42,6 @@ const (
 	NoteCriterionWithoutType       NoteKind = "filter-criterion-without-type"
 	NoteUnfilledParentWithoutTree  NoteKind = "unfilled-parent-without-hierarchy"
 	NoteObjectTableWithoutKey      NoteKind = "object-table-without-key"
-	NoteEmptyNameInSource          NoteKind = "empty-name-in-source"
 	NoteAmpersandZero              NoteKind = "expression-ampersand-zero"
 	NoteLongExternalString         NoteKind = "long-external-string"
 	NoteForeignSourceReference     NoteKind = "foreign-source-reference"
@@ -171,10 +170,6 @@ func init() {
 		NoteKindInfo{NoteObjectTableWithoutKey,
 			"Таблица объектных данных внешнего источника без поля ключа.",
 			"Несётся как записана; ссылок на её строки нет, пока ключ не задан."},
-		NoteKindInfo{NoteEmptyNameInSource,
-			"Пустое имя в источнике данных у таблицы, поля, куба, таблицы измерения или ресурса: справка его требует, " +
-				"конфигуратор сохраняет без него.",
-			"Несётся как записано; объект ни к чему в источнике не привязан."},
 		NoteKindInfo{NoteAmpersandZero,
 			"«&0» в выражении функции внешнего источника: параметры считаются с 1, так что это текст языка источника " +
 				"(во многих — побитовое «и»).",
@@ -370,7 +365,6 @@ func init() {
 	noteRules[NoteCriterionWithoutType] = noteCriterionWithoutType
 	noteRules[NoteUnfilledParentWithoutTree] = noteUnfilledParentWithoutTree
 	noteRules[NoteObjectTableWithoutKey] = noteObjectTableWithoutKey
-	noteRules[NoteEmptyNameInSource] = noteEmptyNameInSource
 	noteRules[NoteAmpersandZero] = noteAmpersandZero
 	noteRules[NoteLongExternalString] = noteLongExternalString
 	noteRules[NoteForeignSourceReference] = noteForeignSourceReference
@@ -957,43 +951,6 @@ func noteObjectTableWithoutKey(catalog *Catalog, note func(where, written string
 		for _, table := range source.Tables {
 			if table.ObjectTable() && len(table.KeyFields) == 0 {
 				note("external-data-sources "+source.Name+" tables "+table.Name+" key_fields", "none")
-			}
-		}
-	}
-}
-
-func noteEmptyNameInSource(catalog *Catalog, note func(where, written string)) {
-	for _, source := range catalog.ExternalDataSources {
-		at := "external-data-sources " + source.Name
-		fields := func(where string, fields []ExternalField) {
-			for _, field := range fields {
-				if field.NameInDataSource == "" {
-					note(where+" fields "+field.Name+" name_in_data_source", "empty")
-				}
-			}
-		}
-		for _, table := range source.Tables {
-			where := at + " tables " + table.Name
-			if (table.TableType == "" || table.TableType == ExternalTableFromTable) && table.NameInDataSource == "" {
-				note(where+" name_in_data_source", "empty")
-			}
-			fields(where, table.Fields)
-		}
-		for _, cube := range source.Cubes {
-			where := at + " cubes " + cube.Name
-			if cube.NameInDataSource == "" {
-				note(where+" name_in_data_source", "empty")
-			}
-			for _, resource := range cube.Resources {
-				if resource.NameInDataSource == "" {
-					note(where+" resources "+resource.Name+" name_in_data_source", "empty")
-				}
-			}
-			for _, table := range cube.DimensionTables {
-				if table.NameInDataSource == "" {
-					note(where+" dimension tables "+table.Name+" name_in_data_source", "empty")
-				}
-				fields(where+" dimension tables "+table.Name, table.Fields)
 			}
 		}
 	}

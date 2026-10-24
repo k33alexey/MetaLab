@@ -277,9 +277,7 @@ func validateExternalTableSource(table ExternalTable) []string {
 	var issues []string
 	switch table.TableType {
 	case "", ExternalTableFromTable:
-		// An empty name in the source is carried and is a note: the help
-		// asks for it, the configurator saves without it, and such a table
-		// is read from nowhere until it is named.
+		issues = append(issues, validateRequiredNameInDataSource("name_in_data_source", table.NameInDataSource, "the table")...)
 		if table.ExpressionInDataSource != "" {
 			issues = append(issues, "expression_in_data_source belongs to a table made of an expression, and this one is made of a table")
 		}
@@ -293,7 +291,6 @@ func validateExternalTableSource(table ExternalTable) []string {
 	default:
 		issues = append(issues, "table_type must be table or expression")
 	}
-	issues = append(issues, validateNameInDataSource("name_in_data_source", table.NameInDataSource)...)
 	return issues
 }
 
@@ -357,7 +354,7 @@ func checkExternalFieldGroups(configuration project.Project, groups ...externalF
 				fields[strings.ToLower(field.Name)] = field
 			}
 			issues = append(issues, validateTitle(prefix+".title", field.Title, configuration)...)
-			issues = append(issues, validateNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource)...)
+			issues = append(issues, validateRequiredNameInDataSource(prefix+".name_in_data_source", field.NameInDataSource, "the field")...)
 			issues = append(issues, validateExternalFieldTypes(prefix+".types", field.Types)...)
 			issues = append(issues, validateFieldSettings(prefix, field.Attribute, configuration)...)
 			issues = append(issues, validateFieldStorage(prefix, field.Attribute)...)

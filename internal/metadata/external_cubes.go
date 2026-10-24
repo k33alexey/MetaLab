@@ -295,12 +295,16 @@ func cubeFields(cube ExternalCube) []ExternalField {
 }
 
 // validateRequiredNameInDataSource checks a name of the other database that has
-// to be there: a cube and a dimension table are nothing but a name of the
-// other database's object.
-// validateRequiredNameInDataSource checks a name in the source the help asks
-// for. Left empty it is carried and is a note, as on a table: the configurator
-// saves without it.
+// to be there: a table, a field, a cube, a measure and a dimension table are
+// nothing but a name of the other database's object, and the designer's check
+// of the configuration refuses each of them empty - «Не указано имя в
+// источнике данных», «Не указано имя таблицы в таблице внешнего источника
+// данных» (opis of the cube and the external source, 15.10.2026,
+// docs/block-00/kub.md, vneshnij-istochnik.md).
 func validateRequiredNameInDataSource(path, value, what string) []string {
+	if value == "" {
+		return []string{path + " must name " + what + " in the source: the designer refuses an empty name in the data source"}
+	}
 	return validateNameInDataSource(path, value)
 }
 

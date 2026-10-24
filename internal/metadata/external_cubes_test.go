@@ -325,3 +325,48 @@ func TestExternalDimensionTableKeepsItsLevelAndIsReadAtTheHierarchys(t *testing.
 		})
 	}
 }
+
+// TestAnEmptyNameInTheSourceIsRefused catches any of the five places taken with
+// no name in the source - a table made of a table, its field, a cube, its
+// resource, a dimension table and its field: the designer's check of the
+// configuration refuses each (docs/block-00/kub.md, vneshnij-istochnik.md).
+// A table made of an expression names nothing and is taken.
+func TestAnEmptyNameInTheSourceIsRefused(t *testing.T) {
+	t.Parallel()
+	const says = " in the source: the designer refuses an empty name in the data source"
+	for name, test := range map[string]struct{ body, says string }{
+		"таблица без вида": {strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "", 1),
+			"name_in_data_source must name the table" + says},
+		"таблица вида «Таблица»": {strings.Replace(goodsBody, "name_in_data_source: dbo.Goods\n", "table_type: table\n", 1),
+			"name_in_data_source must name the table" + says},
+		"поле таблицы": {strings.Replace(goodsBody, "    name_in_data_source: code\n", "", 1),
+			"fields[0].name_in_data_source must name the field" + says},
+	} {
+		if message := refusedExternalTable(t, test.body, name); !strings.Contains(message, test.says) {
+			t.Errorf("%s: want %q, got %v", name, test.says, message)
+		}
+	}
+	for name, test := range map[string]struct{ cube, table, says string }{
+		"куб": {strings.Replace(noteCubeBody(), "name_in_data_source: '[Sales]'\n", "", 1), goodsDimTableBody,
+			"name_in_data_source must name the cube" + says},
+		"ресурс": {strings.Replace(noteCubeBody(), "    name_in_data_source: '[Measures].[Quantity]'\n", "", 1), goodsDimTableBody,
+			"resources[0].name_in_data_source must name the measure" + says},
+		"таблица измерения": {noteCubeBody(), strings.Replace(goodsDimTableBody, "name_in_data_source: '[Goods]'\n", "", 1),
+			"name_in_data_source must name the dimension table" + says},
+		"поле таблицы измерения": {noteCubeBody(), strings.Replace(goodsDimTableBody, "    name_in_data_source: '[Goods].[Code]'\n", "", 1),
+			"fields[0].name_in_data_source must name the field" + says},
+	} {
+		root := metadataProject(t)
+		writeSalesCube(t, root, test.cube, test.table)
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), test.says) {
+			t.Errorf("%s: want %q, got %v", name, test.says, err)
+		}
+	}
+	root := metadataProject(t)
+	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
+	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody)
+	writeExternalTable(t, root, "Склад", stockTable, "Остатки", stockBody)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a cube named in full and a table made of an expression refused: %v", err)
+	}
+}
