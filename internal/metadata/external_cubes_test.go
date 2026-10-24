@@ -52,6 +52,7 @@ hierarchy_name_in_data_source: '[Goods].[Groups]'
 hierarchical: true
 unfilled_parent_value: ""
 presentation_field: Наименование
+quick_choice: true
 object_presentation: {ru: Товар}
 forms: {object: ФормаТовара, choice: ФормаВыбора}
 fields:
@@ -114,7 +115,8 @@ func TestExternalCubeCarriesItsDimensionsResourcesAndTables(t *testing.T) {
 	}
 	table := cube.DimensionTables[0]
 	if table.HierarchyNameInDataSource != "[Goods].[Groups]" || !table.Hierarchical || table.UnfilledParentValue == nil ||
-		*table.UnfilledParentValue != "" || table.PresentationField != "Наименование" || len(table.Fields) != 2 || table.Forms.Choice != "ФормаВыбора" {
+		*table.UnfilledParentValue != "" || table.PresentationField != "Наименование" || len(table.Fields) != 2 || table.Forms.Choice != "ФормаВыбора" ||
+		!table.QuickChoice {
 		t.Fatalf("a property of the dimension table was lost: %+v", table)
 	}
 	// A copy handed out is a copy, down to the dimension tables.

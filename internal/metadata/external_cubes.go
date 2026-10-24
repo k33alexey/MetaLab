@@ -142,7 +142,10 @@ type ExternalDimensionTable struct {
 	// reading as on a table.
 	UnfilledParentValue *string `yaml:"unfilled_parent_value,omitempty" json:"unfilledParentValue,omitempty"`
 	PresentationField   string  `yaml:"presentation_field,omitempty" json:"presentationField,omitempty"`
-	QuickChoice         bool    `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
+	// QuickChoice is «Быстрый выбор» of the table, a boolean (help:
+	// ТаблицаИзмерения.БыстрыйВыбор); the configurator writes it on every
+	// dimension table (mdclasses: false).
+	QuickChoice bool `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
 
 	Fields    []ExternalField             `yaml:"fields,omitempty" json:"fields,omitempty"`
 	Forms     ExternalDimensionTableForms `yaml:"forms,omitempty" json:"forms,omitempty"`
