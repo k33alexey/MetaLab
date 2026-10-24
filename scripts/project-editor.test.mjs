@@ -162,3 +162,12 @@ test('a language comment vanishes when emptied',()=>{
   model.setLanguageField('ru','comment','');
   assert.equal('comment' in model.value().languages.find(item=>item.code==='ru'),false);
 });
+// Порядок объектов окно корня не показывает и не правит, но хранит его то же
+// описание корня: запись окна не должна его терять (2.519).
+test('the order of the objects survives a save of the root window',()=>{
+  const source=fixture();
+  source.configuration.objectsOrder={catalogs:['c3','c1','c2']};
+  const model=create(source);
+  model.setField('vendor','MetaLab');
+  assert.deepEqual(model.value().objectsOrder,{catalogs:['c3','c1','c2']});
+});

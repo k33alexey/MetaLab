@@ -58,6 +58,16 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			t.Fatal(err)
 		}
 	},
+	NoteObjectOutsideOrder: func(t *testing.T, root string) {
+		listed, left := uuid.MustNew(), uuid.MustNew()
+		for id, name := range map[uuid.UUID]string{listed: "Названный", left: "Добавленный"} {
+			writeMetadata(t, root, CatalogKind, id.String(), "format: 1\nid: "+id.String()+"\nname: "+name+"\ntitle: {ru: "+name+"}\n"+
+				"code: {type: string, length: 9, auto: true}\ndescription_length: 150\n")
+		}
+		saveDefaults(t, root, func(configuration *project.Project) {
+			configuration.ObjectsOrder = map[string][]uuid.UUID{string(CatalogKind): {listed}}
+		})
+	},
 	NoteUnusedBound: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    presentation: {min_value: \"0\"}\n"))
 	},

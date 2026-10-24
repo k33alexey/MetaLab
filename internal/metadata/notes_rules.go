@@ -75,6 +75,7 @@ const (
 	NoteRightWithoutSample         NoteKind = "right-without-sample"
 	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
 	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
+	NoteObjectOutsideOrder         NoteKind = "object-outside-order"
 )
 
 func init() {
@@ -334,6 +335,11 @@ func init() {
 			"Поле несётся как записано: список «Все ограничения доступа» его называет, окно ограничения не показывает и " +
 				"отмечает «Прочие поля», запись из окна оставляет только отмеченное. Ограничение будет исполняться как ограничение " +
 				"по прочим полям; условия ограничений пока не исполняются ни у одного вида (блок 10)."},
+		NoteKindInfo{NoteObjectOutsideOrder,
+			"Объект вида, порядок которого записан в описании корня (objects_order), в этом порядке не назван: папку " +
+				"объекта добавили мимо Studio. Это не состояние прототипа — его выгрузка пишет все объекты по порядку.",
+			"Объект стоит после названных, среди таких же — по имени; описание корня не меняется, пока порядок не запишет " +
+				"Studio."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -428,6 +434,7 @@ func init() {
 	noteRules[NoteRightWithoutSample] = noteRightWithoutSample
 	noteRules[NoteRestrictionWithoutSample] = noteRestrictionWithoutSample
 	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
+	noteRules[NoteObjectOutsideOrder] = noteObjectOutsideOrder
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan, a

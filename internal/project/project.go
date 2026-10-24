@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 	"go.yaml.in/yaml/v3"
 )
@@ -124,6 +125,16 @@ type Project struct {
 	// upon - the command interface is built in block 18.
 	SubsystemsOrder      []uuid.UUID           `yaml:"subsystems_order,omitempty" json:"subsystemsOrder,omitempty"`
 	SubsystemsVisibility []SubsystemVisibility `yaml:"subsystems_visibility,omitempty" json:"subsystemsVisibility,omitempty"`
+	// ObjectsOrder is the order the developer gave the objects of each kind,
+	// by the folder of the kind: the prototype keeps it (moving up and down,
+	// sorting) and writes its export in it (owner, 24.10.2026, BLOCKS 2б).
+	// It is the order of the tree, not the order of the sections - that is
+	// SubsystemsOrder above. A kind with no list is in the order of names; an
+	// object its list leaves out stands after the listed ones by name, and
+	// is noted. What the identifiers name is answered where the whole
+	// configuration is known. Languages have no list here: Languages is
+	// their order already.
+	ObjectsOrder map[string][]uuid.UUID `yaml:"objects_order,omitempty" json:"objectsOrder,omitempty"`
 	// The five forms below stand in for a report, a constant or a search that
 	// names no form of its own. All five are common forms: they belong to no
 	// object, which is exactly why the root can hand them to every object at
@@ -521,6 +532,10 @@ func (p Project) Validate() error {
 		field, message, _ := strings.Cut(issue, " ")
 		add(field, message)
 	}
+	for _, issue := range validateObjectsOrder(p.ObjectsOrder) {
+		field, message, _ := strings.Cut(issue, " ")
+		add(field, message)
+	}
 	seenRoles := make(map[uuid.UUID]struct{}, len(p.DefaultRoles))
 	for index, role := range p.DefaultRoles {
 		prefix := fmt.Sprintf("default_roles[%d]", index)
@@ -627,4 +642,30 @@ func isDisplayText(value string, maximum int) bool {
 		}
 	}
 	return true
+}
+
+// validateObjectsOrder checks the lists of ObjectsOrder for shape: each is
+// under the folder of a kind of the configuration's tree, other than the
+// languages, and names an object once. Each issue is "<field> <message>".
+func validateObjectsOrder(order map[string][]uuid.UUID) []string {
+	var issues []string
+	for kind, list := range order {
+		field := "objects_order." + kind
+		if kind == string(kinds.Language) || !slices.Contains(metadataKinds, kind) {
+			issues = append(issues, field+" is not a kind of the configuration's tree")
+			continue
+		}
+		seen := make(map[uuid.UUID]bool, len(list))
+		for index, id := range list {
+			switch {
+			case id.IsZero():
+				issues = append(issues, fmt.Sprintf("%s[%d] must be a non-zero UUID", field, index))
+			case seen[id]:
+				issues = append(issues, fmt.Sprintf("%s[%d] names %s twice", field, index, id))
+			}
+			seen[id] = true
+		}
+	}
+	slices.Sort(issues)
+	return issues
 }

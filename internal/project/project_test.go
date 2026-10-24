@@ -1011,3 +1011,97 @@ func TestALanguageCodeIsAnyCodeThatBreaksNothing(t *testing.T) {
 		t.Fatalf("a configuration with the language ru1 was refused: %v", err)
 	}
 }
+
+// The order the developer gave the objects of a kind is read and written back
+// as it stands, out of alphabet and out of the order of identifiers alike: a
+// list put in order on the way would undo what the developer did (owner,
+// 24.10.2026). Defects caught: the order was lost, sorted, or written under
+// another key.
+func TestObjectsOrderSurvivesTheFile(t *testing.T) {
+	t.Parallel()
+
+	const source = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title:
+      ru: Русский
+    code: ru
+objects_order:
+  catalogs:
+    - 018f1f72-3b4c-7d6e-8f90-0000000000c3
+    - 018f1f72-3b4c-7d6e-8f90-0000000000c1
+    - 018f1f72-3b4c-7d6e-8f90-0000000000c2
+  common-forms:
+    - 018f1f72-3b4c-7d6e-8f90-0000000000f2
+    - 018f1f72-3b4c-7d6e-8f90-0000000000f1
+`
+	value, err := Decode(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	catalogs := value.ObjectsOrder["catalogs"]
+	if len(catalogs) != 3 || catalogs[0].String() != "018f1f72-3b4c-7d6e-8f90-0000000000c3" ||
+		catalogs[2].String() != "018f1f72-3b4c-7d6e-8f90-0000000000c2" {
+		t.Fatalf("the order of catalogs came back as %v", catalogs)
+	}
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(written.String(), "objects_order:\n    catalogs:\n        - 018f1f72-3b4c-7d6e-8f90-0000000000c3\n        - 018f1f72-3b4c-7d6e-8f90-0000000000c1\n") &&
+		!strings.Contains(written.String(), "objects_order:\n  catalogs:\n    - 018f1f72-3b4c-7d6e-8f90-0000000000c3\n    - 018f1f72-3b4c-7d6e-8f90-0000000000c1\n") {
+		t.Fatalf("the order was not written as read:\n%s", written.String())
+	}
+	again, err := Decode(bytes.NewReader(written.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(value.ObjectsOrder, again.ObjectsOrder) {
+		t.Fatalf("the order did not survive a round trip:\n%v\n%v", value.ObjectsOrder, again.ObjectsOrder)
+	}
+}
+
+// A list of the order is under the folder of a kind of the tree and names an
+// object once. Languages have no list: the list of languages is their order.
+// What the identifiers name is checked where the configuration is read.
+func TestObjectsOrderIsCheckedForShape(t *testing.T) {
+	t.Parallel()
+
+	base := func() Project {
+		return Project{
+			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
+			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
+			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
+		}
+	}
+	object := uuid.MustNew()
+	for name, test := range map[string]struct {
+		order map[string][]uuid.UUID
+		want  string
+	}{
+		"не вид":  {map[string][]uuid.UUID{"tables": {object}}, "objects_order.tables is not a kind of the configuration's tree"},
+		"языки":   {map[string][]uuid.UUID{"languages": {object}}, "objects_order.languages is not a kind of the configuration's tree"},
+		"нулевой": {map[string][]uuid.UUID{"catalogs": {{}}}, "objects_order.catalogs[0] must be a non-zero UUID"},
+		"дважды":  {map[string][]uuid.UUID{"catalogs": {object, object}}, "objects_order.catalogs[1] names " + object.String() + " twice"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			value := base()
+			value.ObjectsOrder = test.order
+			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("refused for another reason or not at all: %v", err)
+			}
+		})
+	}
+	value := base()
+	value.ObjectsOrder = map[string][]uuid.UUID{"catalogs": {object}, "subsystems": {uuid.MustNew()}, "common-forms": {uuid.MustNew()}}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("a well-formed order was refused: %v", err)
+	}
+}
