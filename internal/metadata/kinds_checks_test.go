@@ -303,8 +303,9 @@ predefined:
 		"описание вида расчёта во всю длину": {calculation, strings.Replace(calculationType, "DESCRIPTION", nameAt(100), 1), ""},
 		"описание вида расчёта длиннее": {calculation, strings.Replace(calculationType, "DESCRIPTION", nameAt(101), 1),
 			"predefined[0].description must not exceed 100 characters"},
-		"самая длинная длина порядка": {accounts, chartWithMask("@@@@@", maxVarcharLength, ""), ""},
-		"длина порядка длиннее":       {accounts, chartWithMask("@@@@@", maxVarcharLength+1, ""), "order_length must be 0.."},
+		// 628 taken, 629 refused by the designer (docs/block-00/plan-schetov.md).
+		"самая длинная длина порядка": {accounts, chartWithMask("@@@@@", 628, ""), ""},
+		"длина порядка длиннее":       {accounts, chartWithMask("@@@@@", 629, ""), "order_length must be 0..628"},
 		"счёт сам себе родитель":      {accounts, account + "    parent: Забалансовый\n", "predefined[0] cannot be its own parent"},
 		"порядок без длины порядка":   {accounts, chartWithMask("@@@@@", 0, "01"), ""},
 	} {

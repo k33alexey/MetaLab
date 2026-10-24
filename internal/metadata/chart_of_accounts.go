@@ -245,10 +245,8 @@ func validateCodeMask(value ChartOfAccountsDefinition) []string {
 			break
 		}
 	}
-	// The help names no ceiling on the order - the charts being moved go up
-	// to 9 - so the only one is the database's.
-	if value.OrderLength < 0 || value.OrderLength > maxVarcharLength {
-		issues = append(issues, fmt.Sprintf("order_length must be 0..%d", maxVarcharLength))
+	if value.OrderLength < 0 || value.OrderLength > maxAccountOrderLength {
+		issues = append(issues, fmt.Sprintf("order_length must be 0..%d", maxAccountOrderLength))
 	}
 	// Ordering by code without an order length is carried and noted: the
 	// order is then as wide as the code - see orderColumnWidth.

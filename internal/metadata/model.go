@@ -231,10 +231,11 @@ const (
 	// maxNameLength is the longest name of an object, a field or anything
 	// else named by an identifier - see project.MaxNameLength.
 	maxNameLength = project.MaxNameLength
-	// maxVarcharLength is PostgreSQL's own ceiling on character varying(n),
-	// which a length nobody else limits - the order of an account - still
-	// runs into when the column is built.
-	maxVarcharLength = 10_485_760
+	// maxAccountOrderLength is the longest order of an account of a chart of
+	// accounts: 628 taken, 629 «В поле введены некорректные данные» (opis of
+	// the chart of accounts, 15.10.2026, docs/block-00/plan-schetov.md). The
+	// help names none; the charts being moved keep 8 and 9.
+	maxAccountOrderLength = 628
 )
 
 // DateParts is the prototype's "состав даты" qualifier: which parts of a
