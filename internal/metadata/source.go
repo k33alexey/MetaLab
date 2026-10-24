@@ -202,7 +202,11 @@ func usesOf(kind Kind) kindUses {
 // restricted, while a cube and a table of dimensions are not, their panel
 // of the restriction shut with «Чтение» marked; a function is given
 // «Использование» and «Просмотр». A numerator, a sequence and a
-// recalculation stay unproven: the window was not walked for them.
+// recalculation are absent: the window «Состав» of an option offers none of
+// them - the branch «Документы» starts with the documents, a calculation
+// register gives its dimensions, resources and attributes only - walked with
+// a sequence and a recalculation made for the pass (23.10.2026,
+// parametr-seansa.md, «Состав функциональной опции со стороны опции»).
 //
 // parts is by the Rights.xml of every role under docs/ (survey of
 // 13.10.2026): they give rights on the parts of eighteen kinds and never on a
@@ -254,15 +258,15 @@ var kindUsesOf = map[Kind]kindUses{
 	CalculationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},
 	ReportKind:                     {rights: present, registration: absent, option: present, restriction: absent, wizard: absent, criterion: absent, parts: present, subsystem: present},
 	DataProcessorKind:              {rights: present, registration: absent, option: present, restriction: absent, wizard: absent, criterion: absent, parts: present, subsystem: present},
-	NumeratorKind:                  {rights: absent, registration: absent, option: unproven, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
-	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven, wizard: absent, criterion: absent, restricted: readingAlone, parts: absent, subsystem: present},
+	NumeratorKind:                  {rights: absent, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
+	SequenceKind:                   {rights: present, registration: present, option: absent, restriction: unproven, wizard: absent, criterion: absent, restricted: readingAlone, parts: absent, subsystem: present},
 	DocumentJournalKind:            {rights: present, registration: absent, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},
 	ExchangePlanKind:               {rights: present, registration: absent, option: present, restriction: unproven, wizard: present, criterion: present, parts: present, subsystem: present},
 	BusinessProcessKind:            {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: present, parts: present, subsystem: present},
 	DocumentKind:                   {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: present, parts: present, subsystem: present},
 	InformationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},
 	AccumulationRegisterKind:       {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},
-	RecalculationKind:              {rights: present, registration: present, option: unproven, restriction: unproven, wizard: absent, criterion: absent, restricted: readingAlone, parts: absent, subsystem: unproven},
+	RecalculationKind:              {rights: present, registration: present, option: absent, restriction: unproven, wizard: absent, criterion: absent, restricted: readingAlone, parts: absent, subsystem: unproven},
 }
 
 // The rights a role gives on the data of a kind. The prototype's rights of

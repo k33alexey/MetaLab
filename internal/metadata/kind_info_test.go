@@ -264,7 +264,10 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 		SettingsStorageKind, DefinedTypeKind, LanguageKind,
 		// The page «Функциональные опции» of «Дополнительно» of a source is
 		// empty (opis of 15.10.2026, kub.md).
-		ExternalDataSourceKind}
+		ExternalDataSourceKind,
+		// The window «Состав» of an option offers no numerator, sequence or
+		// recalculation (opis of 23.10.2026, parametr-seansa.md).
+		NumeratorKind, SequenceKind, RecalculationKind}
 	// The kinds keeping data whose panel of the restriction of access stays
 	// shut in «Дополнительно», with «Чтение» marked too: a cube and a table
 	// of its dimension (opis of 15.10.2026, kub.md).

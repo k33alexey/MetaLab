@@ -17,14 +17,11 @@ import (
 // that the note appears.
 var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	NoteUseWithoutSample: func(t *testing.T, root string) {
-		// A numerator: the window of the content was not walked for it.
-		constant, numerator, option := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
-		writeMetadata(t, root, ConstantKind, constant, "format: 1\nid: "+constant+"\nname: Склады\ntitle: {ru: Склады}\n"+
-			"types: [{kind: boolean}]\n")
-		writeMetadata(t, root, NumeratorKind, numerator, "format: 1\nid: "+numerator+"\nname: Сквозной\ntitle: {ru: Сквозной}\n"+
-			"number: {type: string, length: 11, periodicity: none}\n")
-		writeMetadata(t, root, FunctionalOptionKind, option, "format: 1\nid: "+option+"\nname: Опция\ntitle: {ru: Опция}\n"+
-			"location: {kind: constants, object: "+constant+"}\ncontent:\n  - {kind: "+string(NumeratorKind)+", object: "+numerator+"}\n")
+		// A function of an external source in a subsystem: no export puts
+		// one there, and the window was not walked for it.
+		source, function, subsystem := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+		writeExternalSource(t, root, source, "Склад", "functions:\n  - {id: "+function+", name: Остаток, title: {ru: Остаток}}\n")
+		writeMetadata(t, root, SubsystemKind, subsystem, "format: 1\nid: "+subsystem+"\nname: Склад\ntitle: {ru: Склад}\nmembers: ["+function+"]\n")
 	},
 	NoteRightWithoutSample: func(t *testing.T, root string) {
 		id := uuid.MustNew()

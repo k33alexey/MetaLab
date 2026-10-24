@@ -362,7 +362,10 @@ content: [{kind: `+kind+`, object: `+uuid.MustNew().String()+`}]
 	for _, kind := range []string{"roles", "session-parameters", "common-modules", "event-subscriptions", "scheduled-jobs",
 		"command-groups", "common-templates", "xdto-packages", "web-services", "ws-references", "websocket-clients",
 		"http-services", "common-pictures", "style-items", "styles", "functional-options", "functional-options-parameters",
-		"settings-storages", "defined-types", "languages"} {
+		"settings-storages", "defined-types", "languages",
+		// Nor a numerator, a sequence or a recalculation: the window «Состав»
+		// offers none (opis of 23.10.2026, parametr-seansa.md).
+		"document-numerators", "sequences", "recalculations"} {
 		if err := decode(kind); err == nil || !strings.Contains(err.Error(), "content[0].kind "+kind+" cannot be in the content of a functional option") {
 			t.Errorf("%s in the content: %v", kind, err)
 		}
