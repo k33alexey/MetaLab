@@ -64,11 +64,11 @@ type CommonAttributeDefinition struct {
 	// works as a list of exceptions. Read as a list of the included, it would
 	// give the attribute to precisely the objects that must not have it.
 	Content []CommonAttributeContentItem `yaml:"content,omitempty"`
-	// The eight properties of data separation. In the prototype the same
+	// The seven properties of data separation ML carries. In the prototype the same
 	// metadata object carries a second, unrelated mechanism: one database shared
 	// between independent companies, each with its own users and authentication,
 	// told apart by the value of this attribute. We have one company per
-	// database and do not do it - **but we carry all eight**, because a property
+	// database and do not do it - **but we carry all seven**, because a property
 	// missing from the model disappears on import, and that is a loss of
 	// meaning, while a property carried and not executed imports whole and the
 	// report says «carried, not implemented». The reason is in
@@ -78,14 +78,18 @@ type CommonAttributeDefinition struct {
 	// in: one holds the value of the separator for this session, the other says
 	// whether separation is in force. Both separators of the demonstration
 	// configuration name both.
-	DataSeparation                    SeparationMode   `yaml:"data_separation,omitempty"`
-	SeparatedDataUse                  SeparatedDataUse `yaml:"separated_data_use,omitempty"`
-	DataSeparationValue               *uuid.UUID       `yaml:"data_separation_value,omitempty"`
-	DataSeparationUse                 *uuid.UUID       `yaml:"data_separation_use,omitempty"`
-	UsersSeparation                   SeparationMode   `yaml:"users_separation,omitempty"`
-	AuthenticationSeparation          SeparationMode   `yaml:"authentication_separation,omitempty"`
-	ConfigurationExtensionsSeparation SeparationMode   `yaml:"configuration_extensions_separation,omitempty"`
-	// ConditionalSeparation is the eighth: a boolean constant whose value says
+	DataSeparation           SeparationMode   `yaml:"data_separation,omitempty"`
+	SeparatedDataUse         SeparatedDataUse `yaml:"separated_data_use,omitempty"`
+	DataSeparationValue      *uuid.UUID       `yaml:"data_separation_value,omitempty"`
+	DataSeparationUse        *uuid.UUID       `yaml:"data_separation_use,omitempty"`
+	UsersSeparation          SeparationMode   `yaml:"users_separation,omitempty"`
+	AuthenticationSeparation SeparationMode   `yaml:"authentication_separation,omitempty"`
+	// The separation of the extensions of the configuration is not carried:
+	// it goes with the extensions, which ML does not keep (owner, 15.10.2026;
+	// METADATA-OBJECTS.md, «Общие: общие реквизиты»). A file naming it is not
+	// read.
+	//
+	// ConditionalSeparation is the seventh: a boolean constant whose value says
 	// whether the attribute separates anything in this session. It is the
 	// attribute's own, beside the condition an item of the composition may
 	// carry for one object, and the help gives it a constant only. All three
@@ -94,7 +98,7 @@ type CommonAttributeDefinition struct {
 	ConditionalSeparation *uuid.UUID `yaml:"conditional_separation,omitempty"`
 }
 
-// SeparationMode is the two-valued answer four of the eight give: separate by
+// SeparationMode is the two-valued answer three of the seven give: separate by
 // this attribute, or do not.
 type SeparationMode string
 
@@ -257,8 +261,7 @@ func validateCommonAttribute(value CommonAttributeDefinition, configuration proj
 	}
 	for name, mode := range map[string]SeparationMode{
 		"data_separation": value.DataSeparation, "users_separation": value.UsersSeparation,
-		"authentication_separation":           value.AuthenticationSeparation,
-		"configuration_extensions_separation": value.ConfigurationExtensionsSeparation,
+		"authentication_separation": value.AuthenticationSeparation,
 	} {
 		if !validSeparationMode(mode) {
 			issues = append(issues, name+" must be dont-use or separate")

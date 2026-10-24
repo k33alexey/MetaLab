@@ -71,6 +71,12 @@ func TestDecodeCommonAttributeStrictAndBounded(t *testing.T) {
 	if _, err := DecodeCommonAttribute("common-attribute.yaml", strings.NewReader(encoded.String()+"unknown: true\n"), metadataConfiguration()); err == nil {
 		t.Fatal("accepted unknown field")
 	}
+	// The separation of the extensions goes with the extensions, which ML does
+	// not keep (owner, 15.10.2026): a file naming it is not read.
+	if _, err := DecodeCommonAttribute("common-attribute.yaml", strings.NewReader(encoded.String()+"configuration_extensions_separation: separate\n"),
+		metadataConfiguration()); err == nil || !strings.Contains(err.Error(), "configuration_extensions_separation") {
+		t.Fatalf("the separation of the extensions was read: %v", err)
+	}
 }
 
 func TestCatalogCommonAttributeLookupReturnsIsolatedCopies(t *testing.T) {

@@ -674,7 +674,6 @@ func TestCommonAttributeCarriesDataSeparation(t *testing.T) {
 			DataSeparation: SeparationSeparate, SeparatedDataUse: SeparatedDataIndependently,
 			DataSeparationValue: &areaValue.ID, DataSeparationUse: &areaUse.ID,
 			UsersSeparation: SeparationSeparate, AuthenticationSeparation: SeparationSeparate,
-			ConfigurationExtensionsSeparation: SeparationSeparate,
 		}
 	}
 	load := func(common CommonAttributeDefinition) error {
@@ -695,7 +694,6 @@ func TestCommonAttributeCarriesDataSeparation(t *testing.T) {
 	quiet := separator()
 	quiet.DataSeparation = SeparationDontUse
 	quiet.UsersSeparation, quiet.AuthenticationSeparation = SeparationDontUse, SeparationDontUse
-	quiet.ConfigurationExtensionsSeparation = SeparationDontUse
 	quiet.DataSeparationValue, quiet.DataSeparationUse = nil, nil
 	if err := load(quiet); err != nil {
 		t.Fatalf("an attribute that separates nothing was refused: %v", err)
