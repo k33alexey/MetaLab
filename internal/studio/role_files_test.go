@@ -155,6 +155,10 @@ func TestARoleDeleteThatFailsHalfwayKeepsItsRights(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workspace.root, filepath.FromSlash(saved.Path))); err != nil {
 		t.Fatalf("the role lost its description: %v", err)
 	}
+	// It keeps its place among the roles too, which it leaves first (2.520).
+	if order, _ := keptOrder(t, workspace.root, "roles"); !slices.Contains(order, saved.Role.ID) {
+		t.Fatalf("the role lost its place in the order: %v", order)
+	}
 }
 
 // The description edited as text is checked with the grid beside it and

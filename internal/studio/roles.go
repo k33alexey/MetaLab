@@ -453,14 +453,24 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 	if err != nil {
 		return err
 	}
+	// The role leaves the order first, and comes back to it when the rest
+	// cannot follow, as its rights do.
+	restoreOrder, err := workspace.dropFromOrderLocked(metadata.RoleKind, opened.Role.ID)
+	if err != nil {
+		return fmt.Errorf("delete role %q: %w", relative, err)
+	}
 	gridPath := workspace.roleGridPath(relative)
 	err = writeRoleGrid(gridPath, nil)
 	if err == nil {
 		err = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
 	}
 	if err != nil {
-		if restoreErr := writeRoleGrid(gridPath, current.grid); restoreErr != nil {
-			return fmt.Errorf("delete role %q: %w; restoring the rights failed: %v", relative, err, restoreErr)
+		restoreErr := writeRoleGrid(gridPath, current.grid)
+		if orderErr := restoreOrder(); restoreErr == nil {
+			restoreErr = orderErr
+		}
+		if restoreErr != nil {
+			return fmt.Errorf("delete role %q: %w; restoring the role failed: %v", relative, err, restoreErr)
 		}
 		return fmt.Errorf("delete role %q: %w", relative, err)
 	}
@@ -545,6 +555,13 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
+	// The new role stands last among the roles; an order that cannot be
+	// written takes the role away again.
+	if _, err := workspace.placeInOrderLocked(metadata.RoleKind, id); err != nil {
+		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		workspace.invalidateStudioIndexesLocked()
+		return RoleSource{}, fmt.Errorf("place new role in the order: %w", err)
+	}
 	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 

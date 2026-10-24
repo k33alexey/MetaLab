@@ -721,7 +721,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 	// object that owns it - but the directory is still checked here, so a
 	// stray file is reported when the tree is read and not only when data is
 	// saved into the database.
-	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules"); err != nil {
+	if _, err := workspace.sourceFiles(filepath.Join(workspace.root, "modules"), "modules", ".bsl", "modules", sortNodesByTitle); err != nil {
 		return nil, err
 	}
 	built := make(map[string]Node, len(project.MetadataKinds()))
@@ -762,7 +762,8 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 						buildErr = workspace.attachSubordinateObjects(node.Children, path, filepath.ToSlash(relative), kind, loaded)
 					}
 				} else {
-					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata")
+					node.Children, buildErr = workspace.sourceFiles(path, filepath.ToSlash(relative), ".yaml", "metadata",
+						objectNodesOrder(loaded, kind, nodeID))
 				}
 				if buildErr != nil {
 					return nil, buildErr
@@ -871,7 +872,9 @@ func (workspace *Workspace) offerCommonModuleSources(node *Node) {
 	}
 }
 
-func (workspace *Workspace) sourceFiles(directory, relative, extension, kind string) ([]Node, error) {
+// sourceFiles lists the files of one folder as nodes, nested under their
+// parents and each level put in order by order.
+func (workspace *Workspace) sourceFiles(directory, relative, extension, kind string, order func([]Node)) ([]Node, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read project directory %q: %w", relative, err)
@@ -929,7 +932,7 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind str
 		}
 		nodes = append(nodes, node)
 	}
-	return nestUnderParents(nodes, parents), nil
+	return nestUnderParents(nodes, parents, order), nil
 }
 
 // nestUnderParents puts a description that names its parent among the others
@@ -937,8 +940,8 @@ func (workspace *Workspace) sourceFiles(directory, relative, extension, kind str
 // in (inventory of block 00, «Подсистема», snapshot 20-vlozhennaya-sklad).
 // One whose parent is not there, or whose chain of parents comes back to
 // itself, stays at the top, so that the tree still shows it while the loader
-// refuses the project. Every level is in the order of titles.
-func nestUnderParents(nodes []Node, parents map[string]string) []Node {
+// refuses the project. Every level is put in order by order.
+func nestUnderParents(nodes []Node, parents map[string]string, order func([]Node)) []Node {
 	index := make(map[string]int, len(nodes))
 	for position, node := range nodes {
 		index[node.ID] = position
@@ -969,7 +972,7 @@ func nestUnderParents(nodes []Node, parents map[string]string) []Node {
 				level[position].Children = attach(below)
 			}
 		}
-		sortNodesByTitle(level)
+		order(level)
 		return level
 	}
 	return attach(top)
@@ -1040,7 +1043,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 			Modules:    moduleCommands(kind, loaded.ObjectModules(kinds.Kind(kind), id), objectRelative),
 		})
 	}
-	sortNodesByTitle(nodes)
+	objectNodesOrder(loaded, kind, nodeID)(nodes)
 	// An object that keeps objects of its own - a cube its dimension tables -
 	// shows them under it the way a source shows its tables.
 	if err := workspace.attachSubordinateObjects(nodes, directory, relative, kind, loaded); err != nil {
@@ -1255,6 +1258,8 @@ func namedFolderNodes(directory, relative, kind string, loaded *metadata.Catalog
 		return nil, fmt.Errorf("read metadata %s %q: %w", kind, relative, err)
 	}
 	var nodes []Node
+	// A node is named by its path, and the order goes by identifier.
+	ids := map[string]string{}
 	for _, entry := range entries {
 		if entry.Name() == ".gitkeep" {
 			continue
@@ -1268,6 +1273,7 @@ func namedFolderNodes(directory, relative, kind string, loaded *metadata.Catalog
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
 		head, _ := yamlSourceHead(filepath.Join(directory, entry.Name(), description), path, entry.Name())
+		ids[path] = head.id.String()
 		node.Children = objectBranches(loaded, kind)(head.id, path)
 		folder := filepath.ToSlash(filepath.Join(relative, entry.Name()))
 		node.Modules = moduleCommands(kind, loaded.ObjectModules(kinds.Kind(kind), head.id), folder)
@@ -1280,7 +1286,7 @@ func namedFolderNodes(directory, relative, kind string, loaded *metadata.Catalog
 		}
 		nodes = append(nodes, node)
 	}
-	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Title < nodes[right].Title })
+	objectNodesOrder(loaded, kind, func(node Node) string { return ids[node.ID] })(nodes)
 	return nodes, nil
 }
 
@@ -1359,6 +1365,38 @@ func objectBranches(loaded *metadata.Catalog, kind string) func(id uuid.UUID, de
 		return nodes
 	}
 }
+
+// objectNodesOrder puts the nodes of the objects of a kind in the order the
+// developer gave them, the one the root keeps (metadata.Catalog.ObjectsOrder,
+// owner 24.10.2026): of a kind with no order kept, by name. id answers the
+// identifier of the object a node shows. A node the catalog does not know -
+// the project does not load, or the object is new to it - stands after the
+// known ones, by title.
+func objectNodesOrder(loaded *metadata.Catalog, kind string, id func(Node) string) func([]Node) {
+	return func(nodes []Node) {
+		position := map[string]int{}
+		if loaded != nil {
+			for index, object := range loaded.ObjectsOrder(metadata.Kind(kind)) {
+				position[object.String()] = index
+			}
+		}
+		sort.SliceStable(nodes, func(left, right int) bool {
+			leftAt, leftKnown := position[id(nodes[left])]
+			rightAt, rightKnown := position[id(nodes[right])]
+			switch {
+			case leftKnown && rightKnown:
+				return leftAt < rightAt
+			case leftKnown != rightKnown:
+				return leftKnown
+			}
+			return nodes[left].Title < nodes[right].Title
+		})
+	}
+}
+
+// nodeID is the identifier of the object a node of its kind shows, for a node
+// named by it.
+func nodeID(node Node) string { return node.ID }
 
 // sortNodesByTitle orders tree nodes by their display title so that
 // user-created objects (catalogs, attributes, languages, ...) always appear

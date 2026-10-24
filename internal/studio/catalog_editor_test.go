@@ -519,13 +519,14 @@ func TestDeleteCatalogRouteRequiresCSRF(t *testing.T) {
 	}
 }
 
-// The objects of a kind stand by the alphabet (until the order of objects is
-// kept, BLOCKS, «порядок объектов конфигурации хранится»), and the parts of
-// an object in the order of its description, as the prototype's tree shows
-// them (inventory of block 00, «Ветки под объектом», snapshots derevo/07,
-// 11a). Catches objects left in the order of their folders, and parts sorted
-// away from the order the developer declared them in.
-func TestMetadataTreeOrdersObjectsAlphabeticallyAndPartsAsDeclared(t *testing.T) {
+// The objects of a kind stand in the order the developer gave them - a new
+// one last, as the prototype puts it (owner, 24.10.2026, BLOCKS 2б «порядок
+// объектов конфигурации: Studio») - and the parts of an object in the order of
+// its description, as the prototype's tree shows them (inventory of block 00,
+// «Ветки под объектом», snapshots derevo/07, 11a). Catches objects put by the
+// alphabet or by their folders, and parts sorted away from the order the
+// developer declared them in.
+func TestMetadataTreeOrdersObjectsAsCreatedAndPartsAsDeclared(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
 	workspace, err := Open(root)
@@ -559,8 +560,8 @@ func TestMetadataTreeOrdersObjectsAlphabeticallyAndPartsAsDeclared(t *testing.T)
 	if !ok || len(catalogsNode.Children) != 2 {
 		t.Fatalf("catalogs node: %+v (ok=%v)", catalogsNode, ok)
 	}
-	if catalogsNode.Children[0].Title != "Абрикосы" || catalogsNode.Children[1].Title != "Яблоки" {
-		t.Fatalf("catalogs are not alphabetically ordered: %q, %q", catalogsNode.Children[0].Title, catalogsNode.Children[1].Title)
+	if catalogsNode.Children[0].Title != "Яблоки" || catalogsNode.Children[1].Title != "Абрикосы" {
+		t.Fatalf("catalogs are not in the order they were made: %q, %q", catalogsNode.Children[0].Title, catalogsNode.Children[1].Title)
 	}
 	yablonkiNode, ok := findNodeByID(snapshot.Tree, yablonki.Catalog.ID.String())
 	if !ok {

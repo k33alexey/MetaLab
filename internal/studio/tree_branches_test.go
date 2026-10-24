@@ -95,7 +95,7 @@ func TestParentsThatComeBackLeaveTheirSubsystemsAtTheTop(t *testing.T) {
 	nodes := []Node{{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}, {ID: "c", Title: "В"}, {ID: "d", Title: "Г"}}
 	parents := map[string]string{"a": "b", "b": "a", "c": "d"}
 	done := make(chan []Node, 1)
-	go func() { done <- nestUnderParents(nodes, parents) }()
+	go func() { done <- nestUnderParents(nodes, parents, sortNodesByTitle) }()
 	select {
 	case top := <-done:
 		if got := titlesOf(top); !slices.Equal(got, []string{"А", "Б", "Г"}) {

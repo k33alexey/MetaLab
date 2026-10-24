@@ -250,17 +250,31 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return CatalogEditorSource{}, fmt.Errorf("create catalog: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
+	// The new catalog stands last among the catalogs; an order that cannot be
+	// written takes the catalog away again, as a refused grant does.
+	restoreOrder, err := workspace.placeInOrderLocked(metadata.CatalogKind, id)
+	if err != nil {
+		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		_ = os.Remove(objectDirectory)
+		workspace.invalidateStudioIndexesLocked()
+		return CatalogEditorSource{}, fmt.Errorf("place new catalog in the order: %w", err)
+	}
 	// A refused grant takes the new catalog away again: the roles are left as
-	// they were, and a catalog no role was told of is not left behind.
+	// they were, the order is put back, and a catalog no role was told of is
+	// not left behind.
 	if _, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
 		if !role.GrantNewObjectsByDefault {
 			return false
 		}
 		return role.GrantObjectReadByDefault(id)
 	}); err != nil {
+		restoreErr := restoreOrder()
 		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
 		_ = os.Remove(objectDirectory)
 		workspace.invalidateStudioIndexesLocked()
+		if restoreErr != nil {
+			return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w; restoring the order failed: %v", err, restoreErr)
+		}
 		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
 	}
 	offer, err := loadTypeOffer(workspace.root)
@@ -288,8 +302,17 @@ func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) err
 	if opened.Revision != expectedRevision {
 		return ErrSourceChanged
 	}
+	// The catalog leaves the order first: a line left naming nothing would
+	// refuse the project. A folder that does not go puts the line back.
+	restoreOrder, err := workspace.dropFromOrderLocked(metadata.CatalogKind, opened.Catalog.ID)
+	if err != nil {
+		return fmt.Errorf("delete catalog %q: %w", relative, err)
+	}
 	objectDirectory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
 	if err := os.RemoveAll(objectDirectory); err != nil {
+		if restoreErr := restoreOrder(); restoreErr != nil {
+			return fmt.Errorf("delete catalog %q: %w; restoring the order failed: %v", relative, err, restoreErr)
+		}
 		return fmt.Errorf("delete catalog %q: %w", relative, err)
 	}
 	workspace.invalidateStudioIndexesLocked()
