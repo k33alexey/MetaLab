@@ -812,9 +812,16 @@ func TestABinaryFieldOfASourceTakesALengthAndFixedness(t *testing.T) {
 		"[{kind: binary-data}]":                                 "",
 		"[{kind: binary-data, length: 16, fixed_length: true}]": "",
 		"[{kind: binary-data, length: 100000}]":                 "",
-		"[{kind: binary-data, fixed_length: true}]":             "fields[4].types[0].fixed_length requires a length",
-		"[{kind: binary-data, length: -1}]":                     "fields[4].types[0].length must not be negative",
-		"[{kind: binary-data, length: 4, precision: 2}]":        "fields[4].types[0] has qualifiers binary data has not",
+		// The ceilings of the prototype (opis of 24.10.2026,
+		// vneshnij-istochnik.md, «Досъёмка»; owner, 24.10.2026): a length of
+		// four bytes, «Фиксированная» up to 100 as a string's.
+		"[{kind: binary-data, length: 4294967295}]":              "",
+		"[{kind: binary-data, length: 4294967296}]":              "fields[4].types[0].length must be at most 4294967295",
+		"[{kind: binary-data, length: 100, fixed_length: true}]": "",
+		"[{kind: binary-data, length: 101, fixed_length: true}]": "fields[4].types[0].fixed_length allows a length of at most 100",
+		"[{kind: binary-data, fixed_length: true}]":              "fields[4].types[0].fixed_length requires a length",
+		"[{kind: binary-data, length: -1}]":                      "fields[4].types[0].length must not be negative",
+		"[{kind: binary-data, length: 4, precision: 2}]":         "fields[4].types[0] has qualifiers binary data has not",
 	} {
 		root := metadataProject(t)
 		writeExternalSource(t, root, warehouseSource, "Склад", "")

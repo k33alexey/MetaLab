@@ -1910,19 +1910,39 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 // «Переменная» and «Неограниченная», as a string has (opis, obshchee.md,
 // «Окно «Редактирование типа данных»»: by default 0 and unlimited), written
 // by the configurator (lombard1: 58 fields, lengths 16, 1, 4 and 8, nearly
-// all fixed). No ceiling was seen on the prototype, so none is set. The
-// column is the other database's: the length says what it is, and ML keeps
-// a value read from it whole.
+// all fixed). The ceilings are the prototype's, seen on 24.10.2026 - see
+// below. The column is the other database's: the length says what it is, and
+// ML keeps a value read from it whole.
 func validateBinaryQualifiers(prefix string, item Type) []string {
 	var issues []string
 	if item.Length < 0 {
 		issues = append(issues, prefix+".length must not be negative, 0 being unlimited")
 	}
+	// The length is of four bytes in the designer: 4294967296 turns to 0
+	// (opis of 24.10.2026, vneshnij-istochnik.md, «Досъёмка»), as the
+	// longest string of a source (maxExternalStringLength).
+	if item.Length > maxExternalStringLength {
+		issues = append(issues, fmt.Sprintf("%s.length must be at most %d: the designer keeps a length of four bytes", prefix, maxExternalStringLength))
+	}
+	// «Фиксированная» of binary data is what it is of a string (the same
+	// opis; owner, 24.10.2026: «фиксированная до 100, как у строки»).
+	issues = append(issues, validateFixedLength(prefix, item)...)
+	if item.Precision != 0 || item.Scale != 0 || item.NonNegative || item.DateParts != "" {
+		issues = append(issues, prefix+" has qualifiers binary data has not")
+	}
+	return issues
+}
+
+// validateFixedLength checks «Фиксированная» of a string and of binary data,
+// one rule for both: a fixed length needs a length to pad to, and the palette
+// makes it unavailable past maxFixedStringLength.
+func validateFixedLength(prefix string, item Type) []string {
+	var issues []string
 	if item.FixedLength && item.Length == 0 {
 		issues = append(issues, prefix+".fixed_length requires a length")
 	}
-	if item.Precision != 0 || item.Scale != 0 || item.NonNegative || item.DateParts != "" {
-		issues = append(issues, prefix+" has qualifiers binary data has not")
+	if item.FixedLength && item.Length > maxFixedStringLength {
+		issues = append(issues, fmt.Sprintf("%s.fixed_length allows a length of at most %d: the designer makes «Фиксированная» unavailable at a longer one", prefix, maxFixedStringLength))
 	}
 	return issues
 }
@@ -2056,12 +2076,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			}
 			// A fixed-length string is padded to its length, so there has to
 			// be a length to pad to.
-			if item.FixedLength && item.Length == 0 {
-				issues = append(issues, prefix+".fixed_length requires a length")
-			}
-			if item.FixedLength && item.Length > maxFixedStringLength {
-				issues = append(issues, fmt.Sprintf("%s.fixed_length allows a length of at most %d: the designer makes «Фиксированная» unavailable at a longer one", prefix, maxFixedStringLength))
-			}
+			issues = append(issues, validateFixedLength(prefix, item)...)
 		case NumberType:
 			// A number of no length is a number of any length. Only a form
 			// holds one - 113, 20 and 37 times with any sign and 7, 5 and 6
