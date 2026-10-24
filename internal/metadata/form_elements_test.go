@@ -1584,7 +1584,7 @@ func TestAFieldKeepsItsChoiceList(t *testing.T) {
 	items := "  - {id: c0de0000-0000-4000-8000-000000990001, name: Вид, kind: input-field, choice_list: [" +
 		"{value: {kind: enumeration, data: c0de0000-0000-4000-8000-000000000071, object: c0de0000-0000-4000-8000-000000000070}, presentation: {ru: Ввод, uk: Введення}}," +
 		" {value: {kind: string, data: \"\"}, presentation: {ru: Все}}, {value: {kind: undefined, data: \"\"}, check: true}," +
-		" {value: {kind: platform, data: \"ent:AccountType.Active\"}}," +
+		" {value: {kind: account-kind, data: active}}, {value: {kind: platform, data: \"dcsset:DataCompositionComparisonType.Equal\"}}," +
 		" {value: {kind: unresolved-reference, data: \"5647c4ea-0d6d-4d75-8261-5aa213fca033.bca5af74-66f6-44f5-8fa6-cee0b448788a\"}}]}\n" +
 		"  - {id: c0de0000-0000-4000-8000-000000990002, name: Режим, kind: radio-button-field, choice_list: [" +
 		"{value: {kind: number, data: \"0\"}, presentation: {ru: Исполнителю}}, {value: {kind: boolean, data: \"true\"}}]}\n"
@@ -1594,14 +1594,15 @@ func TestAFieldKeepsItsChoiceList(t *testing.T) {
 	}
 	list, radio := form.Items[0].ChoiceList, form.Items[1].ChoiceList
 	switch {
-	case len(list) != 5 || len(radio) != 2:
+	case len(list) != 6 || len(radio) != 2:
 		t.Fatalf("lists: %+v %+v", list, radio)
 	case list[0].Value.Kind != EnumerationType || list[0].Value.Object.String() != "c0de0000-0000-4000-8000-000000000070" || list[0].Presentation["uk"] != "Введення":
 		t.Fatalf("an enumeration value: %+v", list[0])
 	case list[1].Value != (Value{Kind: StringType}) || list[2].Value != (Value{Kind: UndefinedValue}) || list[1].Check || !list[2].Check:
 		t.Fatalf("an empty string and Неопределено: %+v %+v", list[1], list[2])
-	case list[3].Value != (Value{Kind: PlatformType, Data: "ent:AccountType.Active"}) || list[4].Value.Kind != UnresolvedReferenceValue:
-		t.Fatalf("a platform value and a remnant: %+v %+v", list[3], list[4])
+	case list[3].Value != (Value{Kind: AccountKindType, Data: "active"}) || list[4].Value != (Value{Kind: PlatformType, Data: "dcsset:DataCompositionComparisonType.Equal"}) ||
+		list[5].Value.Kind != UnresolvedReferenceValue:
+		t.Fatalf("a value of an enumeration of the platform, a platform value and a remnant: %+v %+v %+v", list[3], list[4], list[5])
 	case radio[0].Value != (Value{Kind: NumberType, Data: "0"}) || radio[0].Presentation["ru"] != "Исполнителю":
 		t.Fatalf("radio: %+v", radio)
 	}
@@ -1876,7 +1877,7 @@ func TestTheChoiceParametersOfAnInputFieldAreResolved(t *testing.T) {
 		"обычные": {parameters: "choice_parameters: [{name: Отбор.Вид, values: [{kind: number, data: \"1\"}]}], available_types: [{kind: catalog, reference: " + cmpGoods + "}]"},
 		"остаток": {parameters: "choice_parameters: [{name: Отбор.Вид, values: [{kind: unresolved-reference, data: \"5647c4ea-0d6d-4d75-8261-5aa213fca033.bca5af74-66f6-44f5-8fa6-cee0b448788a\"}]}]",
 			unresolved: "choice parameter Отбор.Вид"},
-		"значение платформы": {parameters: "choice_parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]", note: NotePlatformValueByName},
+		"значение платформы": {parameters: "choice_parameters: [{name: Отбор.ВидСравнения, values: [{kind: platform, data: \"dcsset:DataCompositionComparisonType.Equal\"}]}]", note: NotePlatformValueByName},
 		"задан и связан": {parameters: "choice_parameters: [{name: отбор.владелец, values: [{kind: number, data: \"1\"}]}]," +
 			" choice_parameter_links: [{name: Отбор.Владелец, data_path: Объект.Партнер}]", note: NoteChoiceSetAndLinked},
 		"удалённый тип": {parameters: "available_types: [{kind: catalog, reference: " + refGone + "}]", refused: "available types"},

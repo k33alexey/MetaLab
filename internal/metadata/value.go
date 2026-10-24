@@ -65,13 +65,31 @@ func validateDesignTimeValue(path string, value Value) []string {
 		}
 	case PlatformType:
 		// A value of a type the platform defines and the model does not list
-		// - a kind of account, a comparison of the data composition system -
-		// written as the prototype writes it: the type with its namespace and
-		// the value, "ent:AccountType.Active". Carried, not executed, and a
-		// note (NotePlatformValueByName).
+		// - a comparison of the data composition system - written as the
+		// prototype writes it: the type with its namespace and the value,
+		// "v8:ComparisonType.Equal". Carried, not executed, and a note
+		// (NotePlatformValueByName).
 		dot := strings.LastIndex(value.Data, ".")
 		if dot <= 0 || dot == len(value.Data)-1 || strings.ContainsFunc(value.Data, unicode.IsSpace) || !value.Object.IsZero() {
-			return []string{path + ".data must be the type and the value as the prototype writes them, as ent:AccountType.Active"}
+			return []string{path + ".data must be the type and the value as the prototype writes them, as v8:ComparisonType.Equal"}
+		}
+		// A value of an enumeration of the platform the model knows is a
+		// value of its own kind, as the type is (owner's decision of
+		// 24.10.2026, question В1 of the series 2.531): one value, one
+		// spelling.
+		if kind, ok := ownKindOfPlatformName(value.Data[:dot]); ok && isSystemEnumeration(kind) {
+			return []string{fmt.Sprintf("%s %s is a value of an enumeration of its own: write it as kind %s, data %s", path, value.Data, kind, kebab(value.Data[dot+1:]))}
+		}
+	default:
+		// A value of an enumeration of the platform: one of its values as the
+		// project writes them, account-kind active-passive (help 8.3.27,
+		// kinds.SystemEnumerations).
+		if isSystemEnumeration(value.Kind) {
+			issues := oneOfList(path+".data", value.Data, systemEnumerationValues(value.Kind), true)
+			if !value.Object.IsZero() {
+				issues = append(issues, path+" is a value of an enumeration of the platform and names no object")
+			}
+			return issues
 		}
 	}
 	return nil

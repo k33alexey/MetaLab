@@ -226,7 +226,7 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	},
 	NotePlatformValueByName: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
-			"      parameters: [{name: Отбор.ВидСчета, values: [{kind: platform, data: \"ent:AccountType.Active\"}]}]\n"))
+			"      parameters: [{name: Отбор.ВидСравнения, values: [{kind: platform, data: \"dcsset:DataCompositionComparisonType.Equal\"}]}]\n"))
 	},
 	NoteRepeatedElementName: func(t *testing.T, root string) {
 		writeCommonForm(t, root, "Отбор", "format: 1\nid: "+uuid.MustNew().String()+"\nname: Отбор\ntitle: {ru: Отбор}\nkind: common\n"+

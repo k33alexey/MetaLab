@@ -142,3 +142,56 @@ func TestTheValuesOfTheSystemEnumerationsAreTheHelps(t *testing.T) {
 		}
 	}
 }
+
+// A value of an enumeration of the platform the model knows is a value of its
+// own kind wherever a value is written at design time - a choice list, a
+// choice parameter, a filling: the kind of the enumeration and the value of
+// the help as the project writes it (owner's decision of 24.10.2026, question
+// В1 of the series 2.531). Written by the name of its type, as the prototype
+// writes it (ent:AccountType.Active - 6 times in the choice lists and choice
+// parameters and twice in the filling of the standard attribute «Вид» of a
+// chart of accounts of the exports), it is refused and the kind and the
+// value to write are named; a value of a type the model does not list stays
+// by name. The values are written here from the help.
+//
+// Defect caught: a value of the kind of account kept by name beside its own
+// kind, a second spelling of one value; a value outside the help taken; an
+// object carried on it; a value of a comparison type refused with them.
+func TestTheValuesOfTheSystemEnumerationsAreOfTheirOwnKind(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		value Value
+		want  string
+	}{
+		{Value{Kind: "account-kind", Data: "active"}, ""},
+		{Value{Kind: "account-kind", Data: "active-passive"}, ""},
+		{Value{Kind: "account-kind", Data: "passive"}, ""},
+		{Value{Kind: "vertical-align", Data: "top"}, ""},
+		{Value{Kind: "data-analysis-time-interval-unit-type", Data: "ten-days"}, ""},
+		{Value{Kind: PlatformType, Data: "dcsset:DataCompositionComparisonType.Equal"}, ""},
+		// A type of its own that is no enumeration - the PDF document - has
+		// no values to name: such a text stays by name.
+		{Value{Kind: PlatformType, Data: "pdfdoc:PDFDocument.Pages"}, ""},
+		{Value{Kind: "account-kind", Data: "sideways"}, "value.data must be one of active-passive, active, passive"},
+		{Value{Kind: "account-kind", Data: ""}, "value.data must be one of"},
+		{Value{Kind: "account-kind", Data: "active", Object: uuid.MustNew()}, "names no object"},
+		{Value{Kind: PlatformType, Data: "ent:AccountType.ActivePassive"}, "is a value of an enumeration of its own: write it as kind account-kind, data active-passive"},
+		{Value{Kind: PlatformType, Data: "d5p1:VerticalAlign.Top"}, "write it as kind vertical-align, data top"},
+	} {
+		issues := validateDesignTimeValue("value", test.value)
+		if test.want == "" && len(issues) != 0 || test.want != "" && (len(issues) != 1 || !strings.Contains(issues[0], test.want)) {
+			t.Errorf("%+v: %v, want %q", test.value, issues, test.want)
+		}
+	}
+
+	root := metadataProject(t)
+	noteCatalog(t, root, "", noteField("string", "    choice:\n"+
+		"      parameters: [{name: Отбор.ВидСчета, values: [{kind: account-kind, data: active}]}]\n"))
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a choice parameter of the kind of account was refused: %v", err)
+	}
+	if notes := catalog.Notes(); slices.ContainsFunc(notes, func(note Note) bool { return note.Kind == NotePlatformValueByName }) {
+		t.Errorf("a value of an enumeration of the platform is noted: %+v", notes)
+	}
+}

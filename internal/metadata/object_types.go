@@ -241,6 +241,13 @@ func init() {
 	}
 }
 
+// isSystemEnumeration says a kind is an enumeration of the platform the model
+// knows.
+func isSystemEnumeration(kind TypeKind) bool {
+	_, ok := systemEnumerationKinds[kind]
+	return ok
+}
+
 // systemEnumerationValues are the values of an enumeration of the platform as
 // the project writes them: ActivePassive as active-passive.
 func systemEnumerationValues(kind TypeKind) []string {
