@@ -1,6 +1,10 @@
 package metadata
 
-import "github.com/k33alexey/MetaLab/internal/uuid"
+import (
+	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
+)
 
 // The types a value can have in memory and not in the database.
 //
@@ -267,10 +271,10 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // kinds' (kindInfo.aloneInDefinedType), added in init. The type of a filter
 // criterion takes a unique identifier alone: beside a string the editor warns
 // «Выбран тип, который не может быть включен в составной тип данных» (opis
-// of 23.10.2026, kriterij-otbora.md, «Досъёмка»). Not here yet, for want of a
-// pass in the designer: an attribute of a form and of a data processor, and
-// the types of the platform known by name - the PDF document, the line, the
-// border, the parts of a chart (question В2 of the series 2.480).
+// of 23.10.2026, kriterij-otbora.md, «Досъёмка»). An attribute of a form and
+// of a data processor takes nothing alone (the same pass). The types of the
+// platform known by name that stand alone in a defined type are
+// aloneByNameInDefinedType.
 var aloneTypes = map[typePlace]map[TypeKind]bool{
 	placeStored:          {ValueStorageType: true, UUIDType: true},
 	placeFilterCriterion: {UUIDType: true},
@@ -282,8 +286,33 @@ var aloneTypes = map[typePlace]map[TypeKind]bool{
 	},
 }
 
-// standsAlone says a type stands in the place only by itself.
+// standsAlone says a kind stands in the place only by itself.
 func standsAlone(kind TypeKind, place typePlace) bool { return aloneTypes[place][kind] }
+
+// aloneByNameInDefinedType are the types of the platform known by name that a
+// defined type takes only by themselves, as the editor warns of the PDF
+// document, the line, the border and every part of a chart (opis of
+// 14.10.2026, opredelyaemyj-tip.md, «Не входят в составной тип»). The names
+// are the local ones the export writes them by (opis of 23.10.2026, the same
+// file, «Досъёмка»): the prefix of the space is the export's own choice -
+// d5p1, d7p1 - and is not compared.
+var aloneByNameInDefinedType = map[string]bool{
+	"PDFDocument": true, "Line": true, "Border": true, "ChartLabelArea": true, "ChartScale": true, "ChartAxis": true,
+	"ChartColorPaletteDescription": true, "ChartReferenceLine": true, "ChartReferenceBand": true,
+}
+
+// typeStandsAlone says a type stands in the place only by itself: by its kind,
+// or, a type of the platform in a defined type, by its name.
+func typeStandsAlone(item Type, place typePlace) bool {
+	if item.Kind == PlatformType && place == placeDefinedType {
+		_, local, found := strings.Cut(item.Name, ":")
+		if !found {
+			local = item.Name
+		}
+		return aloneByNameInDefinedType[local]
+	}
+	return standsAlone(item.Kind, place)
+}
 
 // formKindAllowedIn says whether a kind of formOnlyKinds may stand in the
 // place. A defined type holds every one of them but the planner: the designer

@@ -147,3 +147,32 @@ func TestAManagerAloneIsTheKinds(t *testing.T) {
 		}
 	}
 }
+
+// The types of the platform known by name that the editor of a defined type
+// takes only by themselves - the PDF document, the line, the border and the
+// six parts of a chart (opis of 14.10.2026, opredelyaemyj-tip.md) - are
+// refused beside another type, whatever prefix of the space the export chose
+// (d5p1, d7p1, opis of 23.10.2026); alone they are taken, and another type of
+// the platform beside a string is taken as before. The names are written here.
+// Defects caught: a name compared with its prefix, so the export's own choice
+// lets it through; a part of a chart missed; Отбор refused.
+func TestPlatformTypesByNameStandAloneInADefinedType(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"pdfdoc:PDFDocument", "v8ui:Line", "v8ui:Border", "d5p1:ChartLabelArea", "d7p1:ChartScale",
+		"d5p1:ChartAxis", "d5p1:ChartColorPaletteDescription", "d5p1:ChartReferenceLine", "d5p1:ChartReferenceBand"} {
+		item := Type{Kind: PlatformType, Name: name}
+		issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, item}, placeDefinedType)
+		if len(issues) != 1 || !strings.Contains(issues[0], "types[1] "+name+" stands only by itself in a defined type") {
+			t.Errorf("%s beside a string: %v", name, issues)
+		}
+		if issues := validateTypesIn("types", []Type{item}, placeDefinedType); len(issues) != 0 {
+			t.Errorf("%s alone: %v", name, issues)
+		}
+		if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, item}, placeRunningObject); len(issues) != 0 {
+			t.Errorf("%s beside a string in a data processor: %v", name, issues)
+		}
+	}
+	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, {Kind: PlatformType, Name: "cfg:Filter"}}, placeDefinedType); len(issues) != 0 {
+		t.Errorf("a filter beside a string: %v", issues)
+	}
+}
