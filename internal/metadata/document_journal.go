@@ -63,9 +63,12 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 	return decodeDescription(source, reader, configuration, func(value DocumentJournalDefinition, configuration project.Project) []string {
 		var issues []string
 		// A journal of no documents, and a column that shows no attribute, are
-		// what a journal is right after it is made; nothing shows the
-		// configurator refusing to save them. Both are carried, show nothing,
-		// and are notes.
+		// what a journal is right after it is made, and the designer's check of
+		// the configuration refuses both (opis of the journal, 15.10.2026,
+		// docs/block-00/zhurnal-dokumentov.md).
+		if len(value.Documents) == 0 {
+			issues = append(issues, "documents must name a document: the designer refuses a journal of no documents")
+		}
 		issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, DocumentJournalKind,
 			recordIndexTables(standardFieldsOfKind(DocumentJournalKind), journalColumnNames(value.Columns)))...)
@@ -83,6 +86,9 @@ func DecodeDocumentJournal(source string, reader io.Reader, configuration projec
 			issues = append(issues, validateTitle(prefix+".title", column.Title, configuration)...)
 			if !validIndexMode(column.Indexing) {
 				issues = append(issues, prefix+".indexing must be dont-index, index or index-with-additional-order")
+			}
+			if len(column.References)+len(column.StandardReferences) == 0 {
+				issues = append(issues, prefix+" must show a field of a document: the designer refuses a column with no content")
 			}
 			issues = append(issues, validateUniqueIDs(prefix+".references", column.References)...)
 			issues = append(issues, validateDocumentStandardFields(prefix+".standard_references", column.StandardReferences)...)

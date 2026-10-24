@@ -36,7 +36,6 @@ const (
 	NoteExtDimensionsHalfSet       NoteKind = "ext-dimensions-half-set"
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
-	NoteJournalShowsNothing        NoteKind = "journal-shows-nothing"
 	NoteSequenceWithoutDocuments   NoteKind = "sequence-without-documents"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
@@ -153,10 +152,6 @@ func init() {
 		NoteKindInfo{NoteLengthZeroUnchecked,
 			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов, плана видов расчёта и задачи.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
-		NoteKindInfo{NoteJournalShowsNothing,
-			"Журнал документов без регистрируемых документов или графа журнала без ссылок на реквизиты — " +
-				"таким журнал бывает сразу после создания.",
-			"Журнал или графа несётся как записан и ничего не показывает."},
 		NoteKindInfo{NoteSequenceWithoutDocuments,
 			"Последовательность без документов.",
 			"Несётся как записана и ни за чем не следит."},
@@ -373,7 +368,6 @@ func init() {
 	noteRules[NoteExtDimensionsHalfSet] = noteExtDimensionsHalfSet
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
-	noteRules[NoteJournalShowsNothing] = noteJournalShowsNothing
 	noteRules[NoteSequenceWithoutDocuments] = noteSequenceWithoutDocuments
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
@@ -848,20 +842,6 @@ func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string))
 	for _, task := range catalog.Tasks {
 		if task.DescriptionLength == 0 {
 			note("tasks "+task.Name+" description_length", "0")
-		}
-	}
-}
-
-func noteJournalShowsNothing(catalog *Catalog, note func(where, written string)) {
-	for _, journal := range catalog.DocumentJournals {
-		where := "document-journals " + journal.Name
-		if len(journal.Documents) == 0 {
-			note(where+" documents", "none")
-		}
-		for _, column := range journal.Columns {
-			if len(column.References)+len(column.StandardReferences) == 0 {
-				note(where+" columns "+column.Name, "no references")
-			}
 		}
 	}
 }

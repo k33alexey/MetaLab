@@ -3,6 +3,7 @@ package metadata
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -355,5 +356,31 @@ dimensions:
 	}
 	if _, err := Load(root); err == nil {
 		t.Fatal("an object module accepted beside a sequence, which has no object")
+	}
+}
+
+// TestAJournalShowsDocumentsInEveryColumn catches a journal of no documents
+// or a column with no content taken: the designer's check of the
+// configuration refuses both (docs/block-00/zhurnal-dokumentov.md).
+func TestAJournalShowsDocumentsInEveryColumn(t *testing.T) {
+	t.Parallel()
+	head := "format: 1\nid: " + aroundJournal + "\nname: Журнал\ntitle: {ru: Журнал}\n"
+	documents := "documents: [" + aroundFirstDoc + "]\n"
+	column := "columns:\n  - {id: " + aroundColumn + ", name: Контрагент, title: {ru: Контрагент}"
+	for name, test := range map[string]struct{ body, want string }{
+		"без документов": {head + column + ", references: [" + aroundFirstParty + "]}\n",
+			"documents must name a document: the designer refuses a journal of no documents"},
+		"графа без ссылок": {head + documents + column + "}\n",
+			"columns[0] must show a field of a document: the designer refuses a column with no content"},
+		"графа со ссылкой":                {head + documents + column + ", references: [" + aroundFirstParty + "]}\n", ""},
+		"графа со стандартным реквизитом": {head + documents + column + ", standard_references: [{document: " + aroundFirstDoc + ", standard: Дата}]}\n", ""},
+	} {
+		_, err := DecodeDocumentJournal("object.yaml", strings.NewReader(test.body), metadataConfiguration())
+		if test.want == "" && err != nil {
+			t.Errorf("%s refused: %v", name, err)
+		}
+		if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+			t.Errorf("%s: want %q, got %v", name, test.want, err)
+		}
 	}
 }
