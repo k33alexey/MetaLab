@@ -337,6 +337,11 @@ const (
 	// configurator writes such fields (lombard1, 58), and the editor of the
 	// field's type gives the simple types (opis, vneshnij-istochnik.md).
 	placeExternalField
+	// placeSubscriptionSource is the source of an event subscription: the
+	// objects, record sets and managers it listens to. It is checked by
+	// validateEventSubscription, not by validateTypesIn; the window of the
+	// type offers what that takes.
+	placeSubscriptionSource
 )
 
 // storedNowhere says a kind may stand in a type description of something the
@@ -463,6 +468,8 @@ func placeName(place typePlace) string {
 		return "in the type of a filter criterion"
 	case placeExternalField:
 		return "in a field of an external data source"
+	case placeSubscriptionSource:
+		return "in the source of a subscription"
 	default:
 		return "in a field the database stores"
 	}

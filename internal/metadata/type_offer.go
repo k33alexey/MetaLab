@@ -36,6 +36,8 @@ const (
 	SessionParameterChoice TypeChoicePlace = "session-parameter"
 	// DefinedTypeChoice is the type of a defined type.
 	DefinedTypeChoice TypeChoicePlace = "defined-type"
+	// SubscriptionSourceChoice is the source of an event subscription.
+	SubscriptionSourceChoice TypeChoicePlace = "subscription-source"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -88,9 +90,9 @@ type choicePlace struct {
 }
 
 // choicePlaces are the places the prototype's window was gone through in,
-// with what it offered there (the opis, «Состав по местам»). The places of a
-// source of a subscription, the fields of an external source, a dimension of
-// a cube and a resource of a register are the next items of block 2б.
+// with what it offered there (the opis, «Состав по местам»). The places of
+// the fields of an external source, a dimension of a cube and a resource of a
+// register are the next items of block 2б.
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -138,6 +140,24 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 			LineType, BorderType, FixedArrayType, FixedMapType, FixedStructureType, ChartLabelAreaType, ChartScaleType,
 			ChartAxisType, ChartColorPaletteDescriptionType, ChartReferenceLineType, ChartReferenceBandType},
 		wholeKinds: []TypeKind{SettingsStorageManagerType}},
+	// The source of a subscription: the folder of the defined types, then a
+	// row for every kind it listens to, whose box is the kind as a whole and
+	// which holds its objects - the objects but those of a report and a data
+	// processor, the record sets of the registers and of a recalculation, the
+	// managers, and last the record set of a sequence and the manager of a
+	// settings storage (opis of 24.10.2026, podpiska-na-sobytie.md,
+	// «Досъёмка», snapshots series-2.531/09, 10). A new subscription has no
+	// source, so the window closes with nothing marked.
+	SubscriptionSourceChoice: {model: placeSubscriptionSource, definedTypes: true,
+		wholeKinds: []TypeKind{CatalogObjectType, DocumentObjectType, CharacteristicTypesObjectType, AccountsObjectType,
+			CalculationTypesObjectType, BusinessProcessObjectType, TaskObjectType, ExchangePlanObjectType,
+			InformationRegisterRecordSetType, AccumulationRegisterRecordSetType, AccountingRegisterRecordSetType,
+			CalculationRegisterRecordSetType, RecalculationRecordSetType,
+			CatalogManagerType, DocumentManagerType, EnumerationManagerType, CharacteristicTypesManagerType, AccountsManagerType,
+			CalculationTypesManagerType, ReportManagerType, DataProcessorManagerType, BusinessProcessManagerType, TaskManagerType,
+			ExchangePlanManagerType, DocumentJournalManagerType, InformationRegisterManagerType, AccumulationRegisterManagerType,
+			AccountingRegisterManagerType, CalculationRegisterManagerType, ConstantValueManagerType, FilterCriterionManagerType,
+			SequenceRecordSetType, SettingsStorageManagerType}},
 }
 
 // memoryChoice is what the window offers an attribute of a data processor, a
@@ -226,6 +246,7 @@ var objectTypeModules = map[TypeKind]kinds.Module{
 	TaskObjectType: kinds.ObjectModule, ExchangePlanObjectType: kinds.ObjectModule,
 	InformationRegisterRecordSetType: kinds.RecordSetModule, AccumulationRegisterRecordSetType: kinds.RecordSetModule,
 	AccountingRegisterRecordSetType: kinds.RecordSetModule, CalculationRegisterRecordSetType: kinds.RecordSetModule,
+	RecalculationRecordSetType: kinds.RecordSetModule, SequenceRecordSetType: kinds.RecordSetModule,
 	ConstantValueManagerType: kinds.ValueModule,
 }
 
@@ -371,7 +392,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
 	for _, kind := range at.folders {
-		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.referenceTypeObjects(typeOwners[kind]),
+		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.objectsToShow(typeOwners[kind], nil),
 			Alone: standsAlone(kind, at.model)})
 	}
 	for _, kind := range at.values {
@@ -388,7 +409,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	for _, kind := range at.wholeKinds {
 		row := typeRow(kind)
-		row.ObjectKind, row.Objects = kind, catalog.referenceTypeObjects(typeOwners[kind])
+		row.ObjectKind, row.Objects = kind, catalog.objectsToShow(typeOwners[kind], nil)
 		offer.Rows = append(offer.Rows, row)
 	}
 	return offer, true

@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -97,6 +98,18 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 			"ОбластьПодписиДиаграммы", "ШкалаДиаграммы", "ОсьДиаграммы", "ОписаниеПалитрыЦветовДиаграммы",
 			"ИнформационнаяЛинияДиаграммы", "ИнформационныйИнтервалДиаграммы"}),
 		[]string{"▸Системные перечисления", "□ХранилищеНастроекМенеджер"})
+	// The source of a subscription (podpiska-na-sobytie.md, «Досъёмка
+	// 24.10.2026», snapshots series-2.531/09, 10): the defined types, then a
+	// row with a box of every kind it listens to.
+	expected[SubscriptionSourceChoice] = slices.Concat([]string{"▸ОпределяемыйТип"},
+		marked("□", []string{"СправочникОбъект", "ДокументОбъект", "ПланВидовХарактеристикОбъект", "ПланСчетовОбъект",
+			"ПланВидовРасчетаОбъект", "БизнесПроцессОбъект", "ЗадачаОбъект", "ПланОбменаОбъект", "РегистрСведенийНаборЗаписей",
+			"РегистрНакопленияНаборЗаписей", "РегистрБухгалтерииНаборЗаписей", "РегистрРасчетаНаборЗаписей",
+			"ПерерасчетНаборЗаписей", "СправочникМенеджер", "ДокументМенеджер", "ПеречислениеМенеджер",
+			"ПланВидовХарактеристикМенеджер", "ПланСчетовМенеджер", "ПланВидовРасчетаМенеджер", "ОтчетМенеджер", "ОбработкаМенеджер",
+			"БизнесПроцессМенеджер", "ЗадачаМенеджер", "ПланОбменаМенеджер", "ЖурналДокументовМенеджер", "РегистрСведенийМенеджер",
+			"РегистрНакопленияМенеджер", "РегистрБухгалтерииМенеджер", "РегистрРасчетаМенеджер", "КонстантаМенеджерЗначения",
+			"КритерийОтбораМенеджер", "ПоследовательностьНаборЗаписей", "ХранилищеНастроекМенеджер"}))
 	// The folder of the enumerations of the platform by place (opis,
 	// «Системные перечисления по местам»): 24 in an attribute of a data
 	// processor, a form and a defined type, the three of accounting in a
@@ -165,7 +178,12 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 				types = append(types, offer.newType(inside.Kind))
 			}
 			for _, item := range types {
-				if issues := validateTypesIn("types", []Type{item}, at.model); len(issues) != 0 {
+				issues := validateTypesIn("types", []Type{item}, at.model)
+				if at.model == placeSubscriptionSource {
+					issues = validateEventSubscription(EventSubscriptionDefinition{Source: []Type{item}, Event: "before-write",
+						Module: uuid.MustNew(), Procedure: "Обработчик"}, catalog.Project)
+				}
+				if len(issues) != 0 {
 					t.Errorf("%s offers %+v, the model refuses it: %v", place, item, issues)
 				}
 			}
@@ -257,4 +275,61 @@ func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) 
 	}) {
 		t.Errorf("the manager of any settings storage is not noted: %+v", notes)
 	}
+}
+
+// Every row of the window of the source of a subscription past the defined
+// types is a box of the kind as a whole holding the objects of the kind - a
+// recalculation, read inside its register, by its own name, as the help names
+// its record set (ПерерасчетНаборЗаписей.<Имя перерасчета>) - and the kind as
+// a whole and each object are what a subscription takes (opis of 24.10.2026,
+// podpiska-na-sobytie.md, «Досъёмка»).
+//
+// Defect caught: a row without its box, so the kind as a whole cannot be
+// chosen; the objects of another kind under a row; a recalculation missing,
+// or shown under its register's name; a kind offered that the subscription
+// then refuses.
+func TestTheWindowOfASubscriptionSourceGivesEveryKindABoxAndItsObjects(t *testing.T) {
+	t.Parallel()
+	catalog, err := Load(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, _ := catalog.TypeOffer(SubscriptionSourceChoice)
+	if len(offer.Rows) == 0 || offer.Rows[0].ObjectKind != DefinedType || offer.Rows[0].Kind != "" {
+		t.Fatalf("the first row is not the folder of the defined types: %+v", offer.Rows)
+	}
+	for _, row := range offer.Rows[1:] {
+		if row.Kind == "" || row.ObjectKind != row.Kind {
+			t.Errorf("%s: a box %q over objects of %q", row.Name.Russian, row.Kind, row.ObjectKind)
+		}
+		if !listenable(row.Kind) {
+			t.Errorf("%s offered, and a subscription cannot listen to it", row.Kind)
+		}
+	}
+	byName := map[string][]string{}
+	for _, row := range offer.Rows {
+		for _, object := range row.Objects {
+			byName[row.Name.Russian] = append(byName[row.Name.Russian], object.Name)
+		}
+	}
+	for row, want := range map[string][]string{
+		"ПерерасчетНаборЗаписей": {"Перерасчет"}, "ПоследовательностьНаборЗаписей": names(catalog.Sequences),
+		"СправочникОбъект": names(catalog.Catalogs), "ХранилищеНастроекМенеджер": names(catalog.SettingsStorages),
+		"КонстантаМенеджерЗначения": names(catalog.Constants),
+	} {
+		// In the order of the tree, which the composite project does not
+		// write; the order is TestTheWindowsListObjectsInTheOrderOfTheTree's.
+		if len(want) == 0 || !slices.Equal(slices.Sorted(slices.Values(byName[row])), slices.Sorted(slices.Values(want))) {
+			t.Errorf("%s holds %v, want %v", row, byName[row], want)
+		}
+	}
+}
+
+// names are the names of the objects of a list, in its order.
+func names[T any](list []T) []string {
+	var result []string
+	for _, item := range list {
+		result = append(result, reflect.ValueOf(item).FieldByName("Name").String())
+	}
+	return result
 }

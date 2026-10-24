@@ -297,7 +297,9 @@ func LoadPermissionSchema(root string) (PermissionSchema, error) {
 // form - from the index of identifiers, titled by what was read. The windows
 // of roles follow the tree - a catalog moved up stands up in the tree of
 // rights and in «Все роли» too (opis of 24.10.2026, obolochka.md,
-// «Досъёмка 24.10.2026») - and so does the filter by subsystems.
+// «Досъёмка 24.10.2026») - and so do the filter by subsystems and the
+// folders and rows of the window of the type (TypeOffer), where a
+// recalculation, read inside its register, is listed by its own name.
 func (catalog *Catalog) objectsToShow(kind Kind, titles map[uuid.UUID]LocalizedText) []ReferenceTypeObject {
 	var result []ReferenceTypeObject
 	if _, ok := catalog.objectsOf(kind); ok {
