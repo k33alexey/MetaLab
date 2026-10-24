@@ -42,7 +42,7 @@ type codeNumberRow struct {
 	extra string
 }
 
-const untilDescriptionZero = "2б «длина наименования 0 у плана счетов, плана видов расчёта и задачи»"
+const untilDescriptionZero = "2б «длина наименования 0 у плана счетов и плана видов расчёта — сверить в конфигураторе»"
 
 var codeNumberTable = map[string]codeNumberRow{
 	"справочник": {kind: CatalogKind, numericCode: true, allowedLength: true,
@@ -59,8 +59,9 @@ var codeNumberTable = map[string]codeNumberRow{
 	"план обмена":    {kind: ExchangePlanKind, allowedLength: true, descriptionCeiling: 250},
 	"документ":       {kind: DocumentKind, numbered: true, allowedLength: true, codeZero: true},
 	"бизнес-процесс": {kind: BusinessProcessKind, numbered: true, allowedLength: true, codeZero: true, extra: processTaskLine},
+	// 0 taken (opis of the task, 15.10.2026, docs/block-00/zadacha.md).
 	"задача": {kind: TaskKind, numbered: true, allowedLength: true, codeZero: true,
-		descriptionZeroUntil: untilDescriptionZero, descriptionCeiling: 150, extra: "addressing_attributes: []\n"},
+		descriptionZero: true, descriptionCeiling: 150, extra: "addressing_attributes: []\n"},
 }
 
 // codeNumberField is what one case writes into the code or the number.

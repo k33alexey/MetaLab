@@ -147,7 +147,7 @@ func init() {
 			"Автопорядок по коду у плана счетов без длины порядка.",
 			"Несётся как записан; порядок строится по ширине кода."},
 		NoteKindInfo{NoteLengthZeroUnchecked,
-			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов, плана видов расчёта и задачи.",
+			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов и плана видов расчёта.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
 		NoteKindInfo{NoteRegisterWithoutFields,
 			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
@@ -821,11 +821,6 @@ func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string))
 	for _, chart := range catalog.ChartsOfCalculationTypes {
 		if chart.DescriptionLength == 0 {
 			note("charts-of-calculation-types "+chart.Name+" description_length", "0")
-		}
-	}
-	for _, task := range catalog.Tasks {
-		if task.DescriptionLength == 0 {
-			note("tasks "+task.Name+" description_length", "0")
 		}
 	}
 }
