@@ -254,17 +254,20 @@ func TestAFormAttributeTakesTheLongestName(t *testing.T) {
 	}
 }
 
-// Every type only a form holds is accepted in an attribute of a form and in a
-// column of one, and refused everywhere else - a field the database stores, an
-// attribute of a data processor, the parameter of a command - by a message
-// that says where it may stand. A defined type takes them but the planner:
+// Every type of the interface a form holds is accepted in an attribute of a
+// form and in a column of one, and in an attribute of a data processor or a
+// report, whose editor of the type offers the same list (opis of 23.10.2026,
+// snapshots tip-59…62); it is refused everywhere else - a field the database
+// stores, the parameter of a command - by a message that says where it may
+// stand. A defined type takes them but the planner:
 // TestADefinedTypeHoldsWhatItsEditorOffers.
 //
 // Defect caught: a form type left out of the model, so that the 3451 dynamic
-// lists and the rest of the forms being moved are refused; and a form type
-// accepted in a stored field, which the schema would then have to build a
-// column for.
-func TestFormOnlyTypesStandInAFormAndNowhereElse(t *testing.T) {
+// lists and the rest of the forms being moved are refused; one refused in an
+// attribute of a data processor, where the designer offers it; and a form
+// type accepted in a stored field, which the schema would then have to build
+// a column for.
+func TestFormTypesStandInAFormAndADataProcessorAndNowhereElse(t *testing.T) {
 	t.Parallel()
 	configuration := managedFormConfiguration()
 	// Listed here and not taken from the model, so that a kind dropped from
@@ -282,9 +285,11 @@ func TestFormOnlyTypesStandInAFormAndNowhereElse(t *testing.T) {
 			if _, err := DecodeManagedForm("form.yaml", strings.NewReader(source), configuration); err != nil {
 				t.Fatalf("a form refused its own type: %v", err)
 			}
+			if issues := validateTypesIn("types", []Type{{Kind: kind}}, placeRunningObject); len(issues) != 0 {
+				t.Errorf("an attribute of a data processor refused it: %v", issues)
+			}
 			for place, where := range map[typePlace]string{
-				placeStored:        "in a field the database stores",
-				placeRunningObject: "in an attribute of a data processor or a report", placeCommandParameter: "in the parameter of a command",
+				placeStored: "in a field the database stores", placeCommandParameter: "in the parameter of a command",
 			} {
 				issues := validateTypesIn("types", []Type{{Kind: kind}}, place)
 				if len(issues) != 1 || !strings.Contains(issues[0], "is a type of an attribute of a form and cannot stand "+where) {

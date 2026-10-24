@@ -793,14 +793,19 @@ function askCancelInput() {
    TypeOffer of the place: its rows, limits and the qualifiers of a type
    marked anew; types is the description the window opens on. A key names a
    row: the kind of its type, «arbitrary», «folder:<kind>» for a folder, and
-   «<kind>:<id>» for a type naming an object. The window answers result():
-   {types} in the order of the tree, or {refusal}. */
+   «<kind>:<id>» for a type naming an object. A folder holds the objects of
+   its kind or, the enumerations of the platform, types naming none. The
+   window answers result(): {types} in the order of the tree, or {refusal}. */
 function typeEditorModel(offer, types) {
   const rows = [];
   for (const [index, row] of offer.rows.entries()) {
-    const key = row.arbitrary ? 'arbitrary' : row.kind || `folder:${row.objectKind}:${index}`;
-    const children = (row.objects || []).map(object => ({key: `${row.objectKind}:${object.id}`, caption: object.name, icon: row.icon, checkable: true,
-      type: {kind: row.objectKind, reference: object.id}}));
+    const key = row.arbitrary ? 'arbitrary' : row.kind || `folder:${row.objectKind || ''}:${index}`;
+    const children = [
+      ...(row.objects || []).map(object => ({key: `${row.objectKind}:${object.id}`, caption: object.name, icon: row.icon, checkable: true,
+        type: {kind: row.objectKind, reference: object.id}})),
+      ...(row.types || []).map(inside => ({key: inside.kind, caption: inside.name.russian, icon: inside.icon, checkable: true,
+        type: {kind: inside.kind}})),
+    ];
     rows.push({key, caption: row.name.russian, icon: row.icon, checkable: !!(row.kind || row.arbitrary),
       type: row.kind ? {kind: row.kind} : null, children});
   }
@@ -942,8 +947,9 @@ function typeEditorModel(offer, types) {
    point, in the order of the description. */
 function typePresentation(offer, types) {
   if (!types.length) return offer.rows.find(row => row.arbitrary)?.name.russian || '';
+  const rows = offer.rows.flatMap(row => [row, ...(row.types || [])]);
   return types.map(type => {
-    const row = offer.rows.find(item => type.reference ? item.objectKind === type.kind : item.kind === type.kind);
+    const row = rows.find(item => type.reference ? item.objectKind === type.kind : item.kind === type.kind);
     const name = row?.name.russian || type.kind;
     if (!type.reference) return name;
     const object = row?.objects?.find(item => item.id === type.reference);

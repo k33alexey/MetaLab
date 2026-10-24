@@ -46,6 +46,24 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		FilterCriterionChoice: slices.Concat(marked("□", []string{"Произвольный", "Число", "Строка", "Дата", "Булево", "УникальныйИдентификатор"}),
 			marked("□", references), []string{"▸Характеристика", "▸ОпределяемыйТип", "□ЛюбаяСсылка"}),
 	}
+	// An attribute of a data processor, a report and a form: one list
+	// (snapshots tip-59…62, redaktor-formy 53 and 58). The document PDF of
+	// the window waits for question В2 of the series 2.531.
+	memory := slices.Concat(
+		marked("□", []string{"Произвольный", "Число", "Строка", "Дата", "Булево", "УникальныйИдентификатор", "ДинамическийСписок",
+			"ТаблицаЗначений", "ДеревоЗначений", "СписокЗначений", "ФорматированнаяСтрока", "ТабличныйДокумент",
+			"ФорматированныйДокумент", "ТекстовыйДокумент", "Null"}),
+		marked("□", references), []string{"▸Характеристика", "▸ОпределяемыйТип", "□ЛюбаяСсылка"},
+		marked("▸", []string{"СправочникОбъект", "ДокументОбъект", "ПланВидовХарактеристикОбъект", "ПланСчетовОбъект",
+			"ПланВидовРасчетаОбъект", "ОтчетОбъект", "ОбработкаОбъект", "БизнесПроцессОбъект", "ЗадачаОбъект", "ПланОбменаОбъект",
+			"РегистрСведенийНаборЗаписей", "РегистрСведенийМенеджерЗаписи", "РегистрНакопленияНаборЗаписей",
+			"РегистрБухгалтерииНаборЗаписей", "РегистрРасчетаНаборЗаписей"}),
+		marked("□", []string{"КонстантыНабор", "ОтчетОбъект", "КомпоновщикНастроекКомпоновкиДанных", "ГрафическаяСхема",
+			"ГеографическаяСхема", "Диаграмма", "ДиаграммаГанта", "Дендрограмма", "Планировщик", "ОписаниеТипов", "Картинка", "Цвет",
+			"Шрифт", "СтандартнаяДатаНачала", "СтандартныйПериод"}),
+		[]string{"▸Системные перечисления"})
+	expected[RunningObjectChoice] = memory
+	expected[FormAttributeChoice] = memory
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
@@ -58,6 +76,13 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		}
 		if offer.Required != required[place] {
 			t.Errorf("%s: a type required %v, the prototype %v", place, offer.Required, required[place])
+		}
+		// The folder of the enumerations of the platform holds the 24 of
+		// the window, each a type with a box (TestTheSystemEnumerationsAreTheWindows
+		// holds their names and order).
+		if last := offer.Rows[len(offer.Rows)-1]; slices.Contains(rows, "▸Системные перечисления") &&
+			(len(last.Types) != len(systemEnumerationsOfTheWindow) || slices.ContainsFunc(last.Types, func(row TypeOfferRow) bool { return row.Kind == "" })) {
+			t.Errorf("%s: the folder of the enumerations of the platform holds %+v", place, last.Types)
 		}
 	}
 	if len(choicePlaces) != len(expected) {
@@ -92,6 +117,9 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 				id := object.ID
 				types = append(types, Type{Kind: row.ObjectKind, Reference: &id})
 				named++
+			}
+			for _, inside := range row.Types {
+				types = append(types, offer.newType(inside.Kind))
 			}
 			for _, item := range types {
 				if issues := validateTypesIn("types", []Type{item}, at.model); len(issues) != 0 {

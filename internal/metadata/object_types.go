@@ -373,13 +373,16 @@ func typeStandsAlone(item Type, place typePlace) bool {
 }
 
 // formKindAllowedIn says whether a kind of formOnlyKinds may stand in the
-// place. A defined type holds every one of them but the planner: the designer
-// offers them in its editor of the type and saves them, and a search of that
-// editor finds no planner (opis of the defined type, 14.10.2026). Null is the
-// one of them a session parameter may hold too.
+// place. An attribute of a data processor or a report holds every one of them,
+// as one of a form: the editor of its type offers the same list (opis of
+// 23.10.2026, «Состав по местам», snapshots tip-59…62). A defined type holds
+// every one of them but the planner: the designer offers them in its editor
+// of the type and saves them, and a search of that editor finds no planner
+// (opis of the defined type, 14.10.2026). Null is the one of them a session
+// parameter may hold too.
 func formKindAllowedIn(kind TypeKind, place typePlace) bool {
 	switch place {
-	case placeFormAttribute:
+	case placeFormAttribute, placeRunningObject:
 		return true
 	case placeDefinedType:
 		return kind != PlannerType

@@ -26,6 +26,12 @@ const (
 	CharacteristicValueChoice TypeChoicePlace = "characteristic-value"
 	// FilterCriterionChoice is the type of a filter criterion.
 	FilterCriterionChoice TypeChoicePlace = "filter-criterion"
+	// RunningObjectChoice is an attribute of a data processor or a report, and
+	// FormAttributeChoice an attribute of a form: the window offers both one
+	// list (snapshots tip-59…62 and redaktor-formy 53, 58), the model checks
+	// each where it stands.
+	RunningObjectChoice TypeChoicePlace = "running-object"
+	FormAttributeChoice TypeChoicePlace = "form-attribute"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -58,6 +64,14 @@ type choicePlace struct {
 	// characteristic types; definedTypes is the folder «ОпределяемыйТип»;
 	// anyReference is the row «ЛюбаяСсылка».
 	characteristics, definedTypes, anyReference bool
+	// folders are the folders of the types living in memory that name an
+	// object - the object of a catalog, the record set of a register - each
+	// holding the objects of its kind; then come the types living in memory
+	// that name none, values, and last the folder «Системные перечисления»
+	// when systemEnumerations.
+	folders            []TypeKind
+	values             []TypeKind
+	systemEnumerations bool
 	// required says the window does not close on «ОК» with nothing marked:
 	// «Необходимо выбрать тип значения.». Where the type may be empty it
 	// closes silently.
@@ -65,10 +79,10 @@ type choicePlace struct {
 }
 
 // choicePlaces are the places the prototype's window was gone through in,
-// with what it offered there (the opis, «Состав по местам»). The places whose
-// window offers what lives in memory only - an attribute of a data processor,
-// a report and a form, a defined type, a session parameter, the fields of an
-// external source - wait for the model to take all of it (BLOCKS, block 2б).
+// with what it offered there (the opis, «Состав по местам»). The places of a
+// defined type, a session parameter, a source of a subscription, the fields
+// of an external source, a dimension of a cube and a resource of a register
+// are the next items of block 2б.
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -76,6 +90,32 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	CharacteristicValueChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType}, references: referencesInFolders, definedTypes: true, required: true},
 	FilterCriterionChoice: {model: placeFilterCriterion, arbitrary: true, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true},
+	RunningObjectChoice: memoryChoice(placeRunningObject),
+	FormAttributeChoice: memoryChoice(placeFormAttribute),
+}
+
+// memoryChoice is what the window offers an attribute of a data processor, a
+// report and a form: arbitrary, the primitives and the values of the
+// interface, the references, then the objects and the record sets, the other
+// values and the enumerations of the platform (opis, «Состав по местам»,
+// snapshots tip-59…62). Neither a value storage nor binary data is offered
+// there. The document PDF the window offers among the primitives is a type of
+// the platform the model knows by its name only, and is not offered yet
+// (question В2 of the series 2.531).
+func memoryChoice(model typePlace) choicePlace {
+	return choicePlace{model: model, arbitrary: true,
+		primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType, DynamicListType, ValueTableType,
+			ValueTreeType, ValueListType, FormattedStringType, SpreadsheetDocumentType, FormattedDocumentType,
+			TextDocumentType, NullType},
+		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true,
+		folders: []TypeKind{CatalogObjectType, DocumentObjectType, CharacteristicTypesObjectType, AccountsObjectType,
+			CalculationTypesObjectType, ReportObjectType, DataProcessorObjectType, BusinessProcessObjectType, TaskObjectType,
+			ExchangePlanObjectType, InformationRegisterRecordSetType, InformationRegisterRecordManagerType,
+			AccumulationRegisterRecordSetType, AccountingRegisterRecordSetType, CalculationRegisterRecordSetType},
+		values: []TypeKind{ConstantsSetType, ReportObjectType, SettingsComposerType, GraphicalSchemaType,
+			GeographicalSchemaType, ChartType, GanttChartType, DendrogramType, PlannerType, TypeDescriptionType, PictureType,
+			ColorType, FontType, StandardBeginningDateType, StandardPeriodType},
+		systemEnumerations: true}
 }
 
 // typeNames are the names of the types the window shows by a word of their own
@@ -83,11 +123,69 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 var typeNames = map[TypeKind]kinds.Words{
 	NumberType: {Russian: "Число", English: "Number"}, StringType: {Russian: "Строка", English: "String"},
 	DateType: {Russian: "Дата", English: "Date"}, BooleanType: {Russian: "Булево", English: "Boolean"},
-	ValueStorageType:  {Russian: "ХранилищеЗначения", English: "ValueStorage"},
-	UUIDType:          {Russian: "УникальныйИдентификатор", English: "UUID"},
-	AnyReferenceSet:   {Russian: "ЛюбаяСсылка", English: "AnyRef"},
-	CharacteristicSet: {Russian: "Характеристика", English: "Characteristic"},
+	ValueStorageType:          {Russian: "ХранилищеЗначения", English: "ValueStorage"},
+	UUIDType:                  {Russian: "УникальныйИдентификатор", English: "UUID"},
+	AnyReferenceSet:           {Russian: "ЛюбаяСсылка", English: "AnyRef"},
+	CharacteristicSet:         {Russian: "Характеристика", English: "Characteristic"},
+	DynamicListType:           {Russian: "ДинамическийСписок", English: "DynamicList"},
+	ValueTableType:            {Russian: "ТаблицаЗначений", English: "ValueTable"},
+	ValueTreeType:             {Russian: "ДеревоЗначений", English: "ValueTree"},
+	ValueListType:             {Russian: "СписокЗначений", English: "ValueList"},
+	FormattedStringType:       {Russian: "ФорматированнаяСтрока", English: "FormattedString"},
+	SpreadsheetDocumentType:   {Russian: "ТабличныйДокумент", English: "SpreadsheetDocument"},
+	FormattedDocumentType:     {Russian: "ФорматированныйДокумент", English: "FormattedDocument"},
+	TextDocumentType:          {Russian: "ТекстовыйДокумент", English: "TextDocument"},
+	NullType:                  {Russian: "Null", English: "Null"},
+	ConstantsSetType:          {Russian: "КонстантыНабор", English: "ConstantsSet"},
+	SettingsComposerType:      {Russian: "КомпоновщикНастроекКомпоновкиДанных", English: "DataCompositionSettingsComposer"},
+	GraphicalSchemaType:       {Russian: "ГрафическаяСхема", English: "GraphicalSchema"},
+	GeographicalSchemaType:    {Russian: "ГеографическаяСхема", English: "GeographicalSchema"},
+	ChartType:                 {Russian: "Диаграмма", English: "Chart"},
+	GanttChartType:            {Russian: "ДиаграммаГанта", English: "GanttChart"},
+	DendrogramType:            {Russian: "Дендрограмма", English: "Dendrogram"},
+	PlannerType:               {Russian: "Планировщик", English: "Planner"},
+	TypeDescriptionType:       {Russian: "ОписаниеТипов", English: "TypeDescription"},
+	PictureType:               {Russian: "Картинка", English: "Picture"},
+	ColorType:                 {Russian: "Цвет", English: "Color"},
+	FontType:                  {Russian: "Шрифт", English: "Font"},
+	StandardBeginningDateType: {Russian: "СтандартнаяДатаНачала", English: "StandardBeginningDate"},
+	StandardPeriodType:        {Russian: "СтандартныйПериод", English: "StandardPeriod"},
+	// The manager of a record has no module, so no ЭтотОбъект names it
+	// (typeName).
+	InformationRegisterRecordManagerType: {Russian: "РегистрСведенийМенеджерЗаписи", English: "InformationRegisterRecordManager"},
 }
+
+// objectTypeModules are the modules whose ЭтотОбъект a type living in memory
+// is, by which kinds.Descriptor.ThisObject names the type: the object of a
+// catalog is СправочникОбъект, the record set of a register
+// РегистрСведенийНаборЗаписей.
+var objectTypeModules = map[TypeKind]kinds.Module{
+	CatalogObjectType: kinds.ObjectModule, DocumentObjectType: kinds.ObjectModule,
+	CharacteristicTypesObjectType: kinds.ObjectModule, AccountsObjectType: kinds.ObjectModule,
+	CalculationTypesObjectType: kinds.ObjectModule, ReportObjectType: kinds.ObjectModule,
+	DataProcessorObjectType: kinds.ObjectModule, BusinessProcessObjectType: kinds.ObjectModule,
+	TaskObjectType: kinds.ObjectModule, ExchangePlanObjectType: kinds.ObjectModule,
+	InformationRegisterRecordSetType: kinds.RecordSetModule, AccumulationRegisterRecordSetType: kinds.RecordSetModule,
+	AccountingRegisterRecordSetType: kinds.RecordSetModule, CalculationRegisterRecordSetType: kinds.RecordSetModule,
+}
+
+// typeName is the name the window shows a type by: its own word, or the type
+// of ЭтотОбъект of the module the type is the object of.
+func typeName(kind TypeKind) kinds.Words {
+	if name, ok := typeNames[kind]; ok {
+		return name
+	}
+	if module, ok := objectTypeModules[kind]; ok {
+		if object, ok := kinds.Must(typeOwners[kind]).ThisObject(module); ok {
+			return object.Name
+		}
+	}
+	return kinds.Words{}
+}
+
+// systemEnumerationsName is the folder of the enumerations of the platform.
+// The help names the folder in no language; the English words are ours.
+var systemEnumerationsName = kinds.Words{Russian: "Системные перечисления", English: "System enumerations"}
 
 // arbitraryName is the row of no type. The help names the row only in
 // Russian; the English word is ours.
@@ -124,6 +222,9 @@ type TypeOfferRow struct {
 	// through Type.Reference.
 	ObjectKind TypeKind              `json:"objectKind,omitempty"`
 	Objects    []ReferenceTypeObject `json:"objects,omitempty"`
+	// Types are the rows inside a folder that are types naming no object:
+	// the enumerations of the platform.
+	Types []TypeOfferRow `json:"types,omitempty"`
 }
 
 // TypeLimits are the model's ceilings on the qualifiers, which the window
@@ -159,8 +260,11 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	if at.arbitrary {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Arbitrary: true, Name: arbitraryName})
 	}
+	typeRow := func(kind TypeKind) TypeOfferRow {
+		return TypeOfferRow{Kind: kind, Name: typeName(kind), Alone: standsAlone(kind, at.model)}
+	}
 	for _, kind := range at.primitives {
-		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: kind, Name: typeNames[kind], Alone: standsAlone(kind, at.model)})
+		offer.Rows = append(offer.Rows, typeRow(kind))
 	}
 	if at.references != noReferences {
 		for _, kind := range kinds.ReferenceKinds() {
@@ -185,6 +289,19 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	if at.anyReference {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
+	}
+	for _, kind := range at.folders {
+		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.referenceTypeObjects(typeOwners[kind])})
+	}
+	for _, kind := range at.values {
+		offer.Rows = append(offer.Rows, typeRow(kind))
+	}
+	if at.systemEnumerations {
+		folder := TypeOfferRow{Name: systemEnumerationsName}
+		for _, enumeration := range kinds.SystemEnumerations {
+			folder.Types = append(folder.Types, TypeOfferRow{Kind: TypeKind(enumeration.Kind), Name: enumeration.Name})
+		}
+		offer.Rows = append(offer.Rows, folder)
 	}
 	return offer, true
 }

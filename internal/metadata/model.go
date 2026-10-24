@@ -2003,8 +2003,10 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		// of a report, of its settings and of its variant, which one form
 		// serves for every report. The prototype writes it 31 times in the
 		// configurations being moved; no other object type stands unnamed in
-		// them.
-		anyReport := item.Kind == ReportObjectType && place == placeFormAttribute && item.Reference == nil
+		// them. The editor of the type of an attribute of a data processor or
+		// a report offers it too, as the row ОтчетОбъект beside the folder of
+		// the reports (opis of 23.10.2026, snapshot tip-61).
+		anyReport := item.Kind == ReportObjectType && (place == placeFormAttribute || place == placeRunningObject) && item.Reference == nil
 		if referenced && !anyReport && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
