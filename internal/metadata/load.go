@@ -1251,6 +1251,9 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	if err := catalog.validateInputByStringTypes(); err != nil {
 		return err
 	}
+	if err := catalog.validateSessionParameterDefinedTypes(); err != nil {
+		return err
+	}
 	return catalog.resolveFieldChoices(root != "")
 }
 

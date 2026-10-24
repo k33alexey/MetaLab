@@ -1092,6 +1092,33 @@ func DecodeSessionParameter(source string, reader io.Reader, configuration proje
 	})
 }
 
+// validateSessionParameterDefinedTypes checks a session parameter typed by a
+// defined type by the rules of a session parameter, not of the defined type:
+// the designer's editor offers the defined type, and «Проверка конфигурации»
+// refuses a session parameter whose defined type holds a colour, or holds
+// «Произвольный» - «Недопустимый тип» - while an attribute of a data processor
+// with the same defined types passes (opis of 23.10.2026, parametr-seansa.md,
+// «Досъёмка»). A defined type holding nothing holds no type a session
+// parameter may have.
+func (catalog *Catalog) validateSessionParameterDefinedTypes() error {
+	for _, parameter := range catalog.SessionParameters {
+		if !slices.ContainsFunc(parameter.Types, func(item Type) bool { return item.Kind == DefinedType }) {
+			continue
+		}
+		expanded, err := catalog.expandTypes(parameter.Types, nil)
+		if err != nil {
+			return fmt.Errorf("session parameter %s: %w", parameter.Name, err)
+		}
+		if len(expanded) == 0 {
+			return fmt.Errorf("session parameter %s: its defined type holds no type, and a session parameter of an arbitrary type is not allowed", parameter.Name)
+		}
+		if issues := validateTypesIn("types", expanded, placeSessionParameter); len(issues) > 0 {
+			return fmt.Errorf("session parameter %s: through its defined type %s", parameter.Name, strings.Join(issues, "; "))
+		}
+	}
+	return nil
+}
+
 func DecodeEnumeration(source string, reader io.Reader, configuration project.Project) (Enumeration, error) {
 	return decodeDescription(source, reader, configuration, func(value Enumeration, configuration project.Project) []string {
 		// An enumeration with no values is saved by the configurator and occurs in
