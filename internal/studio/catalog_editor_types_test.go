@@ -279,3 +279,60 @@ func runInNode(t *testing.T, node, script string, input []byte, arguments ...str
 	}
 	return output
 }
+
+// singleInNode opens the window on the offer read from stdin with nothing
+// marked, asks for «Составной тип данных», marks a number and then a string,
+// and prints whether the window is composite and what it builds; and whether
+// a window opened on a number and a string is composite.
+const singleInNode = `
+const {readFileSync} = await import('node:fs');
+const vm = await import('node:vm');
+const context = vm.createContext({structuredClone, crypto});
+vm.runInContext(readFileSync('ui/studio-common.js', 'utf8'), context);
+context.offer = JSON.parse(readFileSync(0, 'utf8'));
+process.stdout.write(JSON.stringify(vm.runInContext(` + "`" + `
+  const window = typeEditorModel(offer, []);
+  window.setComposite(true);
+  window.mark('number', true);
+  window.mark('string', true);
+  const opened = typeEditorModel(offer, [{kind: 'number', precision: 10}, {kind: 'string', length: 10}]);
+  ({composite: window.composite, types: window.result().types.map(type => type.kind), opened: opened.composite});
+` + "`" + `, context)));
+`
+
+// The window of a field of an external source has no «Составной тип
+// данных»: asked for one it stays single, and a second mark takes the first
+// away (opis of 24.10.2026, vneshnij-istochnik.md, snapshots
+// series-2.531/16, 17, 22); the window of a function of a source has it
+// (snapshots 19, 21). Defect caught: a field the window lets have two types,
+// which the save then refuses («has a composite type»); a function that
+// cannot be given a composite one.
+func TestTheTypeWindowOfAFieldOfASourceIsSingle(t *testing.T) {
+	t.Parallel()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for this test")
+	}
+	for place, want := range map[metadata.TypeChoicePlace][]metadata.TypeKind{
+		metadata.ExternalFieldChoice:    {metadata.StringType},
+		metadata.ExternalFunctionChoice: {metadata.NumberType, metadata.StringType},
+	} {
+		offer, _ := (&metadata.Catalog{}).TypeOffer(place)
+		payload, err := json.Marshal(offer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var answer struct {
+			Composite bool                `json:"composite"`
+			Types     []metadata.TypeKind `json:"types"`
+			Opened    bool                `json:"opened"`
+		}
+		output := runInNode(t, node, singleInNode, payload)
+		if err := json.Unmarshal(output, &answer); err != nil {
+			t.Fatalf("node answered %q: %v", output, err)
+		}
+		if answer.Composite != (len(want) > 1) || answer.Opened != (len(want) > 1) || !slices.Equal(answer.Types, want) {
+			t.Errorf("%s: composite %v, opened on two types composite %v, built %v, want %v", place, answer.Composite, answer.Opened, answer.Types, want)
+		}
+	}
+}

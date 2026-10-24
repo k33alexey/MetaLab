@@ -794,8 +794,10 @@ function askCancelInput() {
    marked anew; types is the description the window opens on. A key names a
    row: the kind of its type, «arbitrary», «folder:<kind>» for a folder, and
    «<kind>:<id>» for a type naming an object. A folder holds the objects of
-   its kind or, the enumerations of the platform, types naming none. The
-   window answers result(): {types} in the order of the tree, or {refusal}. */
+   its kind or, the enumerations of the platform, types naming none. An offer
+   that is single - a field of an external source - has no «Составной тип
+   данных», and a mark always takes the one before away. The window answers
+   result(): {types} in the order of the tree, or {refusal}. */
 function typeEditorModel(offer, types) {
   const rows = [];
   for (const [index, row] of offer.rows.entries()) {
@@ -814,7 +816,7 @@ function typeEditorModel(offer, types) {
   const marked = new Map(), drafts = new Map();
   for (const type of types) if (order.some(row => row.key === typeKey(type))) marked.set(typeKey(type), structuredClone(type));
   if (!types.length && rows.some(row => row.key === 'arbitrary')) marked.set('arbitrary', null);
-  let composite = marked.size > 1, search = '';
+  let composite = !offer.single && marked.size > 1, search = '';
   const expanded = new Set(rows.filter(row => row.children.some(child => marked.has(child.key))).map(row => row.key));
   // The current row is the last one marked in the order of the tree, not the
   // first and not the one marked last (snapshots tip-95…106).
@@ -887,6 +889,7 @@ function typeEditorModel(offer, types) {
     /* setComposite: taking «Составной тип данных» away leaves the first type
        marked in the order of the tree, without asking, and makes it current. */
     setComposite(on) {
+      if (offer.single) return;
       composite = on;
       if (on || marked.size < 2) return;
       const first = order.find(row => marked.has(row.key));
@@ -981,7 +984,7 @@ function showTypeEditor(offer, types) {
   tree.tabIndex = 0;
   tree.setAttribute('role', 'tree');
   const qualifiers = node('div', undefined, 'type-editor-qualifiers');
-  content.append(composite, search, tree, qualifiers);
+  content.append(...(offer.single ? [] : [composite]), search, tree, qualifiers);
   content.addEventListener('keydown', event => {
     if (event.code === 'KeyM' && event.altKey && (event.metaKey || event.ctrlKey)) { event.preventDefault(); search.focus(); }
   });

@@ -822,9 +822,10 @@ func (catalog *Catalog) validateCubeDimensionType(owner string, dimension Extern
 
 // validateExternalFieldReferences resolves what the fields of one object of a
 // source refer to: an object table or a dimension table of the same source,
-// and nothing of another. ownCube, when given, is the dimension tables of the
-// cube the fields belong to, and a reference to a dimension table outside it
-// is refused. The rest of their types, and the values they are filled with,
+// or one of another source, which is carried and a note
+// (NoteForeignSourceReference). ownCube, when given, is the dimension tables
+// of the cube the fields belong to, and a reference to a dimension table
+// outside it is refused. The rest of their types, and the values they are filled with,
 // are checked the way any field's are.
 func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourceDefinition, owner string, fields []ExternalField, ownCube map[uuid.UUID]bool) error {
 	tables := make(map[uuid.UUID]ExternalTable, len(source.Tables))
@@ -858,7 +859,18 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 				}
 			case ExternalDimensionTableType:
 				if !dimensionTables[*item.Reference] {
+					// The editor of the type of a field of a table and of a
+					// function offers the dimension tables of every cube of
+					// every source, and «Проверка конфигурации» takes a
+					// reference to another source's (opis of 24.10.2026,
+					// vneshnij-istochnik.md, snapshots series-2.531/22-25):
+					// carried, joins nothing, a note - as a reference to a
+					// table of another source. The fields of a cube stay
+					// within it (ownCube).
 					if _, elsewhere := catalog.externalDimensionTableByID[*item.Reference]; elsewhere {
+						if ownCube == nil {
+							continue
+						}
 						return fmt.Errorf("%s field %s refers to a dimension table of another source: a reference is a key of one database", owner, field.Name)
 					}
 					return fmt.Errorf("%s field %s refers to unknown dimension table %s", owner, field.Name, item.Reference)

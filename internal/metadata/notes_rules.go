@@ -172,7 +172,8 @@ func init() {
 			"Строка длиннее 1024 у поля внешнего источника; конфигуратор пишет 4294967295 для столбца без предела (mdclasses).",
 			"Длина несётся как записана и читается как неограниченная."},
 		NoteKindInfo{NoteForeignSourceReference,
-			"Поле внешнего источника ссылается на таблицу другого источника.",
+			"Поле таблицы или функция внешнего источника ссылается на таблицу или таблицу измерения другого источника: окно типа " +
+				"предлагает таблицы всех источников, «Проверка конфигурации» такую ссылку принимает (опись 24.10.2026).",
 			"Ссылка несётся как записана; соединить две базы ML не может, ссылка ничего не находит."},
 		NoteKindInfo{NoteTextInUndeclaredLanguage,
 			"Перевод на язык, которого нет среди языков конфигурации (erp, acc и sb: «en» при языках ru и uk).",
@@ -965,16 +966,30 @@ func noteForeignSourceReference(catalog *Catalog, note func(where, written strin
 		for _, table := range source.Tables {
 			own[table.ID] = true
 		}
-		for _, table := range source.Tables {
-			for _, field := range table.Fields {
-				for _, item := range field.Types {
-					if item.Kind == ExternalTableType && item.Reference != nil && !own[*item.Reference] {
-						if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
-							note("external-data-sources "+source.Name+" tables "+table.Name+" fields "+field.Name, item.Reference.String())
-						}
-					}
+		for _, cube := range source.Cubes {
+			for _, table := range cube.DimensionTables {
+				own[table.ID] = true
+			}
+		}
+		foreign := func(where string, types []Type) {
+			for _, item := range types {
+				if !isExternalReference(item.Kind) || item.Reference == nil || own[*item.Reference] {
+					continue
+				}
+				_, table := catalog.externalTableByID[*item.Reference]
+				_, dimension := catalog.externalDimensionTableByID[*item.Reference]
+				if table || dimension {
+					note(where, item.Reference.String())
 				}
 			}
+		}
+		for _, table := range source.Tables {
+			for _, field := range table.Fields {
+				foreign("external-data-sources "+source.Name+" tables "+table.Name+" fields "+field.Name, field.Types)
+			}
+		}
+		for _, function := range source.Functions {
+			foreign("external-data-sources "+source.Name+" functions "+function.Name, function.Types)
 		}
 	}
 }

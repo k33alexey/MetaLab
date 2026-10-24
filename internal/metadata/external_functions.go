@@ -59,8 +59,12 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 		}
 		names[strings.ToLower(function.Name)] = true
 		issues = append(issues, validateTitle(prefix+".title", function.Title, configuration)...)
+		// The value of a function takes what a field of a table does, binary
+		// data among it: the editor of its type offers the field's list
+		// (opis of 24.10.2026, vneshnij-istochnik.md, snapshots
+		// series-2.531/19, 21).
 		if len(function.Types) > 0 {
-			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeStored)...)
+			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeExternalField)...)
 		}
 		issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
 	}

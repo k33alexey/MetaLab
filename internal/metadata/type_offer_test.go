@@ -110,12 +110,20 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 			"БизнесПроцессМенеджер", "ЗадачаМенеджер", "ПланОбменаМенеджер", "ЖурналДокументовМенеджер", "РегистрСведенийМенеджер",
 			"РегистрНакопленияМенеджер", "РегистрБухгалтерииМенеджер", "РегистрРасчетаМенеджер", "КонстантаМенеджерЗначения",
 			"КритерийОтбораМенеджер", "ПоследовательностьНаборЗаписей", "ХранилищеНастроекМенеджер"}))
+	// A field of a table of a source and a function of one, in a project with
+	// no source (snapshot series-2.531/16): the simple types and binary data,
+	// the defined types, and no folder of the references, there being none.
+	external := slices.Concat(marked("□", []string{"Число", "Строка", "Дата", "Булево", "УникальныйИдентификатор", "ДвоичныеДанные"}),
+		[]string{"▸ОпределяемыйТип"})
+	expected[ExternalFieldChoice] = external
+	expected[ExternalFunctionChoice] = external
 	// The folder of the enumerations of the platform by place (opis,
 	// «Системные перечисления по местам»): 24 in an attribute of a data
 	// processor, a form and a defined type, the three of accounting in a
 	// session parameter.
 	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
-	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true}
+	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true,
+		ExternalFieldChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -127,6 +135,11 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		}
 		if offer.Required != required[place] {
 			t.Errorf("%s: a type required %v, the prototype %v", place, offer.Required, required[place])
+		}
+		// Only the field of a source has no «Составной тип данных»
+		// (snapshots 16, 17, 22; a function has it, 19, 21).
+		if offer.Single != (place == ExternalFieldChoice) {
+			t.Errorf("%s: without a composite %v", place, offer.Single)
 		}
 		// The folder holds as many enumerations as the window there, the
 		// first of them first, each a type with a box
@@ -179,6 +192,9 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 			}
 			for _, item := range types {
 				issues := validateTypesIn("types", []Type{item}, at.model)
+				if at.model == placeExternalField {
+					issues = validateExternalFieldTypes("types", []Type{item}, at.model)
+				}
 				if at.model == placeSubscriptionSource {
 					issues = validateEventSubscription(EventSubscriptionDefinition{Source: []Type{item}, Event: "before-write",
 						Module: uuid.MustNew(), Procedure: "Обработчик"}, catalog.Project)
@@ -332,4 +348,61 @@ func names[T any](list []T) []string {
 		result = append(result, reflect.ValueOf(item).FieldByName("Name").String())
 	}
 	return result
+}
+
+// The window of a field and of a function of a source offers the object
+// tables of every source as «Источник.Таблица» and the dimension tables of
+// every cube of every source as «Источник.Куб.Таблица», and the model takes a
+// field and a function of one source typed by a dimension table of another -
+// «Проверка конфигурации» takes such a reference (opis of 24.10.2026,
+// vneshnij-istochnik.md, snapshots series-2.531/22-25) - with the note of a
+// reference to another source, and the value of a function of binary data with
+// its qualifiers, as the window offers it (snapshots 19, 21).
+//
+// Defect caught: a table that holds records offered as a reference; another
+// source's tables missing; an object named without its source, so two tables
+// of one name in two sources read alike; a reference the window offers
+// refused on loading, or taken without the note; binary data refused in a
+// function.
+func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
+	t.Parallel()
+	root := compositeProject(t)
+	dimension := "[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]"
+	writeExternalSource(t, root, otherSource, "Бухгалтерия", "functions:\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Остаток, title: {ru: Остаток}, return_value: true, types: "+dimension+"}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Файл, title: {ru: Файл}, return_value: true, types: [{kind: binary-data, length: 16, fixed_length: true}]}\n")
+	writeExternalTable(t, root, "Бухгалтерия", foreignTable, "Счета", "name_in_data_source: accounts\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
+		"  - {id: "+foreignCodeField+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Товар, title: {ru: Товар}, types: "+dimension+", name_in_data_source: goods}\n")
+	writeExternalTable(t, root, "Бухгалтерия", uuid.MustNew().String(), "Проводки", "name_in_data_source: entries\ndata_type: non-object\nkey_fields: [Номер]\nfields:\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Номер, title: {ru: Номер}, types: [{kind: string, length: 10}], name_in_data_source: number}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a field and a function typed by a dimension table of another source: %v", err)
+	}
+	var noted []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteForeignSourceReference {
+			noted = append(noted, note.Where)
+		}
+	}
+	if want := []string{"external-data-sources Бухгалтерия functions Остаток", "external-data-sources Бухгалтерия tables Счета fields Товар"}; !slices.Equal(slices.Sorted(slices.Values(noted)), want) {
+		t.Errorf("noted %v, want %v", noted, want)
+	}
+	for _, place := range []TypeChoicePlace{ExternalFieldChoice, ExternalFunctionChoice} {
+		offer, _ := catalog.TypeOffer(place)
+		folders := map[string][]string{}
+		for _, row := range offer.Rows {
+			for _, object := range row.Objects {
+				folders[row.Name.Russian] = append(folders[row.Name.Russian], object.Name)
+			}
+		}
+		tables := slices.Sorted(slices.Values(folders["ВнешнийИсточникДанныхТаблицаСсылка"]))
+		if want := []string{"Бухгалтерия.Счета", "Склад.Товары"}; !slices.Equal(tables, want) {
+			t.Errorf("%s offers the tables %v, want %v", place, tables, want)
+		}
+		if got, want := folders["ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"], []string{"Склад.Продажи.Товары"}; !slices.Equal(got, want) {
+			t.Errorf("%s offers the dimension tables %v, want %v", place, got, want)
+		}
+	}
 }

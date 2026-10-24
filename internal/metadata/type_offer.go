@@ -38,6 +38,11 @@ const (
 	DefinedTypeChoice TypeChoicePlace = "defined-type"
 	// SubscriptionSourceChoice is the source of an event subscription.
 	SubscriptionSourceChoice TypeChoicePlace = "subscription-source"
+	// ExternalFieldChoice is a field of a table of an external data source,
+	// and ExternalFunctionChoice the value of a function of one: the window
+	// offers both one list, the field without «Составной тип данных».
+	ExternalFieldChoice    TypeChoicePlace = "external-field"
+	ExternalFunctionChoice TypeChoicePlace = "external-function"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -55,8 +60,7 @@ const (
 	referencesUnderSets
 )
 
-// choicePlace is what one place offers, from the top of the tree down. Every
-// place has «Составной тип данных».
+// choicePlace is what one place offers, from the top of the tree down.
 type choicePlace struct {
 	// model is where the model checks what the window builds.
 	model typePlace
@@ -68,8 +72,10 @@ type choicePlace struct {
 	references referenceRows
 	// characteristics is the folder «Характеристика», the charts of
 	// characteristic types; definedTypes is the folder «ОпределяемыйТип»;
-	// anyReference is the row «ЛюбаяСсылка».
-	characteristics, definedTypes, anyReference bool
+	// sourceReferences are the folders of the references to the object
+	// tables and to the dimension tables of every external source, each shown
+	// when it holds something; anyReference is the row «ЛюбаяСсылка».
+	characteristics, definedTypes, sourceReferences, anyReference bool
 	// folders are the folders of the types living in memory that name an
 	// object - the object of a catalog, the record set of a register, the
 	// manager of a catalog - each holding the objects of its kind; then come
@@ -87,12 +93,15 @@ type choicePlace struct {
 	// «Необходимо выбрать тип значения.». Where the type may be empty it
 	// closes silently.
 	required bool
+	// single is a place without «Составной тип данных»: marking a type takes
+	// the one before away.
+	single bool
 }
 
 // choicePlaces are the places the prototype's window was gone through in,
-// with what it offered there (the opis, «Состав по местам»). The places of
-// the fields of an external source, a dimension of a cube and a resource of a
-// register are the next items of block 2б.
+// with what it offered there (the opis, «Состав по местам»). The places of a
+// dimension of a cube and a resource of a register are the next items of
+// block 2б.
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -158,7 +167,20 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 			ExchangePlanManagerType, DocumentJournalManagerType, InformationRegisterManagerType, AccumulationRegisterManagerType,
 			AccountingRegisterManagerType, CalculationRegisterManagerType, ConstantValueManagerType, FilterCriterionManagerType,
 			SequenceRecordSetType, SettingsStorageManagerType}},
+	// A field of a table of an external source and the value of a function
+	// of one: the simple types and binary data, the defined types, and the
+	// references to the object tables and the dimension tables of every
+	// source - a reference to another source's the designer takes (opis of
+	// 24.10.2026, vneshnij-istochnik.md, «Досъёмка (серия 2.531)»,
+	// snapshots series-2.531/16, 17, 19, 21-23). A field has no «Составной
+	// тип данных» and must have a type; a function may return none.
+	ExternalFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: true,
+		required: true, single: true},
+	ExternalFunctionChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: true},
 }
+
+// externalPrimitives are the simple types a field of a source may hold.
+var externalPrimitives = []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType, BinaryDataType}
 
 // memoryChoice is what the window offers an attribute of a data processor, a
 // report and a form: arbitrary, the primitives and the values of the
@@ -293,9 +315,11 @@ var arbitraryName = kinds.Words{Russian: "Произвольный", English: "A
 type TypeOffer struct {
 	Place TypeChoicePlace `json:"place"`
 	// Required refuses «ОК» with nothing marked.
-	Required bool           `json:"required"`
-	Rows     []TypeOfferRow `json:"rows"`
-	Limits   TypeLimits     `json:"limits"`
+	Required bool `json:"required"`
+	// Single is a window without «Составной тип данных».
+	Single bool           `json:"single,omitempty"`
+	Rows   []TypeOfferRow `json:"rows"`
+	Limits TypeLimits     `json:"limits"`
 	// NewTypes are the qualifiers a type takes when it is marked anew, by its
 	// kind; a kind not listed takes none.
 	NewTypes map[TypeKind]Type `json:"newTypes"`
@@ -353,7 +377,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		return TypeOffer{}, false
 	}
 	offer := TypeOffer{
-		Place: place, Required: at.required,
+		Place: place, Required: at.required, Single: at.single,
 		Limits: TypeLimits{StringLength: maxStringLength, FixedStringLength: maxFixedStringLength, NumberDigits: maxNumberDigits,
 			BinaryLength: maxExternalStringLength},
 		NewTypes: newTypes,
@@ -388,6 +412,9 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Name: kinds.Must(DefinedTypeKind).Name, ObjectKind: DefinedType,
 			Objects: catalog.referenceTypeObjects(DefinedTypeKind)})
 	}
+	if at.sourceReferences {
+		offer.Rows = append(offer.Rows, catalog.sourceReferenceRows()...)
+	}
 	if at.anyReference {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
@@ -413,4 +440,38 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, row)
 	}
 	return offer, true
+}
+
+// sourceReferenceRows are the folders of the references to something of an
+// external source: the object tables of every source, «Источник.Таблица»,
+// and the dimension tables of every cube of every source,
+// «Источник.Куб.Таблица», the sources in the order of the tree (snapshot
+// series-2.531/22). A folder holding nothing is not shown (snapshot 16).
+func (catalog *Catalog) sourceReferenceRows() []TypeOfferRow {
+	var tables, dimensions []ReferenceTypeObject
+	for _, listed := range catalog.referenceTypeObjects(ExternalDataSourceKind) {
+		source, _ := catalog.ExternalDataSourceByID(listed.ID)
+		for _, table := range source.Tables {
+			if table.ObjectTable() {
+				tables = append(tables, ReferenceTypeObject{ID: table.ID, Name: source.Name + "." + table.Name, Title: table.Title})
+			}
+		}
+		for _, cube := range source.Cubes {
+			for _, table := range cube.DimensionTables {
+				dimensions = append(dimensions, ReferenceTypeObject{ID: table.ID, Name: source.Name + "." + cube.Name + "." + table.Name, Title: table.Title})
+			}
+		}
+	}
+	var rows []TypeOfferRow
+	for _, folder := range []struct {
+		kind    Kind
+		objects []ReferenceTypeObject
+	}{{ExternalDataSourceTableKind, tables}, {ExternalDimensionTableKind, dimensions}} {
+		if len(folder.objects) > 0 {
+			descriptor := kinds.Must(folder.kind)
+			rows = append(rows, TypeOfferRow{Name: descriptor.References()[0], Icon: descriptor.Icon, ObjectKind: referenceTo(folder.kind),
+				Objects: folder.objects})
+		}
+	}
+	return rows
 }

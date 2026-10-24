@@ -388,9 +388,13 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // criterion takes a unique identifier alone: beside a string the editor warns
 // «Выбран тип, который не может быть включен в составной тип данных» (opis
 // of 23.10.2026, kriterij-otbora.md, «Досъёмка»). An attribute of a form and
-// of a data processor takes nothing alone (the same pass).
+// of a data processor takes nothing alone (the same pass). A field of a
+// source has no composite at all; the value of a function of one keeps the
+// rule of a stored field it was checked by until 2.538 - what its editor
+// takes beside what was not tried.
 var aloneTypes = map[typePlace]map[TypeKind]bool{
 	placeStored:          {ValueStorageType: true, UUIDType: true},
+	placeExternalField:   {ValueStorageType: true, UUIDType: true},
 	placeFilterCriterion: {UUIDType: true},
 	placeDefinedType: {
 		ValueStorageType: true, UUIDType: true, BinaryDataType: true, NullType: true,
