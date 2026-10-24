@@ -137,6 +137,8 @@ func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 	}{
 		"шаблон не из трёх": {project.HomePageFile, "template: three-columns\n",
 			"template must be one-column, two-columns-equal-width or two-columns-variable-width"},
+		"чужое место командного интерфейса": {project.HomePageFile, "template: one-column\nmain_section_commands: left\n",
+			"main_section_commands must be top, bottom or do-not-use"},
 		"правая колонка у одной": {project.HomePageFile, "template: one-column\nright:\n  - {form: " + rootInterfaceForm + ", visibility: {common: true}}\n",
 			"right belongs to a page of two columns"},
 		"форма без идентификатора": {project.HomePageFile, "template: one-column\nleft:\n  - {form: 00000000-0000-0000-0000-000000000000, visibility: {common: true}}\n",
@@ -172,6 +174,31 @@ func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 				t.Fatalf("refused for another reason or not at all: %v", err)
 			}
 		})
+	}
+}
+
+// TestTheHomePageKeepsWhereItShowsTheMainSection catches the place of the
+// command interface of the main section on the home page lost or read into
+// another: the window of the work area gives «Сверху», «Снизу» and «Не
+// использовать», the last written by leaving it out
+// (docs/block-00/konfiguraciya.md).
+func TestTheHomePageKeepsWhereItShowsTheMainSection(t *testing.T) {
+	t.Parallel()
+	for written, want := range map[string]MainSectionCommandsPlace{
+		"":                                    "",
+		"main_section_commands: top\n":        "top",
+		"main_section_commands: bottom\n":     "bottom",
+		"main_section_commands: do-not-use\n": "do-not-use",
+	} {
+		root := rootInterfaceProject(t)
+		writeText(t, root, "", project.HomePageFile, "template: two-columns-equal-width\n"+written)
+		catalog, err := Load(root)
+		if err != nil {
+			t.Fatalf("%q refused: %v", written, err)
+		}
+		if catalog.HomePage == nil || catalog.HomePage.MainSectionCommands != want {
+			t.Errorf("%q read as %+v, want %q", written, catalog.HomePage, want)
+		}
 	}
 }
 

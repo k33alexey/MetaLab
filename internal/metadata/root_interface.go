@@ -38,7 +38,24 @@ type HomePage struct {
 	Template HomePageTemplate `yaml:"template" json:"template"`
 	Left     []HomePageForm   `yaml:"left,omitempty" json:"left,omitempty"`
 	Right    []HomePageForm   `yaml:"right,omitempty" json:"right,omitempty"`
+	// MainSectionCommands is where the page shows the command interface of
+	// the main section: «Сверху», «Снизу» or «Не использовать» in the
+	// window of the work area (opis of 15.10.2026,
+	// docs/block-00/konfiguraciya.md). The export writes it as
+	// MACommandInterfaceDisplays (mdclasses: Bottom) and leaves it out at
+	// «Не использовать», which empty is too.
+	MainSectionCommands MainSectionCommandsPlace `yaml:"main_section_commands,omitempty" json:"mainSectionCommands,omitempty"`
 }
+
+// MainSectionCommandsPlace is where the home page shows the command
+// interface of the main section.
+type MainSectionCommandsPlace string
+
+const (
+	MainSectionCommandsTop      MainSectionCommandsPlace = "top"
+	MainSectionCommandsBottom   MainSectionCommandsPlace = "bottom"
+	MainSectionCommandsNotShown MainSectionCommandsPlace = "do-not-use"
+)
 
 // HomePageForm is one form of the home page: the form, its height in lines
 // relative to the others, and who sees it. A form is named by its identifier,
@@ -94,6 +111,11 @@ func validateHomePage(value HomePage) []string {
 	case TwoColumnsEqualWidthHomePage, TwoColumnsVariableWidthHomePage:
 	default:
 		issues = append(issues, "template must be one-column, two-columns-equal-width or two-columns-variable-width")
+	}
+	switch value.MainSectionCommands {
+	case "", MainSectionCommandsTop, MainSectionCommandsBottom, MainSectionCommandsNotShown:
+	default:
+		issues = append(issues, "main_section_commands must be top, bottom or do-not-use")
 	}
 	for _, column := range value.columns() {
 		for index, form := range column.forms {
