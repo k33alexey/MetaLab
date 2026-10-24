@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 	goodsDimTable     = "f8100000-0000-4000-8000-000000000011"
 	goodsDimTableCode = "f8100000-0000-4000-8000-000000000012"
 	goodsDimTableName = "f8100000-0000-4000-8000-000000000013"
-	periodDimension   = "f8100000-0000-4000-8000-000000000004"
+	analogDimension   = "f8100000-0000-4000-8000-000000000004"
 )
 
 // cubeDirectory is the folder of the sales cube of the warehouse source.
@@ -32,10 +34,10 @@ dimensions:
     title: {ru: Товар}
     types: [{kind: external-data-source-dimension-table, reference: ` + goodsDimTable + `}]
     choice: {folders_and_items: items}
-  - id: ` + periodDimension + `
-    name: Период
-    title: {ru: Период}
-    types: [{kind: date}]
+  - id: ` + analogDimension + `
+    name: Аналог
+    title: {ru: Аналог}
+    types: [{kind: external-data-source-dimension-table, reference: ` + goodsDimTable + `}]
     presentation: {min_value: "2020-01-01T00:00:00Z"}
 resources:
   - id: ` + quantityResource + `
@@ -135,10 +137,10 @@ func TestExternalCubeAndDimensionTableAreCheckedOnTheirOwn(t *testing.T) {
 	for name, test := range map[string]struct{ cube, dimension, says string }{
 		"a dimension and a resource of one name": {strings.Replace(salesCubeBody, "    name: Количество", "    name: Товар", 1), goodsDimTableBody, "resources[0].name is used twice"},
 		"a presentation field that is absent":    {salesCubeBody, strings.Replace(goodsDimTableBody, "presentation_field: Наименование", "presentation_field: Артикул", 1), `presentation_field names "Артикул"`},
-		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
+		"an attribute's property on a dimension": {strings.Replace(salesCubeBody, "    title: {ru: Аналог}\n", "    title: {ru: Аналог}\n    indexing: index\n", 1), goodsDimTableBody, "dimensions[1].indexing belongs to an attribute"},
 		// A dimension is found through its dimension table and has no column
 		// of its own: the strict reading names the property.
-		"a column on a dimension": {strings.Replace(salesCubeBody, "    types: [{kind: date}]\n", "    types: [{kind: date}]\n    name_in_data_source: '[Date]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
+		"a column on a dimension": {strings.Replace(salesCubeBody, "    title: {ru: Аналог}\n", "    title: {ru: Аналог}\n    name_in_data_source: '[Analog]'\n", 1), goodsDimTableBody, "name_in_data_source not found"},
 		"a filling on a resource": {strings.Replace(salesCubeBody, "    name_in_data_source: '[Measures].[Quantity]'\n", "    name_in_data_source: '[Measures].[Quantity]'\n    filling: {value: {kind: number, data: \"0\"}}\n", 1), goodsDimTableBody, "resources[0].filling belongs to a field somebody enters"},
 		// The parts of a cube and of a dimension table are in the one walk
 		// of what an object holds, so their identifiers are unique across
@@ -368,5 +370,54 @@ func TestAnEmptyNameInTheSourceIsRefused(t *testing.T) {
 	writeExternalTable(t, root, "Склад", stockTable, "Остатки", stockBody)
 	if _, err := Load(root); err != nil {
 		t.Fatalf("a cube named in full and a table made of an expression refused: %v", err)
+	}
+}
+
+// TestADimensionOfACubeIsOneReferenceToItsDimensionTable catches a dimension
+// of a cube typed otherwise than by one reference to a dimension table of its
+// cube: the editor gives a defined type or such a reference and nothing else,
+// and «Проверка конфигурации» refuses no type and a defined type of a string
+// (docs/block-00/kub.md). Written out or by a defined type holding it alone,
+// the reference is taken.
+func TestADimensionOfACubeIsOneReferenceToItsDimensionTable(t *testing.T) {
+	t.Parallel()
+	const reference = "    types: [{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]\n    choice:"
+	const refused = "dimension Товар must be typed by one reference to a dimension table of its cube, written out or by a defined type holding it alone"
+	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
+	gln, goods, both, others := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
+	defined := func(t *testing.T, root string) {
+		for id, types := range map[string]string{
+			gln:    "[{kind: string, length: 13}]",
+			goods:  "[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]",
+			both:   "[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}, {kind: string, length: 13}]",
+			others: "[{kind: external-data-source-dimension-table, reference: " + otherTable + "}]",
+		} {
+			writeMetadata(t, root, DefinedTypeKind, id, "format: 1\nid: "+id+"\nname: Т"+strings.ReplaceAll(id, "-", "")[:8]+"\ntitle: {ru: Т}\ntypes: "+types+"\n")
+		}
+	}
+	for name, test := range map[string]struct{ types, want string }{
+		"без типа":               {"    types: []\n    choice:", "dimensions[0].types must contain at least one type"},
+		"простой":                {"    types: [{kind: date}]\n    choice:", refused},
+		"составной":              {"    types: [{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}, {kind: date}]\n    choice:", refused},
+		"определяемый-строка":    {"    types: [{kind: defined-type, reference: " + gln + "}]\n    choice:", refused},
+		"определяемый составной": {"    types: [{kind: defined-type, reference: " + both + "}]\n    choice:", refused},
+		"определяемый — таблица другого куба": {"    types: [{kind: defined-type, reference: " + others + "}]\n    choice:", refused},
+		"определяемый-ссылка":                 {"    types: [{kind: defined-type, reference: " + goods + "}]\n    choice:", ""},
+		"ссылка":                              {reference, ""},
+	} {
+		root := metadataProject(t)
+		defined(t, root)
+		writeSalesCube(t, root, strings.Replace(noteCubeBody(), reference, test.types, 1), goodsDimTableBody)
+		other := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceCubesDirectory, "Закупки")
+		writeFile(t, filepath.Join(other, "object.yaml"), "format: 1\nid: "+otherCube+"\nname: Закупки\ntitle: {ru: Закупки}\nname_in_data_source: Purchases\n")
+		writeFile(t, filepath.Join(other, ExternalDimensionTablesDirectory, "Поставщики", "object.yaml"),
+			"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
+		_, err := Load(root)
+		if test.want == "" && err != nil {
+			t.Errorf("%s refused: %v", name, err)
+		}
+		if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+			t.Errorf("%s: want %q, got %v", name, test.want, err)
+		}
 	}
 }

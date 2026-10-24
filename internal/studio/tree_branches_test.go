@@ -33,7 +33,7 @@ func TestObjectsInsideASourceShowTheirBranches(t *testing.T) {
 		"  - {id: f9000000-0000-4000-8000-000000000033, name: Код, title: {ru: Код}, types: [{kind: string, length: 20}], name_in_data_source: code}\n")
 	writeProjectFile(t, root, source+"/cubes/Продажи/object.yaml", "format: 1\nid: f9000000-0000-4000-8000-000000000034\nname: Продажи\ntitle: {ru: Продажи}\n"+
 		"name_in_data_source: Sales\ndimensions:\n"+
-		"  - {id: f9000000-0000-4000-8000-000000000035, name: Период, title: {ru: Период}, types: [{kind: date}]}\n"+
+		"  - {id: f9000000-0000-4000-8000-000000000035, name: Склад, title: {ru: Склад}, types: [{kind: external-data-source-dimension-table, reference: f9000000-0000-4000-8000-000000000037}]}\n"+
 		"resources:\n"+
 		"  - {id: f9000000-0000-4000-8000-000000000036, name: Количество, title: {ru: Количество}, types: [{kind: number, precision: 15, scale: 3}], name_in_data_source: Quantity}\n")
 	writeProjectFile(t, root, source+"/cubes/Продажи/dimension-tables/Склады/object.yaml", "format: 1\nid: f9000000-0000-4000-8000-000000000037\nname: Склады\ntitle: {ru: Склады}\n"+
@@ -65,7 +65,7 @@ func TestObjectsInsideASourceShowTheirBranches(t *testing.T) {
 		holds      []string
 	}{
 		{"f9000000-0000-4000-8000-000000000032", "Поля", []string{"Поля", "Формы", "Команды", "Макеты"}, []string{"Код"}},
-		{"f9000000-0000-4000-8000-000000000034", "Измерения", []string{"Таблицы измерений", "Измерения", "Ресурсы", "Формы", "Команды", "Макеты"}, []string{"Период"}},
+		{"f9000000-0000-4000-8000-000000000034", "Измерения", []string{"Таблицы измерений", "Измерения", "Ресурсы", "Формы", "Команды", "Макеты"}, []string{"Склад"}},
 		{"f9000000-0000-4000-8000-000000000034", "Ресурсы", nil, []string{"Количество"}},
 		{"f9000000-0000-4000-8000-000000000037", "Поля", []string{"Поля", "Формы", "Команды", "Макеты"}, []string{"Адрес"}},
 	} {

@@ -311,8 +311,8 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 	},
 }
 
-// noteCubeBody is the sales cube without the bound its date dimension carries:
-// a bound on a date is a note of its own.
+// noteCubeBody is the sales cube without the bound its second dimension
+// carries: a bound on a reference bounds nothing and is a note of its own.
 func noteCubeBody() string {
 	return strings.Replace(salesCubeBody, "    presentation: {min_value: \"2020-01-01T00:00:00Z\"}\n", "", 1)
 }

@@ -754,6 +754,11 @@ func (catalog *Catalog) validateExternalDataSources() error {
 			if err := catalog.validateExternalFieldReferences(source, owner, cubeFields(cube), own); err != nil {
 				return err
 			}
+			for _, dimension := range cube.Dimensions {
+				if err := catalog.validateCubeDimensionType(owner, dimension, own); err != nil {
+					return err
+				}
+			}
 			for _, table := range cube.DimensionTables {
 				if err := catalog.validateExternalFieldReferences(source, owner+" dimension table "+table.Name, table.Fields, own); err != nil {
 					return err
@@ -786,6 +791,27 @@ func (catalog *Catalog) validateExternalTableFieldType(owner string, field Exter
 	}
 	if len(expanded) > 1 {
 		return fmt.Errorf("%s field %s has a composite type: the designer refuses a field of a source of more than one type", owner, field.Name)
+	}
+	return nil
+}
+
+// validateCubeDimensionType checks what the editor of the type of a dimension
+// of a cube gives (opis of the cube, 15.10.2026, docs/block-00/kub.md): a
+// reference to a dimension table or a defined type, one of them - no simple
+// type and no «Составной тип данных»; and «Проверка конфигурации» refuses a
+// defined type that is not such a reference, «Недопустимый тип». So the type
+// is one reference to a dimension table of the dimension's own cube, written
+// out or by a defined type holding it alone. Every dimension of the exports is
+// typed so.
+func (catalog *Catalog) validateCubeDimensionType(owner string, dimension ExternalCubeDimension, own map[uuid.UUID]bool) error {
+	expanded, err := catalog.expandTypes(dimension.Types, nil)
+	if err != nil {
+		return fmt.Errorf("%s dimension %s: %w", owner, dimension.Name, err)
+	}
+	if len(dimension.Types) != 1 || len(expanded) != 1 || expanded[0].Kind != ExternalDimensionTableType ||
+		expanded[0].Reference == nil || !own[*expanded[0].Reference] {
+		return fmt.Errorf("%s dimension %s must be typed by one reference to a dimension table of its cube, written out or by a defined type holding it alone: the designer gives a dimension no other type",
+			owner, dimension.Name)
 	}
 	return nil
 }
