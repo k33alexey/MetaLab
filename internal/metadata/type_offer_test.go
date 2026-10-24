@@ -2,7 +2,10 @@ package metadata
 
 import (
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // offeredRows names the rows of an offer as the window draws them: the name,
@@ -69,10 +72,36 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		marked("□", references), []string{"▸Характеристика", "▸ОпределяемыйТип", "□ЛюбаяСсылка"},
 		marked("□", []string{"ОписаниеТипов", "ФиксированныйМассив", "ФиксированноеСоответствие", "ФиксированнаяСтруктура"}),
 		[]string{"▸Системные перечисления"})
+	// A defined type (opredelyaemyj-tip.md, «Досъёмка 24.10.2026», snapshots
+	// series-2.531/01-08): references in folders without a box, the objects,
+	// the record sets and the managers, one folder of the key and one of the
+	// manager of the value of a constant (the prototype's pair of folders per
+	// constant is not carried), the filter criteria, the values, the
+	// enumerations, and last the manager of a settings storage with a box.
+	expected[DefinedTypeChoice] = slices.Concat(
+		marked("□", []string{"Произвольный", "Число", "Строка", "Дата", "Булево", "ХранилищеЗначения", "УникальныйИдентификатор",
+			"ДинамическийСписок", "ТаблицаЗначений", "ДеревоЗначений", "СписокЗначений", "ФорматированнаяСтрока", "ДвоичныеДанные",
+			"ТабличныйДокумент", "ФорматированныйДокумент", "ТекстовыйДокумент", "ДокументPDF", "Null"}),
+		marked("▸", references),
+		marked("▸", []string{"СправочникОбъект", "ДокументОбъект", "ПланВидовХарактеристикОбъект", "ПланСчетовОбъект",
+			"ПланВидовРасчетаОбъект", "ОтчетОбъект", "ОбработкаОбъект", "БизнесПроцессОбъект", "ЗадачаОбъект", "ПланОбменаОбъект",
+			"РегистрСведенийНаборЗаписей", "РегистрНакопленияНаборЗаписей", "РегистрБухгалтерииНаборЗаписей",
+			"РегистрРасчетаНаборЗаписей", "СправочникМенеджер", "ДокументМенеджер", "ПеречислениеМенеджер",
+			"ПланВидовХарактеристикМенеджер", "ПланСчетовМенеджер", "ПланВидовРасчетаМенеджер", "ОтчетМенеджер", "ОбработкаМенеджер",
+			"БизнесПроцессМенеджер", "ЗадачаМенеджер", "ПланОбменаМенеджер", "ЖурналДокументовМенеджер", "РегистрСведенийМенеджер",
+			"РегистрНакопленияМенеджер", "РегистрБухгалтерииМенеджер", "РегистрРасчетаМенеджер", "КонстантаКлючЗначения",
+			"КонстантаМенеджерЗначения", "КритерийОтбораМенеджер"}),
+		marked("□", []string{"КомпоновщикНастроекКомпоновкиДанных", "ГрафическаяСхема", "ГеографическаяСхема", "Диаграмма",
+			"ДиаграммаГанта", "Дендрограмма", "ОписаниеТипов", "Картинка", "Цвет", "Шрифт", "СтандартнаяДатаНачала",
+			"СтандартныйПериод", "Линия", "Рамка", "ФиксированныйМассив", "ФиксированноеСоответствие", "ФиксированнаяСтруктура",
+			"ОбластьПодписиДиаграммы", "ШкалаДиаграммы", "ОсьДиаграммы", "ОписаниеПалитрыЦветовДиаграммы",
+			"ИнформационнаяЛинияДиаграммы", "ИнформационныйИнтервалДиаграммы"}),
+		[]string{"▸Системные перечисления", "□ХранилищеНастроекМенеджер"})
 	// The folder of the enumerations of the platform by place (opis,
 	// «Системные перечисления по местам»): 24 in an attribute of a data
-	// processor and a form, the three of accounting in a session parameter.
-	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, SessionParameterChoice: 3}
+	// processor, a form and a defined type, the three of accounting in a
+	// session parameter.
+	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
@@ -91,8 +120,8 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		// (TestTheSystemEnumerationsAreTheWindows holds their names and
 		// order).
 		var inside []TypeOfferRow
-		if slices.Contains(rows, "▸Системные перечисления") {
-			inside = offer.Rows[len(offer.Rows)-1].Types
+		if at := slices.Index(rows, "▸Системные перечисления"); at >= 0 {
+			inside = offer.Rows[at].Types
 		}
 		if len(inside) != enumerations[place] || len(inside) > 0 && inside[0].Kind != "accumulation-record-kind" ||
 			slices.ContainsFunc(inside, func(row TypeOfferRow) bool { return row.Kind == "" }) {
@@ -153,4 +182,79 @@ func (offer TypeOffer) newType(kind TypeKind) Type {
 		return item
 	}
 	return Type{Kind: kind}
+}
+
+// The window of a defined type holds the constants in the folders of the key
+// and of the manager of a value, the filter criteria in theirs and the
+// settings storages under the row of their manager, whose box is the kind as
+// a whole; the folders of the managers the editor takes only by themselves
+// are marked so, and the others not. The model takes the key of a value of a
+// constant in a defined type only, beside another type too, and the manager
+// of any settings storage there only, with a note. Expectations from the opis
+// (opredelyaemyj-tip.md, «Не входят в составной тип» and «Досъёмка
+// 24.10.2026»), written here.
+//
+// Defect caught: the constants or the storages missing from their rows; the
+// box of the whole kind refused on saving, or taken without a note, or taken
+// in a form; the key of a value taken where no window offers it, or refused
+// beside a string; a manager of a catalog put beside a string without the
+// window asking.
+func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) {
+	t.Parallel()
+	catalog, err := Load(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, _ := catalog.TypeOffer(DefinedTypeChoice)
+	byName := map[string]TypeOfferRow{}
+	for _, row := range offer.Rows {
+		byName[row.Name.Russian] = row
+	}
+	for name, kind := range map[string]Kind{"КонстантаКлючЗначения": ConstantKind, "КонстантаМенеджерЗначения": ConstantKind,
+		"КритерийОтбораМенеджер": FilterCriterionKind, "ХранилищеНастроекМенеджер": SettingsStorageKind} {
+		row := byName[name]
+		if want := catalog.referenceTypeObjects(kind); len(want) == 0 || len(row.Objects) != len(want) {
+			t.Errorf("%s holds %d objects, the project has %d", name, len(row.Objects), len(want))
+		}
+	}
+	if row := byName["ХранилищеНастроекМенеджер"]; row.Kind != "settings-storage-manager" || row.ObjectKind != "settings-storage-manager" {
+		t.Errorf("the row of the manager of a settings storage: %+v", row)
+	}
+	for name, alone := range map[string]bool{"СправочникМенеджер": true, "КритерийОтбораМенеджер": true, "ЖурналДокументовМенеджер": true,
+		"ПланСчетовМенеджер": false, "КонстантаМенеджерЗначения": false, "КонстантаКлючЗначения": false, "СправочникОбъект": false} {
+		if byName[name].Alone != alone {
+			t.Errorf("the folder %s marked alone %v, want %v", name, byName[name].Alone, alone)
+		}
+	}
+
+	key := Type{Kind: "constant-value-key", Reference: refID(uuid.MustNew().String())}
+	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, key}, placeDefinedType); len(issues) != 0 {
+		t.Errorf("the key of a value of a constant beside a string in a defined type: %v", issues)
+	}
+	for _, place := range []typePlace{placeFormAttribute, placeRunningObject, placeSessionParameter, placeStored, placeCommandParameter} {
+		if issues := validateTypesIn("types", []Type{key}, place); len(issues) == 0 {
+			t.Errorf("the key of a value of a constant taken %s", placeName(place))
+		}
+	}
+	anyStorage := Type{Kind: "settings-storage-manager"}
+	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, anyStorage}, placeDefinedType); len(issues) != 0 {
+		t.Errorf("the manager of any settings storage in a defined type: %v", issues)
+	}
+	for _, place := range []typePlace{placeFormAttribute, placeRunningObject} {
+		if issues := validateTypesIn("types", []Type{anyStorage}, place); len(issues) != 1 || !strings.HasSuffix(issues[0], ".reference is required") {
+			t.Errorf("the manager of any settings storage %s: %v", placeName(place), issues)
+		}
+	}
+	root := metadataProject(t)
+	id := uuid.MustNew().String()
+	writeMetadata(t, root, DefinedTypeKind, id, "format: 1\nid: "+id+"\nname: Хранилища\ntitle: {ru: Хранилища}\ntypes: [{kind: settings-storage-manager}]\n")
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("a defined type of the manager of any settings storage: %v", err)
+	}
+	if notes := loaded.Notes(); !slices.ContainsFunc(notes, func(note Note) bool {
+		return note.Kind == NoteAnySettingsStorageManager && strings.HasPrefix(note.Where, "defined-types Хранилища")
+	}) {
+		t.Errorf("the manager of any settings storage is not noted: %+v", notes)
+	}
 }

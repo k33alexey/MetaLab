@@ -53,6 +53,12 @@ const (
 	RecalculationRecordSetType        TypeKind = "recalculation-record-set"
 
 	ConstantValueManagerType TypeKind = "constant-value-manager"
+	// ConstantValueKeyType is the key of the value of a constant, which names
+	// the constant (help: КонстантаКлючЗначения.<Имя константы>, 8.3.13). The
+	// editor of the type of a defined type offers it, in a composite too, and
+	// no other place (opis of 24.10.2026, opredelyaemyj-tip.md, «Досъёмка»);
+	// the exports never write it.
+	ConstantValueKeyType TypeKind = "constant-value-key"
 
 	CatalogManagerType              TypeKind = "catalog-manager"
 	DocumentManagerType             TypeKind = "document-manager"
@@ -173,10 +179,11 @@ const (
 var windowPlatformKinds = []TypeKind{PDFDocumentType, LineType, BorderType, ChartLabelAreaType, ChartScaleType,
 	ChartAxisType, ChartColorPaletteDescriptionType, ChartReferenceLineType, ChartReferenceBandType}
 
-// definedTypeOnlyKinds are those of them only the editor of a defined type
-// offers.
+// definedTypeOnlyKinds are the kinds living in memory only the editor of a
+// defined type offers: those of them but the PDF document, and the key of the
+// value of a constant.
 var definedTypeOnlyKinds = map[TypeKind]bool{
-	LineType: true, BorderType: true, ChartLabelAreaType: true, ChartScaleType: true, ChartAxisType: true,
+	ConstantValueKeyType: true, LineType: true, BorderType: true, ChartLabelAreaType: true, ChartScaleType: true, ChartAxisType: true,
 	ChartColorPaletteDescriptionType: true, ChartReferenceLineType: true, ChartReferenceBandType: true,
 }
 

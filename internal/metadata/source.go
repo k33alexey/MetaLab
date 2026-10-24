@@ -539,7 +539,7 @@ func init() {
 			has:     indexed(func(c *Catalog) map[uuid.UUID]int { return c.roleByID })},
 		describedAs(SubsystemKind, DecodeSubsystem, func(catalog *Catalog) *[]SubsystemDefinition { return &catalog.Subsystems }, func(c *Catalog) map[uuid.UUID]int { return c.subsystemByID }),
 		describedAs(ConstantKind, DecodeConstant, func(catalog *Catalog) *[]Constant { return &catalog.Constants }, func(c *Catalog) map[uuid.UUID]int { return c.constantByID }).
-			holds(ConstantValueManagerType),
+			holds(ConstantValueManagerType, ConstantValueKeyType),
 		describedAs(SessionParameterKind, DecodeSessionParameter, func(catalog *Catalog) *[]SessionParameter { return &catalog.SessionParameters }, func(c *Catalog) map[uuid.UUID]int { return c.sessionParameterByID }),
 		describedAs(CommonAttributeKind, DecodeCommonAttribute, func(catalog *Catalog) *[]CommonAttributeDefinition { return &catalog.CommonAttributes }, func(c *Catalog) map[uuid.UUID]int { return c.commonAttributeByID }),
 		describedAs(CommonModuleKind, DecodeCommonModule, func(catalog *Catalog) *[]CommonModuleDefinition { return &catalog.CommonModules }, func(c *Catalog) map[uuid.UUID]int { return c.commonModuleByID }),

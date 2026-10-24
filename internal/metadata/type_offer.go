@@ -34,6 +34,8 @@ const (
 	FormAttributeChoice TypeChoicePlace = "form-attribute"
 	// SessionParameterChoice is the type of a session parameter.
 	SessionParameterChoice TypeChoicePlace = "session-parameter"
+	// DefinedTypeChoice is the type of a defined type.
+	DefinedTypeChoice TypeChoicePlace = "defined-type"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -67,15 +69,18 @@ type choicePlace struct {
 	// anyReference is the row «ЛюбаяСсылка».
 	characteristics, definedTypes, anyReference bool
 	// folders are the folders of the types living in memory that name an
-	// object - the object of a catalog, the record set of a register - each
-	// holding the objects of its kind; then come the types living in memory
-	// that name none, values, and last the folder «Системные перечисления»,
-	// holding the enumerations of the platform the model takes in the place:
-	// 24 in an attribute of a form or a data processor, three in a session
-	// parameter, and no folder where it takes none (opis, «Системные
-	// перечисления по местам»).
-	folders []TypeKind
-	values  []TypeKind
+	// object - the object of a catalog, the record set of a register, the
+	// manager of a catalog - each holding the objects of its kind; then come
+	// the types living in memory that name none, values, then the folder
+	// «Системные перечисления», holding the enumerations of the platform the
+	// model takes in the place: 24 in an attribute of a form or a data
+	// processor and in a defined type, three in a session parameter, and no
+	// folder where it takes none (opis, «Системные перечисления по местам»).
+	// Last come wholeKinds: rows of types naming an object whose box marks
+	// the kind as a whole, holding its objects.
+	folders    []TypeKind
+	values     []TypeKind
+	wholeKinds []TypeKind
 	// required says the window does not close on «ОК» with nothing marked:
 	// «Необходимо выбрать тип значения.». Where the type may be empty it
 	// closes silently.
@@ -84,9 +89,8 @@ type choicePlace struct {
 
 // choicePlaces are the places the prototype's window was gone through in,
 // with what it offered there (the opis, «Состав по местам»). The places of a
-// defined type, a session parameter, a source of a subscription, the fields
-// of an external source, a dimension of a cube and a resource of a register
-// are the next items of block 2б.
+// source of a subscription, the fields of an external source, a dimension of
+// a cube and a resource of a register are the next items of block 2б.
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -104,6 +108,36 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 		primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType, BinaryDataType, NullType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true,
 		values: []TypeKind{TypeDescriptionType, FixedArrayType, FixedMapType, FixedStructureType}, required: true},
+	// A defined type: arbitrary, the primitives and the values of the
+	// interface, the references in folders without a box - no set, no
+	// characteristic, no defined type, no any reference - the folders of the
+	// objects, the record sets and the managers, the values, the
+	// enumerations of the platform, and the manager of a settings storage,
+	// whose box is the kind as a whole (opis of 24.10.2026,
+	// opredelyaemyj-tip.md, «Досъёмка», snapshots series-2.531/01-08). The
+	// prototype gives every constant a pair of folders, the key and the
+	// manager of its value, one constant in each; the window here has one
+	// folder of each type with the constants inside (PLATFORM-MODEL.md,
+	// «Выбор типа»).
+	DefinedTypeChoice: {model: placeDefinedType, arbitrary: true,
+		primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType, DynamicListType,
+			ValueTableType, ValueTreeType, ValueListType, FormattedStringType, BinaryDataType, SpreadsheetDocumentType,
+			FormattedDocumentType, TextDocumentType, PDFDocumentType, NullType},
+		references: referencesInFolders,
+		folders: []TypeKind{CatalogObjectType, DocumentObjectType, CharacteristicTypesObjectType, AccountsObjectType,
+			CalculationTypesObjectType, ReportObjectType, DataProcessorObjectType, BusinessProcessObjectType, TaskObjectType,
+			ExchangePlanObjectType, InformationRegisterRecordSetType, AccumulationRegisterRecordSetType,
+			AccountingRegisterRecordSetType, CalculationRegisterRecordSetType,
+			CatalogManagerType, DocumentManagerType, EnumerationManagerType, CharacteristicTypesManagerType, AccountsManagerType,
+			CalculationTypesManagerType, ReportManagerType, DataProcessorManagerType, BusinessProcessManagerType, TaskManagerType,
+			ExchangePlanManagerType, DocumentJournalManagerType, InformationRegisterManagerType, AccumulationRegisterManagerType,
+			AccountingRegisterManagerType, CalculationRegisterManagerType,
+			ConstantValueKeyType, ConstantValueManagerType, FilterCriterionManagerType},
+		values: []TypeKind{SettingsComposerType, GraphicalSchemaType, GeographicalSchemaType, ChartType, GanttChartType,
+			DendrogramType, TypeDescriptionType, PictureType, ColorType, FontType, StandardBeginningDateType, StandardPeriodType,
+			LineType, BorderType, FixedArrayType, FixedMapType, FixedStructureType, ChartLabelAreaType, ChartScaleType,
+			ChartAxisType, ChartColorPaletteDescriptionType, ChartReferenceLineType, ChartReferenceBandType},
+		wholeKinds: []TypeKind{SettingsStorageManagerType}},
 }
 
 // memoryChoice is what the window offers an attribute of a data processor, a
@@ -174,6 +208,7 @@ var typeNames = map[TypeKind]kinds.Words{
 	ChartColorPaletteDescriptionType: {Russian: "ОписаниеПалитрыЦветовДиаграммы", English: "ChartColorPaletteDescription"},
 	ChartReferenceLineType:           {Russian: "ИнформационнаяЛинияДиаграммы", English: "ChartReferenceLine"},
 	ChartReferenceBandType:           {Russian: "ИнформационныйИнтервалДиаграммы", English: "ChartReferenceBand"},
+	ConstantValueKeyType:             {Russian: "КонстантаКлючЗначения", English: "ConstantValueKey"},
 	// The manager of a record has no module, so no ЭтотОбъект names it
 	// (typeName).
 	InformationRegisterRecordManagerType: {Russian: "РегистрСведенийМенеджерЗаписи", English: "InformationRegisterRecordManager"},
@@ -191,10 +226,23 @@ var objectTypeModules = map[TypeKind]kinds.Module{
 	TaskObjectType: kinds.ObjectModule, ExchangePlanObjectType: kinds.ObjectModule,
 	InformationRegisterRecordSetType: kinds.RecordSetModule, AccumulationRegisterRecordSetType: kinds.RecordSetModule,
 	AccountingRegisterRecordSetType: kinds.RecordSetModule, CalculationRegisterRecordSetType: kinds.RecordSetModule,
+	ConstantValueManagerType: kinds.ValueModule,
 }
 
-// typeName is the name the window shows a type by: its own word, or the type
-// of ЭтотОбъект of the module the type is the object of.
+// managerTypes are the types of the manager of an object of a kind, which
+// kinds.Descriptor.Manager names: СправочникМенеджер, ХранилищеНастроекМенеджер.
+var managerTypes = map[TypeKind]bool{
+	CatalogManagerType: true, DocumentManagerType: true, EnumerationManagerType: true, CharacteristicTypesManagerType: true,
+	AccountsManagerType: true, CalculationTypesManagerType: true, ExchangePlanManagerType: true,
+	BusinessProcessManagerType: true, TaskManagerType: true, InformationRegisterManagerType: true,
+	AccumulationRegisterManagerType: true, AccountingRegisterManagerType: true, CalculationRegisterManagerType: true,
+	DocumentJournalManagerType: true, ReportManagerType: true, DataProcessorManagerType: true,
+	SettingsStorageManagerType: true, FilterCriterionManagerType: true,
+}
+
+// typeName is the name the window shows a type by: its own word, the type of
+// ЭтотОбъект of the module the type is the object of, or the type of the
+// manager of the kind.
 func typeName(kind TypeKind) kinds.Words {
 	if name, ok := typeNames[kind]; ok {
 		return name
@@ -202,6 +250,11 @@ func typeName(kind TypeKind) kinds.Words {
 	if module, ok := objectTypeModules[kind]; ok {
 		if object, ok := kinds.Must(typeOwners[kind]).ThisObject(module); ok {
 			return object.Name
+		}
+	}
+	if managerTypes[kind] {
+		if manager, ok := kinds.Must(typeOwners[kind]).Manager(); ok {
+			return manager.Name
 		}
 	}
 	return kinds.Words{}
@@ -236,7 +289,8 @@ type TypeOfferRow struct {
 	// empty.
 	Arbitrary bool `json:"arbitrary,omitempty"`
 	// Alone is a type the place takes only by itself: marked beside another,
-	// the window asks whether to exclude the others (aloneTypes).
+	// the window asks whether to exclude the others (aloneTypes). On a folder
+	// it is the types of the objects inside.
 	Alone bool        `json:"alone,omitempty"`
 	Name  kinds.Words `json:"name"`
 	// Icon is the picture of the kind of object the row's types name, empty
@@ -317,7 +371,8 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
 	for _, kind := range at.folders {
-		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.referenceTypeObjects(typeOwners[kind])})
+		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.referenceTypeObjects(typeOwners[kind]),
+			Alone: standsAlone(kind, at.model)})
 	}
 	for _, kind := range at.values {
 		offer.Rows = append(offer.Rows, typeRow(kind))
@@ -330,6 +385,11 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	if len(folder.Types) > 0 {
 		offer.Rows = append(offer.Rows, folder)
+	}
+	for _, kind := range at.wholeKinds {
+		row := typeRow(kind)
+		row.ObjectKind, row.Objects = kind, catalog.referenceTypeObjects(typeOwners[kind])
+		offer.Rows = append(offer.Rows, row)
 	}
 	return offer, true
 }

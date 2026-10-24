@@ -38,7 +38,7 @@ func TestTypesNameTheirKinds(t *testing.T) {
 		AccountingRegisterRecordSetType: AccountingRegisterKind, AccountingRegisterManagerType: AccountingRegisterKind,
 		CalculationRegisterRecordSetType: CalculationRegisterKind, CalculationRegisterManagerType: CalculationRegisterKind,
 		SequenceRecordSetType: SequenceKind, RecalculationRecordSetType: RecalculationKind,
-		ConstantValueManagerType: ConstantKind, DocumentJournalManagerType: DocumentJournalKind,
+		ConstantValueManagerType: ConstantKind, ConstantValueKeyType: ConstantKind, DocumentJournalManagerType: DocumentJournalKind,
 		ReportObjectType: ReportKind, DataProcessorObjectType: DataProcessorKind,
 		ReportManagerType: ReportKind, DataProcessorManagerType: DataProcessorKind,
 		SettingsStorageManagerType: SettingsStorageKind, FilterCriterionManagerType: FilterCriterionKind,
@@ -67,7 +67,7 @@ func TestTypesNameTheirKinds(t *testing.T) {
 			InformationRegisterRecordSetType, InformationRegisterRecordManagerType, InformationRegisterManagerType,
 			AccumulationRegisterRecordSetType, AccumulationRegisterManagerType, AccountingRegisterRecordSetType,
 			AccountingRegisterManagerType, CalculationRegisterRecordSetType, CalculationRegisterManagerType,
-			SequenceRecordSetType, RecalculationRecordSetType, ConstantValueManagerType, DocumentJournalManagerType,
+			SequenceRecordSetType, RecalculationRecordSetType, ConstantValueManagerType, ConstantValueKeyType, DocumentJournalManagerType,
 			ReportObjectType, DataProcessorObjectType, ReportManagerType, DataProcessorManagerType,
 			SettingsStorageManagerType, FilterCriterionManagerType}, kind)
 		if isObjectType(kind) != inMemory {

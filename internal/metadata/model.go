@@ -2016,7 +2016,13 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		// a report offers it too, as the row ОтчетОбъект beside the folder of
 		// the reports (opis of 23.10.2026, snapshot tip-61).
 		anyReport := item.Kind == ReportObjectType && (place == placeFormAttribute || place == placeRunningObject) && item.Reference == nil
-		if referenced && !anyReport && (item.Reference == nil || item.Reference.IsZero()) {
+		// The manager of any settings storage: the editor of the type of a
+		// defined type gives the row «ХранилищеНастроекМенеджер» a box of the
+		// kind as a whole beside its storages (opis of 24.10.2026,
+		// opredelyaemyj-tip.md, snapshot 07). What the designer saves for it
+		// was not seen, so it is noted (NoteAnySettingsStorageManager).
+		anyStorage := item.Kind == SettingsStorageManagerType && place == placeDefinedType && item.Reference == nil
+		if referenced && !anyReport && !anyStorage && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
 		}
 		if !referenced && item.Reference != nil {
