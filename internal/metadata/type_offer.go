@@ -111,14 +111,12 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 // interface, the references, then the objects and the record sets, the other
 // values and the enumerations of the platform (opis, «Состав по местам»,
 // snapshots tip-59…62). Neither a value storage nor binary data is offered
-// there. The document PDF the window offers among the primitives is a type of
-// the platform the model knows by its name only, and is not offered yet
-// (question В2 of the series 2.531).
+// there.
 func memoryChoice(model typePlace) choicePlace {
 	return choicePlace{model: model, arbitrary: true,
 		primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType, DynamicListType, ValueTableType,
 			ValueTreeType, ValueListType, FormattedStringType, SpreadsheetDocumentType, FormattedDocumentType,
-			TextDocumentType, NullType},
+			TextDocumentType, PDFDocumentType, NullType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true,
 		folders: []TypeKind{CatalogObjectType, DocumentObjectType, CharacteristicTypesObjectType, AccountsObjectType,
 			CalculationTypesObjectType, ReportObjectType, DataProcessorObjectType, BusinessProcessObjectType, TaskObjectType,
@@ -165,6 +163,17 @@ var typeNames = map[TypeKind]kinds.Words{
 	FixedArrayType:            {Russian: "ФиксированныйМассив", English: "FixedArray"},
 	FixedMapType:              {Russian: "ФиксированноеСоответствие", English: "FixedMap"},
 	FixedStructureType:        {Russian: "ФиксированнаяСтруктура", English: "FixedStructure"},
+	// The English names are the names of their types XDTO as well
+	// (ownKindsByName).
+	PDFDocumentType:                  {Russian: "ДокументPDF", English: "PDFDocument"},
+	LineType:                         {Russian: "Линия", English: "Line"},
+	BorderType:                       {Russian: "Рамка", English: "Border"},
+	ChartLabelAreaType:               {Russian: "ОбластьПодписиДиаграммы", English: "ChartLabelArea"},
+	ChartScaleType:                   {Russian: "ШкалаДиаграммы", English: "ChartScale"},
+	ChartAxisType:                    {Russian: "ОсьДиаграммы", English: "ChartAxis"},
+	ChartColorPaletteDescriptionType: {Russian: "ОписаниеПалитрыЦветовДиаграммы", English: "ChartColorPaletteDescription"},
+	ChartReferenceLineType:           {Russian: "ИнформационнаяЛинияДиаграммы", English: "ChartReferenceLine"},
+	ChartReferenceBandType:           {Russian: "ИнформационныйИнтервалДиаграммы", English: "ChartReferenceBand"},
 	// The manager of a record has no module, so no ЭтотОбъект names it
 	// (typeName).
 	InformationRegisterRecordManagerType: {Russian: "РегистрСведенийМенеджерЗаписи", English: "InformationRegisterRecordManager"},

@@ -148,31 +148,80 @@ func TestAManagerAloneIsTheKinds(t *testing.T) {
 	}
 }
 
-// The types of the platform known by name that the editor of a defined type
-// takes only by themselves - the PDF document, the line, the border and the
-// six parts of a chart (opis of 14.10.2026, opredelyaemyj-tip.md) - are
-// refused beside another type, whatever prefix of the space the export chose
-// (d5p1, d7p1, opis of 23.10.2026); alone they are taken, and another type of
-// the platform beside a string is taken as before. The names are written here.
-// Defects caught: a name compared with its prefix, so the export's own choice
-// lets it through; a part of a chart missed; Отбор refused.
-func TestPlatformTypesByNameStandAloneInADefinedType(t *testing.T) {
+// The types of the platform the window offers by rows of their own - the PDF
+// document, the line, the border and the six parts of a chart - are kinds of
+// their own and stand where the window offers them: a defined type holds all
+// nine, each only by itself (opis of 14.10.2026, opredelyaemyj-tip.md, «Не
+// входят в составной тип»); an attribute of a form, of a data processor and of
+// a report holds the PDF document, beside other types too (obshchee.md,
+// «Состав по местам»), and none of the eight; no other place holds any. Written
+// by the name of its type XDTO, with whatever prefix of the space the export
+// chose (d5p1, d7p1, opis of 23.10.2026), each is refused and the kind to
+// write is named; nothing about it is noted. The kinds, the names and the
+// places are written here from the opis and the help (8.3.27), not read from
+// the model.
+//
+// Defects caught: one of the nine taken beside a string in a defined type, or
+// taken in a place the window does not offer it in; the PDF document refused
+// in a form; a name compared with its prefix, so the export's own choice lets
+// a second spelling of one type through; a part of a chart missed; Отбор
+// refused; a note left on what the model knows.
+func TestTheTypesOfTheWindowsRowsAreKindsOfTheirOwn(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"pdfdoc:PDFDocument", "v8ui:Line", "v8ui:Border", "d5p1:ChartLabelArea", "d7p1:ChartScale",
-		"d5p1:ChartAxis", "d5p1:ChartColorPaletteDescription", "d5p1:ChartReferenceLine", "d5p1:ChartReferenceBand"} {
-		item := Type{Kind: PlatformType, Name: name}
-		issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, item}, placeDefinedType)
-		if len(issues) != 1 || !strings.Contains(issues[0], "types[1] "+name+" stands only by itself in a defined type") {
-			t.Errorf("%s beside a string: %v", name, issues)
-		}
+	for _, test := range []struct {
+		kind, written string
+		inMemory      bool
+	}{
+		{"pdf-document", "pdfdoc:PDFDocument", true},
+		{"line", "v8ui:Line", false},
+		{"border", "v8ui:Border", false},
+		{"chart-label-area", "d5p1:ChartLabelArea", false},
+		{"chart-scale", "d7p1:ChartScale", false},
+		{"chart-axis", "ChartAxis", false},
+		{"chart-color-palette-description", "d5p1:ChartColorPaletteDescription", false},
+		{"chart-reference-line", "d5p1:ChartReferenceLine", false},
+		{"chart-reference-band", "d5p1:ChartReferenceBand", false},
+	} {
+		item := Type{Kind: TypeKind(test.kind)}
+		beside := []Type{{Kind: StringType, Length: 10}, item}
 		if issues := validateTypesIn("types", []Type{item}, placeDefinedType); len(issues) != 0 {
-			t.Errorf("%s alone: %v", name, issues)
+			t.Errorf("%s alone in a defined type: %v", test.kind, issues)
 		}
-		if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, item}, placeRunningObject); len(issues) != 0 {
-			t.Errorf("%s beside a string in a data processor: %v", name, issues)
+		if issues := validateTypesIn("types", beside, placeDefinedType); len(issues) != 1 ||
+			!strings.Contains(issues[0], "types[1].kind "+test.kind+" stands only by itself in a defined type") {
+			t.Errorf("%s beside a string in a defined type: %v", test.kind, issues)
+		}
+		for _, place := range []typePlace{placeFormAttribute, placeRunningObject} {
+			if issues := validateTypesIn("types", beside, place); (len(issues) == 0) != test.inMemory {
+				t.Errorf("%s beside a string %s: %v", test.kind, placeName(place), issues)
+			}
+		}
+		for _, place := range []typePlace{placeStored, placeSessionParameter, placeCommandParameter, placeFilterCriterion, placeExternalField} {
+			if issues := validateTypesIn("types", []Type{item}, place); len(issues) == 0 {
+				t.Errorf("%s taken %s", test.kind, placeName(place))
+			}
+		}
+		for _, place := range []typePlace{placeDefinedType, placeFormAttribute, placeRunningObject} {
+			issues := validateTypesIn("types", []Type{{Kind: PlatformType, Name: test.written}}, place)
+			if len(issues) != 1 || !strings.HasSuffix(issues[0], test.written+" is a type of its own: write it as kind "+test.kind) {
+				t.Errorf("%s written by its name %s: %v", test.kind, placeName(place), issues)
+			}
 		}
 	}
 	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, {Kind: PlatformType, Name: "cfg:Filter"}}, placeDefinedType); len(issues) != 0 {
 		t.Errorf("a filter beside a string: %v", issues)
+	}
+
+	root := metadataProject(t)
+	for name, kind := range map[string]string{"Ось": "chart-axis", "Документ": "pdf-document"} {
+		id := uuid.MustNew().String()
+		writeMetadata(t, root, DefinedTypeKind, id, "format: 1\nid: "+id+"\nname: "+name+"\ntitle: {ru: "+name+"}\ntypes: [{kind: "+kind+"}]\n")
+	}
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a defined type of a part of a chart and of a PDF document was refused: %v", err)
+	}
+	if notes := catalog.Notes(); slices.ContainsFunc(notes, func(note Note) bool { return note.Kind == NotePlatformTypeByName }) {
+		t.Errorf("a type of the window's rows is noted: %+v", notes)
 	}
 }

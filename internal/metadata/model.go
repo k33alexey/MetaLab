@@ -2034,7 +2034,8 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		case item.Kind != PlatformType && item.Name != "":
 			issues = append(issues, prefix+".name belongs to a platform type")
 		}
-		// An enumeration of the platform the editor offers is a kind of its
+		// A type of the platform the editor offers by a row of its own - an
+		// enumeration, the PDF document, a part of a chart - is a kind of its
 		// own, and is written by it alone.
 		if own, ok := ownKindOfPlatformName(item.Name); ok && item.Kind == PlatformType {
 			issues = append(issues, prefix+" "+item.Name+" is a type of its own: write it as kind "+string(own))
@@ -2044,12 +2045,8 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, standsUnqualified(prefix, item, mayStandUnstored(place), "is not a type of anything the infobase stores", place)...)
 			continue
 		}
-		if len(types) > 1 && typeStandsAlone(item, place) {
-			what := prefix + ".kind " + string(item.Kind)
-			if item.Kind == PlatformType {
-				what = prefix + " " + item.Name
-			}
-			issues = append(issues, what+" stands only by itself "+placeName(place)+": the designer excludes every other type beside it")
+		if len(types) > 1 && standsAlone(item.Kind, place) {
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" stands only by itself "+placeName(place)+": the designer excludes every other type beside it")
 		}
 		if place == placeDefinedType && IsTypeSet(item.Kind) {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")
@@ -2071,7 +2068,11 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			continue
 		}
 		if isObjectType(item.Kind) || isValueType(item.Kind) {
-			issues = append(issues, standsUnqualified(prefix, item, allowedIn(item.Kind, place), "lives in memory only", place)...)
+			what := "lives in memory only"
+			if definedTypeOnlyKinds[item.Kind] {
+				what = "is offered by the editor of a defined type only"
+			}
+			issues = append(issues, standsUnqualified(prefix, item, allowedIn(item.Kind, place), what, place)...)
 			continue
 		}
 		if item.DateParts != "" && item.Kind != DateType {

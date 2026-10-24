@@ -146,6 +146,40 @@ const (
 	NullType TypeKind = "null-type"
 )
 
+// The types of the platform the window of the type offers by rows of their own
+// (owner's decision of 24.10.2026, question В2 of the series 2.531;
+// PLATFORM-MODEL.md, «Что окно типа предлагает поимённо, модель знает своим
+// видом»): the PDF document, the line, the border and six parts of a chart.
+// The help (8.3.27) names each and the type XDTO it is written by; the
+// window's English name of each is that type's (opis of 23.10.2026,
+// opredelyaemyj-tip.md, «Досъёмка»). They live in memory. The window offers the
+// PDF document to an attribute of a form, a data processor and a report
+// (obshchee.md, «Состав по местам») and all nine to a defined type
+// (opredelyaemyj-tip.md), where each stands alone; none of the exports has
+// any of them.
+const (
+	PDFDocumentType                  TypeKind = "pdf-document"
+	LineType                         TypeKind = "line"
+	BorderType                       TypeKind = "border"
+	ChartLabelAreaType               TypeKind = "chart-label-area"
+	ChartScaleType                   TypeKind = "chart-scale"
+	ChartAxisType                    TypeKind = "chart-axis"
+	ChartColorPaletteDescriptionType TypeKind = "chart-color-palette-description"
+	ChartReferenceLineType           TypeKind = "chart-reference-line"
+	ChartReferenceBandType           TypeKind = "chart-reference-band"
+)
+
+// windowPlatformKinds are those types, in the order of the window.
+var windowPlatformKinds = []TypeKind{PDFDocumentType, LineType, BorderType, ChartLabelAreaType, ChartScaleType,
+	ChartAxisType, ChartColorPaletteDescriptionType, ChartReferenceLineType, ChartReferenceBandType}
+
+// definedTypeOnlyKinds are those of them only the editor of a defined type
+// offers.
+var definedTypeOnlyKinds = map[TypeKind]bool{
+	LineType: true, BorderType: true, ChartLabelAreaType: true, ChartScaleType: true, ChartAxisType: true,
+	ChartColorPaletteDescriptionType: true, ChartReferenceLineType: true, ChartReferenceBandType: true,
+}
+
 var formOnlyKinds = map[TypeKind]bool{
 	DynamicListType: true, FormattedStringType: true, ColorType: true, FontType: true, PictureType: true,
 	FormattedDocumentType: true, TextDocumentType: true, GanttChartType: true, PlannerType: true,
@@ -176,18 +210,26 @@ var systemEnumerationKinds = func() map[TypeKind]kinds.SystemEnumeration {
 	return byKind
 }()
 
-// systemEnumerationsByName are the same by the name of their type XDTO, which
-// a type of the platform written by its name would carry.
-var systemEnumerationsByName = func() map[string]TypeKind {
+// ownKindsByName are the types of the platform the model knows by a kind of its
+// own - the enumerations of the platform and windowPlatformKinds - by the name
+// of their type XDTO, which a type of the platform written by its name would
+// carry.
+var ownKindsByName = func() map[string]TypeKind {
 	byName := map[string]TypeKind{}
 	for kind, enumeration := range systemEnumerationKinds {
 		byName[enumeration.Name.English] = kind
+	}
+	for _, kind := range windowPlatformKinds {
+		byName[typeNames[kind].English] = kind
 	}
 	return byName
 }()
 
 func init() {
 	for kind := range systemEnumerationKinds {
+		valueTypeKinds[kind] = true
+	}
+	for _, kind := range windowPlatformKinds {
 		valueTypeKinds[kind] = true
 	}
 }
@@ -203,16 +245,16 @@ func systemEnumerationValues(kind TypeKind) []string {
 	return values
 }
 
-// ownKindOfPlatformName is the kind of an enumeration of the platform a type
-// written by its name stands for, and false when it names none.
+// ownKindOfPlatformName is the kind of its own a type of the platform written
+// by its name stands for, and false when it names none.
 func ownKindOfPlatformName(name string) (TypeKind, bool) {
-	kind, ok := systemEnumerationsByName[localTypeName(name)]
+	kind, ok := ownKindsByName[localTypeName(name)]
 	return kind, ok
 }
 
 // localTypeName is the name of a type of the platform without the prefix of
-// its space, which the export chooses itself - d5p1, d7p1 - and which is not
-// compared.
+// its space, which the export chooses itself - d5p1, d7p1 (opis of
+// 23.10.2026, opredelyaemyj-tip.md, «Досъёмка») - and which is not compared.
 func localTypeName(name string) string {
 	if _, local, found := strings.Cut(name, ":"); found {
 		return local
@@ -334,9 +376,7 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // criterion takes a unique identifier alone: beside a string the editor warns
 // «Выбран тип, который не может быть включен в составной тип данных» (opis
 // of 23.10.2026, kriterij-otbora.md, «Досъёмка»). An attribute of a form and
-// of a data processor takes nothing alone (the same pass). The types of the
-// platform known by name that stand alone in a defined type are
-// aloneByNameInDefinedType.
+// of a data processor takes nothing alone (the same pass).
 var aloneTypes = map[typePlace]map[TypeKind]bool{
 	placeStored:          {ValueStorageType: true, UUIDType: true},
 	placeFilterCriterion: {UUIDType: true},
@@ -345,32 +385,13 @@ var aloneTypes = map[typePlace]map[TypeKind]bool{
 		DynamicListType: true, SpreadsheetDocumentType: true, FormattedDocumentType: true, TextDocumentType: true,
 		PictureType: true, ColorType: true, FontType: true, GraphicalSchemaType: true, GeographicalSchemaType: true,
 		ChartType: true, GanttChartType: true, DendrogramType: true, SettingsComposerType: true, StandardPeriodType: true,
+		PDFDocumentType: true, LineType: true, BorderType: true, ChartLabelAreaType: true, ChartScaleType: true,
+		ChartAxisType: true, ChartColorPaletteDescriptionType: true, ChartReferenceLineType: true, ChartReferenceBandType: true,
 	},
 }
 
 // standsAlone says a kind stands in the place only by itself.
 func standsAlone(kind TypeKind, place typePlace) bool { return aloneTypes[place][kind] }
-
-// aloneByNameInDefinedType are the types of the platform known by name that a
-// defined type takes only by themselves, as the editor warns of the PDF
-// document, the line, the border and every part of a chart (opis of
-// 14.10.2026, opredelyaemyj-tip.md, «Не входят в составной тип»). The names
-// are the local ones the export writes them by (opis of 23.10.2026, the same
-// file, «Досъёмка»): the prefix of the space is the export's own choice -
-// d5p1, d7p1 - and is not compared.
-var aloneByNameInDefinedType = map[string]bool{
-	"PDFDocument": true, "Line": true, "Border": true, "ChartLabelArea": true, "ChartScale": true, "ChartAxis": true,
-	"ChartColorPaletteDescription": true, "ChartReferenceLine": true, "ChartReferenceBand": true,
-}
-
-// typeStandsAlone says a type stands in the place only by itself: by its kind,
-// or, a type of the platform in a defined type, by its name.
-func typeStandsAlone(item Type, place typePlace) bool {
-	if item.Kind == PlatformType && place == placeDefinedType {
-		return aloneByNameInDefinedType[localTypeName(item.Name)]
-	}
-	return standsAlone(item.Kind, place)
-}
 
 // formKindAllowedIn says whether a kind of formOnlyKinds may stand in the
 // place. An attribute of a data processor or a report holds every one of them,
@@ -409,7 +430,7 @@ func allowedIn(kind TypeKind, place typePlace) bool {
 		// of them (opis of the defined type, 14.10.2026, «Нет в редакторе»).
 		return !notInDefinedType[kind]
 	case placeRunningObject, placeFormAttribute:
-		return true
+		return !definedTypeOnlyKinds[kind]
 	case placeSessionParameter:
 		return sessionParameterValueTypes[kind]
 	case placeExternalField:
