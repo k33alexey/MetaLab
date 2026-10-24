@@ -36,7 +36,6 @@ const (
 	NoteExtDimensionsHalfSet       NoteKind = "ext-dimensions-half-set"
 	NoteAutoOrderWithoutLength     NoteKind = "auto-order-without-length"
 	NoteLengthZeroUnchecked        NoteKind = "length-zero-unchecked"
-	NoteSequenceWithoutDocuments   NoteKind = "sequence-without-documents"
 	NoteRegisterWithoutFields      NoteKind = "register-without-fields"
 	NoteDuplicateAggregate         NoteKind = "duplicate-aggregate"
 	NoteAggregatesOfBalance        NoteKind = "aggregates-of-balance-register"
@@ -152,9 +151,6 @@ func init() {
 		NoteKindInfo{NoteLengthZeroUnchecked,
 			"Длина 0 наименования у вида, где её в конфигураторе не проверяли: у плана счетов, плана видов расчёта и задачи.",
 			"Поле выключено, как у справочника с длиной 0: ни колонки, ни поиска по нему."},
-		NoteKindInfo{NoteSequenceWithoutDocuments,
-			"Последовательность без документов.",
-			"Несётся как записана и ни за чем не следит."},
 		NoteKindInfo{NoteRegisterWithoutFields,
 			"Регистр сведений без измерений, ресурсов и реквизитов или регистр расчёта без ресурсов — таким он бывает сразу " +
 				"после создания; конфигуратор его хранит и проверкой конфигурации не отвергает.",
@@ -368,7 +364,6 @@ func init() {
 	noteRules[NoteExtDimensionsHalfSet] = noteExtDimensionsHalfSet
 	noteRules[NoteAutoOrderWithoutLength] = noteAutoOrderWithoutLength
 	noteRules[NoteLengthZeroUnchecked] = noteLengthZeroUnchecked
-	noteRules[NoteSequenceWithoutDocuments] = noteSequenceWithoutDocuments
 	noteRules[NoteRegisterWithoutFields] = noteRegisterWithoutFields
 	noteRules[NoteDuplicateAggregate] = noteDuplicateAggregate
 	noteRules[NoteAggregatesOfBalance] = noteAggregatesOfBalance
@@ -842,14 +837,6 @@ func noteLengthZeroUnchecked(catalog *Catalog, note func(where, written string))
 	for _, task := range catalog.Tasks {
 		if task.DescriptionLength == 0 {
 			note("tasks "+task.Name+" description_length", "0")
-		}
-	}
-}
-
-func noteSequenceWithoutDocuments(catalog *Catalog, note func(where, written string)) {
-	for _, sequence := range catalog.Sequences {
-		if len(sequence.Documents) == 0 {
-			note("sequences "+sequence.Name+" documents", "none")
 		}
 	}
 }

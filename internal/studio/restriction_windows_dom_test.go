@@ -256,7 +256,7 @@ func writeEveryRestrictableKind(t *testing.T, root string) func(*Workspace) {
 	write("metadata/tasks/Задача", head("Задача", task)+number+"description_length: 50\n")
 	write("metadata/exchange-plans/Обмен", head("Обмен", id())+code)
 	write("metadata/constants/Константа", head("Константа", id())+"types: [{kind: boolean}]\n")
-	write("metadata/sequences/Последовательность", head("Последовательность", everySequence))
+	write("metadata/sequences/Последовательность", head("Последовательность", everySequence)+"documents: ["+document+"]\n")
 	write("metadata/external-data-sources/Источник", head("Источник", id()))
 	write("metadata/external-data-sources/Источник/tables/Таблица", head("Таблица", everyTable)+"name_in_data_source: dbo.T\ndata_type: non-object\n")
 	write("metadata/external-data-sources/Источник/cubes/Куб", head("Куб", id())+"name_in_data_source: C\n")

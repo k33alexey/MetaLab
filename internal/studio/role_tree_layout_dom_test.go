@@ -50,7 +50,7 @@ const roleTreeLayoutWalk = `(async () => {
 func TestTheTreeOfRightsStandsAsTheProjectTree(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	writeProjectFile(t, root, "metadata/sequences/Партии/object.yaml",
-		"format: 1\nid: "+uuid.MustNew().String()+"\nname: Партии\ntitle: {ru: Партии}\n")
+		"format: 1\nid: "+uuid.MustNew().String()+"\nname: Партии\ntitle: {ru: Партии}\ndocuments: [10000000-0000-4000-8000-000000000201]\n")
 	ctx, browser, page := openStudioInBrowser(t, root, func(opened *Workspace) {
 		addRestrictedRole(t, opened, root)
 	})

@@ -384,3 +384,18 @@ func TestAJournalShowsDocumentsInEveryColumn(t *testing.T) {
 		}
 	}
 }
+
+// TestASequenceFollowsADocument catches a sequence of no documents taken: the
+// designer's check of the configuration refuses it
+// (docs/block-00/plan-obmena.md).
+func TestASequenceFollowsADocument(t *testing.T) {
+	t.Parallel()
+	body := "format: 1\nid: " + aroundSequence + "\nname: Последовательность\ntitle: {ru: Последовательность}\n"
+	_, err := DecodeSequence("object.yaml", strings.NewReader(body), metadataConfiguration())
+	if err == nil || !strings.Contains(err.Error(), "documents must name a document: the designer refuses a sequence of no documents") {
+		t.Fatalf("a sequence of no documents: %v", err)
+	}
+	if _, err := DecodeSequence("object.yaml", strings.NewReader(body+"documents: ["+aroundFirstDoc+"]\n"), metadataConfiguration()); err != nil {
+		t.Fatalf("a sequence of a document was refused: %v", err)
+	}
+}

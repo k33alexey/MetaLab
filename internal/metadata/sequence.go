@@ -78,8 +78,12 @@ func DecodeSequence(source string, reader io.Reader, configuration project.Proje
 	return decodeDescription(source, reader, configuration, func(value SequenceDefinition, configuration project.Project) []string {
 		var issues []string
 		issues = append(issues, validateDataLockMode("data_lock", value.DataLock)...)
-		// A sequence over no documents watches nothing happen; it is carried and
-		// is a note, as a journal of no documents is.
+		// A sequence over no documents watches nothing happen, and the
+		// designer's check of the configuration refuses it (opis of the exchange
+		// plan, 15.10.2026, docs/block-00/plan-obmena.md).
+		if len(value.Documents) == 0 {
+			issues = append(issues, "documents must name a document: the designer refuses a sequence of no documents")
+		}
 		issues = append(issues, validateUniqueIDs("documents", value.Documents)...)
 		issues = append(issues, validateUniqueIDs("movements", value.Movements)...)
 		issues = append(issues, validateAdditionalIndexes(value.AdditionalIndexes, SequenceKind,

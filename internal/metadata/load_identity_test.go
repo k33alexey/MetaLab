@@ -52,7 +52,7 @@ func TestAnObjectThatDisagreesWithWhereItLiesIsRefused(t *testing.T) {
 	}{
 		{SettingsStorageKind, "title: {ru: Хранилище}\n", "object Хранилище lies in a folder called Другое"},
 		{FilterCriterionKind, "title: {ru: Связанные}\ntypes: []\n", "object Хранилище lies in a folder called Другое"},
-		{SequenceKind, "title: {ru: Движение}\n", "object Хранилище lies in a folder called Другое"},
+		{SequenceKind, "title: {ru: Движение}\ndocuments: [" + uuid.MustNew().String() + "]\n", "object Хранилище lies in a folder called Другое"},
 		{CommonTemplateKind, "title: {ru: Макет}\nkind: text\n", "object Хранилище lies in a folder called Другое"},
 		{CommonPictureKind, "title: {ru: Картинка}\n", "object Хранилище lies in a folder called Другое"},
 	}

@@ -143,10 +143,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeMetadata(t, root, TaskKind, id, "format: 1\nid: "+id+"\nname: Задача1\ntitle: {ru: Задача}\n"+
 			"number: {type: string, length: 11, auto: true, periodicity: none}\ndescription_length: 0\n")
 	},
-	NoteSequenceWithoutDocuments: func(t *testing.T, root string) {
-		id := uuid.MustNew().String()
-		writeMetadata(t, root, SequenceKind, id, "format: 1\nid: "+id+"\nname: Последовательность\ntitle: {ru: Последовательность}\n")
-	},
 	NoteStandardFieldOfDocument: func(t *testing.T, root string) {
 		document, journal, sequence := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
 		writeMetadata(t, root, DocumentKind, document, "format: 1\nid: "+document+"\nname: Заметка\ntitle: {ru: Заметка}\n"+
