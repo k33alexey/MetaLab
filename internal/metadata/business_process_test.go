@@ -654,3 +654,58 @@ func TestABusinessProcessNamesItsTask(t *testing.T) {
 		t.Fatalf("a process naming its task was refused: %v", err)
 	}
 }
+
+// The map of a route takes what the designer draws and refuses what it cannot
+// (opis of 24.10.2026, biznes-process.md, «Досъёмка»): a variant choice of one
+// variant is drawn - «Удалить вариант» stops at one, and neither check refuses
+// it - and one of none is not; a completion has no way out; a variant choice
+// is left by its variants; true and false are the branches of a condition; a
+// decoration is a shape on the map or a line. Defects caught: a choice of one
+// refused, as it was before 2.522, and any of the five accepted.
+func TestRouteMapTakesWhatTheDesignerDraws(t *testing.T) {
+	t.Parallel()
+	const start, end = "    - {id: b0000000-0000-4000-8000-000000000030, name: Старт, kind: start}\n",
+		"    - {id: b0000000-0000-4000-8000-000000000034, name: Завершение, kind: completion}\n"
+	for name, test := range map[string]struct{ points, transitions, decorations, want string }{
+		"выбор из одного варианта": {
+			points:      "    - {id: b0000000-0000-4000-8000-000000000031, name: Выбор, kind: variant-choice, variants: [{name: Один}]}\n",
+			transitions: "    - {from: Старт, to: Выбор}\n    - {from: Выбор, to: Завершение, branch: Один}\n",
+		},
+		"выбор без вариантов": {
+			points:      "    - {id: b0000000-0000-4000-8000-000000000031, name: Выбор, kind: variant-choice}\n",
+			transitions: "    - {from: Старт, to: Выбор}\n    - {from: Выбор, to: Завершение}\n",
+			want:        "of a variant choice needs a variant",
+		},
+		"выход из завершения": {
+			transitions: "    - {from: Старт, to: Завершение}\n    - {from: Завершение, to: Старт}\n",
+			want:        "leaves a completion, which is where a route ends",
+		},
+		"выход выбора не по варианту": {
+			points:      "    - {id: b0000000-0000-4000-8000-000000000031, name: Выбор, kind: variant-choice, variants: [{name: Один}]}\n",
+			transitions: "    - {from: Старт, to: Выбор}\n    - {from: Выбор, to: Завершение, branch: Другой}\n",
+			want:        "out of a variant choice must name one of its variants",
+		},
+		"ветка не у условия": {
+			points:      "    - {id: b0000000-0000-4000-8000-000000000031, name: Шаг, kind: processing}\n",
+			transitions: "    - {from: Старт, to: Шаг}\n    - {from: Шаг, to: Завершение, branch: true}\n",
+			want:        ".branch is meaningless out of this point",
+		},
+		"декорация без места и линии": {
+			transitions: "    - {from: Старт, to: Завершение}\n",
+			decorations: "  decorations:\n    - {name: Надпись, title: {ru: Надпись}}\n",
+			want:        "is neither placed on the map nor drawn as a line",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := routeOnlyProcess(t, "\n  points:\n"+start+test.points+end+"  transitions:\n"+test.transitions+test.decorations)
+			_, err := Load(root)
+			switch {
+			case test.want == "" && err != nil:
+				t.Fatalf("refused: %v", err)
+			case test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)):
+				t.Fatalf("error = %v, want one saying %q", err, test.want)
+			}
+		})
+	}
+}

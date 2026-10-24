@@ -323,8 +323,13 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 			completions++
 		case ActivityPoint, ConditionPoint, ProcessingPoint, SplitPoint, MergePoint:
 		case VariantChoicePoint:
-			if len(point.Variants) < 2 {
-				issues = append(issues, prefix+" of a variant choice needs at least two variants")
+			// The designer takes the variants of a new point down to one and
+			// no further: «Удалить вариант» is gone at one, and neither
+			// «Проверить» nor «Проверка конфигурации» refuses a choice of one
+			// (opis of 24.10.2026, biznes-process.md, «Досъёмка»). A choice
+			// with none is one it never draws.
+			if len(point.Variants) == 0 {
+				issues = append(issues, prefix+" of a variant choice needs a variant")
 			}
 		case NestedProcessPoint:
 			if point.NestedProcess == nil || point.NestedProcess.IsZero() {
@@ -414,6 +419,10 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 					issues = append(issues, prefix+" leaves the condition by the port of the other branch")
 				}
 			}
+		// The three below are what the map of the designer cannot draw: a
+		// variant choice is left by its variants only, a completion has no
+		// way out, and the branches true and false belong to a condition
+		// (opis of 24.10.2026, biznes-process.md, «Досъёмка»).
 		case VariantChoicePoint:
 			if !variants[from][strings.ToLower(transition.Branch)] {
 				issues = append(issues, prefix+" out of a variant choice must name one of its variants")
@@ -508,7 +517,9 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 		issues = append(issues, names.take(prefix, decoration.Name)...)
 		issues = append(issues, validateTitle(prefix+".title", decoration.Title, configuration)...)
 		issues = append(issues, validateRouteArea(prefix+".location", decoration.Location)...)
-		// A decoration that is neither placed nor drawn is nothing on the map.
+		// A decoration that is neither placed nor drawn is nothing on the map:
+		// the designer makes one a shape on the map or a decorative line
+		// (opis of 24.10.2026, biznes-process.md, «Досъёмка»).
 		if decoration.Location == nil && len(decoration.Line) < 2 {
 			issues = append(issues, prefix+" is neither placed on the map nor drawn as a line")
 		}

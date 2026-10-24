@@ -286,9 +286,10 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 		}
 		return false
 	}
-	// The help gives ОбменДанными to the data of these and of no other kind;
-	// of them, only an exchange plan is in no export's content.
-	exchanged := append(slices.Clone(shown["registration"]), ExchangePlanKind)
+	// The help gives ОбменДанными to the data of these and of an exchange
+	// plan, and the window «Состав» offers no exchange plan (opis of
+	// 24.10.2026): what the exports register is all there is.
+	exchanged := shown["registration"]
 	for _, item := range kinds.All() {
 		info, ok := kindInfoOf(item.Kind)
 		if !ok {

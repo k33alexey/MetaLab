@@ -175,8 +175,10 @@ func usesOf(kind Kind) kindUses {
 // its changes can be registered (СправочникОбъект, ДокументОбъект,
 // ПоследовательностьНаборЗаписей, ПерерасчетНаборЗаписей,
 // КонстантаМенеджерЗначения, ПланОбменаОбъект... .ОбменДанными), and a kind
-// with none has no data for ЗарегистрироватьИзменения to register; no export
-// puts an exchange plan into the content of a plan.
+// with none has no data for ЗарегистрироватьИзменения to register. An
+// exchange plan has ОбменДанными too, and still the window «Состав» of a plan
+// offers no exchange plan at all, its own or another (opis of 24.10.2026,
+// plan-obmena.md, «Досъёмка»), and no export puts one into a content: absent.
 //
 // A role names no object of the kinds whose page «Права» of «Дополнительно»
 // is empty (opis of 14 and 15.10.2026: the common kinds without data - a
@@ -255,7 +257,7 @@ var kindUsesOf = map[Kind]kindUses{
 	NumeratorKind:                  {rights: absent, registration: absent, option: unproven, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
 	SequenceKind:                   {rights: present, registration: present, option: unproven, restriction: unproven, wizard: absent, criterion: absent, restricted: readingAlone, parts: absent, subsystem: present},
 	DocumentJournalKind:            {rights: present, registration: absent, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},
-	ExchangePlanKind:               {rights: present, registration: unproven, option: present, restriction: unproven, wizard: present, criterion: present, parts: present, subsystem: present},
+	ExchangePlanKind:               {rights: present, registration: absent, option: present, restriction: unproven, wizard: present, criterion: present, parts: present, subsystem: present},
 	BusinessProcessKind:            {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: present, parts: present, subsystem: present},
 	DocumentKind:                   {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: present, parts: present, subsystem: present},
 	InformationRegisterKind:        {rights: present, registration: present, option: present, restriction: present, wizard: present, criterion: absent, parts: present, subsystem: present},

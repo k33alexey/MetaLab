@@ -257,31 +257,30 @@ content:
 	}
 }
 
-// An exchange plan in the content of a plan is carried with a note: the help
-// gives ПланОбменаОбъект ОбменДанными as it gives the registered kinds, and no
-// export puts a plan into a content, so whether the configurator saves one is
-// not known.
-//
-// Defect caught: such a plan refused without a reason, or accepted silently.
-func TestExchangePlanCarriesAPlanInItsContentWithANote(t *testing.T) {
+// An exchange plan in the content of a plan is refused, another plan as well
+// as the plan itself: the window «Состав» of a plan offers no exchange plan
+// at all (opis of 24.10.2026, plan-obmena.md, «Досъёмка»). Defects caught:
+// another plan carried with a note, as it was before 2.522, and the plan's
+// own refusal lost.
+func TestExchangePlanTakesNoPlanIntoItsContent(t *testing.T) {
 	t.Parallel()
-	root := metadataProject(t)
 	other := "e0000000-0000-4000-8000-000000000005"
-	plan := func(id, name, content string) string {
-		return "format: 1\nid: " + id + "\nname: " + name + "\ntitle: {ru: " + name + "}\n" +
+	plan := func(content string) string {
+		return "format: 1\nid: " + exchangePlanID + "\nname: ОбменСФилиалами\ntitle: {ru: ОбменСФилиалами}\n" +
 			"code: {type: string, length: 36, auto: false}\ndescription_length: 150\n" + content
 	}
-	writeMetadata(t, root, ExchangePlanKind, other, plan(other, "Филиалы", ""))
-	writeMetadata(t, root, ExchangePlanKind, exchangePlanID, plan(exchangePlanID, "ОбменСФилиалами",
-		"content:\n  - {kind: exchange-plans, object: "+other+"}\n"))
-	catalog, err := Load(root)
-	if err != nil {
-		t.Fatalf("refused: %v", err)
-	}
-	notes := catalog.Notes()
-	if len(notes) != 1 || notes[0].Kind != NoteUseWithoutSample || notes[0].Where != "exchange-plans ОбменСФилиалами content" ||
-		notes[0].Written != "exchange-plans Филиалы" {
-		t.Fatalf("notes = %+v", notes)
+	for name, test := range map[string]struct{ object, want string }{
+		"другой план": {other, "content[0].kind is not a kind whose changes can be registered"},
+		"сам план":    {exchangePlanID, "content[0] puts the plan into its own content"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := DecodeExchangePlan("object.yaml", strings.NewReader(plan("content:\n  - {kind: exchange-plans, object: "+test.object+"}\n")),
+				metadataConfiguration())
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want one saying %q", err, test.want)
+			}
+		})
 	}
 }
 
