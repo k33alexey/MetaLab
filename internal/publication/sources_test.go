@@ -656,11 +656,10 @@ func TestRootFilesChangeTheContentDigest(t *testing.T) {
 		project.ExternalConnectionModuleFile,
 		project.HelpDirectory + "/ru.html",
 		project.HelpDirectory + "/_files/1.png",
-		project.LogoDirectory + "/100.png",
+		project.MainSectionPictureDirectory + "/100.png",
 		project.HomePageFile,
 		project.ClientInterfaceFile,
 		project.MainSectionCommandInterfaceFile,
-		project.ParentConfigurationsFile,
 	} {
 		t.Run(file, func(t *testing.T) {
 			t.Parallel()
@@ -744,6 +743,40 @@ func rootFileContent(file, word string) string {
 	}
 }
 
+// What the root no longer carries is no source (owner, 15.10.2026): the logo,
+// the splash and the vendor's support settings left in a project folder do
+// not go into the package and do not change its digest. Defect caught: a
+// file nothing in ML reads still published, and a package told apart by it.
+func TestDroppedRootFilesAreNotPublished(t *testing.T) {
+	t.Parallel()
+	root := publicationProject(t)
+	before, err := inspect(context.Background(), root, SourceState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"Логотип/100.png", "Заставка/100.png", "РодительскиеКонфигурации.bin"} {
+		path := filepath.Join(root, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("\x89PNG\r\n\x1a\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := inspect(context.Background(), root, SourceState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range after.Files {
+		if strings.HasPrefix(file.Path, "Логотип") || strings.HasPrefix(file.Path, "Заставка") || file.Path == "РодительскиеКонфигурации.bin" {
+			t.Fatalf("%s is published", file.Path)
+		}
+	}
+	if after.ContentSHA256 != before.ContentSHA256 {
+		t.Fatal("a file that is no source changed the digest")
+	}
+}
+
 // A folder of the root is published in its shape and nothing beyond it: a
 // picture holds files, the help holds pages and their pictures.
 func TestRootFoldersArePublishedInTheirShape(t *testing.T) {
@@ -753,10 +786,12 @@ func TestRootFoldersArePublishedInTheirShape(t *testing.T) {
 		directory bool
 		accepted  bool
 	}{
-		"картинка логотипа":   {project.LogoDirectory + "/100.png", false, true},
-		"описание картинки":   {project.LogoDirectory + "/picture.yaml", false, true},
-		"глубже в картинке":   {project.LogoDirectory + "/a/100.png", false, false},
-		"папка в картинке":    {project.LogoDirectory + "/a", true, false},
+		"картинка раздела":    {project.MainSectionPictureDirectory + "/100.png", false, true},
+		"описание картинки":   {project.MainSectionPictureDirectory + "/picture.yaml", false, true},
+		"глубже в картинке":   {project.MainSectionPictureDirectory + "/a/100.png", false, false},
+		"папка в картинке":    {project.MainSectionPictureDirectory + "/a", true, false},
+		"логотип":             {"Логотип/100.png", false, false},
+		"заставка":            {"Заставка/100.png", false, false},
 		"страница справки":    {"help/ru.html", false, true},
 		"не страница справки": {"help/readme.txt", false, false},
 		"чужая папка корня":   {"notes/1.txt", false, false},

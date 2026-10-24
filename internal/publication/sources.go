@@ -215,9 +215,8 @@ func canonicalSourcePaths(root string) ([]string, error) {
 // different saves were recorded as one package.
 func rootSourcePaths(root string) ([]string, error) {
 	var paths []string
-	// The descriptions of the root's interface and its support settings are
-	// sources of the root the same way its modules are: a home page changed
-	// alone is a new package.
+	// The descriptions of the root's interface are sources of the root the
+	// same way its modules are: a home page changed alone is a new package.
 	for _, file := range append(project.RootModuleFiles(), project.RootDescriptionFiles()...) {
 		info, err := os.Lstat(filepath.Join(root, file))
 		if os.IsNotExist(err) {

@@ -319,9 +319,7 @@ types: [{kind: string, length: 100}]
 	}
 }
 
-// The rest of the root's references resolve the same way the first fifteen do,
-// including the four that name a form nothing will ever open: a mechanism that
-// does not run is no reason to lose track of which form was meant.
+// The rest of the root's references resolve the same way the first fifteen do.
 func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 	t.Parallel()
 	for name, fill := range map[string]func(configuration *project.Project){
@@ -330,18 +328,6 @@ func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 		},
 		"форма настроек динамического списка": func(configuration *project.Project) {
 			configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsStranger)
-		},
-		"форма изменений истории данных": func(configuration *project.Project) {
-			configuration.DataHistoryChangesForm = mustParse(t, defaultsStranger)
-		},
-		"форма версии истории данных": func(configuration *project.Project) {
-			configuration.DataHistoryVersionForm = mustParse(t, defaultsStranger)
-		},
-		"форма различий версий": func(configuration *project.Project) {
-			configuration.DataHistoryVersionDifferenceForm = mustParse(t, defaultsStranger)
-		},
-		"форма выбора пользователей системы взаимодействия": func(configuration *project.Project) {
-			configuration.CollaborationSystemUsersChoiceForm = mustParse(t, defaultsStranger)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -354,29 +340,24 @@ func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 		})
 	}
 
-	// All six at once, each naming what is actually there.
+	// Both at once, each naming what is actually there.
 	root := defaultsProject(t)
 	saveDefaults(t, root, func(configuration *project.Project) {
 		configuration.URLExternalDataStorage = mustParse(t, defaultsFormData)
 		configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsReportForm)
-		configuration.DataHistoryChangesForm = mustParse(t, defaultsSettingsForm)
-		configuration.DataHistoryVersionForm = mustParse(t, defaultsVariantForm)
-		configuration.DataHistoryVersionDifferenceForm = mustParse(t, defaultsSearchForm)
-		configuration.CollaborationSystemUsersChoiceForm = mustParse(t, defaultsReportForm)
 	})
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.Project.URLExternalDataStorage == nil || catalog.Project.CollaborationSystemUsersChoiceForm == nil {
+	if catalog.Project.URLExternalDataStorage == nil || catalog.Project.DefaultDynamicListSettingsForm == nil {
 		t.Fatalf("a reference was lost: %+v", catalog.Project)
 	}
 }
 
-// The logo, the splash and the picture of the main section are the root's own
-// files, so nothing declares them: the folder is the declaration. The rules
-// are those of every picture - one file per density, or the files a
-// description beside them names.
+// The picture of the main section is the root's own files, so nothing declares
+// it: the folder is the declaration. The rules are those of every picture -
+// one file per density, or the files a description beside them names.
 func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 	t.Parallel()
 	write := func(t *testing.T, root, picture, file string) {
@@ -386,29 +367,44 @@ func TestRootPicturesAreCheckedLikeEveryPicture(t *testing.T) {
 
 	// A configuration with no pictures at all is ordinary.
 	if _, err := Load(defaultsProject(t)); err != nil {
-		t.Fatalf("a configuration without a logo was refused: %v", err)
+		t.Fatalf("a configuration without a picture was refused: %v", err)
 	}
 
 	good := defaultsProject(t)
-	write(t, good, project.LogoDirectory, "100.png")
-	write(t, good, project.LogoDirectory, "200.png")
-	write(t, good, project.SplashDirectory, "100.svg")
+	write(t, good, project.MainSectionPictureDirectory, "100.png")
+	write(t, good, project.MainSectionPictureDirectory, "200.png")
 	if _, err := Load(good); err != nil {
-		t.Fatalf("a logo at two densities was refused: %v", err)
+		t.Fatalf("a picture at two densities was refused: %v", err)
 	}
 
 	// A picture of the root without the base density is saved by the
 	// prototype as any picture is. Defect caught: it was refused.
 	noBase := defaultsProject(t)
-	write(t, noBase, project.LogoDirectory, "200.png")
+	write(t, noBase, project.MainSectionPictureDirectory, "200.png")
 	if _, err := Load(noBase); err != nil {
-		t.Fatalf("a logo without the base density was refused: %v", err)
+		t.Fatalf("a picture without the base density was refused: %v", err)
 	}
 
-	// The picture of the main section is the third picture of the root, and
-	// in the configurations being moved it is drawn from variants (demo-base
-	// keeps it as a set of them). Defect caught: the model had no place for
-	// it at all, so it was lost at import.
+	// The logo and the splash are not carried (owner, 15.10.2026): a folder
+	// of either name is no picture of the root, so nothing in it is checked
+	// and it cannot be read as one. Defect caught: the root still read a
+	// logo ML never shows.
+	gone := defaultsProject(t)
+	write(t, gone, "Логотип", "logo.psd")
+	write(t, gone, "Заставка", "splash.psd")
+	if _, err := Load(gone); err != nil {
+		t.Fatalf("a folder that is no picture of the root was checked as one: %v", err)
+	}
+	for _, folder := range []string{"Логотип", "Заставка"} {
+		if _, err := ReadRootPictureImages(gone, folder); err == nil {
+			t.Fatalf("%s was read as a picture of the root", folder)
+		}
+	}
+
+	// The picture of the main section is drawn from variants in the
+	// configurations being moved (demo-base keeps it as a set of them).
+	// Defect caught: the model had no place for it at all, so it was lost
+	// at import.
 	variants := defaultsProject(t)
 	for _, file := range []string{"100.png", "picture.png"} {
 		write(t, variants, project.MainSectionPictureDirectory, file)
@@ -448,14 +444,14 @@ variants:
 			writeText(t, root, project.MainSectionPictureDirectory, project.RootPictureDescriptionFile, "variants: [{file: 200.png, density: 200}]\n")
 		},
 		"имя не плотность": func(t *testing.T, root string) {
-			write(t, root, project.SplashDirectory, "logo.png")
+			write(t, root, project.MainSectionPictureDirectory, "picture.png")
 		},
 		"формат, который нечем нарисовать": func(t *testing.T, root string) {
-			write(t, root, project.LogoDirectory, "100.psd")
+			write(t, root, project.MainSectionPictureDirectory, "100.psd")
 		},
 		"одна плотность дважды": func(t *testing.T, root string) {
-			write(t, root, project.LogoDirectory, "100.png")
-			write(t, root, project.LogoDirectory, "100.svg")
+			write(t, root, project.MainSectionPictureDirectory, "100.png")
+			write(t, root, project.MainSectionPictureDirectory, "100.svg")
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -82,7 +82,7 @@ func rootModuleCommands() []NodeModule {
 // rootPictureNodesLocked reports the pictures the configuration root owns.
 // Unlike a module, a picture is shown only when it is there: a module always
 // exists and only its contents are a decision, while a configuration without a
-// logo is an ordinary configuration, and an empty branch offering to make one
+// picture of the main section is an ordinary configuration, and an empty branch offering to make one
 // would be an offer, not a fact.
 func (workspace *Workspace) rootPictureNodesLocked() []Node {
 	var nodes []Node

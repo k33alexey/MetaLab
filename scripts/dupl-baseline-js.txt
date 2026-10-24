@@ -1,3 +1,2 @@
 # Written by scripts/dupl_check.py --update. Shrinks only.
 1	internal/studio/ui/bsl-editor.js internal/studio/ui/debugger.js internal/studio/ui/query-designer.js
-1	internal/studio/ui/project-editor.js internal/studio/ui/project-editor.js

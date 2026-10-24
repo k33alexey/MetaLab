@@ -34,9 +34,13 @@ func rootInterfaceProject(t *testing.T) string {
 
 // The root carries what the application shows before anything is opened:
 // the forms of the home page with their heights and who sees them, the panels
-// of the main window, the commands of the main section, and the vendor's
-// support settings as written. Defect caught: none of the four had a place,
-// and the home page of every configuration moved arrived empty.
+// of the main window and the commands of the main section. Defect caught: none
+// of the three had a place, and the home page of every configuration moved
+// arrived empty.
+//
+// The vendor's support settings are not carried (owner, 15.10.2026): a file of
+// their name at the project root is nothing the load reads, so even a folder
+// standing there is no error.
 func TestRootCarriesItsInterface(t *testing.T) {
 	t.Parallel()
 	root := rootInterfaceProject(t)
@@ -60,7 +64,9 @@ panels: [b553047f-c9aa-4157-978d-448ecad24248, cbab57f2-a0f3-4f0a-89ea-4cb19570a
 commands_visibility:
   - {written: "0", visibility: {common: true}}
 `)
-	writeText(t, root, "", project.ParentConfigurationsFile, "\x00\x01поддержка")
+	if err := os.MkdirAll(filepath.Join(root, "РодительскиеКонфигурации.bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	catalog, err := Load(root)
 	if err != nil {
 		t.Fatalf("the root's interface was refused: %v", err)
@@ -128,8 +134,7 @@ func TestRootInterfaceNamesWhatPointsAtNothing(t *testing.T) {
 // Each description is checked for what its format can hold. Defects caught:
 // a template nobody offers, a right column on a page of one, a panel holding
 // items, a height on a group, the order of the sections on the main section,
-// a form with no identifier, a description or the support settings that are
-// a folder.
+// a form with no identifier, a description that is a folder.
 func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {

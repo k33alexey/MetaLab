@@ -215,11 +215,6 @@ RENAMED_BY_KIND = {
     # дамп состава их не содержал, и сверка молча пропускала оба.
     ("Language", "LanguageCode"): "code",
     ("Configuration", "ConfigurationInformationAddress"): "information_address",
-    ("Configuration", "DefaultCollaborationSystemUsersChoiceForm"): "collaboration_system_users_choice_form",
-    ("Configuration", "DefaultDataHistoryChangeHistoryForm"): "data_history_changes_form",
-    ("Configuration", "DefaultDataHistoryVersionDataForm"): "data_history_version_form",
-    ("Configuration", "DefaultDataHistoryVersionDifferencesForm"): "data_history_version_difference_form",
-    ("Configuration", "MainClientApplicationWindowMode"): "main_window_mode",
     # Этих двух полей у нас с 2.349 нет (ACCEPTED), но переименование стоит:
     # на нём держится самопроверка SELF_CHECK - два имени из одних слов.
     ("Configuration", "UseManagedFormInOrdinaryApplication"): "use_managed_forms_in_ordinary_application",
@@ -380,6 +375,14 @@ ACCEPTED = {
     ("Task", "AuxiliaryChoiceForm"): "METADATA-OBJECTS.md, «Формы»: вспомогательная форма - форма обычного приложения, не переносится, отказ владельца 15.10.2026, снято в 2.517",
     ("Task", "AuxiliaryListForm"): "METADATA-OBJECTS.md, «Формы»: вспомогательная форма - форма обычного приложения, не переносится, отказ владельца 15.10.2026, снято в 2.517",
     ("Task", "AuxiliaryObjectForm"): "METADATA-OBJECTS.md, «Формы»: вспомогательная форма - форма обычного приложения, не переносится, отказ владельца 15.10.2026, снято в 2.517",
+    # Часть корня - снята в 2.518 (поставки, история данных, окно, нумерация).
+    ("Configuration", "UpdateCatalogAddress"): "METADATA-OBJECTS.md, «Корень конфигурации»: адрес каталога обновлений - поставок и поддержки в ML нет, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "DefaultDataHistoryChangeHistoryForm"): "METADATA-OBJECTS.md, «Корень конфигурации»: формы истории данных - механизм прототипа ML не исполняет, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "DefaultDataHistoryVersionDataForm"): "METADATA-OBJECTS.md, «Корень конфигурации»: формы истории данных - механизм прототипа ML не исполняет, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "DefaultDataHistoryVersionDifferencesForm"): "METADATA-OBJECTS.md, «Корень конфигурации»: формы истории данных - механизм прототипа ML не исполняет, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "DefaultCollaborationSystemUsersChoiceForm"): "METADATA-OBJECTS.md, «Корень конфигурации»: форма выбора пользователей системы взаимодействия - системы взаимодействия в ML нет, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "ObjectAutonumerationMode"): "METADATA-OBJECTS.md, «Корень конфигурации»: режим автонумерации - номер и код даёт только запись, отказ владельца 15.10.2026, снято в 2.518",
+    ("Configuration", "MainClientApplicationWindowMode"): "METADATA-OBJECTS.md, «Корень конфигурации»: режим основного окна - у ML App одно окно в браузере, отказ владельца 15.10.2026, снято в 2.518",
     # Расширения конфигурации сняты целиком (общий реквизит - 2.514).
     ("CommonAttribute", "ConfigurationExtensionsSeparation"): "METADATA-OBJECTS.md: флаги расширений не переносятся - вместе с расширениями, отказ владельца 30.09.2026",
     ("ExchangePlan", "IncludeConfigurationExtensions"): "METADATA-OBJECTS.md: флаги расширений не переносятся - вместе с расширениями, отказ владельца 30.09.2026",

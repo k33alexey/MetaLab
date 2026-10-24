@@ -387,7 +387,6 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 
 	updated := opened.Configuration
 	updated.DataLockControl = project.ManagedDataLock
-	updated.ObjectAutonumeration = project.KeepAutonumber
 	updated.ScriptVariant = project.RussianScript
 	updated.NamePrefix = "бсп"
 	updated.AdditionalFullTextSearchDictionaries = []project.DictionaryReference{
@@ -404,8 +403,6 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 	switch {
 	case saved.DataLockControl != project.ManagedDataLock:
 		t.Fatalf("the data lock mode was lost: %q", saved.DataLockControl)
-	case saved.ObjectAutonumeration != project.KeepAutonumber:
-		t.Fatalf("the autonumeration mode was lost: %q", saved.ObjectAutonumeration)
 	case saved.ScriptVariant != project.RussianScript:
 		t.Fatalf("the script variant was lost: %q", saved.ScriptVariant)
 	case saved.NamePrefix != "бсп":
@@ -416,10 +413,9 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 	}
 }
 
-// The modes of the root are saved through the editor and read back unchanged.
-// They act on nothing, so losing them is the only way they can fail — and the
-// editor is where they would be lost.
-func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
+// Whether the help of the root stands in the contents is saved through the
+// editor and read back unchanged.
+func TestProjectEditorSavesTheHelpFlagOfTheRoot(t *testing.T) {
 	t.Parallel()
 	workspace, _ := defaultsWorkspace(t)
 	opened, err := workspace.ReadProjectEditor()
@@ -427,8 +423,6 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := opened.Configuration
-	updated.MainWindowMode = project.NormalWindow
-	updated.BinaryDataStorage = project.NotUsed
 	updated.IncludeHelpInContents = true
 	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
 		t.Fatal(err)
@@ -437,12 +431,8 @@ func TestProjectEditorSavesTheModesOfTheRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := reopened.Configuration
-	switch {
-	case saved.MainWindowMode != project.NormalWindow || saved.BinaryDataStorage != project.NotUsed:
-		t.Fatalf("a mode was lost: %+v", saved)
-	case !saved.IncludeHelpInContents:
-		t.Fatalf("a flag was lost: %+v", saved)
+	if !reopened.Configuration.IncludeHelpInContents {
+		t.Fatalf("the flag was lost: %+v", reopened.Configuration)
 	}
 }
 

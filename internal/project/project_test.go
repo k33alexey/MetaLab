@@ -371,8 +371,6 @@ vendor_address:
   ru: https://example.org/vendor
 information_address:
   ru: https://example.org/configuration
-update_catalog_address:
-  ru: https://example.org/updates
 `
 	value, err := Decode(strings.NewReader(source))
 	if err != nil {
@@ -395,8 +393,6 @@ update_catalog_address:
 		t.Fatalf("vendor address = %+v", value.VendorAddress)
 	case value.InformationAddress["ru"] != "https://example.org/configuration":
 		t.Fatalf("information address = %+v", value.InformationAddress)
-	case value.UpdateCatalogAddress["ru"] != "https://example.org/updates":
-		t.Fatalf("update catalog address = %+v", value.UpdateCatalogAddress)
 	}
 
 	// Writing it back and reading it again gives the same project: a property
@@ -586,7 +582,6 @@ languages:
       ru: Русский
     code: ru
 data_lock_control: managed
-object_autonumeration: keep
 script_variant: russian
 name_prefix: бсп
 additional_full_text_search_dictionaries:
@@ -600,8 +595,6 @@ additional_full_text_search_dictionaries:
 	switch {
 	case value.DataLockControl != ManagedDataLock:
 		t.Fatalf("the data lock mode came back as %q", value.DataLockControl)
-	case value.ObjectAutonumeration != KeepAutonumber:
-		t.Fatalf("the autonumeration mode came back as %q", value.ObjectAutonumeration)
 	case value.ScriptVariant != RussianScript:
 		t.Fatalf("the script variant came back as %q", value.ScriptVariant)
 	case value.NamePrefix != "бсп":
@@ -640,7 +633,6 @@ func TestRootSettingsAreCheckedForShape(t *testing.T) {
 	dictionary := DictionaryReference{Kind: ConstantDictionary, Object: uuid.MustNew()}
 	for name, broken := range map[string]func(value *Project){
 		"блокировка не из набора":    func(value *Project) { value.DataLockControl = "strict" },
-		"автонумерация не из набора": func(value *Project) { value.ObjectAutonumeration = "sometimes" },
 		"вариант языка не из набора": func(value *Project) { value.ScriptVariant = "esperanto" },
 		"префикс с пробелом":         func(value *Project) { value.NamePrefix = "бсп " },
 		"словарь неизвестного вида": func(value *Project) {
@@ -678,9 +670,8 @@ func TestRootSettingsAreCheckedForShape(t *testing.T) {
 	}
 }
 
-// The modes of the root survive the file. They act on nothing in ML, which is
-// precisely why the only thing that can go wrong with them is losing them.
-func TestRootModesSurviveTheFile(t *testing.T) {
+// Whether the help of the root stands in the contents survives the file.
+func TestRootHelpFlagSurvivesTheFile(t *testing.T) {
 	t.Parallel()
 
 	const source = `format: 1
@@ -695,21 +686,13 @@ languages:
     title:
       ru: Русский
     code: ru
-main_window_mode: normal
-binary_data_storage: use
-binary_data_block_storage_use: do-not-use
 include_help_in_contents: true
 `
 	value, err := Decode(strings.NewReader(source))
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
-	switch {
-	case value.MainWindowMode != NormalWindow:
-		t.Fatalf("the window mode was lost: %+v", value)
-	case value.BinaryDataStorage != Used || value.BinaryDataBlockStorageUse != NotUsed:
-		t.Fatalf("a storage mode was lost: %+v", value)
-	case !value.IncludeHelpInContents:
+	if !value.IncludeHelpInContents {
 		t.Fatal("the help flag was lost")
 	}
 
@@ -722,35 +705,8 @@ include_help_in_contents: true
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(value, again) {
-		t.Fatalf("the modes did not survive a round trip:\n%+v\n%+v", value, again)
+		t.Fatalf("the help flag did not survive a round trip:\n%+v\n%+v", value, again)
 	}
-}
-
-// A mode is checked for being a mode at all.
-func TestRootModesAreCheckedForShape(t *testing.T) {
-	t.Parallel()
-
-	base := func() Project {
-		return Project{
-			Format: CurrentFormat, ID: uuid.MustNew(), Name: "Demo",
-			Title: LocalizedText{"ru": "Демо"}, DefaultLanguage: "ru",
-			Languages: []Language{{ID: uuid.MustNew(), Name: "Русский", Title: LocalizedText{"ru": "Русский"}, Code: "ru"}},
-		}
-	}
-	for name, broken := range map[string]func(value *Project){
-		"двоичные данные с предупреждением": func(value *Project) { value.BinaryDataStorage = "use-with-warnings" },
-		"окно не из набора":                 func(value *Project) { value.MainWindowMode = "widget" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			value := base()
-			broken(&value)
-			if err := value.Validate(); err == nil {
-				t.Fatal("the root was accepted")
-			}
-		})
-	}
-
 }
 
 // The root no longer describes a mobile application: ML has no mobile client,
@@ -843,11 +799,17 @@ languages:
 	}
 }
 
-// The auxiliary constants form is a form of the ordinary application, like the
-// auxiliary forms of every kind (METADATA-OBJECTS.md, «Формы»), and is not
-// carried. A root naming it is refused by the key. Defect caught: the root
-// kept a form nothing in ML opens, offered in Studio as if it chose one.
-func TestRootRefusesTheAuxiliaryConstantsForm(t *testing.T) {
+// What the owner decided not to carry of the root (15.10.2026,
+// METADATA-OBJECTS.md «Формы» and «Корень конфигурации») is refused by its key
+// rather than read with the key dropped: the auxiliary constants form (a form
+// of the ordinary application), the address of the update catalog (no
+// deliveries in ML), the three data history forms and the form choosing the
+// users of the collaboration system, the autonumeration mode (a number is
+// given only by writing), the mode of the main window (one window in the
+// browser), and the storage of binary data with its block storage (ML Service
+// decides). Defect caught: the root kept a setting nothing in ML acts on,
+// offered in Studio as if it chose something.
+func TestRootRefusesWhatIsNotCarried(t *testing.T) {
 	t.Parallel()
 
 	const root = `format: 1
@@ -863,9 +825,28 @@ languages:
       ru: Русский
     code: ru
 `
-	_, err := Decode(strings.NewReader(root + "auxiliary_constants_form: 018f1f72-3b4c-7d6e-8f90-000000000090\n"))
-	if err == nil || !strings.Contains(err.Error(), "field auxiliary_constants_form not found") {
-		t.Fatalf("the root naming the auxiliary constants form was read: %v", err)
+	if _, err := Decode(strings.NewReader(root)); err != nil {
+		t.Fatalf("the root without them was refused: %v", err)
+	}
+	for key, value := range map[string]string{
+		"auxiliary_constants_form":               "018f1f72-3b4c-7d6e-8f90-000000000090",
+		"update_catalog_address":                 "{ru: https://example.org/updates}",
+		"data_history_changes_form":              "018f1f72-3b4c-7d6e-8f90-000000000091",
+		"data_history_version_form":              "018f1f72-3b4c-7d6e-8f90-000000000092",
+		"data_history_version_difference_form":   "018f1f72-3b4c-7d6e-8f90-000000000093",
+		"collaboration_system_users_choice_form": "018f1f72-3b4c-7d6e-8f90-000000000094",
+		"object_autonumeration":                  "keep",
+		"main_window_mode":                       "normal",
+		"binary_data_storage":                    "use",
+		"binary_data_block_storage_use":          "do-not-use",
+	} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			_, err := Decode(strings.NewReader(root + key + ": " + value + "\n"))
+			if err == nil || !strings.Contains(err.Error(), "field "+key+" not found") {
+				t.Fatalf("the root naming %s was read: %v", key, err)
+			}
+		})
 	}
 }
 
@@ -991,12 +972,12 @@ func TestRootTextsRunOverSeveralLinesButAddressesDoNot(t *testing.T) {
 	if err := value.Validate(); err != nil {
 		t.Fatalf("texts over several lines were refused: %v", err)
 	}
-	value.UpdateCatalogAddress = LocalizedText{"ru": strings.Repeat("a", 600)}
+	value.VendorAddress = LocalizedText{"ru": strings.Repeat("a", 600)}
 	if err := value.Validate(); err != nil {
 		t.Fatalf("a long address was refused: %v", err)
 	}
-	value.UpdateCatalogAddress = LocalizedText{"ru": "http://a\nb"}
-	if err := value.Validate(); err == nil || !strings.Contains(err.Error(), "update_catalog_address.ru must be one line") {
+	value.VendorAddress = LocalizedText{"ru": "http://a\nb"}
+	if err := value.Validate(); err == nil || !strings.Contains(err.Error(), "vendor_address.ru must be one line") {
 		t.Fatalf("an address over two lines: %v", err)
 	}
 }

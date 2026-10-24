@@ -92,12 +92,14 @@ type Project struct {
 	// Copyright is read by a person and is localized for the same reason the
 	// synonym is.
 	Copyright LocalizedText `yaml:"copyright,omitempty" json:"copyright,omitempty"`
-	// The three addresses are localized because each may lead to a different
-	// page per language: where to read about who made this, where to read
-	// about the configuration itself, and where its updates are published.
-	VendorAddress        LocalizedText `yaml:"vendor_address,omitempty" json:"vendorAddress,omitempty"`
-	InformationAddress   LocalizedText `yaml:"information_address,omitempty" json:"informationAddress,omitempty"`
-	UpdateCatalogAddress LocalizedText `yaml:"update_catalog_address,omitempty" json:"updateCatalogAddress,omitempty"`
+	// The two addresses are localized because each may lead to a different
+	// page per language: where to read about who made this, and where to read
+	// about the configuration itself. The third address of the prototype,
+	// where the updater looks for deliveries, is not carried: ML has no
+	// deliveries and no vendor support, and ML Manager tells of updates
+	// (owner, 15.10.2026, METADATA-OBJECTS «Корень конфигурации»).
+	VendorAddress      LocalizedText `yaml:"vendor_address,omitempty" json:"vendorAddress,omitempty"`
+	InformationAddress LocalizedText `yaml:"information_address,omitempty" json:"informationAddress,omitempty"`
 	// What follows are the defaults of the root: what the application opens,
 	// draws with and saves into when nothing nearer says otherwise. Each of
 	// them names another object of the configuration, so each is stored by
@@ -148,36 +150,30 @@ type Project struct {
 	// URLExternalDataStorage is the sixth storage: where the data behind a
 	// navigation link is kept when the link carries more than a reference.
 	URLExternalDataStorage *uuid.UUID `yaml:"url_external_data_storage,omitempty" json:"urlExternalDataStorage,omitempty"`
-	// The forms below stand in the same place as the five above - a common
-	// form the root hands out when a nearer one is not named - and are listed
-	// apart only because each waits on something different.
+	// DefaultDynamicListSettingsForm stands in the same place as the five
+	// above - a common form the root hands out when a nearer one is not
+	// named.
 	//
-	// The settings form of a dynamic list is ours to open and works.
+	// The three forms of data history and the form choosing the users of the
+	// collaboration system are not carried (owner, 15.10.2026): ML does not
+	// run the prototype's data history, its change history has windows of its
+	// own, and ML has no collaboration system yet.
 	DefaultDynamicListSettingsForm *uuid.UUID `yaml:"default_dynamic_list_settings_form,omitempty" json:"defaultDynamicListSettingsForm,omitempty"`
-	// The three data history forms are carried and never opened: data history
-	// is the prototype's mechanism, transferred and not implemented, and what
-	// answers the question it was switched on for is the change history of ML.
-	DataHistoryChangesForm           *uuid.UUID `yaml:"data_history_changes_form,omitempty" json:"dataHistoryChangesForm,omitempty"`
-	DataHistoryVersionForm           *uuid.UUID `yaml:"data_history_version_form,omitempty" json:"dataHistoryVersionForm,omitempty"`
-	DataHistoryVersionDifferenceForm *uuid.UUID `yaml:"data_history_version_difference_form,omitempty" json:"dataHistoryVersionDifferenceForm,omitempty"`
-	// CollaborationSystemUsersChoiceForm names a form for a mechanism ML does
-	// not have at all. It is carried for the same reason as everything else in
-	// this file that ML does not execute: a configuration that named it, named
-	// it.
-	CollaborationSystemUsersChoiceForm *uuid.UUID `yaml:"collaboration_system_users_choice_form,omitempty" json:"collaborationSystemUsersChoiceForm,omitempty"`
 	// What follows are the settings of the root that are not references: how
-	// data is locked, what happens to a number nobody used, in which variant
-	// of the language the configuration is written, what its names begin with
-	// and which dictionaries the full-text search is told about besides its
-	// own.
+	// data is locked, in which variant of the language the configuration is
+	// written, what its names begin with and which dictionaries the full-text
+	// search is told about besides its own.
+	//
+	// What becomes of a number nobody used is not a setting in ML (owner,
+	// 15.10.2026): a new object gets its number or code only when written, so
+	// nothing is reserved and there is nothing to release.
 	//
 	// Each is empty by default, and empty means the platform's own behaviour
 	// rather than an unanswered question: a configuration that says nothing
 	// about locking is locked the way ML locks, and that is the same answer it
 	// would get by saying so.
-	DataLockControl      DataLockControlMode      `yaml:"data_lock_control,omitempty" json:"dataLockControl,omitempty"`
-	ObjectAutonumeration ObjectAutonumerationMode `yaml:"object_autonumeration,omitempty" json:"objectAutonumeration,omitempty"`
-	ScriptVariant        ScriptVariant            `yaml:"script_variant,omitempty" json:"scriptVariant,omitempty"`
+	DataLockControl DataLockControlMode `yaml:"data_lock_control,omitempty" json:"dataLockControl,omitempty"`
+	ScriptVariant   ScriptVariant       `yaml:"script_variant,omitempty" json:"scriptVariant,omitempty"`
 	// NamePrefix is what the names of this configuration's own objects begin
 	// with. A library merged into an application prefixes its names so that
 	// two libraries holding a catalog of the same purpose do not collide.
@@ -188,13 +184,12 @@ type Project struct {
 	// so each one says which of the two it is: an identifier alone would make
 	// the reader of the file guess where to look.
 	AdditionalFullTextSearchDictionaries []DictionaryReference `yaml:"additional_full_text_search_dictionaries,omitempty" json:"additionalFullTextSearchDictionaries,omitempty"`
-	// What follows are the modes of the root ML does not act on: they are
-	// stored as written and shown in the properties of the root - the second
-	// category of the conformance report, transferred and not implemented.
+	// IncludeHelpInContents is the last setting of the root: whether its help
+	// stands in the contents of the help.
 	//
-	// The modes that exist only for the ordinary application, and the modes
-	// of earlier releases and of mechanisms ML does not have, are not carried
-	// at all (owner, 14.10.2026, METADATA-OBJECTS «Только управляемое
+	// The root carries no mode ML does not act on. The modes that exist only
+	// for the ordinary application, and the modes of earlier releases and of
+	// mechanisms ML does not have, are not carried at all (owner, 14.10.2026, METADATA-OBJECTS «Только управляемое
 	// приложение»): the run mode, managed forms in the ordinary application
 	// and ordinary forms in the managed one, modality, both modes of
 	// synchronous calls, tablespaces, the compatibility of the platform, of
@@ -203,31 +198,12 @@ type Project struct {
 	// like gets ML's own behaviour as a constant (METADATA-OBJECTS). Nor is
 	// the purpose of the configuration - an application of the platform or
 	// of the mobile platform: with no mobile platform the one value left
-	// would say nothing (owner, 15.10.2026).
-	MainWindowMode            MainWindowMode `yaml:"main_window_mode,omitempty" json:"mainWindowMode,omitempty"`
-	BinaryDataStorage         UseMode        `yaml:"binary_data_storage,omitempty" json:"binaryDataStorage,omitempty"`
-	BinaryDataBlockStorageUse UseMode        `yaml:"binary_data_block_storage_use,omitempty" json:"binaryDataBlockStorageUse,omitempty"`
-	IncludeHelpInContents     bool           `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	// would say nothing (owner, 15.10.2026). Nor are the mode of the main
+	// window - ML App is one window in the browser - and the storage of
+	// binary data and its block storage, where ML Service decides where data
+	// lies (owner, 15.10.2026).
+	IncludeHelpInContents bool `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
 }
-
-// UseMode is the answer to "is this used".
-type UseMode string
-
-const (
-	Used    UseMode = "use"
-	NotUsed UseMode = "do-not-use"
-)
-
-// MainWindowMode is what the main window of the client application looks like.
-type MainWindowMode string
-
-const (
-	NormalWindow              MainWindowMode = "normal"
-	WorkplaceWindow           MainWindowMode = "workplace"
-	FullscreenWorkplaceWindow MainWindowMode = "fullscreen-workplace"
-	EmbeddedWorkplaceWindow   MainWindowMode = "embedded-workplace"
-	KioskWindow               MainWindowMode = "kiosk"
-)
 
 // DataLockControlMode says how the configuration locks the data it reads and
 // writes. Managed locking is what ML does; the other two are carried because a
@@ -239,21 +215,6 @@ const (
 	AutomaticDataLock           DataLockControlMode = "automatic"
 	ManagedDataLock             DataLockControlMode = "managed"
 	AutomaticAndManagedDataLock DataLockControlMode = "automatic-and-managed"
-)
-
-// ObjectAutonumerationMode says what becomes of an automatically given number
-// when the object that took it was never written. Released, the number is
-// handed to the next object and the sequence has no holes; kept, it is spent
-// and the sequence does. Which of the two is right is the application's to
-// decide: a hole in an invoice numbering is a question from an auditor, and a
-// number reused after a rollback is a different document under a known number.
-type ObjectAutonumerationMode string
-
-const (
-	// ReleaseAutonumber hands an unused number back to the next object.
-	ReleaseAutonumber ObjectAutonumerationMode = "release"
-	// KeepAutonumber spends the number whether or not it was written.
-	KeepAutonumber ObjectAutonumerationMode = "keep"
 )
 
 // ScriptVariant says in which variant of the built-in language the
@@ -528,7 +489,6 @@ func (p Project) Validate() error {
 	checkText("copyright", p.Copyright, false, false)
 	checkText("vendor_address", p.VendorAddress, false, true)
 	checkText("information_address", p.InformationAddress, false, true)
-	checkText("update_catalog_address", p.UpdateCatalogAddress, false, true)
 	for path, value := range map[string]string{"comment": p.Comment, "vendor": p.Vendor, "version": p.Version} {
 		if value != "" && !isDisplayText(value, math.MaxInt) {
 			add(path, "must be one line of printable characters")
@@ -544,18 +504,14 @@ func (p Project) Validate() error {
 		"default_report_settings_form": p.DefaultReportSettingsForm,
 		"default_report_variant_form":  p.DefaultReportVariantForm,
 		"default_constants_form":       p.DefaultConstantsForm, "default_search_form": p.DefaultSearchForm,
-		"default_report_appearance_template":     p.DefaultReportAppearanceTemplate,
-		"common_settings_storage":                p.CommonSettingsStorage,
-		"reports_user_settings_storage":          p.ReportsUserSettingsStorage,
-		"reports_variants_storage":               p.ReportsVariantsStorage,
-		"dynamic_lists_user_settings_storage":    p.DynamicListsUserSettingsStorage,
-		"form_data_settings_storage":             p.FormDataSettingsStorage,
-		"url_external_data_storage":              p.URLExternalDataStorage,
-		"default_dynamic_list_settings_form":     p.DefaultDynamicListSettingsForm,
-		"data_history_changes_form":              p.DataHistoryChangesForm,
-		"data_history_version_form":              p.DataHistoryVersionForm,
-		"data_history_version_difference_form":   p.DataHistoryVersionDifferenceForm,
-		"collaboration_system_users_choice_form": p.CollaborationSystemUsersChoiceForm,
+		"default_report_appearance_template":  p.DefaultReportAppearanceTemplate,
+		"common_settings_storage":             p.CommonSettingsStorage,
+		"reports_user_settings_storage":       p.ReportsUserSettingsStorage,
+		"reports_variants_storage":            p.ReportsVariantsStorage,
+		"dynamic_lists_user_settings_storage": p.DynamicListsUserSettingsStorage,
+		"form_data_settings_storage":          p.FormDataSettingsStorage,
+		"url_external_data_storage":           p.URLExternalDataStorage,
+		"default_dynamic_list_settings_form":  p.DefaultDynamicListSettingsForm,
 	} {
 		if reference != nil && reference.IsZero() {
 			add(path, "must be a non-zero UUID")
@@ -587,11 +543,6 @@ func (p Project) Validate() error {
 	case "", AutomaticDataLock, ManagedDataLock, AutomaticAndManagedDataLock:
 	default:
 		add("data_lock_control", "must be automatic, managed or automatic-and-managed")
-	}
-	switch p.ObjectAutonumeration {
-	case "", ReleaseAutonumber, KeepAutonumber:
-	default:
-		add("object_autonumeration", "must be release or keep")
 	}
 	switch p.ScriptVariant {
 	case "", RussianScript, EnglishScript:
@@ -627,21 +578,6 @@ func (p Project) Validate() error {
 		seenDictionaries[dictionary] = struct{}{}
 	}
 
-	for path, mode := range map[string]UseMode{
-		"binary_data_storage":           p.BinaryDataStorage,
-		"binary_data_block_storage_use": p.BinaryDataBlockStorageUse,
-	} {
-		switch mode {
-		case "", Used, NotUsed:
-		default:
-			add(path, "must be use or do-not-use")
-		}
-	}
-	switch p.MainWindowMode {
-	case "", NormalWindow, WorkplaceWindow, FullscreenWorkplaceWindow, EmbeddedWorkplaceWindow, KioskWindow:
-	default:
-		add("main_window_mode", "must be normal, workplace, fullscreen-workplace, embedded-workplace or kiosk")
-	}
 	if len(issues) > 0 {
 		return &ValidationError{Issues: issues, unsupportedFormat: p.Format > 0 && p.Format != CurrentFormat}
 	}

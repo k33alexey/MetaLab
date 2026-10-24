@@ -143,10 +143,6 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 		{"constants", configuration.DefaultConstantsForm},
 		{"full-text search", configuration.DefaultSearchForm},
 		{"dynamic list settings", configuration.DefaultDynamicListSettingsForm},
-		{"data history changes", configuration.DataHistoryChangesForm},
-		{"one data history version", configuration.DataHistoryVersionForm},
-		{"the difference between data history versions", configuration.DataHistoryVersionDifferenceForm},
-		{"the users of the collaboration system", configuration.CollaborationSystemUsersChoiceForm},
 	} {
 		if form.id == nil {
 			continue
@@ -169,11 +165,10 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 	return nil
 }
 
-// validateRootPictures checks the three pictures the root owns - the logo,
-// the splash and the picture of the main section. They are the root's own
-// files rather than references, so nothing declares them: the folder being
-// there is the declaration, and a folder that is not there is a configuration
-// that simply has no logo.
+// validateRootPictures checks the picture the root owns - the picture of the
+// main section. It is the root's own files rather than a reference, so nothing
+// declares it: the folder being there is the declaration, and a folder that is
+// not there is a configuration that simply has no such picture.
 //
 // The rules are those of every picture of the platform, and for the same
 // reasons - see validatePictureFolder. How the files are drawn is described,

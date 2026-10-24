@@ -265,7 +265,6 @@ func withoutRemovedTranslations(configuration project.Project) project.Project {
 	configuration.Copyright = prune(configuration.Copyright)
 	configuration.VendorAddress = prune(configuration.VendorAddress)
 	configuration.InformationAddress = prune(configuration.InformationAddress)
-	configuration.UpdateCatalogAddress = prune(configuration.UpdateCatalogAddress)
 	// A language's own synonym is a text of the configuration like any other,
 	// so it loses the translations written in a language that is gone. What it
 	// cannot lose is all of them: a language without a synonym is a blank line

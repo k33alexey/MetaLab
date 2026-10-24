@@ -165,9 +165,9 @@ func validateClientInterface(value ClientInterface) []string {
 	return issues
 }
 
-// loadRootInterface reads the three descriptions of the root's interface and
-// checks that the support settings, when there, are a file. None of them is
-// required: a configuration without a home page opens on an empty one.
+// loadRootInterface reads the three descriptions of the root's interface. None
+// of them is required: a configuration without a home page opens on an empty
+// one.
 func (catalog *Catalog) loadRootInterface(root string) error {
 	read := func(file string, target any, validate func() []string) (bool, error) {
 		handle, err := openRootFile(root, file)
@@ -208,9 +208,7 @@ func (catalog *Catalog) loadRootInterface(root string) error {
 		return err
 	}
 	catalog.MainSectionCommandInterface = commands
-	// The file is carried opaque; only that it is a file is checked.
-	_, err := rootFilePath(root, project.ParentConfigurationsFile)
-	return err
+	return nil
 }
 
 // openRootFile opens a file of the root that may be missing, and refuses one

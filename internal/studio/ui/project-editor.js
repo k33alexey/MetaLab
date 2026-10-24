@@ -221,7 +221,6 @@ function createProjectEditor(host, onChange) {
     const addresses = section('Где о ней прочитать');
     addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));
     addresses.append(localizedField('Адрес конфигурации', 'informationAddress'));
-    addresses.append(localizedField('Адрес обновлений', 'updateCatalogAddress'));
     panel.append(addresses);
 
     /* Пятнадцать умолчаний корня: чем приложение рисуется, под какими правами
@@ -248,13 +247,6 @@ function createProjectEditor(host, onChange) {
     forms.append(formField('Форма настроек динамического списка', 'defaultDynamicListSettingsForm'));
     forms.append(note('Все они — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
       + 'может выдать их всем объектам сразу.'));
-    forms.append(formField('История данных: изменения', 'dataHistoryChangesForm'));
-    forms.append(formField('История данных: версия', 'dataHistoryVersionForm'));
-    forms.append(formField('История данных: различия версий', 'dataHistoryVersionDifferenceForm'));
-    forms.append(formField('Выбор пользователей системы взаимодействия', 'collaborationSystemUsersChoiceForm'));
-    forms.append(note('Последние четыре не откроются: история данных переносится и не исполняется, а системы '
-      + 'взаимодействия в ML нет вовсе. Ссылка всё равно проверяется — указывающая в пустоту, она сообщает '
-      + 'не о механизме, а о том, что форму удалили.'));
     panel.append(forms);
 
     const storages = section('Где хранится то, что сохранил пользователь');
@@ -269,16 +261,16 @@ function createProjectEditor(host, onChange) {
     panel.append(storages);
 
     /* Настройки, которые не называют другой объект: чем запирается то, что
-       читается и пишется, что становится с неиспользованным номером, на каком
-       варианте языка написана конфигурация, с чего начинаются её имена и о
-       каких словарях, кроме собственных, знает полнотекстовый поиск. */
+       читается и пишется, на каком варианте языка написана конфигурация, с
+       чего начинаются её имена, о каких словарях, кроме собственных, знает
+       полнотекстовый поиск и входит ли её справка в содержание. Режимы
+       прототипа, которых ML не исполняет, — основное окно, хранение двоичных
+       данных, автонумерация и прочие — не переносятся вовсе
+       (METADATA-OBJECTS, «Корень конфигурации»). */
     const settings = section('Как устроена сама конфигурация');
     settings.append(choiceField('Управление блокировкой данных', 'dataLockControl', [
       ['', 'Как в ML'], ['managed', 'Управляемый'], ['automatic', 'Автоматический'],
       ['automatic-and-managed', 'Автоматический и управляемый'],
-    ]));
-    settings.append(choiceField('Автонумерация объектов', 'objectAutonumeration', [
-      ['', 'Как в ML'], ['release', 'Освобождать номер'], ['keep', 'Не освобождать номер'],
     ]));
     settings.append(choiceField('Вариант встроенного языка', 'scriptVariant', [
       ['', 'Как в ML'], ['russian', 'Русский'], ['english', 'Английский'],
@@ -286,31 +278,8 @@ function createProjectEditor(host, onChange) {
     settings.append(textField('Префикс имён', source.configuration.namePrefix,
       value => model.setField('namePrefix', value), {maxLength: 255}));
     settings.append(dictionariesField('Дополнительные словари поиска'));
-    settings.append(note('Освобождённый номер достаётся следующему объекту, и в нумерации нет дыр; '
-      + 'неосвобождённый потрачен, даже если объект так и не записали.'));
+    settings.append(checkField('Включать в содержание справки', 'includeHelpInContents'));
     panel.append(settings);
-
-    /* Режимы прототипа, которых ML не исполняет: они хранятся и
-       показываются, но ни на что не влияют, — и раздел говорит об этом прямо,
-       чтобы никто не искал, почему выбранное ничего не меняет. Режимы только
-       обычного приложения, прежних выпусков и чужих механизмов (запуск,
-       модальность, синхронные вызовы, табличные пространства, совместимость)
-       и назначение использования не переносятся вовсе — METADATA-OBJECTS,
-       «Только управляемое приложение». */
-    const plainUse = [['', 'Не задано'], ['do-not-use', 'Не использовать'], ['use', 'Использовать']];
-    const modes = section('Режимы прототипа');
-    modes.append(note('ML исполняет только то, что умеет сам. Всё в этом разделе переносится, '
-      + 'показывается и ни на что не влияет — но и не теряется: перенесённая конфигурация не должна '
-      + 'молча лишаться части своих свойств.'));
-    modes.append(choiceField('Основное окно приложения', 'mainWindowMode', [
-      ['', 'Не задано'], ['normal', 'Обычное'], ['workplace', 'Рабочее место'],
-      ['fullscreen-workplace', 'Полноэкранное рабочее место'],
-      ['embedded-workplace', 'Встроенное рабочее место'], ['kiosk', 'Киоск'],
-    ]));
-    modes.append(choiceField('Хранилище двоичных данных', 'binaryDataStorage', plainUse));
-    modes.append(choiceField('Блочное хранение двоичных данных', 'binaryDataBlockStorageUse', plainUse));
-    modes.append(checkField('Включать в содержание справки', 'includeHelpInContents'));
-    panel.append(modes);
 
     host.append(panel);
   }

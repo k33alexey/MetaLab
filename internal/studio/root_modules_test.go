@@ -292,9 +292,11 @@ func TestOrdinaryApplicationModuleIsNotCarried(t *testing.T) {
 	}
 }
 
-// The pictures of the root show up only when they are there: a configuration
-// without a logo is an ordinary configuration, and a branch offering to make
-// one would be an offer rather than a fact.
+// The picture of the root shows up only when it is there: a configuration
+// without one is an ordinary configuration, and a branch offering to make one
+// would be an offer rather than a fact. The logo and the splash are not
+// carried (owner, 15.10.2026): a folder of either name is no picture of the
+// root and no row of the tree.
 func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
@@ -312,32 +314,26 @@ func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
 		}
 	}
 
-	directory := filepath.Join(root, project.LogoDirectory)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "100.png"), []byte("image"), 0o644); err != nil {
-		t.Fatal(err)
+	for _, folder := range []string{"Логотип", "Заставка"} {
+		directory := filepath.Join(root, folder)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "100.png"), []byte("image"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	snapshot, err = workspace.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var shown *Node
-	for index, node := range snapshot.Tree.Children {
-		if node.ID == "root-picture:"+project.LogoDirectory {
-			shown = &snapshot.Tree.Children[index]
+	for _, node := range snapshot.Tree.Children {
+		if strings.HasPrefix(node.ID, "root-picture:") {
+			t.Fatalf("a folder that is no picture of the root is in the tree: %+v", node)
 		}
 	}
-	if shown == nil || shown.Title != project.LogoDirectory {
-		t.Fatalf("the logo is not in the tree: %+v", snapshot.Tree.Children)
-	}
-	if len(shown.Properties) == 0 || !strings.Contains(shown.Properties[0].Value, "100.png") {
-		t.Fatalf("the tree does not say which images the logo has: %+v", shown.Properties)
-	}
 
-	// The description beside the images is not one of them, and the picture of
-	// the main section is a picture of the root like the other two.
+	// The description beside the images is not one of them.
 	main := filepath.Join(root, project.MainSectionPictureDirectory)
 	if err := os.MkdirAll(main, 0o755); err != nil {
 		t.Fatal(err)
@@ -351,7 +347,7 @@ func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shown = nil
+	var shown *Node
 	for index, node := range snapshot.Tree.Children {
 		if node.ID == "root-picture:"+project.MainSectionPictureDirectory {
 			shown = &snapshot.Tree.Children[index]

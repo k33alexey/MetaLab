@@ -43,22 +43,21 @@ const (
 	// ExternalConnectionModuleFile holds what runs when something outside
 	// connects to the base without a person in front of it.
 	ExternalConnectionModuleFile = "МодульВнешнегоСоединения.bsl"
-	// LogoDirectory and SplashDirectory are the two pictures the configuration
-	// root owns: the logo it is shown by and the splash it opens with. They
-	// are the root's own files and not references to common pictures - a
-	// reference would make transferring a configuration with a splash create a
-	// common picture that was never in it, and the composition of the
-	// transferred configuration would then differ from the original.
+	// MainSectionPictureDirectory is the picture the configuration root owns:
+	// the picture of the main section (help, MainSectionPicture, since 8.3.3).
+	// All three configurations being moved have one. It is the root's own
+	// file and not a reference to a common picture - a reference would make
+	// transferring a configuration create a common picture that was never in
+	// it, and the composition of the transferred configuration would then
+	// differ from the original.
 	//
-	// Each is a folder named after its role holding one file per screen
+	// It is a folder named after its role holding one file per screen
 	// density, the same way every picture of the platform is stored, or the
 	// files its variants name, described in RootPictureDescriptionFile.
 	//
-	// MainSectionPictureDirectory is the third, the picture of the main
-	// section (help, MainSectionPicture, since 8.3.3). All three
-	// configurations being moved have one, and the model had no place for it.
-	LogoDirectory               = "Логотип"
-	SplashDirectory             = "Заставка"
+	// The logo and the splash of the prototype are not carried (owner,
+	// 15.10.2026): ML has its own. A folder of either name at the project
+	// root is no picture - nothing reads, shows or publishes it.
 	MainSectionPictureDirectory = "КартинкаОсновногоРаздела"
 	// RootPictureDescriptionFile says how the files of a picture of the root
 	// are drawn - its variants and its transparency. Left out, the files are
@@ -67,13 +66,13 @@ const (
 	// HomePageFile, ClientInterfaceFile and MainSectionCommandInterfaceFile
 	// describe what the application shows before anything is opened: the
 	// forms of the home page, the panels of the main window and the commands
-	// of the main section. ParentConfigurationsFile is the vendor's support
-	// settings, carried as the prototype wrote them. The configurations being
-	// moved keep each of them - see the metadata package.
+	// of the main section. The configurations being moved keep each of them -
+	// see the metadata package. The vendor's support settings of the
+	// prototype are not carried (owner, 15.10.2026): ML has no deliveries and
+	// no vendor support, and the history of a project is in Git.
 	HomePageFile                    = "НачальнаяСтраница.yaml"
 	ClientInterfaceFile             = "ИнтерфейсКлиентскогоПриложения.yaml"
 	MainSectionCommandInterfaceFile = "КомандныйИнтерфейсОсновногоРаздела.yaml"
-	ParentConfigurationsFile        = "РодительскиеКонфигурации.bin"
 	keepFile                        = ".gitkeep"
 
 	// ObjectMetadataFile is the description of the object owning a folder.
@@ -214,11 +213,11 @@ var rootModuleFiles = []string{SessionModuleFile, ApplicationModuleFile, Externa
 
 // rootPictureDirectories is every picture the configuration root may keep, in
 // the order the tree shows them.
-var rootPictureDirectories = []string{LogoDirectory, SplashDirectory, MainSectionPictureDirectory}
+var rootPictureDirectories = []string{MainSectionPictureDirectory}
 
 // rootDescriptionFiles is every file the configuration root keeps beside its
 // description and its modules, in the order the tree shows them.
-var rootDescriptionFiles = []string{HomePageFile, ClientInterfaceFile, MainSectionCommandInterfaceFile, ParentConfigurationsFile}
+var rootDescriptionFiles = []string{HomePageFile, ClientInterfaceFile, MainSectionCommandInterfaceFile}
 
 // RootDescriptionFiles returns the files of the root that are neither its
 // description nor a module nor a picture.
