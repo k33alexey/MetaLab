@@ -1,6 +1,10 @@
 package metadata
 
-import "github.com/k33alexey/MetaLab/internal/kinds"
+import (
+	"slices"
+
+	"github.com/k33alexey/MetaLab/internal/kinds"
+)
 
 // What the window «Редактирование типа данных» offers where.
 //
@@ -43,6 +47,8 @@ const (
 	// offers both one list, the field without «Составной тип данных».
 	ExternalFieldChoice    TypeChoicePlace = "external-field"
 	ExternalFunctionChoice TypeChoicePlace = "external-function"
+	// CubeDimensionChoice is a dimension of a cube of an external source.
+	CubeDimensionChoice TypeChoicePlace = "cube-dimension"
 )
 
 // referenceRows is how a place offers the references of a kind.
@@ -72,10 +78,12 @@ type choicePlace struct {
 	references referenceRows
 	// characteristics is the folder «Характеристика», the charts of
 	// characteristic types; definedTypes is the folder «ОпределяемыйТип»;
-	// sourceReferences are the folders of the references to the object
-	// tables and to the dimension tables of every external source, each shown
-	// when it holds something; anyReference is the row «ЛюбаяСсылка».
-	characteristics, definedTypes, sourceReferences, anyReference bool
+	// anyReference is the row «ЛюбаяСсылка».
+	characteristics, definedTypes, anyReference bool
+	// sourceReferences are the kinds of an external source - an object table,
+	// a dimension table - whose objects of every source the place offers in
+	// a folder of their reference, shown when it holds something.
+	sourceReferences []Kind
 	// folders are the folders of the types living in memory that name an
 	// object - the object of a catalog, the record set of a register, the
 	// manager of a catalog - each holding the objects of its kind; then come
@@ -99,9 +107,8 @@ type choicePlace struct {
 }
 
 // choicePlaces are the places the prototype's window was gone through in,
-// with what it offered there (the opis, «Состав по местам»). The places of a
-// dimension of a cube and a resource of a register are the next items of
-// block 2б.
+// with what it offered there (the opis, «Состав по местам»). The place of a
+// resource of a register is the next item of block 2б.
 var choicePlaces = map[TypeChoicePlace]choicePlace{
 	StoredFieldChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType, DateType, BooleanType, ValueStorageType, UUIDType},
 		references: referencesUnderSets, characteristics: true, definedTypes: true, anyReference: true, required: true},
@@ -174,10 +181,21 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// 24.10.2026, vneshnij-istochnik.md, «Досъёмка (серия 2.531)»,
 	// snapshots series-2.531/16, 17, 19, 21-23). A field has no «Составной
 	// тип данных» and must have a type; a function may return none.
-	ExternalFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: true,
+	ExternalFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables,
 		required: true, single: true},
-	ExternalFunctionChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: true},
+	ExternalFunctionChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables},
+	// A dimension of a cube: the defined types and the dimension tables of
+	// every cube of every source, one of them and no other type (opis of
+	// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/18, 20). Its
+	// types are read as a stored field's; validateCubeDimensionType holds
+	// the rest.
+	CubeDimensionChoice: {model: placeStored, definedTypes: true, sourceReferences: []Kind{ExternalDimensionTableKind},
+		required: true, single: true},
 }
+
+// sourceTables are the kinds whose references a field and a function of a
+// source may hold.
+var sourceTables = []Kind{ExternalDataSourceTableKind, ExternalDimensionTableKind}
 
 // externalPrimitives are the simple types a field of a source may hold.
 var externalPrimitives = []TypeKind{NumberType, StringType, DateType, BooleanType, UUIDType, BinaryDataType}
@@ -412,9 +430,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Name: kinds.Must(DefinedTypeKind).Name, ObjectKind: DefinedType,
 			Objects: catalog.referenceTypeObjects(DefinedTypeKind)})
 	}
-	if at.sourceReferences {
-		offer.Rows = append(offer.Rows, catalog.sourceReferenceRows()...)
-	}
+	offer.Rows = append(offer.Rows, catalog.sourceReferenceRows(at.sourceReferences)...)
 	if at.anyReference {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
@@ -443,11 +459,11 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 }
 
 // sourceReferenceRows are the folders of the references to something of an
-// external source: the object tables of every source, «Источник.Таблица»,
-// and the dimension tables of every cube of every source,
+// external source of the kinds asked for: the object tables of every source,
+// «Источник.Таблица», and the dimension tables of every cube of every source,
 // «Источник.Куб.Таблица», the sources in the order of the tree (snapshot
 // series-2.531/22). A folder holding nothing is not shown (snapshot 16).
-func (catalog *Catalog) sourceReferenceRows() []TypeOfferRow {
+func (catalog *Catalog) sourceReferenceRows(asked []Kind) []TypeOfferRow {
 	var tables, dimensions []ReferenceTypeObject
 	for _, listed := range catalog.referenceTypeObjects(ExternalDataSourceKind) {
 		source, _ := catalog.ExternalDataSourceByID(listed.ID)
@@ -467,7 +483,7 @@ func (catalog *Catalog) sourceReferenceRows() []TypeOfferRow {
 		kind    Kind
 		objects []ReferenceTypeObject
 	}{{ExternalDataSourceTableKind, tables}, {ExternalDimensionTableKind, dimensions}} {
-		if len(folder.objects) > 0 {
+		if len(folder.objects) > 0 && slices.Contains(asked, folder.kind) {
 			descriptor := kinds.Must(folder.kind)
 			rows = append(rows, TypeOfferRow{Name: descriptor.References()[0], Icon: descriptor.Icon, ObjectKind: referenceTo(folder.kind),
 				Objects: folder.objects})

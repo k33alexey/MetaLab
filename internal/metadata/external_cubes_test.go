@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -273,20 +274,47 @@ func TestExternalCubeCarriesCharacteristicsInShape(t *testing.T) {
 	}
 }
 
-// A cube is independent of every other cube of its source, as the platform
-// shows: its configurator offers a dimension of one cube the dimension tables
-// of that cube alone. Catches a dimension of one cube referring to a dimension
-// table of another, which the rule of the source alone would let through.
-func TestExternalCubeDimensionRefersOnlyToItsOwnCube(t *testing.T) {
+// A dimension of one cube may refer to a dimension table of another cube of
+// its source: the editor of its type offers the dimension tables of every
+// cube, and «Проверка конфигурации» takes such a dimension (opis of
+// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/20, 23-25); it is
+// one database, so nothing is noted. A field of a dimension table and a
+// resource keep to the tables of their own cube - their editors were not seen
+// offering another's.
+// Catches the dimension refused, as it was until 2.539, noted as a reference
+// to another source, or the rule of the dimension let through to the field of
+// a dimension table.
+func TestAnExternalCubeDimensionMayReferToAnotherCube(t *testing.T) {
 	t.Parallel()
 	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
+	purchases := func(root string) {
+		other := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceCubesDirectory, "Закупки")
+		writeFile(t, filepath.Join(other, "object.yaml"), "format: 1\nid: "+otherCube+"\nname: Закупки\ntitle: {ru: Закупки}\nname_in_data_source: Purchases\n")
+		writeFile(t, filepath.Join(other, ExternalDimensionTablesDirectory, "Поставщики", "object.yaml"),
+			"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
+	}
 	root := metadataProject(t)
 	writeSalesCube(t, root, strings.Replace(salesCubeBody, "reference: "+goodsDimTable, "reference: "+otherTable, 1), goodsDimTableBody)
-	other := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceCubesDirectory, "Закупки")
-	writeFile(t, filepath.Join(other, "object.yaml"), "format: 1\nid: "+otherCube+"\nname: Закупки\ntitle: {ru: Закупки}\nname_in_data_source: Purchases\n")
-	writeFile(t, filepath.Join(other, ExternalDimensionTablesDirectory, "Поставщики", "object.yaml"),
-		"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
-	if message := loadRefused(t, root, "a dimension of another cube's table"); !strings.Contains(message, "refers to a dimension table of another cube") {
+	purchases(root)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a dimension of another cube's table was refused: %v", err)
+	}
+	if slices.ContainsFunc(catalog.Notes(), func(note Note) bool { return note.Kind == NoteForeignSourceReference }) {
+		t.Errorf("another cube of the same source is noted as another source: %+v", catalog.Notes())
+	}
+	root = metadataProject(t)
+	writeSalesCube(t, root, salesCubeBody, goodsDimTableBody+"  - {id: "+uuid.MustNew().String()+", name: Поставщик, title: {ru: Поставщик}, "+
+		"types: [{kind: external-data-source-dimension-table, reference: "+otherTable+"}], name_in_data_source: Supplier}\n")
+	purchases(root)
+	if message := loadRefused(t, root, "a field of a dimension table of another cube's table"); !strings.Contains(message, "refers to a dimension table of another cube") {
+		t.Fatalf("the error does not say what is wrong: %v", message)
+	}
+	root = metadataProject(t)
+	writeSalesCube(t, root, strings.Replace(salesCubeBody, "    types: [{kind: number, precision: 15, scale: 3}]\n",
+		"    types: [{kind: external-data-source-dimension-table, reference: "+otherTable+"}]\n", 1), goodsDimTableBody)
+	purchases(root)
+	if message := loadRefused(t, root, "a resource of another cube's table"); !strings.Contains(message, "field Количество refers to a dimension table of another cube") {
 		t.Fatalf("the error does not say what is wrong: %v", message)
 	}
 }
@@ -384,7 +412,7 @@ func TestAnEmptyNameInTheSourceIsRefused(t *testing.T) {
 func TestADimensionOfACubeIsOneReferenceToItsDimensionTable(t *testing.T) {
 	t.Parallel()
 	const reference = "    types: [{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]\n    choice:"
-	const refused = "dimension Товар must be typed by one reference to a dimension table of its cube, written out or by a defined type holding it alone"
+	const refused = "dimension Товар must be typed by one reference to a dimension table, written out or by a defined type holding it alone"
 	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
 	gln, goods, both, others := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
 	defined := func(t *testing.T, root string) {
@@ -403,7 +431,7 @@ func TestADimensionOfACubeIsOneReferenceToItsDimensionTable(t *testing.T) {
 		"составной":              {"    types: [{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}, {kind: date}]\n    choice:", refused},
 		"определяемый-строка":    {"    types: [{kind: defined-type, reference: " + gln + "}]\n    choice:", refused},
 		"определяемый составной": {"    types: [{kind: defined-type, reference: " + both + "}]\n    choice:", refused},
-		"определяемый — таблица другого куба": {"    types: [{kind: defined-type, reference: " + others + "}]\n    choice:", refused},
+		"определяемый — таблица другого куба": {"    types: [{kind: defined-type, reference: " + others + "}]\n    choice:", ""},
 		"определяемый-ссылка":                 {"    types: [{kind: defined-type, reference: " + goods + "}]\n    choice:", ""},
 		"ссылка":                              {reference, ""},
 	} {

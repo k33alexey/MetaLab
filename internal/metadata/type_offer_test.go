@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -117,13 +118,16 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		[]string{"▸ОпределяемыйТип"})
 	expected[ExternalFieldChoice] = external
 	expected[ExternalFunctionChoice] = external
+	// A dimension of a cube (snapshots 18, 20): the defined types and the
+	// dimension tables, here none.
+	expected[CubeDimensionChoice] = []string{"▸ОпределяемыйТип"}
 	// The folder of the enumerations of the platform by place (opis,
 	// «Системные перечисления по местам»): 24 in an attribute of a data
 	// processor, a form and a defined type, the three of accounting in a
 	// session parameter.
 	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true,
-		ExternalFieldChoice: true}
+		ExternalFieldChoice: true, CubeDimensionChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -136,9 +140,10 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		if offer.Required != required[place] {
 			t.Errorf("%s: a type required %v, the prototype %v", place, offer.Required, required[place])
 		}
-		// Only the field of a source has no «Составной тип данных»
-		// (snapshots 16, 17, 22; a function has it, 19, 21).
-		if offer.Single != (place == ExternalFieldChoice) {
+		// Only the field of a source and a dimension of a cube have no
+		// «Составной тип данных» (snapshots 16-18, 20, 22; a function has it,
+		// 19, 21).
+		if offer.Single != (place == ExternalFieldChoice || place == CubeDimensionChoice) {
 			t.Errorf("%s: without a composite %v", place, offer.Single)
 		}
 		// The folder holds as many enumerations as the window there, the
@@ -192,7 +197,7 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 			}
 			for _, item := range types {
 				issues := validateTypesIn("types", []Type{item}, at.model)
-				if at.model == placeExternalField {
+				if len(at.sourceReferences) > 0 {
 					issues = validateExternalFieldTypes("types", []Type{item}, at.model)
 				}
 				if at.model == placeSubscriptionSource {
@@ -352,8 +357,9 @@ func names[T any](list []T) []string {
 
 // The window of a field and of a function of a source offers the object
 // tables of every source as «Источник.Таблица» and the dimension tables of
-// every cube of every source as «Источник.Куб.Таблица», and the model takes a
-// field and a function of one source typed by a dimension table of another -
+// every cube of every source as «Источник.Куб.Таблица», that of a dimension of
+// a cube the dimension tables alone, and the model takes a field, a function
+// and a dimension of a cube of one source typed by a dimension table of another -
 // «Проверка конфигурации» takes such a reference (opis of 24.10.2026,
 // vneshnij-istochnik.md, snapshots series-2.531/22-25) - with the note of a
 // reference to another source, and the value of a function of binary data with
@@ -374,6 +380,9 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 	writeExternalTable(t, root, "Бухгалтерия", foreignTable, "Счета", "name_in_data_source: accounts\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
 		"  - {id: "+foreignCodeField+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n"+
 		"  - {id: "+uuid.MustNew().String()+", name: Товар, title: {ru: Товар}, types: "+dimension+", name_in_data_source: goods}\n")
+	writeFile(t, filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Бухгалтерия", ExternalDataSourceCubesDirectory, "Обороты", "object.yaml"),
+		"format: 1\nid: "+uuid.MustNew().String()+"\nname: Обороты\ntitle: {ru: Обороты}\nname_in_data_source: Turnovers\ndimensions:\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: Товар, title: {ru: Товар}, types: "+dimension+"}\n")
 	writeExternalTable(t, root, "Бухгалтерия", uuid.MustNew().String(), "Проводки", "name_in_data_source: entries\ndata_type: non-object\nkey_fields: [Номер]\nfields:\n"+
 		"  - {id: "+uuid.MustNew().String()+", name: Номер, title: {ru: Номер}, types: [{kind: string, length: 10}], name_in_data_source: number}\n")
 	catalog, err := Load(root)
@@ -386,7 +395,8 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 			noted = append(noted, note.Where)
 		}
 	}
-	if want := []string{"external-data-sources Бухгалтерия functions Остаток", "external-data-sources Бухгалтерия tables Счета fields Товар"}; !slices.Equal(slices.Sorted(slices.Values(noted)), want) {
+	if want := []string{"external-data-sources Бухгалтерия cubes Обороты dimensions Товар", "external-data-sources Бухгалтерия functions Остаток",
+		"external-data-sources Бухгалтерия tables Счета fields Товар"}; !slices.Equal(slices.Sorted(slices.Values(noted)), want) {
 		t.Errorf("noted %v, want %v", noted, want)
 	}
 	for _, place := range []TypeChoicePlace{ExternalFieldChoice, ExternalFunctionChoice} {
@@ -404,5 +414,14 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 		if got, want := folders["ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"], []string{"Склад.Продажи.Товары"}; !slices.Equal(got, want) {
 			t.Errorf("%s offers the dimension tables %v, want %v", place, got, want)
 		}
+	}
+	// A dimension of a cube: the dimension tables alone (snapshots 18, 20).
+	offer, _ := catalog.TypeOffer(CubeDimensionChoice)
+	var rows []string
+	for _, row := range offer.Rows {
+		rows = append(rows, row.Name.Russian)
+	}
+	if want := []string{"ОпределяемыйТип", "ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"}; !slices.Equal(rows, want) {
+		t.Errorf("a dimension of a cube offers %v, want %v", rows, want)
 	}
 }

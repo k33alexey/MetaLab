@@ -172,7 +172,7 @@ func init() {
 			"Строка длиннее 1024 у поля внешнего источника; конфигуратор пишет 4294967295 для столбца без предела (mdclasses).",
 			"Длина несётся как записана и читается как неограниченная."},
 		NoteKindInfo{NoteForeignSourceReference,
-			"Поле таблицы или функция внешнего источника ссылается на таблицу или таблицу измерения другого источника: окно типа " +
+			"Поле таблицы, функция или измерение куба внешнего источника ссылается на таблицу или таблицу измерения другого источника: окно типа " +
 				"предлагает таблицы всех источников, «Проверка конфигурации» такую ссылку принимает (опись 24.10.2026).",
 			"Ссылка несётся как записана; соединить две базы ML не может, ссылка ничего не находит."},
 		NoteKindInfo{NoteTextInUndeclaredLanguage,
@@ -990,6 +990,11 @@ func noteForeignSourceReference(catalog *Catalog, note func(where, written strin
 		}
 		for _, function := range source.Functions {
 			foreign("external-data-sources "+source.Name+" functions "+function.Name, function.Types)
+		}
+		for _, cube := range source.Cubes {
+			for _, dimension := range cube.Dimensions {
+				foreign("external-data-sources "+source.Name+" cubes "+cube.Name+" dimensions "+dimension.Name, dimension.Types)
+			}
 		}
 	}
 }

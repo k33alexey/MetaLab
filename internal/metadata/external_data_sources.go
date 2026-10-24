@@ -746,20 +746,24 @@ func (catalog *Catalog) validateExternalDataSources() error {
 		}
 		for _, cube := range source.Cubes {
 			owner := fmt.Sprintf("external data source %s cube %s", source.Name, cube.Name)
-			// A cube is independent of every other cube of its source: its
-			// dimensions and the fields of its dimension tables refer to its
-			// own dimension tables and to no other cube's. Established on the
-			// platform: the configurator offers a dimension of one cube the
-			// dimension tables of that cube alone.
+			// A dimension may refer to a dimension table of any cube of any
+			// source - another source's is noted (validateCubeDimensionType).
+			// The resources and the fields of the dimension tables keep to the
+			// cube's own dimension tables: their editors were not seen
+			// offering another's.
 			own := make(map[uuid.UUID]bool, len(cube.DimensionTables))
 			for _, table := range cube.DimensionTables {
 				own[table.ID] = true
 			}
-			if err := catalog.validateExternalFieldReferences(source, owner, cubeFields(cube), own); err != nil {
+			dimensions, resources := cubeFields(cube)
+			if err := catalog.validateExternalFieldReferences(source, owner, dimensions, nil); err != nil {
+				return err
+			}
+			if err := catalog.validateExternalFieldReferences(source, owner, resources, own); err != nil {
 				return err
 			}
 			for _, dimension := range cube.Dimensions {
-				if err := catalog.validateCubeDimensionType(owner, dimension, own); err != nil {
+				if err := catalog.validateCubeDimensionType(owner, dimension); err != nil {
 					return err
 				}
 			}
@@ -803,18 +807,21 @@ func (catalog *Catalog) validateExternalTableFieldType(owner string, field Exter
 // of a cube gives (opis of the cube, 15.10.2026, docs/block-00/kub.md): a
 // reference to a dimension table or a defined type, one of them - no simple
 // type and no «Составной тип данных»; and «Проверка конфигурации» refuses a
-// defined type that is not such a reference, «Недопустимый тип». So the type
-// is one reference to a dimension table of the dimension's own cube, written
-// out or by a defined type holding it alone. Every dimension of the exports is
-// typed so.
-func (catalog *Catalog) validateCubeDimensionType(owner string, dimension ExternalCubeDimension, own map[uuid.UUID]bool) error {
+// defined type that is not such a reference, «Недопустимый тип». The editor
+// offers the dimension tables of every cube of every source, and the check
+// takes a dimension typed by another cube's or another source's (opis of
+// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/18, 20, 23-25).
+// So the type is one reference to a dimension table, written out or by a
+// defined type holding it alone; that the table is there the resolution of
+// the reference says (validateExternalFieldReferences). Every dimension of the
+// exports refers to a dimension table of its own cube.
+func (catalog *Catalog) validateCubeDimensionType(owner string, dimension ExternalCubeDimension) error {
 	expanded, err := catalog.expandTypes(dimension.Types, nil)
 	if err != nil {
 		return fmt.Errorf("%s dimension %s: %w", owner, dimension.Name, err)
 	}
-	if len(dimension.Types) != 1 || len(expanded) != 1 || expanded[0].Kind != ExternalDimensionTableType ||
-		expanded[0].Reference == nil || !own[*expanded[0].Reference] {
-		return fmt.Errorf("%s dimension %s must be typed by one reference to a dimension table of its cube, written out or by a defined type holding it alone: the designer gives a dimension no other type",
+	if len(dimension.Types) != 1 || len(expanded) != 1 || expanded[0].Kind != ExternalDimensionTableType || expanded[0].Reference == nil {
+		return fmt.Errorf("%s dimension %s must be typed by one reference to a dimension table, written out or by a defined type holding it alone: the designer gives a dimension no other type",
 			owner, dimension.Name)
 	}
 	return nil
@@ -859,14 +866,14 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 				}
 			case ExternalDimensionTableType:
 				if !dimensionTables[*item.Reference] {
-					// The editor of the type of a field of a table and of a
-					// function offers the dimension tables of every cube of
-					// every source, and «Проверка конфигурации» takes a
-					// reference to another source's (opis of 24.10.2026,
-					// vneshnij-istochnik.md, snapshots series-2.531/22-25):
-					// carried, joins nothing, a note - as a reference to a
-					// table of another source. The fields of a cube stay
-					// within it (ownCube).
+					// The editor of the type of a field of a table, of a
+					// function and of a dimension of a cube offers the
+					// dimension tables of every cube of every source, and
+					// «Проверка конфигурации» takes a reference to another
+					// source's (opis of 24.10.2026, vneshnij-istochnik.md,
+					// snapshots series-2.531/18-25): carried, joins nothing,
+					// a note - as a reference to a table of another source.
+					// The other fields of a cube stay within it (ownCube).
 					if _, elsewhere := catalog.externalDimensionTableByID[*item.Reference]; elsewhere {
 						if ownCube == nil {
 							continue

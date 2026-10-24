@@ -286,15 +286,14 @@ func (cube ExternalCube) resourceAttributes() []Attribute {
 
 // cubeFields is the dimensions and the resources of a cube as fields of a
 // source, for the resolution of what their types refer to.
-func cubeFields(cube ExternalCube) []ExternalField {
-	fields := make([]ExternalField, 0, len(cube.Dimensions)+len(cube.Resources))
+func cubeFields(cube ExternalCube) (dimensions, resources []ExternalField) {
 	for _, dimension := range cube.Dimensions {
-		fields = append(fields, ExternalField{Attribute: dimension.Attribute})
+		dimensions = append(dimensions, ExternalField{Attribute: dimension.Attribute})
 	}
 	for _, resource := range cube.Resources {
-		fields = append(fields, ExternalField{Attribute: resource.Attribute, NameInDataSource: resource.NameInDataSource})
+		resources = append(resources, ExternalField{Attribute: resource.Attribute, NameInDataSource: resource.NameInDataSource})
 	}
-	return fields
+	return dimensions, resources
 }
 
 // validateRequiredNameInDataSource checks a name of the other database that has
