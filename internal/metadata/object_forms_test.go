@@ -209,9 +209,8 @@ forms: {list: "Форма списка"}
 }
 
 // Every role of form the prototype gives a hierarchical object has to survive
-// the trip. A catalog has ten: the object, the list and the choice, the folder
-// and the choice of a folder, and an auxiliary form beside each of the five.
-// A role nobody carries over is a form the platform quietly generates instead
+// the trip. A catalog has five: the object, the list and the choice, the folder
+// and the choice of a folder. A role nobody carries over is a form the platform quietly generates instead
 // of opening what the developer drew.
 func TestHierarchicalObjectKeepsEveryRoleOfFormItHas(t *testing.T) {
 	t.Parallel()
@@ -221,11 +220,6 @@ func TestHierarchicalObjectKeepsEveryRoleOfFormItHas(t *testing.T) {
 		{"choice", "ФормаВыбора"},
 		{"folder", "ФормаГруппы"},
 		{"folder_choice", "ФормаВыбораГруппы"},
-		{"auxiliary_object", "ДругаяФормаЭлемента"},
-		{"auxiliary_list", "ДругаяФормаСписка"},
-		{"auxiliary_choice", "ДругаяФормаВыбора"},
-		{"auxiliary_folder", "ДругаяФормаГруппы"},
-		{"auxiliary_folder_choice", "ДругаяФормаВыбораГруппы"},
 	}
 	root := metadataProject(t)
 	body := `format: 1
@@ -261,9 +255,51 @@ forms:
 	if object.Forms.Folder != "ФормаГруппы" || object.Forms.FolderChoice != "ФормаВыбораГруппы" {
 		t.Fatalf("the folder roles were lost: %+v", object.Forms)
 	}
-	if object.Forms.AuxiliaryObject != "ДругаяФормаЭлемента" ||
-		object.Forms.AuxiliaryFolderChoice != "ДругаяФормаВыбораГруппы" {
-		t.Fatalf("the auxiliary roles were lost: %+v", object.Forms)
+}
+
+// An auxiliary form is a form of the ordinary application, which ML does not
+// have (METADATA-OBJECTS.md, «Формы»): the prototype edits it only in the mode
+// of managed and ordinary application. So no kind reads one, and a description
+// naming one is not read at all rather than read without it. The keys are
+// written out here from the roles the exports carry (Auxiliary*Form of the
+// property index), not taken from the model.
+func TestNoKindReadsAnAuxiliaryForm(t *testing.T) {
+	t.Parallel()
+	for kind, keys := range map[Kind][]string{
+		CatalogKind:                    {"auxiliary_object", "auxiliary_list", "auxiliary_choice", "auxiliary_folder", "auxiliary_folder_choice"},
+		ChartOfCharacteristicTypesKind: {"auxiliary_object", "auxiliary_list", "auxiliary_choice", "auxiliary_folder", "auxiliary_folder_choice"},
+		DocumentKind:                   {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		ExchangePlanKind:               {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		ChartOfAccountsKind:            {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		ChartOfCalculationTypesKind:    {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		BusinessProcessKind:            {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		TaskKind:                       {"auxiliary_object", "auxiliary_list", "auxiliary_choice"},
+		EnumerationKind:                {"auxiliary_list", "auxiliary_choice"},
+		InformationRegisterKind:        {"auxiliary_list", "auxiliary_record"},
+		AccumulationRegisterKind:       {"auxiliary_list"},
+		AccountingRegisterKind:         {"auxiliary_list"},
+		CalculationRegisterKind:        {"auxiliary_list"},
+		ReportKind:                     {"auxiliary", "auxiliary_settings"},
+		DataProcessorKind:              {"auxiliary"},
+		DocumentJournalKind:            {"auxiliary"},
+		FilterCriterionKind:            {"auxiliary"},
+		SettingsStorageKind:            {"auxiliary_save", "auxiliary_load"},
+	} {
+		for _, key := range keys {
+			t.Run(string(kind)+"/"+key, func(t *testing.T) {
+				t.Parallel()
+				body := "format: 1\nid: " + formCatalog + "\nname: Объект\ntitle: {ru: Объект}\n" +
+					"forms: {" + key + ": ДругаяФорма}\n"
+				_, described, err := DecodeSource(filepath.ToSlash(filepath.Join("metadata", string(kind), "Объект", "object.yaml")),
+					strings.NewReader(body), nil, metadataConfiguration())
+				if !described {
+					t.Fatalf("the description of %s was not read as one", kind)
+				}
+				if err == nil || !strings.Contains(err.Error(), "field "+key+" not found") {
+					t.Fatalf("an auxiliary form %s of %s was not refused by its key: %v", key, kind, err)
+				}
+			})
+		}
 	}
 }
 
@@ -279,13 +315,13 @@ title: {ru: Пользователи}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 hierarchy: {enabled: true, kind: folders-and-items}
-forms: {auxiliary_folder_choice: ДругаяФормаВыбораГруппы}
+forms: {folder_choice: ФормаВыбораГруппы}
 `)
 	_, err := Load(root)
 	if err == nil {
 		t.Fatal("a role naming a form that is not there was accepted")
 	}
-	if !strings.Contains(err.Error(), "names auxiliary folder choice form ДругаяФормаВыбораГруппы, which it does not keep") {
+	if !strings.Contains(err.Error(), "names folder choice form ФормаВыбораГруппы, which it does not keep") {
 		t.Fatalf("refused for another reason: %v", err)
 	}
 }
@@ -309,14 +345,14 @@ title: {ru: Пользователи}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 `+hierarchy+`
-forms: {folder: ФормаГруппы, auxiliary_folder: ДругаяФормаГруппы}
+forms: {folder: ФормаГруппы, folder_choice: ФормаВыбораГруппы}
 `), metadataConfiguration())
 			if err == nil {
 				t.Fatalf("%s: a folder form on an object with no folders was accepted", name)
 			}
 			for _, want := range []string{
 				"forms.folder needs a hierarchy of folders and items",
-				"forms.auxiliary_folder needs a hierarchy of folders and items",
+				"forms.folder_choice needs a hierarchy of folders and items",
 			} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("%s: %q missing from %v", name, want, err)
@@ -345,8 +381,8 @@ forms: {folder: ФормаГруппы}
 	}
 }
 
-// A hierarchical object writes its roles as one flat set: the five every
-// object has and the four a folder brings stand side by side under forms, with
+// A hierarchical object writes its roles as one flat set: the three every
+// object has and the two a folder brings stand side by side under forms, with
 // no group of their own. That matters because Studio saves an edited catalog by
 // writing the description back, and a role that reads but does not write is a
 // form lost on the first save.
@@ -359,7 +395,7 @@ title: {ru: Пользователи}
 code: {type: string, length: 9, auto: true}
 description_length: 150
 hierarchy: {enabled: true, kind: folders-and-items}
-forms: {object: ФормаЭлемента, folder: ФормаГруппы, auxiliary_folder_choice: ДругаяФормаВыбораГруппы}
+forms: {object: ФормаЭлемента, folder: ФормаГруппы, folder_choice: ФормаВыбораГруппы}
 `), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
@@ -383,8 +419,7 @@ forms: {object: ФормаЭлемента, folder: ФормаГруппы, auxi
 
 // A chart of characteristic types is hierarchical the same way a catalog is, so
 // it has the same folder roles - and the kinds that are not keep the roles they
-// do have. A document has no folders and does have an auxiliary form beside
-// each of its three.
+// do have. A document has no folders and does have its three.
 func TestFolderRolesGoWithTheKindsThatHaveFolders(t *testing.T) {
 	t.Parallel()
 	chart, err := DecodeChartOfCharacteristicTypes("object.yaml", strings.NewReader(`format: 1
@@ -395,12 +430,12 @@ code: {type: string, length: 9, auto: true}
 description_length: 150
 value_type: [{kind: string, length: 50}]
 hierarchy: {enabled: true, kind: folders-and-items}
-forms: {folder: ФормаГруппы, auxiliary_folder: ДругаяФормаГруппы}
+forms: {folder: ФормаГруппы, folder_choice: ФормаВыбораГруппы}
 `), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chart.Forms.Folder != "ФормаГруппы" || chart.Forms.AuxiliaryFolder != "ДругаяФормаГруппы" {
+	if chart.Forms.Folder != "ФормаГруппы" || chart.Forms.FolderChoice != "ФормаВыбораГруппы" {
 		t.Fatalf("the folder roles of a chart of characteristic types were lost: %+v", chart.Forms)
 	}
 	document, err := DecodeDocument("object.yaml", strings.NewReader(`format: 1
@@ -408,13 +443,13 @@ id: `+formCatalog+`
 name: Заказ
 title: {ru: Заказ}
 number: {type: string, length: 9, auto: true, periodicity: year}
-forms: {auxiliary_object: ДругаяФормаДокумента, auxiliary_list: ДругаяФормаСписка}
+forms: {object: ФормаДокумента, list: ФормаСписка, choice: ФормаВыбора}
 `), metadataConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if document.Forms.AuxiliaryObject != "ДругаяФормаДокумента" || document.Forms.AuxiliaryList != "ДругаяФормаСписка" {
-		t.Fatalf("the auxiliary roles of a document were lost: %+v", document.Forms)
+	if document.Forms.Object != "ФормаДокумента" || document.Forms.Choice != "ФормаВыбора" {
+		t.Fatalf("the roles of a document were lost: %+v", document.Forms)
 	}
 }
 
@@ -518,7 +553,7 @@ resources: [{id: `+formPick+`, name: Количество, title: {ru: Коли�
 `), metadataConfiguration())
 				return err
 			},
-			accept: "forms: {list: ФормаСписка, auxiliary_list: ДругаяФормаСписка}",
+			accept: "forms: {list: ФормаСписка}",
 			refuse: "forms: {object: ФормаЗаписи}",
 		},
 		"регистр сведений открывает ещё и запись": {
@@ -535,10 +570,10 @@ resources: [{id: `+formPick+`, name: Цена, title: {ru: Цена}, types: [{k
 `), metadataConfiguration())
 				return err
 			},
-			accept: "forms: {list: ФормаСписка, record: ФормаЗаписи, auxiliary_record: ДругаяФормаЗаписи}",
+			accept: "forms: {list: ФормаСписка, record: ФормаЗаписи}",
 			refuse: "forms: {choice: ФормаВыбора}",
 		},
-		"у отчёта нет вспомогательной формы варианта": {
+		"отчёт открывает себя, настройки и вариант": {
 			decode: func(body string) error {
 				_, err := DecodeReport("object.yaml", strings.NewReader(`format: 1
 id: `+reportID+`
@@ -548,9 +583,8 @@ title: {ru: Остатки}
 `), metadataConfiguration())
 				return err
 			},
-			accept: "forms: {main: ФормаОтчета, settings: ФормаНастроек, variant: ФормаВарианта, " +
-				"auxiliary: ДругаяФорма, auxiliary_settings: ДругаяФормаНастроек}",
-			refuse: "forms: {auxiliary_variant: ДругаяФормаВарианта}",
+			accept: "forms: {main: ФормаОтчета, settings: ФормаНастроек, variant: ФормаВарианта}",
+			refuse: "forms: {list: ФормаСписка}",
 		},
 		"у обработки одна роль": {
 			decode: func(body string) error {
@@ -562,7 +596,7 @@ title: {ru: Загрузка цен}
 `), metadataConfiguration())
 				return err
 			},
-			accept: "forms: {main: ФормаОбработки, auxiliary: ДругаяФорма}",
+			accept: "forms: {main: ФормаОбработки}",
 			refuse: "forms: {list: ФормаСписка}",
 		},
 	} {

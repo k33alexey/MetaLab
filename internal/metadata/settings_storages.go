@@ -15,26 +15,16 @@ import (
 const SettingsStorageKind = kinds.SettingsStorage
 
 // SettingsStorageForms are the two things a user does with saved settings:
-// save the current ones under a name, and pick a saved one to load. Each has
-// an auxiliary form beside it.
-//
-// Beside, not behind: the platform reaches for the auxiliary form exactly when
-// the main one is missing or does not fit the client it has to be shown in, so
-// an auxiliary form named with no main form beside it is the ordinary case and
-// not a mistake.
+// save the current ones under a name, and pick a saved one to load.
 type SettingsStorageForms struct {
-	Save          string `yaml:"save,omitempty" json:"save,omitempty"`
-	Load          string `yaml:"load,omitempty" json:"load,omitempty"`
-	AuxiliarySave string `yaml:"auxiliary_save,omitempty" json:"auxiliarySave,omitempty"`
-	AuxiliaryLoad string `yaml:"auxiliary_load,omitempty" json:"auxiliaryLoad,omitempty"`
+	Save string `yaml:"save,omitempty" json:"save,omitempty"`
+	Load string `yaml:"load,omitempty" json:"load,omitempty"`
 }
 
 func (forms SettingsStorageForms) slots() []formSlot {
 	return []formSlot{
 		{"forms.save", forms.Save},
 		{"forms.load", forms.Load},
-		{"forms.auxiliary_save", forms.AuxiliarySave},
-		{"forms.auxiliary_load", forms.AuxiliaryLoad},
 	}
 }
 

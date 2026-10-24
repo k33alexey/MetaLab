@@ -16,8 +16,6 @@ const (
 	enumValueTwo   = "cf000000-0000-4000-8000-000000000011"
 	enumListForm   = "cf000000-0000-4000-8000-000000000021"
 	enumChoiceForm = "cf000000-0000-4000-8000-000000000022"
-	enumAuxList    = "cf000000-0000-4000-8000-000000000023"
-	enumAuxChoice  = "cf000000-0000-4000-8000-000000000024"
 	enumCommand    = "cf000000-0000-4000-8000-000000000030"
 	enumTemplate   = "cf000000-0000-4000-8000-000000000040"
 )
@@ -43,8 +41,6 @@ use_standard_commands: true
 forms:
   list: ФормаСписка
   choice: ФормаВыбора
-  auxiliary_list: ВспомогательныйСписок
-  auxiliary_choice: ВспомогательныйВыбор
 values:
   - {id: `+enumValueOne+`, name: Новый, title: {ru: Новый}, comment: Только что создан}
   - {id: `+enumValueTwo+`, name: Отгружен, title: {ru: Отгружен}}
@@ -60,7 +56,6 @@ templates:
 	writeCommandModule(t, root, EnumerationKind, "СтатусыЗаказа", "ОткрытьСписок")
 	for form, id := range map[string]string{
 		"ФормаСписка": enumListForm, "ФормаВыбора": enumChoiceForm,
-		"ВспомогательныйСписок": enumAuxList, "ВспомогательныйВыбор": enumAuxChoice,
 	} {
 		writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", form, id)
 	}
@@ -87,8 +82,6 @@ templates:
 		t.Fatalf("whether the platform offers its own commands was lost: %+v", enumeration)
 	case enumeration.Forms.List == "" || enumeration.Forms.Choice == "":
 		t.Fatalf("the forms were lost: %+v", enumeration.Forms)
-	case enumeration.Forms.AuxiliaryList == "" || enumeration.Forms.AuxiliaryChoice == "":
-		t.Fatalf("the auxiliary forms were lost: %+v", enumeration.Forms)
 	case len(enumeration.Commands) != 1 || len(enumeration.Templates) != 1:
 		t.Fatalf("the commands or the templates were lost: %+v", enumeration)
 	case enumeration.Values[0].Comment != "Только что создан":
@@ -130,13 +123,13 @@ values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 id: `+enumObject+`
 name: СтатусыЗаказа
 title: {ru: Статусы заказа}
-forms: {auxiliary_choice: ВспомогательныйВыбор}
+forms: {choice: ФормаВыбора}
 values: [{id: `+enumValueOne+`, name: Новый, title: {ru: Новый}}]
 `)
 	if _, err := Load(root); err == nil {
 		t.Fatal("a form that does not exist was accepted")
 	}
-	writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", "ВспомогательныйВыбор", enumAuxChoice)
+	writeObjectForm(t, root, EnumerationKind, "СтатусыЗаказа", "ФормаВыбора", enumChoiceForm)
 	if _, err := Load(root); err != nil {
 		t.Fatal(err)
 	}
@@ -150,8 +143,8 @@ func TestBrokenEnumerationsAreRefused(t *testing.T) {
 			"choice_mode must be both-ways, from-form or quick-choice"},
 		"история выбора не существует": {"choice_history_on_input: иногда",
 			"choice_history_on_input must be auto or dont-use"},
-		"имя формы не имя": {"forms: {auxiliary_list: \"Вспомогательный список\"}",
-			"forms.auxiliary_list must be the name of a form"},
+		"имя формы не имя": {"forms: {list: \"Форма списка\"}",
+			"forms.list must be the name of a form"},
 		"вида макета не существует": {"templates:\n  - {id: " + enumTemplate +
 			", name: Макет, title: {ru: Макет}, kind: слайды}",
 			"templates[0].kind is not a kind of template"},

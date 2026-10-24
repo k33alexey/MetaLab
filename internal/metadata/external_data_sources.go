@@ -97,8 +97,8 @@ type ExternalDataSourceDefinition struct {
 	Cubes  []ExternalCube  `yaml:"-" json:"cubes,omitempty"`
 }
 
-// ExternalTableForms are the default forms of a table. A table has no
-// auxiliary forms, unlike a catalog: the help lists four and only four.
+// ExternalTableForms are the default forms of a table: the help lists four
+// and only four.
 type ExternalTableForms struct {
 	Object string `yaml:"object,omitempty" json:"object,omitempty"`
 	Record string `yaml:"record,omitempty" json:"record,omitempty"`

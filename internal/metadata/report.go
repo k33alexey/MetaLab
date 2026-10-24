@@ -37,17 +37,11 @@ type ReportDefinition struct {
 }
 
 // ReportForms are the roles a report shows itself through: the report itself,
-// its settings and one of its variants. The first two have an auxiliary form
-// beside them; the variant has none, and that asymmetry is the platform's own -
-// the syntax assistant lists an auxiliary form for the report and for the
-// settings, and none for the variant.
+// its settings and one of its variants.
 type ReportForms struct {
 	Main     string `yaml:"main,omitempty" json:"main,omitempty"`
 	Settings string `yaml:"settings,omitempty" json:"settings,omitempty"`
 	Variant  string `yaml:"variant,omitempty" json:"variant,omitempty"`
-
-	Auxiliary         string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
-	AuxiliarySettings string `yaml:"auxiliary_settings,omitempty" json:"auxiliarySettings,omitempty"`
 }
 
 func (forms ReportForms) slots() []formSlot {
@@ -55,8 +49,6 @@ func (forms ReportForms) slots() []formSlot {
 		{"forms.main", forms.Main},
 		{"forms.settings", forms.Settings},
 		{"forms.variant", forms.Variant},
-		{"forms.auxiliary", forms.Auxiliary},
-		{"forms.auxiliary_settings", forms.AuxiliarySettings},
 	}
 }
 

@@ -154,10 +154,6 @@ type Project struct {
 	//
 	// The settings form of a dynamic list is ours to open and works.
 	DefaultDynamicListSettingsForm *uuid.UUID `yaml:"default_dynamic_list_settings_form,omitempty" json:"defaultDynamicListSettingsForm,omitempty"`
-	// AuxiliaryConstantsForm is what opens when the main constants form is not
-	// named or cannot be used. A slot beside a main one is how the prototype
-	// describes every other form, and the root is no exception.
-	AuxiliaryConstantsForm *uuid.UUID `yaml:"auxiliary_constants_form,omitempty" json:"auxiliaryConstantsForm,omitempty"`
 	// The three data history forms are carried and never opened: data history
 	// is the prototype's mechanism, transferred and not implemented, and what
 	// answers the question it was switched on for is the change history of ML.
@@ -556,7 +552,6 @@ func (p Project) Validate() error {
 		"form_data_settings_storage":             p.FormDataSettingsStorage,
 		"url_external_data_storage":              p.URLExternalDataStorage,
 		"default_dynamic_list_settings_form":     p.DefaultDynamicListSettingsForm,
-		"auxiliary_constants_form":               p.AuxiliaryConstantsForm,
 		"data_history_changes_form":              p.DataHistoryChangesForm,
 		"data_history_version_form":              p.DataHistoryVersionForm,
 		"data_history_version_difference_form":   p.DataHistoryVersionDifferenceForm,

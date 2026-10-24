@@ -23,29 +23,23 @@ type formSlot struct {
 	form string
 }
 
-// role is what a message about this slot calls it: forms.auxiliary_list is the
-// auxiliary list form. Derived rather than written down, so a role added to a
+// role is what a message about this slot calls it: forms.folder_choice is the
+// folder choice form. Derived rather than written down, so a role added to a
 // set is named the same way in both places by construction.
 func (slot formSlot) role() string {
 	return strings.ReplaceAll(strings.TrimPrefix(slot.key, "forms."), "_", " ") + " form"
 }
 
 // ObjectForms are the roles of form every reference object has: the object
-// itself, its list, and choosing one out of that list. Each has an auxiliary
-// form beside it.
+// itself, its list, and choosing one out of that list.
 //
-// An auxiliary form is not a second main form, and it does not depend on one:
-// the platform opens it exactly when the main form is missing or does not fit
-// the client it has to be shown in. So an auxiliary form named alone is a
-// complete answer, not half of one.
+// Every role here and below is a main form. The auxiliary form the prototype
+// keeps beside each is a form of the ordinary application, which ML does not
+// have (METADATA-OBJECTS.md, «Формы»): a description naming one is not read.
 type ObjectForms struct {
 	Object string `yaml:"object,omitempty" json:"object,omitempty"`
 	List   string `yaml:"list,omitempty" json:"list,omitempty"`
 	Choice string `yaml:"choice,omitempty" json:"choice,omitempty"`
-
-	AuxiliaryObject string `yaml:"auxiliary_object,omitempty" json:"auxiliaryObject,omitempty"`
-	AuxiliaryList   string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
-	AuxiliaryChoice string `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
 }
 
 func (forms ObjectForms) slots() []formSlot {
@@ -53,16 +47,12 @@ func (forms ObjectForms) slots() []formSlot {
 		{"forms.object", forms.Object},
 		{"forms.list", forms.List},
 		{"forms.choice", forms.Choice},
-		{"forms.auxiliary_object", forms.AuxiliaryObject},
-		{"forms.auxiliary_list", forms.AuxiliaryList},
-		{"forms.auxiliary_choice", forms.AuxiliaryChoice},
 	}
 }
 
 // HierarchicalObjectForms are the roles of an object whose hierarchy has
 // folders. A folder is edited and chosen apart from an item - it holds almost
-// none of the attributes an item holds - so it brings two roles of its own,
-// each with its auxiliary form.
+// none of the attributes an item holds - so it brings two roles of its own.
 //
 // Only a hierarchy of folders and items brings them. An object with no
 // hierarchy, or one whose hierarchy is of items alone, has no folder to open a
@@ -73,18 +63,10 @@ type HierarchicalObjectForms struct {
 
 	Folder       string `yaml:"folder,omitempty" json:"folder,omitempty"`
 	FolderChoice string `yaml:"folder_choice,omitempty" json:"folderChoice,omitempty"`
-
-	AuxiliaryFolder       string `yaml:"auxiliary_folder,omitempty" json:"auxiliaryFolder,omitempty"`
-	AuxiliaryFolderChoice string `yaml:"auxiliary_folder_choice,omitempty" json:"auxiliaryFolderChoice,omitempty"`
 }
 
 func (forms HierarchicalObjectForms) slots() []formSlot {
-	return append(forms.ObjectForms.slots(),
-		formSlot{"forms.folder", forms.Folder},
-		formSlot{"forms.folder_choice", forms.FolderChoice},
-		formSlot{"forms.auxiliary_folder", forms.AuxiliaryFolder},
-		formSlot{"forms.auxiliary_folder_choice", forms.AuxiliaryFolderChoice},
-	)
+	return append(forms.ObjectForms.slots(), forms.folderSlots()...)
 }
 
 // folderSlots are the roles a folder brings, apart from the ones every object
@@ -93,8 +75,6 @@ func (forms HierarchicalObjectForms) folderSlots() []formSlot {
 	return []formSlot{
 		{"forms.folder", forms.Folder},
 		{"forms.folder_choice", forms.FolderChoice},
-		{"forms.auxiliary_folder", forms.AuxiliaryFolder},
-		{"forms.auxiliary_folder_choice", forms.AuxiliaryFolderChoice},
 	}
 }
 
@@ -186,18 +166,13 @@ func validateFolderForms(forms HierarchicalObjectForms, hierarchy Hierarchy) []s
 
 // RegisterForms is the role set of a register of totals: it shows a list of its
 // records and nothing else. A record of one is not opened on its own - it is
-// written by whatever moves the register - so there is no role for it, and the
-// list has its auxiliary form beside it like any main form.
+// written by whatever moves the register - so there is no role for it.
 type RegisterForms struct {
-	List          string `yaml:"list,omitempty" json:"list,omitempty"`
-	AuxiliaryList string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
+	List string `yaml:"list,omitempty" json:"list,omitempty"`
 }
 
 func (forms RegisterForms) slots() []formSlot {
-	return []formSlot{
-		{"forms.list", forms.List},
-		{"forms.auxiliary_list", forms.AuxiliaryList},
-	}
+	return []formSlot{{"forms.list", forms.List}}
 }
 
 // InformationRegisterForms is the role set of a register of information. It has
@@ -206,30 +181,23 @@ func (forms RegisterForms) slots() []formSlot {
 type InformationRegisterForms struct {
 	List   string `yaml:"list,omitempty" json:"list,omitempty"`
 	Record string `yaml:"record,omitempty" json:"record,omitempty"`
-
-	AuxiliaryList   string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
-	AuxiliaryRecord string `yaml:"auxiliary_record,omitempty" json:"auxiliaryRecord,omitempty"`
 }
 
 func (forms InformationRegisterForms) slots() []formSlot {
 	return []formSlot{
 		{"forms.list", forms.List},
 		{"forms.record", forms.Record},
-		{"forms.auxiliary_list", forms.AuxiliaryList},
-		{"forms.auxiliary_record", forms.AuxiliaryRecord},
 	}
 }
 
 // SingleRoleForms is the role set of a kind that opens one thing and nothing
 // else: a document journal opens its list, a filter criterion opens what it
 // found, a data processor opens itself. There is no second role to tell the
-// first one apart from, so it is just the main form, with its auxiliary beside
-// it.
+// first one apart from, so it is just the main form.
 type SingleRoleForms struct {
-	Main      string `yaml:"main,omitempty" json:"main,omitempty"`
-	Auxiliary string `yaml:"auxiliary,omitempty" json:"auxiliary,omitempty"`
+	Main string `yaml:"main,omitempty" json:"main,omitempty"`
 }
 
 func (forms SingleRoleForms) slots() []formSlot {
-	return []formSlot{{"forms.main", forms.Main}, {"forms.auxiliary", forms.Auxiliary}}
+	return []formSlot{{"forms.main", forms.Main}}
 }

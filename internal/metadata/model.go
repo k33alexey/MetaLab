@@ -392,22 +392,15 @@ const (
 // EnumerationForms are the forms an enumeration shows itself through. It has
 // no form of a single value: a value is not edited, it is written by the
 // developer and only ever chosen.
-//
-// Each of the two has an auxiliary form beside it - a second list or a second
-// choice form, used where the main one does not fit.
 type EnumerationForms struct {
-	List            string `yaml:"list,omitempty" json:"list,omitempty"`
-	Choice          string `yaml:"choice,omitempty" json:"choice,omitempty"`
-	AuxiliaryList   string `yaml:"auxiliary_list,omitempty" json:"auxiliaryList,omitempty"`
-	AuxiliaryChoice string `yaml:"auxiliary_choice,omitempty" json:"auxiliaryChoice,omitempty"`
+	List   string `yaml:"list,omitempty" json:"list,omitempty"`
+	Choice string `yaml:"choice,omitempty" json:"choice,omitempty"`
 }
 
 func (forms EnumerationForms) slots() []formSlot {
 	return []formSlot{
 		{"forms.list", forms.List},
 		{"forms.choice", forms.Choice},
-		{"forms.auxiliary_list", forms.AuxiliaryList},
-		{"forms.auxiliary_choice", forms.AuxiliaryChoice},
 	}
 }
 

@@ -143,7 +143,6 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 		{"constants", configuration.DefaultConstantsForm},
 		{"full-text search", configuration.DefaultSearchForm},
 		{"dynamic list settings", configuration.DefaultDynamicListSettingsForm},
-		{"constants, when the main form cannot be used", configuration.AuxiliaryConstantsForm},
 		{"data history changes", configuration.DataHistoryChangesForm},
 		{"one data history version", configuration.DataHistoryVersionForm},
 		{"the difference between data history versions", configuration.DataHistoryVersionDifferenceForm},

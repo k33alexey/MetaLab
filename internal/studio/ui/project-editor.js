@@ -246,10 +246,8 @@ function createProjectEditor(host, onChange) {
     forms.append(formField('Форма констант', 'defaultConstantsForm'));
     forms.append(formField('Форма поиска', 'defaultSearchForm'));
     forms.append(formField('Форма настроек динамического списка', 'defaultDynamicListSettingsForm'));
-    forms.append(formField('Вспомогательная форма констант', 'auxiliaryConstantsForm'));
     forms.append(note('Все они — общие формы: они не принадлежат ни одному объекту, поэтому корень и '
-      + 'может выдать их всем объектам сразу. Вспомогательная форма констант открывается тогда, когда '
-      + 'основная не задана или не подходит.'));
+      + 'может выдать их всем объектам сразу.'));
     forms.append(formField('История данных: изменения', 'dataHistoryChangesForm'));
     forms.append(formField('История данных: версия', 'dataHistoryVersionForm'));
     forms.append(formField('История данных: различия версий', 'dataHistoryVersionDifferenceForm'));

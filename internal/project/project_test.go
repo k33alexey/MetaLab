@@ -843,6 +843,32 @@ languages:
 	}
 }
 
+// The auxiliary constants form is a form of the ordinary application, like the
+// auxiliary forms of every kind (METADATA-OBJECTS.md, «Формы»), and is not
+// carried. A root naming it is refused by the key. Defect caught: the root
+// kept a form nothing in ML opens, offered in Studio as if it chose one.
+func TestRootRefusesTheAuxiliaryConstantsForm(t *testing.T) {
+	t.Parallel()
+
+	const root = `format: 1
+id: 018f1f72-3b4c-7d6e-8f90-123456789abc
+name: SalesDemo
+title:
+  ru: Продажи и склад
+default_language: ru
+languages:
+  - id: 018f1f72-3b4c-7d6e-8f90-000000000001
+    name: Русский
+    title:
+      ru: Русский
+    code: ru
+`
+	_, err := Decode(strings.NewReader(root + "auxiliary_constants_form: 018f1f72-3b4c-7d6e-8f90-000000000090\n"))
+	if err == nil || !strings.Contains(err.Error(), "field auxiliary_constants_form not found") {
+		t.Fatalf("the root naming the auxiliary constants form was read: %v", err)
+	}
+}
+
 // A language is an object of the configuration, and its synonym is localized
 // like every other: the list of languages is exactly the place where a reader
 // sees two of them at once.

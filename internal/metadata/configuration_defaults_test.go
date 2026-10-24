@@ -331,9 +331,6 @@ func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 		"форма настроек динамического списка": func(configuration *project.Project) {
 			configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsStranger)
 		},
-		"вспомогательная форма констант": func(configuration *project.Project) {
-			configuration.AuxiliaryConstantsForm = mustParse(t, defaultsStranger)
-		},
 		"форма изменений истории данных": func(configuration *project.Project) {
 			configuration.DataHistoryChangesForm = mustParse(t, defaultsStranger)
 		},
@@ -357,12 +354,11 @@ func TestRemainingConfigurationReferencesAreResolved(t *testing.T) {
 		})
 	}
 
-	// All seven at once, each naming what is actually there.
+	// All six at once, each naming what is actually there.
 	root := defaultsProject(t)
 	saveDefaults(t, root, func(configuration *project.Project) {
 		configuration.URLExternalDataStorage = mustParse(t, defaultsFormData)
 		configuration.DefaultDynamicListSettingsForm = mustParse(t, defaultsReportForm)
-		configuration.AuxiliaryConstantsForm = mustParse(t, defaultsConstantsForm)
 		configuration.DataHistoryChangesForm = mustParse(t, defaultsSettingsForm)
 		configuration.DataHistoryVersionForm = mustParse(t, defaultsVariantForm)
 		configuration.DataHistoryVersionDifferenceForm = mustParse(t, defaultsSearchForm)
