@@ -401,14 +401,15 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"its field":             part(grant(cmpAccounts, PermissionRead), "extdimensiontypes.turnoversonly", PermissionEdit),
 		"a competing kind":      part(grant(cmpCalculationTypes, PermissionRead), "leadingcalculationtypes.calculationtype", PermissionView),
 		"a recalculation":       grant(cmpRecalculation, PermissionRead, PermissionUpdate),
+		// No export writes it; the page «Права» of its «Дополнительно» gives
+		// both (block-00/kub.md).
+		"a function of a source": grant(cmpExternalFunction, PermissionUse, PermissionView),
 	}
 	noted := map[string]ObjectPermission{
 		"an enumeration": grant(cmpEnumeration, PermissionView),
 		// The window gives the viewing of an enumeration's command, no export
 		// writes it; the object is noted, not the right on its part as well.
 		"a command of an enumeration": part(grant(cmpEnumeration), cmpEnumCommand, PermissionView),
-		// Offered by the window of a role, written by no export (block-00/rol).
-		"a function of a source": grant(cmpExternalFunction, PermissionUse, PermissionView),
 	}
 	deny := func(permission ObjectPermission, rights ...PermissionOperation) ObjectPermission {
 		permission.Denied = append(permission.Denied, rights...)

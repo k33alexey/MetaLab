@@ -161,6 +161,14 @@ func validateDroppedRights(role RoleDefinition) error {
 // check of the configuration says nothing (ACCESS-RIGHTS.md, «Ограничение по
 // полю, которого у объекта нет»).
 func (catalog *Catalog) validateRoleRestrictions(role RoleDefinition, permission ObjectPermission, target rightsTarget) error {
+	// A cube and a table of its dimension keep data and are read, yet the
+	// panel of the restriction of their window stays shut with «Чтение»
+	// marked (opis of 15.10.2026, block-00/kub.md): a kind whose restriction
+	// is absent is restricted on no right.
+	if kind, ok := catalog.kindOfObject(permission.Object); ok && len(permission.Restrictions) > 0 && usesOf(kind).restriction == absent {
+		return fmt.Errorf("role %s restricts access to the data of %s: the designer restricts no access to an object of the kind",
+			role.Name, catalog.noteObjectName(kind, permission.Object))
+	}
 	// A kind keeping no data is offered none of the rights restricted, so the
 	// check of the right below refuses a restriction of it.
 	for _, restriction := range permission.Restrictions {

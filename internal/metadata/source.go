@@ -107,7 +107,9 @@ type kindUses struct {
 	// restriction is a role restricting access to the object's data (help,
 	// «Ограничение доступа к данным»): absent where the configurator offers
 	// none of the rights restricted, which are the rights to data an object
-	// keeps in the infobase; present where the exports write one.
+	// keeps in the infobase or where its window shuts the panel of the
+	// restriction (validateRoleRestrictions refuses one); present where the
+	// exports write one or the window offers it.
 	restriction presence
 	// wizard is the wizard «Новое ограничение доступа» of «Все ограничения
 	// доступа» offering an object of the kind on its first step (pass of
@@ -191,8 +193,14 @@ func usesOf(kind Kind) kindUses {
 // common commands and common forms of the common objects, and the objects
 // with data, reports and data processors (opis of the session parameter,
 // 14.10.2026, docs/block-00/parametr-seansa.md) - the other twenty common
-// kinds are absent. The kinds of an external source, a numerator, a sequence
-// and a recalculation stay unproven: the window was not walked for them.
+// kinds are absent. The objects of an external source are told by their
+// window «Дополнительно» (opis of 15.10.2026, block-00/kub.md): a source is in
+// no option, its page of options empty; a table, a cube, a table of
+// dimensions and a function are offered every option; a table is
+// restricted, while a cube and a table of dimensions are not, their panel
+// of the restriction shut with «Чтение» marked; a function is given
+// «Использование» and «Просмотр». A numerator, a sequence and a
+// recalculation stay unproven: the window was not walked for them.
 //
 // parts is by the Rights.xml of every role under docs/ (survey of
 // 13.10.2026): they give rights on the parts of eighteen kinds and never on a
@@ -217,14 +225,14 @@ var kindUsesOf = map[Kind]kindUses{
 	WebServiceKind:              {rights: present, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: present, subsystem: present},
 	WSReferenceKind:             {rights: absent, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
 	WebSocketClientKind:         {rights: absent, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: absent},
-	ExternalDataSourceKind:      {rights: present, registration: absent, option: unproven, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
-	ExternalDataSourceTableKind: {rights: present, registration: absent, option: unproven, restriction: unproven, wizard: absent, criterion: absent, parts: present, subsystem: present},
-	ExternalCubeKind:            {rights: present, registration: absent, option: unproven, restriction: unproven, wizard: absent, criterion: absent, parts: unproven, subsystem: present},
-	ExternalDimensionTableKind:  {rights: present, registration: absent, option: unproven, restriction: unproven, wizard: absent, criterion: absent, parts: unproven, subsystem: present},
+	ExternalDataSourceKind:      {rights: present, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
+	ExternalDataSourceTableKind: {rights: present, registration: absent, option: present, restriction: present, wizard: absent, criterion: absent, parts: present, subsystem: present},
+	ExternalCubeKind:            {rights: present, registration: absent, option: present, restriction: absent, wizard: absent, criterion: absent, parts: unproven, subsystem: present},
+	ExternalDimensionTableKind:  {rights: present, registration: absent, option: present, restriction: absent, wizard: absent, criterion: absent, parts: unproven, subsystem: present},
 	// A function keeps no data to register or restrict (help: ОбъектМетаданных:
 	// Функция has no ОбменДанными, and its value is computed by the source);
-	// ПравоДоступа takes it, and no export gives rights on one.
-	ExternalFunctionKind:           {rights: unproven, registration: absent, option: unproven, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: unproven},
+	// no export gives rights on one, its window «Дополнительно» does.
+	ExternalFunctionKind:           {rights: present, registration: absent, option: present, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: unproven},
 	HTTPServiceKind:                {rights: present, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: present, subsystem: present},
 	CommonPictureKind:              {rights: absent, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
 	StyleItemKind:                  {rights: absent, registration: absent, option: absent, restriction: absent, wizard: absent, criterion: absent, parts: absent, subsystem: present},
@@ -326,8 +334,8 @@ var kindRightsOf = map[Kind][]PermissionOperation{
 	ExternalDimensionTableKind: {PermissionRead, PermissionView},
 	// A function of a source is offered its use and its viewing by the
 	// window of a role (pass of 20.10.2026, block-00/rol, «Права частей
-	// внешнего источника»); no export gives rights on one, so the rights
-	// stay unproven and every role naming a function is noted.
+	// внешнего источника») and by its own «Дополнительно» (opis of
+	// 15.10.2026, block-00/kub.md); no export gives rights on one.
 	ExternalFunctionKind: {PermissionUse, PermissionView},
 	// An enumeration takes no right on itself: the window of a role shows
 	// it, under the branch «Перечисления», for its commands alone (pass of

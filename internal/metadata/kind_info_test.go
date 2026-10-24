@@ -3,6 +3,7 @@ package metadata
 import (
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -215,7 +216,10 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			ReportKind, DataProcessorKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
 			InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
 			RecalculationKind, BusinessProcessKind, TaskKind, ExternalDataSourceKind, ExternalDataSourceTableKind,
-			ExternalCubeKind, ExternalDimensionTableKind, WebServiceKind, HTTPServiceKind},
+			ExternalCubeKind, ExternalDimensionTableKind, WebServiceKind, HTTPServiceKind,
+			// No export gives rights on a function of a source; its window
+			// «Дополнительно» does (opis of 15.10.2026, kub.md).
+			ExternalFunctionKind},
 		"registration": {ConstantKind, CatalogKind, DocumentKind, SequenceKind, ChartOfCharacteristicTypesKind,
 			ChartOfAccountsKind, ChartOfCalculationTypesKind, BusinessProcessKind, TaskKind, InformationRegisterKind,
 			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, RecalculationKind},
@@ -223,11 +227,20 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 			CatalogKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, ChartOfCharacteristicTypesKind,
 			CommonAttributeKind, CommonCommandKind, CommonFormKind, ConstantKind, DataProcessorKind, DocumentKind,
 			DocumentJournalKind, EnumerationKind, ExchangePlanKind, FilterCriterionKind, InformationRegisterKind,
-			ReportKind, SubsystemKind, TaskKind},
+			ReportKind, SubsystemKind, TaskKind,
+			// No export puts an object of a source into an option; the page
+			// «Функциональные опции» of «Дополнительно» of a table, a cube, a
+			// dimension table and a function offers every option (opis of
+			// 15.10.2026, kub.md).
+			ExternalDataSourceTableKind, ExternalCubeKind, ExternalDimensionTableKind, ExternalFunctionKind},
 		// The kinds the exports restrict access to (8318 restrictions of 2526
 		// roles, survey of 12.10.2026).
 		"restriction": {CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, InformationRegisterKind,
-			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, BusinessProcessKind, TaskKind},
+			AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind, BusinessProcessKind, TaskKind,
+			// No export restricts a table of a source; the panel of the
+			// restriction of its window «Дополнительно» is open (opis of
+			// 15.10.2026, kub.md).
+			ExternalDataSourceTableKind},
 		// The kinds the exports give rights on a part of (survey of the
 		// Rights.xml of 13.10.2026).
 		"parts": {CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind,
@@ -248,7 +261,14 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 	optionRefused := []Kind{RoleKind, SessionParameterKind, CommonModuleKind, EventSubscriptionKind, ScheduledJobKind,
 		CommandGroupKind, CommonTemplateKind, XDTOPackageKind, WebServiceKind, WSReferenceKind, WebSocketClientKind,
 		HTTPServiceKind, CommonPictureKind, StyleItemKind, StyleKind, FunctionalOptionKind, FunctionalOptionParameterKind,
-		SettingsStorageKind, DefinedTypeKind, LanguageKind}
+		SettingsStorageKind, DefinedTypeKind, LanguageKind,
+		// The page «Функциональные опции» of «Дополнительно» of a source is
+		// empty (opis of 15.10.2026, kub.md).
+		ExternalDataSourceKind}
+	// The kinds keeping data whose panel of the restriction of access stays
+	// shut in «Дополнительно», with «Чтение» marked too: a cube and a table
+	// of its dimension (opis of 15.10.2026, kub.md).
+	restrictionRefused := []Kind{ExternalCubeKind, ExternalDimensionTableKind}
 	// The kinds whose page «Права» of «Дополнительно» is empty (opis of 14
 	// and 15.10.2026); an enumeration's is empty too, but the window of a
 	// role shows it for its commands (pass of 21.10.2026, prava/42-44).
@@ -287,7 +307,7 @@ func TestEveryKindSaysWhatMayNameIt(t *testing.T) {
 				expected = absent
 			case use == "registration" && !slices.Contains(exchanged, item.Kind):
 				expected = absent
-			case use == "restriction" && !keepsData(item.Kind):
+			case use == "restriction" && (!keepsData(item.Kind) || slices.Contains(restrictionRefused, item.Kind)):
 				expected = absent
 			case use == "parts" && !slices.Contains(partsUnshown, item.Kind):
 				expected = absent
@@ -327,6 +347,62 @@ func TestTheWizardOffersThePrototypesKinds(t *testing.T) {
 			t.Errorf("%s says nothing of the wizard of a new restriction", item.Kind)
 		case got != want:
 			t.Errorf("the wizard of a new restriction offers %s: %d, the prototype's %d", item.Kind, got, want)
+		}
+	}
+}
+
+// TestTheObjectsOfASourceAreUsedAsTheirWindowsSay catches the objects of an
+// external source used otherwise than their window «Дополнительно» lets
+// (opis of 15.10.2026, block-00/kub.md): a source in an option, whose page of
+// options is empty; a cube or a table of its dimension restricted, whose
+// panel of the restriction stays shut; and a table, a cube, a dimension table
+// and a function in an option, a table restricted and a function given
+// rights noted as unseen, which the window offers.
+func TestTheObjectsOfASourceAreUsedAsTheirWindowsSay(t *testing.T) {
+	t.Parallel()
+	option := func(t *testing.T, root, content string) {
+		writeMetadata(t, root, FunctionalOptionKind, cmpOption, "format: 1\nid: "+cmpOption+"\nname: УчётПоСкладу\ntitle: {ru: УчётПоСкладу}\n"+
+			"location: {kind: constants, object: "+cmpConstant+"}\ncontent:\n"+content)
+	}
+	role := func(t *testing.T, root string, objects ...ObjectPermission) {
+		if err := WriteRole(root, RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "Учетчик", Title: LocalizedText{"ru": "Учетчик"},
+			Objects: objects}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := func(text string) uuid.UUID { return mustUUID(t, text) }
+	read := []PermissionOperation{PermissionRead}
+	restricted := func(object string) ObjectPermission {
+		return ObjectPermission{Object: id(object), Operations: read, Restrictions: []RightRestriction{{Right: PermissionRead, Condition: "ГДЕ 1"}}}
+	}
+
+	root := compositeProject(t)
+	option(t, root, "  - {kind: external-data-sources, object: "+warehouseSource+"}\n")
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "content[0].kind external-data-sources cannot be in the content of a functional option") {
+		t.Errorf("a source in an option: %v", err)
+	}
+	for name, object := range map[string]string{"куб": salesCube, "таблица измерения": goodsDimTable} {
+		root := compositeProject(t)
+		role(t, root, restricted(object))
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "role Учетчик restricts access to the data of") ||
+			!strings.Contains(err.Error(), "the designer restricts no access to an object of the kind") {
+			t.Errorf("a restricted %s: %v", name, err)
+		}
+	}
+
+	root = compositeProject(t)
+	option(t, root, "  - {kind: external-data-source-tables, object: "+goodsTable+"}\n"+
+		"  - {kind: external-data-source-cubes, object: "+salesCube+"}\n"+
+		"  - {kind: external-data-source-dimension-tables, object: "+goodsDimTable+"}\n"+
+		"  - {kind: external-data-source-functions, object: "+cmpExternalFunction+"}\n")
+	role(t, root, restricted(goodsTable), ObjectPermission{Object: id(cmpExternalFunction), Operations: []PermissionOperation{PermissionUse, PermissionView}})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("what the windows of a source offer was refused: %v", err)
+	}
+	for _, note := range catalog.Notes() {
+		if strings.Contains(note.Where, "Учетчик") || strings.Contains(note.Where, "УчётПоСкладу") {
+			t.Errorf("what the windows of a source offer is noted: %+v", note)
 		}
 	}
 }

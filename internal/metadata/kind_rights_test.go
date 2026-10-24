@@ -60,6 +60,10 @@ var expectedKindRights = func() map[Kind][]string {
 		ExternalDataSourceTableKind: {"Read", "Insert", "Update", "Delete", "View", "InteractiveInsert", "Edit",
 			"InteractiveDelete", "InputByString"},
 		ExternalCubeKind: {"Read", "View"}, ExternalDimensionTableKind: {"Read", "View"},
+		// No export gives rights on a function of a source; the page «Права»
+		// of its «Дополнительно» gives these two (opis of the cube,
+		// 15.10.2026, block-00/kub.md; pass of 20.10.2026, block-00/rol).
+		ExternalFunctionKind: {"Use", "View"},
 	}
 }()
 
@@ -119,11 +123,9 @@ func TestEveryKindSaysWhatItHolds(t *testing.T) {
 }
 
 // rightsSeenInTheWindow are the rights the window of a role offers on an
-// object of a kind no export gives rights on (pass of 20.10.2026 with the
-// owner, block-00/rol, «Права частей внешнего источника»: a function of a
-// source, «Использование» and «Просмотр»). Written out here, not read off
+// object of a kind no export gives rights on. Written out here, not read off
 // kindRightsOf.
-var rightsSeenInTheWindow = map[Kind][]string{ExternalFunctionKind: {"Use", "View"},
+var rightsSeenInTheWindow = map[Kind][]string{
 	// An enumeration is shown for its commands and takes no right of its own
 	// (pass of 21.10.2026, prava/42-44).
 	EnumerationKind: {}}
