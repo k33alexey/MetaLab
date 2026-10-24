@@ -70,8 +70,8 @@ const (
 )
 
 var (
-	routeHorizontalAligns = []string{"auto", "center", "justify", "left", "right"}
-	routeVerticalAligns   = []string{"top", "center", "bottom"}
+	routeHorizontalAligns = systemEnumerationValues(HorizontalAlignType)
+	routeVerticalAligns   = systemEnumerationValues(VerticalAlignType)
 	routePictureLocations = []string{"left", "right", "top", "bottom", "center"}
 	routePictureSizes     = []string{"auto-size", "auto-size-ignore-scale", "by-font-size", "proportionally", "real-size", "real-size-ignore-scale", "stretch", "tile"}
 	routeShapes           = []string{"Block", "Document", "DownArrow", "Ellipse", "File", "Folder", "HorizontalBrackets", "LeftArrow", "LeftRightArrow", "None", "RightArrow", "UpArrow", "UpDownArrow", "VerticalBrackets"}

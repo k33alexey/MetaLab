@@ -3,6 +3,7 @@ package metadata
 import (
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -78,24 +79,28 @@ const (
 
 // The value types: no object of metadata behind them.
 const (
-	FixedStructureType         TypeKind = "fixed-structure"
-	FixedArrayType             TypeKind = "fixed-array"
-	FixedMapType               TypeKind = "fixed-map"
-	ValueTableType             TypeKind = "value-table"
-	ValueTreeType              TypeKind = "value-tree"
-	ValueListType              TypeKind = "value-list"
-	StandardPeriodType         TypeKind = "standard-period"
-	StandardBeginningDateType  TypeKind = "standard-beginning-date"
-	ConstantsSetType           TypeKind = "constants-set"
-	ReportBuilderType          TypeKind = "report-builder"
-	SettingsComposerType       TypeKind = "settings-composer"
-	ChartType                  TypeKind = "chart"
-	SpreadsheetDocumentType    TypeKind = "spreadsheet-document"
-	TypeDescriptionType        TypeKind = "type-description"
-	BinaryDataType             TypeKind = "binary-data"
+	FixedStructureType        TypeKind = "fixed-structure"
+	FixedArrayType            TypeKind = "fixed-array"
+	FixedMapType              TypeKind = "fixed-map"
+	ValueTableType            TypeKind = "value-table"
+	ValueTreeType             TypeKind = "value-tree"
+	ValueListType             TypeKind = "value-list"
+	StandardPeriodType        TypeKind = "standard-period"
+	StandardBeginningDateType TypeKind = "standard-beginning-date"
+	ConstantsSetType          TypeKind = "constants-set"
+	ReportBuilderType         TypeKind = "report-builder"
+	SettingsComposerType      TypeKind = "settings-composer"
+	ChartType                 TypeKind = "chart"
+	SpreadsheetDocumentType   TypeKind = "spreadsheet-document"
+	TypeDescriptionType       TypeKind = "type-description"
+	BinaryDataType            TypeKind = "binary-data"
+	// The enumerations of the platform the model's own rules name; every one
+	// of the editor's is a kind as well (systemEnumerationKinds).
 	AccountKindType            TypeKind = "account-kind"
 	AccountingRecordKindType   TypeKind = "accounting-record-kind"
 	AccumulationRecordKindType TypeKind = "accumulation-record-kind"
+	HorizontalAlignType        TypeKind = "horizontal-align"
+	VerticalAlignType          TypeKind = "vertical-align"
 	// PlatformType is a type the platform defines and the model does not list
 	// one by one - Отбор, ТипДиаграммы and the rest - written by its name
 	// (Type.Name) as the prototype writes it. The help gives an attribute of
@@ -154,8 +159,65 @@ var valueTypeKinds = map[TypeKind]bool{
 	ConstantsSetType: true, ReportBuilderType: true, SettingsComposerType: true,
 	ChartType: true, SpreadsheetDocumentType: true,
 	TypeDescriptionType: true, BinaryDataType: true,
-	AccountKindType: true, AccountingRecordKindType: true, AccumulationRecordKindType: true,
 	PlatformType: true,
+}
+
+// systemEnumerationKinds are the enumerations of the platform the editor of a
+// type offers in its folder «Системные перечисления», by the kind the project
+// writes each by (kinds.SystemEnumerations). They live in memory: an
+// attribute of a form, of a data processor and of a report and a defined
+// type hold every one, a session parameter the three of accounting
+// (sessionParameterValueTypes), a stored field none (opis of 24.10.2026).
+var systemEnumerationKinds = func() map[TypeKind]kinds.SystemEnumeration {
+	byKind := map[TypeKind]kinds.SystemEnumeration{}
+	for _, enumeration := range kinds.SystemEnumerations {
+		byKind[TypeKind(enumeration.Kind)] = enumeration
+	}
+	return byKind
+}()
+
+// systemEnumerationsByName are the same by the name of their type XDTO, which
+// a type of the platform written by its name would carry.
+var systemEnumerationsByName = func() map[string]TypeKind {
+	byName := map[string]TypeKind{}
+	for kind, enumeration := range systemEnumerationKinds {
+		byName[enumeration.Name.English] = kind
+	}
+	return byName
+}()
+
+func init() {
+	for kind := range systemEnumerationKinds {
+		valueTypeKinds[kind] = true
+	}
+}
+
+// systemEnumerationValues are the values of an enumeration of the platform as
+// the project writes them: ActivePassive as active-passive.
+func systemEnumerationValues(kind TypeKind) []string {
+	enumeration := systemEnumerationKinds[kind]
+	values := make([]string, len(enumeration.Values))
+	for index, value := range enumeration.Values {
+		values[index] = kebab(value.English)
+	}
+	return values
+}
+
+// ownKindOfPlatformName is the kind of an enumeration of the platform a type
+// written by its name stands for, and false when it names none.
+func ownKindOfPlatformName(name string) (TypeKind, bool) {
+	kind, ok := systemEnumerationsByName[localTypeName(name)]
+	return kind, ok
+}
+
+// localTypeName is the name of a type of the platform without the prefix of
+// its space, which the export chooses itself - d5p1, d7p1 - and which is not
+// compared.
+func localTypeName(name string) string {
+	if _, local, found := strings.Cut(name, ":"); found {
+		return local
+	}
+	return name
 }
 
 // isObjectType and isValueType say a kind lives in memory only; neither is
@@ -305,11 +367,7 @@ var aloneByNameInDefinedType = map[string]bool{
 // or, a type of the platform in a defined type, by its name.
 func typeStandsAlone(item Type, place typePlace) bool {
 	if item.Kind == PlatformType && place == placeDefinedType {
-		_, local, found := strings.Cut(item.Name, ":")
-		if !found {
-			local = item.Name
-		}
-		return aloneByNameInDefinedType[local]
+		return aloneByNameInDefinedType[localTypeName(item.Name)]
 	}
 	return standsAlone(item.Kind, place)
 }

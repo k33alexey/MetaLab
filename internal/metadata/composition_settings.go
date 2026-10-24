@@ -112,11 +112,12 @@ var standardBeginningDateVariants = []string{
 	"beginning-of-next-quarter", "beginning-of-next-half-year", "beginning-of-next-year",
 }
 
-// horizontalAligns are the values of HorizontalAlign of the help.
-var horizontalAligns = []string{"auto", "left", "right", "center", "justify"}
-
-// accountTypes are the values of AccountType of the help.
-var accountTypes = []string{"active", "passive", "active-passive"}
+// horizontalAligns and accountTypes are the values of HorizontalAlign and
+// AccountType of the help.
+var (
+	horizontalAligns = systemEnumerationValues(HorizontalAlignType)
+	accountTypes     = systemEnumerationValues(AccountKindType)
+)
 
 // validateCompositionValue checks a value against its kind, and the kind
 // against those the place takes.

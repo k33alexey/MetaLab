@@ -2023,6 +2023,12 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		case item.Kind != PlatformType && item.Name != "":
 			issues = append(issues, prefix+".name belongs to a platform type")
 		}
+		// An enumeration of the platform the editor offers is a kind of its
+		// own, and is written by it alone.
+		if own, ok := ownKindOfPlatformName(item.Name); ok && item.Kind == PlatformType {
+			issues = append(issues, prefix+" "+item.Name+" is a type of its own: write it as kind "+string(own))
+			continue
+		}
 		if storedNowhere(item.Kind) {
 			issues = append(issues, standsUnqualified(prefix, item, mayStandUnstored(place), "is not a type of anything the infobase stores", place)...)
 			continue
