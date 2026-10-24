@@ -36,8 +36,7 @@ func aloneProbe(kind TypeKind) Type {
 // «Строка + Цвет» taken, which the designer cannot save; a type the designer
 // puts in a composite - a value table in a defined type, Null in a session
 // parameter, a manager of a chart of accounts - refused; a place that was not
-// gone through in the designer - a form, a filter criterion - refusing
-// without a reason.
+// gone through in the designer - a form - refusing without a reason.
 func TestSomeTypesStandOnlyByThemselves(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -62,7 +61,9 @@ func TestSomeTypesStandOnlyByThemselves(t *testing.T) {
 		{placeSessionParameter, nil, []TypeKind{"value-storage", "uuid", "binary-data", "null-type", "catalog", "any-ref"}},
 		{placeFormAttribute, nil, []TypeKind{"uuid", "null-type", "dynamic-list", "value-table", "spreadsheet-document",
 			"formatted-document", "text-document", "picture", "value-list", "type-description", "formatted-string"}},
-		{placeFilterCriterion, nil, []TypeKind{"uuid", "catalog"}},
+		// The type of a filter criterion: a unique identifier alone (opis of
+		// 23.10.2026, kriterij-otbora.md, «Досъёмка»).
+		{placeFilterCriterion, []TypeKind{"uuid"}, []TypeKind{"catalog"}},
 	} {
 		where := placeName(test.place)
 		for _, kind := range test.alone {
@@ -84,9 +85,10 @@ func TestSomeTypesStandOnlyByThemselves(t *testing.T) {
 }
 
 // A constant «Булево + ХранилищеЗначения» is refused on reading, the example
-// of the opis, and a filter criterion of an identifier and a reference is not;
-// and the window of the type marks the two types of a stored
-// field that stand alone, from the same table, and nothing else.
+// of the opis, and so is a filter criterion of an identifier and a reference
+// (opis of 23.10.2026); and the window of the type marks the types that stand
+// alone - two of a stored field, one of a criterion - from the same table, and
+// nothing else.
 //
 // Defect caught: the rule known to validateTypesIn and missed by a reading
 // that calls it another way; the window of Studio and the model disagreeing on
@@ -98,10 +100,9 @@ func TestAConstantRefusesValueStorageBesideAnotherType(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "types[1].kind value-storage stands only by itself in a field the database stores") {
 		t.Fatalf("a constant of a boolean and a value storage: %v", err)
 	}
-	// The type of a filter criterion was not gone through in the designer:
-	// what it takes beside what is not refused.
 	criterion := "format: 1\nid: " + uuid.MustNew().String() + "\nname: Связанные\ntitle: {ru: Связанные}\ntypes: [{kind: uuid}, {kind: catalog, reference: " + uuid.MustNew().String() + "}]\n"
-	if _, err := DecodeFilterCriterion("criterion.yaml", strings.NewReader(criterion), metadataConfiguration()); err != nil {
+	if _, err := DecodeFilterCriterion("criterion.yaml", strings.NewReader(criterion), metadataConfiguration()); err == nil ||
+		!strings.Contains(err.Error(), "types[0].kind uuid stands only by itself in the type of a filter criterion") {
 		t.Fatalf("a criterion of an identifier and a reference: %v", err)
 	}
 	catalog, err := Load(compositeProject(t))
@@ -109,7 +110,7 @@ func TestAConstantRefusesValueStorageBesideAnotherType(t *testing.T) {
 		t.Fatal(err)
 	}
 	for place, alone := range map[TypeChoicePlace][]TypeKind{
-		StoredFieldChoice: {"value-storage", "uuid"}, FilterCriterionChoice: nil, CharacteristicValueChoice: nil,
+		StoredFieldChoice: {"value-storage", "uuid"}, FilterCriterionChoice: {"uuid"}, CharacteristicValueChoice: nil,
 	} {
 		offer, _ := catalog.TypeOffer(place)
 		var marked []TypeKind
