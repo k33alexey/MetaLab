@@ -87,7 +87,7 @@ func TestEachSystemEnumerationStandsWhereTheWindowOffersIt(t *testing.T) {
 				t.Errorf("%s %s: %v", enumeration.name, placeName(place), issues)
 			}
 		}
-		for _, place := range []typePlace{placeStored, placeCommandParameter, placeFilterCriterion, placeExternalField} {
+		for _, place := range []typePlace{placeStored, placeCommandParameter, placeFilterCriterion, placeExternalField, placeExternalFunction} {
 			if issues := validateTypesIn("types", item, place); len(issues) == 0 {
 				t.Errorf("%s taken %s", enumeration.name, placeName(place))
 			}

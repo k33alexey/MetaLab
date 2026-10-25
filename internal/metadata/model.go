@@ -1905,6 +1905,11 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 	return issues
 }
 
+// standsAloneIssue refuses a type of standsAlone put beside another.
+func standsAloneIssue(prefix string, kind TypeKind, place typePlace) string {
+	return prefix + ".kind " + string(kind) + " stands only by itself " + placeName(place) + ": the designer excludes every other type beside it"
+}
+
 // binaryQualified says binary data takes its qualifiers in the place: the
 // window «Редактирование типа данных» shows them under binary data wherever
 // it offers binary data - a field of an external data source, a session
@@ -1912,7 +1917,7 @@ func validateTitle(path string, title LocalizedText, configuration project.Proje
 // one set of qualifiers (opis, obshchee.md, «Окно «Редактирование типа
 // данных»»).
 func binaryQualified(place typePlace) bool {
-	return place == placeExternalField || place == placeSessionParameter || place == placeDefinedType
+	return place == placeExternalField || place == placeExternalFunction || place == placeSessionParameter || place == placeDefinedType
 }
 
 // validateBinaryQualifiers checks binary data where it takes qualifiers
@@ -2053,7 +2058,7 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			continue
 		}
 		if len(types) > 1 && standsAlone(item.Kind, place) {
-			issues = append(issues, prefix+".kind "+string(item.Kind)+" stands only by itself "+placeName(place)+": the designer excludes every other type beside it")
+			issues = append(issues, standsAloneIssue(prefix, item.Kind, place))
 		}
 		if place == placeDefinedType && IsTypeSet(item.Kind) {
 			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand in a defined type: the designer offers neither another defined type nor a set the platform fills itself")

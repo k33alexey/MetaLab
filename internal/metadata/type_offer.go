@@ -182,10 +182,11 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// source - a reference to another source's the designer takes (opis of
 	// 24.10.2026, vneshnij-istochnik.md, «Досъёмка (серия 2.531)»,
 	// snapshots series-2.531/16, 17, 19, 21-23). A field has no «Составной
-	// тип данных» and must have a type; a function may return none.
+	// тип данных» and must have a type; a function may return none, and its
+	// composite holds the simple types only (placeExternalFunction).
 	ExternalFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables,
 		required: true, single: true},
-	ExternalFunctionChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables},
+	ExternalFunctionChoice: {model: placeExternalFunction, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables},
 	// A dimension of a cube: the defined types and the dimension tables of
 	// every cube of every source, one of them and no other type (opis of
 	// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/18, 20). Its
@@ -437,7 +438,7 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Name: kinds.Must(DefinedTypeKind).Name, ObjectKind: DefinedType,
 			Objects: catalog.referenceTypeObjects(DefinedTypeKind), Alone: standsAlone(DefinedType, at.model)})
 	}
-	offer.Rows = append(offer.Rows, catalog.sourceReferenceRows(at.sourceReferences)...)
+	offer.Rows = append(offer.Rows, catalog.sourceReferenceRows(at.sourceReferences, at.model)...)
 	if at.anyReference {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
@@ -469,8 +470,9 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 // external source of the kinds asked for: the object tables of every source,
 // «Источник.Таблица», and the dimension tables of every cube of every source,
 // «Источник.Куб.Таблица», the sources in the order of the tree (snapshot
-// series-2.531/22). A folder holding nothing is not shown (snapshot 16).
-func (catalog *Catalog) sourceReferenceRows(asked []Kind) []TypeOfferRow {
+// series-2.531/22). A folder holding nothing is not shown (snapshot 16); one
+// whose references the place takes only by themselves is marked so.
+func (catalog *Catalog) sourceReferenceRows(asked []Kind, place typePlace) []TypeOfferRow {
 	var tables, dimensions []ReferenceTypeObject
 	for _, listed := range catalog.referenceTypeObjects(ExternalDataSourceKind) {
 		source, _ := catalog.ExternalDataSourceByID(listed.ID)
@@ -493,7 +495,7 @@ func (catalog *Catalog) sourceReferenceRows(asked []Kind) []TypeOfferRow {
 		if len(folder.objects) > 0 && slices.Contains(asked, folder.kind) {
 			descriptor := kinds.Must(folder.kind)
 			rows = append(rows, TypeOfferRow{Name: descriptor.References()[0], Icon: descriptor.Icon, ObjectKind: referenceTo(folder.kind),
-				Objects: folder.objects})
+				Objects: folder.objects, Alone: standsAlone(referenceTo(folder.kind), place)})
 		}
 	}
 	return rows

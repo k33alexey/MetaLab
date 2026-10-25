@@ -344,6 +344,12 @@ const (
 	// configurator writes such fields (lombard1, 58), and the editor of the
 	// field's type gives the simple types (opis, vneshnij-istochnik.md).
 	placeExternalField
+	// placeExternalFunction is the value of a function of an external data
+	// source: what a field of a table takes, but a composite of the number,
+	// the string, the date and the boolean only - every other type the
+	// editor of its type puts only by itself (opis of 25.10.2026,
+	// vneshnij-istochnik.md, question В2 of the series 2.535).
+	placeExternalFunction
 	// placeSubscriptionSource is the source of an event subscription: the
 	// objects, record sets and managers it listens to. It is checked by
 	// validateEventSubscription, not by validateTypesIn; the window of the
@@ -400,12 +406,18 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // «Выбран тип, который не может быть включен в составной тип данных» (opis
 // of 23.10.2026, kriterij-otbora.md, «Досъёмка»). An attribute of a form and
 // of a data processor takes nothing alone (the same pass). A field of a
-// source has no composite at all; the value of a function of one keeps the
-// rule of a stored field it was checked by until 2.538 - what its editor
-// takes beside what was not tried.
+// source has no composite at all and keeps the rule of a stored field. The
+// value of a function of one builds a composite of the number, the string,
+// the date and the boolean only: the identifier, binary data, a reference
+// to a table or a dimension table - two references together too - and a
+// defined type the editor puts only by themselves (opis of 25.10.2026,
+// vneshnij-istochnik.md, «Досъёмка 25.10.2026»). A value storage its editor
+// does not offer; it stands alone as in a field.
 var aloneTypes = map[typePlace]map[TypeKind]bool{
 	placeStored:        {ValueStorageType: true, UUIDType: true},
 	placeExternalField: {ValueStorageType: true, UUIDType: true},
+	placeExternalFunction: {ValueStorageType: true, UUIDType: true, BinaryDataType: true, DefinedType: true,
+		ExternalTableType: true, ExternalDimensionTableType: true},
 	// A resource of a register: any defined type beside the number or
 	// another defined type - «Выбран тип, который не может быть включен в
 	// составной тип данных» (opis of 24.10.2026, resurs.md, snapshots
@@ -465,7 +477,7 @@ func allowedIn(kind TypeKind, place typePlace) bool {
 		return !definedTypeOnlyKinds[kind]
 	case placeSessionParameter:
 		return sessionParameterValueTypes[kind]
-	case placeExternalField:
+	case placeExternalField, placeExternalFunction:
 		return kind == BinaryDataType
 	default:
 		return false
@@ -488,6 +500,8 @@ func placeName(place typePlace) string {
 		return "in the type of a filter criterion"
 	case placeExternalField:
 		return "in a field of an external data source"
+	case placeExternalFunction:
+		return "in the value of a function of an external data source"
 	case placeSubscriptionSource:
 		return "in the source of a subscription"
 	case placeNumericResource:

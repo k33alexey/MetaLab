@@ -196,7 +196,7 @@ func TestTheTypesOfTheWindowsRowsAreKindsOfTheirOwn(t *testing.T) {
 				t.Errorf("%s beside a string %s: %v", test.kind, placeName(place), issues)
 			}
 		}
-		for _, place := range []typePlace{placeStored, placeSessionParameter, placeCommandParameter, placeFilterCriterion, placeExternalField} {
+		for _, place := range []typePlace{placeStored, placeSessionParameter, placeCommandParameter, placeFilterCriterion, placeExternalField, placeExternalFunction} {
 			if issues := validateTypesIn("types", []Type{item}, place); len(issues) == 0 {
 				t.Errorf("%s taken %s", test.kind, placeName(place))
 			}

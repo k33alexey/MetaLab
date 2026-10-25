@@ -404,6 +404,14 @@ func validateExternalFieldTypes(path string, types []Type, place typePlace) []st
 	if len(types) == 0 {
 		return append(issues, path+" must contain at least one type")
 	}
+	// validateTypesIn sees the rest only, so what stands alone is refused
+	// here when it stands beside a reference: a reference itself, or the one
+	// type of the rest.
+	for index, item := range types {
+		if len(types) > 1 && standsAlone(item.Kind, place) && (isExternalReference(item.Kind) || len(rest) == 1) {
+			issues = append(issues, standsAloneIssue(fmt.Sprintf("%s[%d]", path, index), item.Kind, place))
+		}
+	}
 	if len(rest) == 0 {
 		return issues
 	}

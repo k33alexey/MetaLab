@@ -3,6 +3,7 @@ package metadata
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -865,7 +866,7 @@ func TestABinaryFieldOfASourceTakesALengthAndFixedness(t *testing.T) {
 // another.
 func TestBinaryDataTakesItsQualifiersWhereTheWindowOffersIt(t *testing.T) {
 	t.Parallel()
-	for _, place := range []typePlace{placeSessionParameter, placeDefinedType, placeExternalField} {
+	for _, place := range []typePlace{placeSessionParameter, placeDefinedType, placeExternalField, placeExternalFunction} {
 		for item, want := range map[Type]string{
 			{Kind: BinaryDataType}:                                    "",
 			{Kind: BinaryDataType, Length: 16, FixedLength: true}:     "",
@@ -917,5 +918,74 @@ func TestTheKeyOfAnObjectTableIsOfASimpleType(t *testing.T) {
 	if _, err := DecodeExternalTable("table.yaml", strings.NewReader("format: 1\nid: "+uuid.MustNew().String()+"\nname: Остатки\ntitle: {ru: Остатки}\n"+stockBody),
 		metadataConfiguration()); err != nil && strings.Contains(err.Error(), "the key of a table of object data") {
 		t.Fatalf("a table of records keyed by a reference was refused as one of object data: %v", err)
+	}
+}
+
+// The value of a function of a source builds a composite of the number, the
+// string, the date and the boolean only: the unique identifier, binary data,
+// a reference to an object table or to a dimension table - two references
+// together too - and a defined type its editor puts only by themselves, and
+// each alone is taken (opis of 25.10.2026, vneshnij-istochnik.md, «Досъёмка
+// 25.10.2026», question В2 of the series 2.535). A field of a table keeps the
+// rule of a stored field: binary data beside a string is taken there, and an
+// identifier beside a reference is not. The window of the function marks the
+// same types alone. The lists are written here from the opis, not read from
+// the model.
+//
+// Defect caught: a function of an identifier and a string, or of two
+// references, taken, which the designer cannot save; the four simple types
+// refused together; an alone type beside a reference passed because the
+// reference is checked apart from the rest; the rule of the function leaking
+// to a field; a source read with the rule of a field for its functions; the
+// window letting the function's composite take what the model refuses.
+func TestTheValueOfAFunctionOfASourceIsACompositeOfSimpleTypesOnly(t *testing.T) {
+	t.Parallel()
+	reference := func(kind TypeKind) Type { return Type{Kind: kind, Reference: refID(uuid.MustNew().String())} }
+	simple := []Type{{Kind: NumberType, Precision: 10}, {Kind: StringType, Length: 10}, {Kind: DateType, DateParts: DateOnlyParts}, {Kind: BooleanType}}
+	if issues := validateExternalFieldTypes("types", simple, placeExternalFunction); len(issues) != 0 {
+		t.Errorf("a function of the four simple types: %v", issues)
+	}
+	where := "stands only by itself in the value of a function of an external data source"
+	for _, alone := range []Type{{Kind: UUIDType}, {Kind: BinaryDataType, Length: 16}, reference(DefinedType),
+		reference(ExternalTableType), reference(ExternalDimensionTableType)} {
+		if issues := validateExternalFieldTypes("types", []Type{alone}, placeExternalFunction); len(issues) != 0 {
+			t.Errorf("a function of %s alone: %v", alone.Kind, issues)
+		}
+		issues := validateExternalFieldTypes("types", []Type{{Kind: StringType, Length: 10}, alone}, placeExternalFunction)
+		if len(issues) != 1 || !strings.Contains(issues[0], "types[1].kind "+string(alone.Kind)+" "+where) {
+			t.Errorf("a function of a string and %s: %v", alone.Kind, issues)
+		}
+	}
+	issues := validateExternalFieldTypes("types", []Type{reference(ExternalTableType), reference(ExternalDimensionTableType)}, placeExternalFunction)
+	if len(issues) != 2 || !strings.Contains(issues[0], "types[0].kind external-data-source-table "+where) {
+		t.Errorf("a function of two references: %v", issues)
+	}
+	if issues := validateExternalFieldTypes("types", []Type{{Kind: StringType, Length: 10}, {Kind: BinaryDataType}}, placeExternalField); len(issues) != 0 {
+		t.Errorf("a field of a string and binary data: %v", issues)
+	}
+	issues = validateExternalFieldTypes("types", []Type{{Kind: UUIDType}, reference(ExternalTableType)}, placeExternalField)
+	if len(issues) != 1 || !strings.Contains(issues[0], "types[0].kind uuid stands only by itself in a field of an external data source") {
+		t.Errorf("a field of an identifier and a reference: %v", issues)
+	}
+	root := compositeProject(t)
+	writeExternalSource(t, root, otherSource, "Бухгалтерия", "functions:\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Код, title: {ru: Код}, return_value: true, types: [{kind: string, length: 10}, {kind: uuid}]}\n")
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "functions[0].types[1].kind uuid "+where) {
+		t.Errorf("a source with a function of a string and an identifier: %v", err)
+	}
+	catalog, err := Load(compositeProject(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, _ := catalog.TypeOffer(ExternalFunctionChoice)
+	var marked []string
+	for _, row := range offer.Rows {
+		if row.Alone {
+			marked = append(marked, row.Name.Russian)
+		}
+	}
+	if want := []string{"УникальныйИдентификатор", "ДвоичныеДанные", "ОпределяемыйТип", "ВнешнийИсточникДанныхТаблицаСсылка",
+		"ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"}; !slices.Equal(marked, want) {
+		t.Errorf("the window of a function marks %v alone, want %v", marked, want)
 	}
 }

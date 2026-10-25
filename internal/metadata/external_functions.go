@@ -62,9 +62,10 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 		// The value of a function takes what a field of a table does, binary
 		// data among it: the editor of its type offers the field's list
 		// (opis of 24.10.2026, vneshnij-istochnik.md, snapshots
-		// series-2.531/19, 21).
+		// series-2.531/19, 21); what stands beside what is its own
+		// (placeExternalFunction).
 		if len(function.Types) > 0 {
-			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeExternalField)...)
+			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeExternalFunction)...)
 		}
 		issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
 	}
