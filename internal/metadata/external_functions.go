@@ -63,10 +63,11 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 		// data among it: the editor of its type offers the field's list
 		// (opis of 24.10.2026, vneshnij-istochnik.md, snapshots
 		// series-2.531/19, 21); what stands beside what is its own
-		// (placeExternalFunction).
-		if len(function.Types) > 0 {
-			issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeExternalFunction)...)
-		}
+		// (placeExternalFunction). A function has a type always: a new one
+		// is a string of 10, the type stays when «Возвращает значение» is
+		// taken away (funkciya-istochnika.md), and the window, having no
+		// «Произвольный», closes on no empty type (obshchee.md, «Пустой тип»).
+		issues = append(issues, validateExternalFieldTypes(prefix+".types", function.Types, placeExternalFunction)...)
 		issues = append(issues, validateExpressionParameters(prefix+".expression_in_data_source", function.ExpressionInDataSource)...)
 	}
 	return issues

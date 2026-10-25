@@ -303,14 +303,19 @@ func TestFormTypesStandInAFormAndADataProcessorAndNowhereElse(t *testing.T) {
 	}
 }
 
-// A number of no length stands in a form and nowhere else; binary data stands
-// nowhere in a form; what the designer marks «not available in form data» -
-// value storage - and a reference to a table of an external source are kept.
+// A number of no length stands in a form and nowhere else; binary data and
+// the fixed collections stand nowhere in a form nor in an attribute of a data
+// processor or a report - the one list of the window of their type leaves them
+// out (opis, obshchee.md, «Состав по местам»; review 2.554, А1); what the
+// designer marks «not available in form data» - value storage - and a
+// reference to a table of an external source are kept.
 //
 // Defect caught: the 188 numbers of no length of the forms being moved
 // refused, or a number of no length let into a stored field, where the column
-// needs a precision; binary data accepted in a form against the designer;
-// value storage refused, though the designer saves it and only marks it.
+// needs a precision; binary data or a fixed collection accepted in a form or
+// a data processor against the designer, as binary data was in a data
+// processor until 2.555; value storage refused, though the designer saves it
+// and only marks it.
 func TestAFormHoldsWhatTheDesignerSavesInIt(t *testing.T) {
 	t.Parallel()
 	unlimited := []Type{{Kind: NumberType}}
@@ -325,11 +330,15 @@ func TestAFormHoldsWhatTheDesignerSavesInIt(t *testing.T) {
 	if issues := validateTypesIn("types", []Type{{Kind: NumberType, Scale: 2}}, placeFormAttribute); len(issues) == 0 {
 		t.Error("a number of no length with a fraction accepted")
 	}
-	if issues := validateTypesIn("types", []Type{{Kind: BinaryDataType}}, placeFormAttribute); len(issues) != 1 || !strings.Contains(issues[0], "the designer does not offer it") {
-		t.Errorf("binary data in a form: %v", issues)
-	}
-	if issues := validateTypesIn("types", []Type{{Kind: BinaryDataType}}, placeRunningObject); len(issues) != 0 {
-		t.Errorf("binary data refused where it stood before: %v", issues)
+	for _, place := range []typePlace{placeFormAttribute, placeRunningObject} {
+		for _, kind := range []TypeKind{BinaryDataType, FixedArrayType, FixedMapType, FixedStructureType} {
+			if issues := validateTypesIn("types", []Type{{Kind: kind}}, place); len(issues) != 1 || !strings.Contains(issues[0], "the designer does not offer it") {
+				t.Errorf("%s %s: %v", kind, placeName(place), issues)
+			}
+		}
+		if issues := validateTypesIn("types", []Type{{Kind: ValueStorageType}}, place); len(issues) != 0 {
+			t.Errorf("value storage refused %s: %v", placeName(place), issues)
+		}
 	}
 	for _, kept := range []Type{{Kind: ValueStorageType}, {Kind: ExternalTableType, Reference: refID(formAttrCatalog)}, {Kind: ValueTableType}, {Kind: PlatformType, Name: "Отбор"}} {
 		if issues := validateTypesIn("types", []Type{kept}, placeFormAttribute); len(issues) != 0 {

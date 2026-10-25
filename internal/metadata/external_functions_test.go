@@ -34,6 +34,7 @@ func TestExternalFunctionIsCarriedInItsSource(t *testing.T) {
   - id: `+secondFunction+`
     name: Пересчитать
     title: {ru: Пересчитать}
+    types: [{kind: string, length: 10}]
 `)
 	catalog, err := Load(root)
 	if err != nil {
@@ -71,7 +72,7 @@ func TestExternalFunctionParametersAreCheckedByTheNotationOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			root := functionSource(t, "  - id: "+firstFunction+"\n    name: Ф\n    title: {ru: Ф}\n    expression_in_data_source: \""+test.expression+"\"\n")
+			root := functionSource(t, "  - id: "+firstFunction+"\n    name: Ф\n    title: {ru: Ф}\n    types: [{kind: string, length: 10}]\n    expression_in_data_source: \""+test.expression+"\"\n")
 			if message := loadRefused(t, root, name); !strings.Contains(message, test.says) {
 				t.Fatalf("the error does not say what is wrong: %v", message)
 			}
@@ -83,7 +84,7 @@ func TestExternalFunctionParametersAreCheckedByTheNotationOnly(t *testing.T) {
 		"SELECT &1 {, &2} {, &3[]}",    // optional blocks and a variable last
 		"SELECT &2, &1 FROM t WHERE {", // unbalanced braces are the other side's business
 	} {
-		root := functionSource(t, "  - id: "+firstFunction+"\n    name: Ф\n    title: {ru: Ф}\n    expression_in_data_source: \""+expression+"\"\n")
+		root := functionSource(t, "  - id: "+firstFunction+"\n    name: Ф\n    title: {ru: Ф}\n    types: [{kind: string, length: 10}]\n    expression_in_data_source: \""+expression+"\"\n")
 		if _, err := Load(root); err != nil {
 			t.Errorf("the expression %q was refused: %v", expression, err)
 		}
@@ -96,12 +97,12 @@ func TestExternalFunctionParametersAreCheckedByTheNotationOnly(t *testing.T) {
 // and a result typed by a table that is not there.
 func TestExternalFunctionIdentityAndTypeAreChecked(t *testing.T) {
 	t.Parallel()
-	twice := functionSource(t, "  - id: "+firstFunction+"\n    name: Остаток\n    title: {ru: Остаток}\n  - id: "+secondFunction+"\n    name: остаток\n    title: {ru: Остаток}\n")
+	twice := functionSource(t, "  - id: "+firstFunction+"\n    name: Остаток\n    title: {ru: Остаток}\n    types: [{kind: string, length: 10}]\n  - id: "+secondFunction+"\n    name: остаток\n    title: {ru: Остаток}\n    types: [{kind: string, length: 10}]\n")
 	if message := loadRefused(t, twice, "two functions of one name"); !strings.Contains(message, "functions[1].name is used twice") {
 		t.Fatalf("the error does not say what is wrong: %v", message)
 	}
 	root := metadataProject(t)
-	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+goodsTable+"\n    name: Остаток\n    title: {ru: Остаток}\n")
+	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+goodsTable+"\n    name: Остаток\n    title: {ru: Остаток}\n    types: [{kind: string, length: 10}]\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", goodsBody)
 	if message := loadRefused(t, root, "a function sharing a table's identifier"); !strings.Contains(message, "use "+goodsTable) {
 		t.Fatalf("the error does not name the identifier: %v", message)
@@ -109,5 +110,28 @@ func TestExternalFunctionIdentityAndTypeAreChecked(t *testing.T) {
 	nothing := functionSource(t, "  - id: "+firstFunction+"\n    name: Ф\n    title: {ru: Ф}\n    return_value: true\n    types: [{kind: external-data-source-table, reference: f8200000-0000-4000-8000-0000000000ff}]\n")
 	if message := loadRefused(t, nothing, "a result typed by nothing"); !strings.Contains(message, "function Ф field Ф refers to unknown table") {
 		t.Fatalf("the error does not say what is wrong: %v", message)
+	}
+}
+
+// A function of a source has a type always: a new one is a string of 10, the
+// type stays when «Возвращает значение» is taken away (funkciya-istochnika.md),
+// and its window, having no «Произвольный», closes on no empty type
+// (obshchee.md, «Пустой тип»). A value storage its window does not offer
+// (vneshnij-istochnik.md, snapshots series-2.531/19, 21).
+//
+// Catches a function of no type, or of a value storage, read, as both were
+// until 2.555 (review 2.554, Б5, Б2).
+func TestAFunctionOfASourceHasATypeItsWindowOffers(t *testing.T) {
+	t.Parallel()
+	for body, want := range map[string]string{
+		"  - id: " + firstFunction + "\n    name: Ф\n    title: {ru: Ф}\n    return_value: true\n":                  "functions[0].types must contain at least one type",
+		"  - id: " + firstFunction + "\n    name: Ф\n    title: {ru: Ф}\n":                                          "functions[0].types must contain at least one type",
+		"  - id: " + firstFunction + "\n    name: Ф\n    title: {ru: Ф}\n    types: [{kind: value-storage}]\n":      "kind value-storage cannot stand in the value of a function of an external data source",
+		"  - id: " + firstFunction + "\n    name: Ф\n    title: {ru: Ф}\n    types: [{kind: string, length: 10}]\n": "",
+	} {
+		_, err := Load(functionSource(t, body))
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: want %q, got %v", body, want, err)
+		}
 	}
 }

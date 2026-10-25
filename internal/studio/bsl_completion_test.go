@@ -356,7 +356,7 @@ func writeManagedProject(t *testing.T) string {
 		"name: Склады\ntitle: {ru: Склады}\ncode: {type: string, length: 9, auto: true, unique: true}\ndescription_length: 100\n")
 	const source = "metadata/external-data-sources/Склад"
 	writeProjectFile(t, root, source+"/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000011\nname: Склад\ntitle: {ru: Склад}\n"+
-		"functions:\n  - {id: f9100000-0000-4000-8000-000000000012, name: Остаток, title: {ru: Остаток}}\n")
+		"functions:\n  - {id: f9100000-0000-4000-8000-000000000012, name: Остаток, title: {ru: Остаток}, types: [{kind: string, length: 10}]}\n")
 	writeProjectFile(t, root, source+"/tables/Остатки/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000013\n"+
 		"name: Остатки\ntitle: {ru: Остатки}\nname_in_data_source: dbo.Remains\ndata_type: non-object\n")
 	writeProjectFile(t, root, source+"/cubes/Продажи/object.yaml", "format: 1\nid: f9100000-0000-4000-8000-000000000014\n"+

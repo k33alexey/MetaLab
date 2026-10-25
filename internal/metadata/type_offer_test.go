@@ -135,9 +135,12 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 	// processor, a form and a defined type, the three of accounting in a
 	// session parameter.
 	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
+	// A window without «Произвольный» closes on no empty type, as the
+	// prototype's: «Необходимо выбрать тип значения.» (obshchee.md, «Пустой
+	// тип»); the parameter of a command takes none.
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true,
 		ExternalFieldChoice: true, CubeDimensionChoice: true, NumericResourceChoice: true, CubeResourceChoice: true,
-		DimensionTableFieldChoice: true}
+		DimensionTableFieldChoice: true, SubscriptionSourceChoice: true, ExternalFunctionChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -297,6 +300,11 @@ func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) 
 		if issues := validateTypesIn("types", []Type{key}, place); len(issues) == 0 {
 			t.Errorf("the key of a value of a constant taken %s", placeName(place))
 		}
+	}
+	// The set of constants the editor of a defined type leaves out
+	// (opredelyaemyj-tip.md, «Чего нет»; review 2.554, А2).
+	if issues := validateTypesIn("types", []Type{{Kind: "constants-set"}}, placeDefinedType); len(issues) != 1 {
+		t.Errorf("the set of constants in a defined type: %v", issues)
 	}
 	anyStorage := Type{Kind: "settings-storage-manager"}
 	if issues := validateTypesIn("types", []Type{{Kind: StringType, Length: 10}, anyStorage}, placeDefinedType); len(issues) != 0 {

@@ -188,6 +188,24 @@ test('a type that stands only by itself asks before it takes the others away',()
   assert.equal(single.exclusion('value-storage'),null);
 });
 
+// Defects caught: a type of the description the place does not offer - what
+// the model takes beyond the window, a type of an earlier version - dropped
+// without a word on «ОК», as it was until 2.555 (review 2.554, А9); kept
+// through a mark that takes every other away.
+test('a type the place does not offer is kept until a mark takes the others away',()=>{
+  const model=typeEditorModel(offer(),[{kind:'string',length:10},{kind:'vanished-type',name:'Старый'}]);
+  assert.equal(model.composite,true);
+  assert.deepEqual(plain(model.result().types),[{kind:'string',length:10},{kind:'vanished-type',name:'Старый'}]);
+  model.mark('number',true);
+  assert.deepEqual(plain(model.result().types),[{kind:'number',precision:10},{kind:'string',length:10},{kind:'vanished-type',name:'Старый'}]);
+  model.setComposite(false);
+  assert.deepEqual(plain(model.result().types),[{kind:'number',precision:10}]);
+  const alone=typeEditorModel(offer(),[{kind:'vanished-type',name:'Старый'}]);
+  assert.deepEqual(plain(alone.result().types),[{kind:'vanished-type',name:'Старый'}]);
+  alone.mark('date',true);
+  assert.deepEqual(plain(alone.result().types),[{kind:'date',dateParts:'date'}]);
+});
+
 // Defect caught: qualifiers forgotten when a type is unmarked and marked again.
 test('a type marked again keeps the qualifiers it had',()=>{
   const model=typeEditorModel(offer(),[{kind:'string',length:25}]);

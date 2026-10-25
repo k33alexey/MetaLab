@@ -799,8 +799,12 @@ function askCancelInput() {
    данных», and a mark always takes the one before away. A row the place
    takes only by itself (TypeOfferRow.alone, and on a folder for the objects
    inside it) and «Произвольный» stand alone in a composite too:
-   exclusion() names the question the window asks before such a mark. The
-   window answers result(): {types} in the order of the tree, or {refusal}. */
+   exclusion() names the question the window asks before such a mark. A type
+   of the description the place does not offer - what the model takes beyond
+   the window, a type of an earlier version - is kept as it is, after the
+   types of the tree, until a mark that takes every other away takes it too.
+   The window answers result(): {types} in the order of the tree, or
+   {refusal}. */
 function typeEditorModel(offer, types) {
   const rows = [];
   for (const [index, row] of offer.rows.entries()) {
@@ -816,10 +820,13 @@ function typeEditorModel(offer, types) {
   }
   const order = rows.flatMap(row => [row, ...row.children]);
   const typeKey = type => type.reference ? `${type.kind}:${type.reference}` : type.kind;
-  const marked = new Map(), drafts = new Map();
-  for (const type of types) if (order.some(row => row.key === typeKey(type))) marked.set(typeKey(type), structuredClone(type));
+  const marked = new Map(), drafts = new Map(), kept = [];
+  for (const type of types) {
+    if (order.some(row => row.key === typeKey(type))) marked.set(typeKey(type), structuredClone(type));
+    else kept.push(structuredClone(type));
+  }
   if (!types.length && rows.some(row => row.key === 'arbitrary')) marked.set('arbitrary', null);
-  let composite = !offer.single && marked.size > 1, search = '';
+  let composite = !offer.single && marked.size + kept.length > 1, search = '';
   const expanded = new Set(rows.filter(row => row.children.some(child => marked.has(child.key))).map(row => row.key));
   // The current row is the last one marked in the order of the tree, not the
   // first and not the one marked last (snapshots tip-95…106).
@@ -877,7 +884,7 @@ function typeEditorModel(offer, types) {
        earlier» - a type marked before stands alone; null - none. */
     exclusion(key) {
       if (!composite || marked.has(key) || !find(key)?.checkable) return null;
-      if (standsAlone(key) && marked.size > 0) return 'excludes-others';
+      if (standsAlone(key) && marked.size + kept.length > 0) return 'excludes-others';
       if ([...marked.keys()].some(standsAlone)) return 'excludes-earlier';
       return null;
     },
@@ -897,6 +904,7 @@ function typeEditorModel(offer, types) {
       if (!composite || standsAlone(key) || [...marked.keys()].some(standsAlone)) {
         for (const [other, type] of marked) if (type) drafts.set(other, type);
         marked.clear();
+        kept.length = 0;
       }
       marked.set(key, key === 'arbitrary' ? null : fresh(row));
     },
@@ -905,7 +913,10 @@ function typeEditorModel(offer, types) {
     setComposite(on) {
       if (offer.single) return;
       composite = on;
-      if (on || marked.size < 2) return;
+      if (on || marked.size + kept.length < 2) return;
+      if (!marked.size) { kept.splice(1); return; }
+      kept.length = 0;
+      if (marked.size < 2) return;
       const first = order.find(row => marked.has(row.key));
       for (const [key, type] of marked) if (key !== first.key && type) drafts.set(key, type);
       for (const key of [...marked.keys()]) if (key !== first.key) marked.delete(key);
@@ -954,7 +965,8 @@ function typeEditorModel(offer, types) {
       return true;
     },
     result() {
-      const chosen = order.filter(row => marked.has(row.key) && row.key !== 'arbitrary').map(row => marked.get(row.key));
+      const chosen = [...order.filter(row => marked.has(row.key) && row.key !== 'arbitrary').map(row => marked.get(row.key)),
+        ...kept.map(type => structuredClone(type))];
       if (!chosen.length && offer.required) return {refusal: 'Необходимо выбрать тип значения.'};
       return {types: chosen};
     },

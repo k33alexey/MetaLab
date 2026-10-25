@@ -20,7 +20,7 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		// A function of an external source in a subsystem: no export puts
 		// one there, and the window was not walked for it.
 		source, function, subsystem := uuid.MustNew().String(), uuid.MustNew().String(), uuid.MustNew().String()
-		writeExternalSource(t, root, source, "Склад", "functions:\n  - {id: "+function+", name: Остаток, title: {ru: Остаток}}\n")
+		writeExternalSource(t, root, source, "Склад", "functions:\n  - {id: "+function+", name: Остаток, title: {ru: Остаток}, types: [{kind: string, length: 10}]}\n")
 		writeMetadata(t, root, SubsystemKind, subsystem, "format: 1\nid: "+subsystem+"\nname: Склад\ntitle: {ru: Склад}\nmembers: ["+function+"]\n")
 	},
 	NoteRightWithoutSample: func(t *testing.T, root string) {
@@ -185,7 +185,7 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, "key_fields: [Код]\n", "", 1))
 	},
 	NoteAmpersandZero: func(t *testing.T, root string) {
-		writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Флаги\n    title: {ru: Флаги}\n    expression_in_data_source: \"flags&0\"\n")
+		writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Флаги\n    title: {ru: Флаги}\n    types: [{kind: string, length: 10}]\n    expression_in_data_source: \"flags&0\"\n")
 	},
 	NoteLongExternalString: func(t *testing.T, root string) {
 		writeExternalSource(t, root, warehouseSource, "Склад", "")
@@ -460,7 +460,7 @@ func TestSoundSettingsCarryNoNotes(t *testing.T) {
 	writeHTTPService(t, root, httpServiceID, "Биллинг", "root_url: billing\ntemplates:\n  - {id: "+uuid.MustNew().String()+", name: Версия, title: {ru: Версия}, template: /version}\n")
 	writeHTTPService(t, root, secondHTTPServiceID, "Заказы", "root_url: orders\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары", strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
-	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Остаток\n    title: {ru: Остаток}\n    expression_in_data_source: \"SELECT f(&1, x&10)\"\n")
+	writeExternalSource(t, root, warehouseSource, "Склад", "functions:\n  - id: "+uuid.MustNew().String()+"\n    name: Остаток\n    title: {ru: Остаток}\n    types: [{kind: string, length: 10}]\n    expression_in_data_source: \"SELECT f(&1, x&10)\"\n")
 	// A fixed length on a string code, a codeless catalog whose items have no
 	// code or one of spaces - the empty code - addressing done whole, a parameter set and another linked.
 	fixed := uuid.MustNew().String()

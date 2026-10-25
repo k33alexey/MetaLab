@@ -439,6 +439,41 @@ func TestAFieldOfADimensionTableTakesBinaryData(t *testing.T) {
 	}
 }
 
+// A field of a dimension table is checked as a field of a table: its editor
+// is the field's, and «Проверка конфигурации» refuses its composite defined
+// type with the same words, «Поле не может иметь составной тип» (opis of
+// 25.10.2026, vneshnij-istochnik.md, snapshot series-2.543/09); a reference
+// to an object of the base written out the editor does not offer. A value
+// storage neither (snapshot series-2.543/01).
+//
+// Catches a field of a dimension table read without the rule of a field of a
+// table - a composite defined type, a catalog, a value storage taken - as it
+// was until 2.555 (review 2.554, Б1, Б2).
+func TestAFieldOfADimensionTableIsCheckedAsAFieldOfATable(t *testing.T) {
+	t.Parallel()
+	const defined, catalog = "f8100000-0000-4000-8000-000000000051", "f8100000-0000-4000-8000-000000000052"
+	field := func(types string) string {
+		return goodsDimTableBody + "  - {id: " + uuid.MustNew().String() + ", name: Поле, title: {ru: Поле}, types: " + types + ", name_in_data_source: f}\n"
+	}
+	for types, want := range map[string]string{
+		"[{kind: defined-type, reference: " + defined + "}]": "has a composite type",
+		"[{kind: catalog, reference: " + catalog + "}]":      "is typed by a reference to an object of the base",
+		"[{kind: value-storage}]":                            "kind value-storage cannot stand in a field of an external data source",
+		"[{kind: string, length: 10}]":                       "",
+	} {
+		root := metadataProject(t)
+		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Мера\ntitle: {ru: Мера}\n"+
+			"types: [{kind: number, precision: 10}, {kind: string, length: 10}]\n")
+		writeMetadata(t, root, CatalogKind, catalog, "format: 1\nid: "+catalog+"\nname: Валюты\ntitle: {ru: Валюты}\n"+
+			"code: {type: string, length: 3}\ndescription_length: 50\n")
+		writeSalesCube(t, root, salesCubeBody, field(types))
+		_, err := Load(root)
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("a field of a dimension table of %s: want %q, got %v", types, want, err)
+		}
+	}
+}
+
 // A hierarchical dimension table keeps the level the designer saved with it -
 // 1 in the files the designer writes (mdclasses, 8.3.25 and 8.3.27) - and is
 // read at level 0, as the help says such a table is. The defects caught: the

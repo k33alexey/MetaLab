@@ -169,8 +169,11 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// managers, and last the record set of a sequence and the manager of a
 	// settings storage (opis of 24.10.2026, podpiska-na-sobytie.md,
 	// «Досъёмка», snapshots series-2.531/09, 10). A new subscription has no
-	// source, so the window closes with nothing marked.
-	SubscriptionSourceChoice: {model: placeSubscriptionSource, definedTypes: true,
+	// source and «Проверка конфигурации» refuses it so, «Источник событий
+	// должен быть задан» (opis of 25.10.2026, snapshot series-2.543/10); the
+	// window, having no «Произвольный», closes on no empty type (obshchee.md,
+	// «Пустой тип»).
+	SubscriptionSourceChoice: {model: placeSubscriptionSource, definedTypes: true, required: true,
 		wholeKinds: []TypeKind{CatalogObjectType, DocumentObjectType, CharacteristicTypesObjectType, AccountsObjectType,
 			CalculationTypesObjectType, BusinessProcessObjectType, TaskObjectType, ExchangePlanObjectType,
 			InformationRegisterRecordSetType, AccumulationRegisterRecordSetType, AccountingRegisterRecordSetType,
@@ -186,11 +189,13 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// source - a reference to another source's the designer takes (opis of
 	// 24.10.2026, vneshnij-istochnik.md, «Досъёмка (серия 2.531)»,
 	// snapshots series-2.531/16, 17, 19, 21-23). A field has no «Составной
-	// тип данных» and must have a type; a function may return none, and its
-	// composite holds the simple types only (placeExternalFunction).
+	// тип данных»; both must have a type (obshchee.md, «Пустой тип»), and the
+	// composite of a function holds the simple types only
+	// (placeExternalFunction).
 	ExternalFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables,
 		required: true, single: true},
-	ExternalFunctionChoice: {model: placeExternalFunction, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables},
+	ExternalFunctionChoice: {model: placeExternalFunction, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables,
+		required: true},
 	// A dimension of a cube: the defined types and the dimension tables of
 	// every cube of every source, one of them and no other type (opis of
 	// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/18, 20). Its
@@ -403,7 +408,8 @@ type TypeLimits struct {
 // newTypes are the qualifiers of a type marked anew: a string of 10 of
 // variable length, a number of 10 digits and none after the point, without
 // «Неотрицательное» (opis, «Тип значения и квалификаторы»), a date of the date
-// alone - the first of «Состав даты».
+// alone - what the prototype's window gives a date marked anew (opis of
+// 25.10.2026, obshchee.md, «Квалификаторы», snapshot series-2.543/07).
 var newTypes = map[TypeKind]Type{
 	StringType: {Kind: StringType, Length: 10},
 	NumberType: {Kind: NumberType, Precision: 10},

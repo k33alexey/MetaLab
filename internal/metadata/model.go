@@ -2068,11 +2068,13 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 			issues = append(issues, standsUnqualified(prefix, item, formKindAllowedIn(item.Kind, place), "is a type of an attribute of a form", place)...)
 			continue
 		}
-		// The designer does not offer binary data as the type of an attribute,
-		// of an object or of a form alike (checked by the owner, 30.09.2026),
-		// and none of the configurations being moved has one in a form.
-		if place == placeFormAttribute && item.Kind == BinaryDataType {
-			issues = append(issues, prefix+".kind binary-data cannot stand in an attribute of a form: the designer does not offer it")
+		// The editor of the type of an attribute of a form, of a data
+		// processor and of a report - one list - offers neither binary data
+		// nor the fixed collections (opis, obshchee.md, «Состав по местам»,
+		// snapshots tip-60, 61; binary data checked by the owner, 30.09.2026),
+		// and no export types such an attribute so.
+		if (place == placeFormAttribute || place == placeRunningObject) && notInTheMemoryWindow[item.Kind] {
+			issues = append(issues, prefix+".kind "+string(item.Kind)+" cannot stand "+placeName(place)+": the designer does not offer it")
 			continue
 		}
 		if item.Kind == BinaryDataType && binaryQualified(place) {

@@ -411,12 +411,13 @@ var sessionParameterValueTypes = map[TypeKind]bool{
 // the date and the boolean only: the identifier, binary data, a reference
 // to a table or a dimension table - two references together too - and a
 // defined type the editor puts only by themselves (opis of 25.10.2026,
-// vneshnij-istochnik.md, «Досъёмка 25.10.2026»). A value storage its editor
-// does not offer; it stands alone as in a field.
+// vneshnij-istochnik.md, «Досъёмка 25.10.2026»). A value storage neither the
+// editor of a field nor that of a function offers, and validateExternalFieldTypes
+// refuses it.
 var aloneTypes = map[typePlace]map[TypeKind]bool{
 	placeStored:        {ValueStorageType: true, UUIDType: true},
-	placeExternalField: {ValueStorageType: true, UUIDType: true},
-	placeExternalFunction: {ValueStorageType: true, UUIDType: true, BinaryDataType: true, DefinedType: true,
+	placeExternalField: {UUIDType: true},
+	placeExternalFunction: {UUIDType: true, BinaryDataType: true, DefinedType: true,
 		ExternalTableType: true, ExternalDimensionTableType: true},
 	// A resource of a register: any defined type beside the number or
 	// another defined type - «Выбран тип, который не может быть включен в
@@ -461,6 +462,13 @@ func formKindAllowedIn(kind TypeKind, place typePlace) bool {
 // notInDefinedType are the kinds living in memory a defined type does not hold.
 var notInDefinedType = map[TypeKind]bool{
 	InformationRegisterRecordManagerType: true, RecalculationRecordSetType: true, SequenceRecordSetType: true,
+	ConstantsSetType: true,
+}
+
+// notInTheMemoryWindow are the kinds living in memory the window of the type
+// of an attribute of a form, a data processor and a report leaves out.
+var notInTheMemoryWindow = map[TypeKind]bool{
+	BinaryDataType: true, FixedArrayType: true, FixedMapType: true, FixedStructureType: true,
 }
 
 // allowedIn says whether a kind that lives in memory may stand in the place.
@@ -471,7 +479,8 @@ func allowedIn(kind TypeKind, place typePlace) bool {
 		// The editor of the type of a defined type does not offer the
 		// manager of a record of a register of information, nor the record
 		// sets of a recalculation and of a sequence: its search finds none
-		// of them (opis of the defined type, 14.10.2026, «Нет в редакторе»).
+		// of them (opis of the defined type, 14.10.2026, «Нет в редакторе»);
+		// nor the set of constants (opis of 24.10.2026, «Чего нет»).
 		return !notInDefinedType[kind]
 	case placeRunningObject, placeFormAttribute:
 		return !definedTypeOnlyKinds[kind]

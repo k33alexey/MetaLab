@@ -215,7 +215,7 @@ func compositeProject(t *testing.T) string {
 	writeWebSocketClient(t, root, cmpWebSocketClient, "Биржа", "")
 	writeSalesCube(t, root, noteCubeBody(), goodsDimTableBody)
 	writeExternalSource(t, root, warehouseSource, "Склад",
-		"functions:\n  - {id: "+cmpExternalFunction+", name: Остаток, title: {ru: Остаток}, expression_in_data_source: 'remains(&1)'}\n")
+		"functions:\n  - {id: "+cmpExternalFunction+", name: Остаток, title: {ru: Остаток}, types: [{kind: string, length: 10}], expression_in_data_source: 'remains(&1)'}\n")
 	writeExternalTable(t, root, "Склад", goodsTable, "Товары",
 		strings.Replace(goodsBody, `unfilled_parent_value: {kind: string, data: ""}`, `unfilled_parent_value: {kind: undefined, data: ""}`, 1))
 

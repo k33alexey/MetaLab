@@ -207,8 +207,9 @@ var referenceOrder = []Kind{
 
 // ReferenceKinds are the kinds whose references a type is chosen among, in the
 // order the type editor lists them (referenceOrder). The tables of an external
-// source have references too and are not among them: the window offers them
-// only in the fields of their own source.
+// source have references too and are not among them: the window offers them,
+// those of every source, only in the places of a source - a field, a function,
+// a dimension and a field of a dimension table.
 func ReferenceKinds() []Kind {
 	return slices.Clone(referenceOrder)
 }

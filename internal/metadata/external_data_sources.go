@@ -391,6 +391,14 @@ func validateExternalFieldTypes(path string, types []Type, place typePlace) []st
 	var rest []Type
 	var restIndexes []int
 	for index, item := range types {
+		// The editor of the type of a field, of a dimension table's field
+		// and of a function of a source offers no value storage (opis of
+		// 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/16, 19,
+		// 21; series-2.543/01), and no export types one so.
+		if item.Kind == ValueStorageType {
+			issues = append(issues, fmt.Sprintf("%s[%d].kind value-storage cannot stand %s: the designer does not offer it", path, index, placeName(place)))
+			continue
+		}
 		if !isExternalReference(item.Kind) {
 			rest, restIndexes = append(rest, item), append(restIndexes, index)
 			continue
@@ -781,6 +789,11 @@ func (catalog *Catalog) validateExternalDataSources() error {
 				}
 			}
 			for _, table := range cube.DimensionTables {
+				for _, field := range table.Fields {
+					if err := catalog.validateExternalTableFieldType(owner+" dimension table "+table.Name, field); err != nil {
+						return err
+					}
+				}
 				if err := catalog.validateExternalFieldReferences(source, owner+" dimension table "+table.Name, table.Fields); err != nil {
 					return err
 				}
@@ -796,9 +809,11 @@ func (catalog *Catalog) validateExternalDataSources() error {
 // данных», and a defined type that is composite «Проверка конфигурации»
 // refuses, «Поле не может иметь составной тип»; and no reference to an object
 // of the base - the editor offers none, while a defined type holding one it
-// takes. A function of a source takes a composite type (funkciya-istochnika.md)
-// and is not checked here; what the editors of a cube and of its dimension
-// tables give was not seen for their fields.
+// takes. A field of a dimension table is checked the same: its editor is the
+// field's, and «Проверка конфигурации» refuses its composite defined type with
+// the same words (opis of 25.10.2026, snapshot series-2.543/09). A function of
+// a source takes a composite type (funkciya-istochnika.md) and is not checked
+// here.
 func (catalog *Catalog) validateExternalTableFieldType(owner string, field ExternalField) error {
 	for _, item := range field.Types {
 		if _, reference := referenceStorages[item.Kind]; reference && !isExternalReference(item.Kind) {
@@ -885,9 +900,10 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 				target, ok := tables[*item.Reference]
 				if !ok {
 					// A reference to a table of another source is a key of a
-					// database this one cannot join; nothing shows the
-					// configurator refusing it, so it is carried, joins
-					// nothing, and is a note.
+					// database this one cannot join; the window offers the
+					// tables of every source and «Проверка конфигурации» takes
+					// it (opis of 24.10.2026, snapshots series-2.531/22-25), so
+					// it is carried, joins nothing, and is a note.
 					if _, elsewhere := catalog.externalTableByID[*item.Reference]; elsewhere {
 						continue
 					}

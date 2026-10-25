@@ -130,7 +130,7 @@ operations:
 			return err
 		}, func(name string) string {
 			return "format: 1\nid: " + warehouseSource + "\nname: Склад\ntitle: {ru: Склад}\nfunctions:\n  - id: " + firstFunction +
-				"\n    name: " + name + "\n    title: {ru: Остаток}\n"
+				"\n    name: " + name + "\n    title: {ru: Остаток}\n    types: [{kind: string, length: 10}]\n"
 		}},
 		{"templates[0].name", decodeHTTP(configuration), func(name string) string { return httpService(name, "Получить", "ВерсияПолучить") }},
 		{"templates[0].methods[0].name", decodeHTTP(configuration), func(name string) string { return httpService("Версия", name, "ВерсияПолучить") }},

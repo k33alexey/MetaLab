@@ -189,7 +189,7 @@ func usesOf(kind Kind) kindUses {
 // numerator): their rights are absent, and no export gives one. An
 // enumeration is unproven, not absent: it takes no right of its own, yet
 // the window of a role shows it for its commands (pass of 21.10.2026,
-// rol.md, prava/42-44); so is a function of a source. A functional
+// rol.md, prava/42-44). A functional
 // option is told by the designer: its window «Выбор объекта» of the content
 // offers subsystems, common attributes, exchange plans, filter criteria,
 // common commands and common forms of the common objects, and the objects
