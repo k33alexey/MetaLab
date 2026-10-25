@@ -318,12 +318,9 @@ async function chooseListSettings(list, settings, applied) {
     group.replaceChildren(node('legend', 'Колонка'));
     if (column) {
       const number = (value, apply, label, limit = Infinity) => {
-        // What is not a whole number from 1 up to the limit is not taken:
-        // the field shows again the last value taken.
-        let taken = value;
-        const input = textInput(value, entered => {
-          if (Number.isInteger(entered) && entered >= 1 && entered <= limit) { taken = entered; apply(entered); } else input.value = taken;
-        }, {type: 'number', min: 1, ...(limit < Infinity ? {max: limit} : {})});
+        // A whole number from 1 up to the limit; another asks textInput's
+        // question (vse-ogranicheniya-dostupa.md, «Настройка списка»).
+        const input = textInput(value, apply, {type: 'number', min: 1, ...(limit < Infinity ? {max: limit} : {})});
         input.setAttribute('aria-label', label);
         return input;
       };

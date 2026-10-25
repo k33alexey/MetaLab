@@ -129,8 +129,13 @@ function limited(field, options = {}) {
 /* textInput is a free-text control. A limit is set only where the model has
    one (limited): a limit the model does not know refuses what the
    prototype keeps. Text is applied on every keystroke; a number is applied
-   once it is committed, as a Number. options: kind 'area' (rows), type,
-   min, max, maxLength, placeholder, list, disabled. */
+   once it is committed, as a Number. A number beyond its ceilings - the
+   field's min and max, a fraction, or what apply refuses by answering false
+   - is not taken: the prototype's question «Отменить ввод?» (askCancelInput)
+   brings back the value before on «Да» and leaves the field to be put right
+   on «Нет», in every window (docs/block-00/obshchee.md, «Пределы в окне»;
+   vse-ogranicheniya-dostupa.md, «Настройка списка»). options: kind 'area'
+   (rows), type, min, max, maxLength, placeholder, list, disabled. */
 function textInput(value, apply, options = {}) {
   const input = node(options.kind === 'area' ? 'textarea' : 'input');
   if (options.kind === 'area') input.rows = options.rows || 3;
@@ -139,8 +144,13 @@ function textInput(value, apply, options = {}) {
   for (const key of ['min', 'max', 'maxLength', 'placeholder']) if (options[key] !== undefined) input[key] = options[key];
   if (options.list) input.setAttribute('list', options.list);
   input.disabled = !!options.disabled;
-  if (options.type === 'number') input.addEventListener('change', () => apply(Number(input.value)));
-  else input.addEventListener('input', () => apply(input.value));
+  if (options.type === 'number') {
+    let before = input.value;
+    input.addEventListener('change', async () => {
+      if (input.value !== '' && input.validity.valid && apply(Number(input.value)) !== false) { before = input.value; return; }
+      if (await askCancelInput()) input.value = before; else input.focus();
+    });
+  } else input.addEventListener('input', () => apply(input.value));
   return input;
 }
 
@@ -1159,18 +1169,14 @@ function showTypeEditor(offer, types) {
     }
     tree.querySelector('.type-editor-row.current')?.scrollIntoView?.({block: 'nearest'});
   }
-  /* A number field of a qualifier: a value beyond the ceiling asks
-     askCancelInput, «Да» brings back the value before and «Нет» leaves the
-     field to be put right. */
+  /* A number field of a qualifier: the model takes it or refuses it, and a
+     refused one asks textInput's question. */
   function numberField(label, field, value, enabled) {
-    const input = node('input', undefined, 'type-editor-number');
-    input.type = 'number';
-    input.value = String(value || 0);
-    input.disabled = !enabled;
-    input.addEventListener('change', async () => {
-      if (model.setQualifier(field, Number(input.value))) { draw(); return; }
-      if (await askCancelInput()) draw(); else input.focus();
-    });
+    const input = textInput(String(value || 0), entered => {
+      if (!model.setQualifier(field, entered)) return false;
+      draw();
+    }, {type: 'number', disabled: !enabled});
+    input.classList.add('type-editor-number');
     return labeledField(label, input, 'type-editor-field');
   }
   function drawQualifiers() {

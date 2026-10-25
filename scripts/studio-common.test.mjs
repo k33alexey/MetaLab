@@ -18,7 +18,7 @@ function makeDocumentStub(){
   function makeElement(tag){
     const listeners={};
     return {
-      tagName:tag,children:[],dataset:{},style:{},classList:{add(){},toggle(){}},
+      tagName:tag,children:[],dataset:{},style:{},classList:{add(){},toggle(){}},validity:{valid:true},
       set textContent(value){this._text=value;},get textContent(){return this._text;},
       set value(value){this._value=value;},get value(){return this._value;},
       set type(value){this._type=value;},get type(){return this._type;},
@@ -134,7 +134,7 @@ test('a unique name skips taken names whatever their case',()=>{
 
 // Предел длины ставится, только если он назван: у комментария его нет.
 // Число применяется по завершении ввода и числом, текст — на каждой букве.
-test('a text control limits only when told to and applies numbers as numbers',()=>{
+test('a text control limits only when told to and applies numbers as numbers',async()=>{
   let applied;
   const free=textInput('x',value=>applied=value);
   assert.equal(free.maxLength,undefined);
@@ -145,6 +145,7 @@ test('a text control limits only when told to and applies numbers as numbers',()
   number.value='7';number.dispatch('input');
   assert.equal(applied,'abc');
   number.dispatch('change');
+  await new Promise(resolve=>setTimeout(resolve));
   assert.equal(applied,7);
 });
 

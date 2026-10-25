@@ -391,7 +391,8 @@ const templateListWalk = `(async () => {` + openAllRestrictions + `
   dialog = await settings();
   choose(dialog, 'Ограничение доступа');
   const height = field(dialog, 'Высота');
-  height.value = '11'; height.dispatchEvent(new Event('change', {bubbles: true}));
+  height.value = '11'; height.dispatchEvent(new Event('change', {bubbles: true})); await studio.settle();
+  const asked = [...document.querySelectorAll('dialog[open]')].pop(); answer.heightQuestion = asked.querySelector('h3').textContent; [...asked.querySelectorAll('button')].find(button => button.textContent === 'Да').click(); await studio.settle();
   answer.heightAfterEleven = height.value;
   height.value = '10'; height.dispatchEvent(new Event('change', {bubbles: true}));
   answer.heightAfterTen = height.value;
@@ -432,12 +433,12 @@ func TestTheListSettingsOfTemplatesAndCancelAreThePrototypes(t *testing.T) {
 		Auto          bool
 	}
 	var walk struct {
-		Templates         map[string]column
-		HeightAfterEleven string
-		HeightAfterTen    string
-		Applied           []string
-		Cancelled         []string
-		Kept              map[string]struct {
+		Templates                         map[string]column
+		HeightAfterEleven, HeightQuestion string
+		HeightAfterTen                    string
+		Applied                           []string
+		Cancelled                         []string
+		Kept                              map[string]struct {
 			Columns []struct {
 				Key     string
 				Visible bool
@@ -453,8 +454,9 @@ func TestTheListSettingsOfTemplatesAndCancelAreThePrototypes(t *testing.T) {
 			t.Errorf("the window gives «%s» %+v, want %+v", title, walk.Templates[title], expected)
 		}
 	}
-	if walk.HeightAfterEleven != "5" || walk.HeightAfterTen != "10" {
-		t.Errorf("the height took %q after 11 and %q after 10, want 5 kept and 10 taken", walk.HeightAfterEleven, walk.HeightAfterTen)
+	if walk.HeightAfterEleven != "5" || walk.HeightAfterTen != "10" || walk.HeightQuestion != "В поле введены некорректные данные. Отменить ввод?" {
+		t.Errorf("the height took %q after 11 (asked %q) and %q after 10, want the question, 5 back on «Да» and 10 taken (shabl-21, -22)",
+			walk.HeightAfterEleven, walk.HeightQuestion, walk.HeightAfterTen)
 	}
 	if slices.Contains(walk.Applied, "Поля") || !slices.Contains(walk.Cancelled, "Поля") {
 		t.Errorf("the list shows %v applied and %v cancelled, want «Поля» hidden and then back", walk.Applied, walk.Cancelled)

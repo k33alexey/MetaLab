@@ -232,3 +232,73 @@ func TestTheFieldsOfAWindowAreSetByTheModel(t *testing.T) {
 		}
 	}
 }
+
+// beyondWalk types numbers beyond their ceilings into the window of a
+// catalog and answers the question asked, what «Да» and «Нет» leave in the
+// field, and whether the catalog took the refused number.
+const beyondWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
+  const input = caption => [...document.querySelectorAll('#catalog-editor .catalog-field')].find(label => label.firstChild.textContent === caption).querySelector('input');
+  const commit = async (caption, text) => {
+    const field = input(caption);
+    // The field is left before it is answered, as a click elsewhere leaves it.
+    field.focus(); field.value = text; document.querySelector('#refresh').focus(); field.dispatchEvent(new Event('change', {bubbles: true}));
+    await studio.settle();
+    return document.querySelector('dialog[open]');
+  };
+  const answer = async text => { [...document.querySelectorAll('dialog[open] button')].find(button => button.textContent === text).click(); await studio.settle(); };
+  node('Товары').click(); await studio.settle();
+  const before = input('Длина кода').value;
+  steps.question = (await commit('Длина кода', '51'))?.querySelector('h3').textContent || '';
+  await answer('Да');
+  steps.yes = input('Длина кода').value === before;
+  steps.unchanged = document.querySelector('#status').textContent !== 'Изменён';
+  await commit('Длина кода', '51');
+  await answer('Нет');
+  steps.no = input('Длина кода').value === '51' && document.activeElement === input('Длина кода');
+  steps.negative = !!(await commit('Длина наименования', '-1'));
+  await answer('Да');
+  steps.fraction = !!(await commit('Длина наименования', '2.5'));
+  await answer('Да');
+  steps.taken = !(await commit('Длина наименования', '120')) && document.querySelector('#status').textContent === 'Изменён';
+  // The window of the type asks the same question of a length of 1025.
+  [...document.querySelectorAll('#catalog-editor .catalog-list-item')].find(item => item.textContent === 'Артикул').click();
+  await studio.settle();
+  document.querySelector('#catalog-editor button[title="Редактирование типа данных"]').click();
+  await studio.settle();
+  const length = document.querySelector('dialog[open] .type-editor-number');
+  const lengthBefore = length.value;
+  length.focus(); length.value = '1025'; length.dispatchEvent(new Event('change', {bubbles: true}));
+  await studio.settle();
+  const asked = [...document.querySelectorAll('dialog[open]')].pop();
+  steps.typeQuestion = asked.querySelector('h3').textContent;
+  [...asked.querySelectorAll('button')].find(button => button.textContent === 'Да').click();
+  await studio.settle();
+  steps.typeBack = document.querySelector('dialog[open] .type-editor-number').value === lengthBefore;
+  return steps;
+})()`
+
+// TestAValueBeyondItsCeilingAsksToCancel catches a number beyond its
+// ceiling taken, cut silently or refused silently: the prototype asks «В
+// поле введены некорректные данные. Отменить ввод?», «Да» brings back the
+// value before, «Нет» leaves the field to be put right (docs/block-00/
+// obshchee.md, «Пределы в окне»; the owner, 14.10.2026: everywhere).
+func TestAValueBeyondItsCeilingAsksToCancel(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, beyondWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Question, TypeQuestion                                  string
+		Yes, Unchanged, No, Negative, Fraction, Taken, TypeBack bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if steps.Question != "В поле введены некорректные данные. Отменить ввод?" || !steps.Yes || !steps.Unchanged || !steps.No ||
+		!steps.Negative || !steps.Fraction || !steps.Taken || steps.TypeQuestion != steps.Question || !steps.TypeBack {
+		t.Errorf("a value beyond its ceiling: %+v", steps)
+	}
+}

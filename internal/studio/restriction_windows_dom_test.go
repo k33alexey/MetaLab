@@ -557,6 +557,7 @@ const restrictionFilterWalk = `(async () => {` + restrictionWalkTools + `
   await menu(document.querySelector('.overview-block .menu-button'), 'Настройка списка...');
   const width = dialog().querySelector('input[aria-label="Ширина"]');
   width.value = '0'; width.dispatchEvent(new Event('change', {bubbles: true})); await studio.settle();
+  const asked = [...document.querySelectorAll('dialog[open]')].pop(); seen.widthQuestion = asked.querySelector('h3').textContent; [...asked.querySelectorAll('button')].find(button => button.textContent === 'Да').click(); await studio.settle();
   seen.widthAfterZero = width.value;
   await press('Отмена');
   return seen;
@@ -584,7 +585,7 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 		LineAfterAll, Line, LineBack                                   string
 		Objects                                                        []string
 		OfferedKinds, OfferedObjects, OfferedFields                    []string
-		WidthAfterZero                                                 string
+		WidthAfterZero, WidthQuestion                                  string
 		MarkedAfterSet, MarkedBeforeOff, ShownAfterOff, MarkedAfterOff int
 	}
 	if err := json.Unmarshal(result, &seen); err != nil {
@@ -624,8 +625,8 @@ func TestTheFilterOfRestrictionsIsThePrototypes(t *testing.T) {
 	if seen.LineBack != "Отбор:" {
 		t.Errorf("the filter outlived a move to «Все роли»: %q", seen.LineBack)
 	}
-	if seen.WidthAfterZero != "14" {
-		t.Errorf("a width of 0 was taken: %q", seen.WidthAfterZero)
+	if seen.WidthAfterZero != "14" || seen.WidthQuestion != "В поле введены некорректные данные. Отменить ввод?" {
+		t.Errorf("a width of 0 was taken: %q, asked %q; want the question and 14 back on «Да» (shabl-23)", seen.WidthAfterZero, seen.WidthQuestion)
 	}
 	for _, problem := range browser.problems() {
 		t.Errorf("browser: %s", problem)
