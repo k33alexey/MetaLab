@@ -191,6 +191,14 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	everyOfferedTypeIsAccepted(t, catalog)
+}
+
+// everyOfferedTypeIsAccepted builds every type each place of the window offers
+// in the catalog, as the window builds it, and checks it where the model checks
+// that place; a place naming no object of the catalog is an error too.
+func everyOfferedTypeIsAccepted(t *testing.T, catalog *Catalog) {
+	t.Helper()
 	for place, at := range choicePlaces {
 		offer, _ := catalog.TypeOffer(place)
 		named := 0
@@ -225,7 +233,7 @@ func TestEveryOfferedTypeIsAccepted(t *testing.T) {
 			}
 		}
 		if named == 0 {
-			t.Errorf("%s names no object of the composite project", place)
+			t.Errorf("%s names no object of the project", place)
 		}
 	}
 }
