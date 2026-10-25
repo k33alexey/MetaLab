@@ -111,8 +111,23 @@ function labeledField(label, control, className = 'catalog-field') {
   return wrapper;
 }
 
+/* StudioLimits are the model's ceilings on what a window types in, as the
+   server sends them with the project (metadata.EditorLimits): name, code,
+   description. A window sets a field by them through limited() and keeps no
+   number of its own. */
+const StudioLimits = {};
+
+/* limited answers the options of a field with the model's ceiling of what
+   it holds - a text by its length, a number by its value; a field the model
+   sets no ceiling on is given none. */
+function limited(field, options = {}) {
+  const limit = StudioLimits[field];
+  if (!limit) return options;
+  return options.type === 'number' ? {...options, max: limit} : {...options, maxLength: limit};
+}
+
 /* textInput is a free-text control. A limit is set only where the model has
-   one (options.maxLength): a limit the model does not know refuses what the
+   one (limited): a limit the model does not know refuses what the
    prototype keeps. Text is applied on every keystroke; a number is applied
    once it is committed, as a Number. options: kind 'area' (rows), type,
    min, max, maxLength, placeholder, list, disabled. */
@@ -293,10 +308,11 @@ function fieldWithButtons(control, buttons) {
    writes one; onChange() is called after every edit, in the field or in the
    window; options go to textInput - kind 'area', maxLength, disabled.
    destroy() stops following the language of Studio; follow() is below. */
-/* titleTextOptions are the options of a localized title of an object. The
-   single line and the limit of 512 are not the model's: BLOCKS, block 18,
-   «переводимые тексты в Studio многострочны и без предела длины». */
-const titleTextOptions = Object.freeze({maxLength: 512});
+/* titleTextOptions are the options of a localized title of an object: no
+   ceiling, as the model sets none («Пределы на состав»). The single line is
+   not the model's: BLOCKS, block 18, «переводимые тексты в Studio
+   многострочны». */
+const titleTextOptions = Object.freeze({});
 
 function createLocalizedField(project, getValue, setValue, onChange, options = {}) {
   const languages = project.languages || [];

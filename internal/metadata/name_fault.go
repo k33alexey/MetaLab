@@ -27,6 +27,24 @@ const (
 	NameTaken
 )
 
+// EditorLimits are the model's ceilings on what the window of an object types
+// in, one description Studio sets every such field by (studio-common.js,
+// limited): the name of anything named by an identifier, the length of a
+// code or a number, the length of a description. A field the model sets no
+// ceiling on - a synonym, a comment - has none here and none in Studio. An
+// exchange plan takes a longer description (maxExchangePlanDescriptionLength),
+// which comes with a window of it.
+type EditorLimits struct {
+	Name        int `json:"name"`
+	Code        int `json:"code"`
+	Description int `json:"description"`
+}
+
+// Limits is the description of the ceilings.
+func Limits() EditorLimits {
+	return EditorLimits{Name: maxNameLength, Code: maxCodeLength, Description: maxDescriptionLength}
+}
+
 // NameRuleFault is what the rule of a name alone says of it, whatever stands
 // beside it.
 func NameRuleFault(name string) NameFault {

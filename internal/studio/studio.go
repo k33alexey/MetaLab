@@ -64,6 +64,8 @@ type Snapshot struct {
 	ProjectPath   string          `json:"projectPath"`
 	Configuration project.Project `json:"configuration"`
 	Tree          Node            `json:"tree"`
+	// Limits are the model's ceilings Studio sets its fields by.
+	Limits metadata.EditorLimits `json:"limits"`
 	// Subsystems are what the tree's filter by subsystems selects by; absent
 	// while the project's descriptions do not read as a whole, and the
 	// filter is not offered then.
@@ -260,7 +262,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	root.Children = append(root.Children, branches...)
-	snapshot := Snapshot{ProjectPath: workspace.root, Configuration: configuration, Tree: root}
+	snapshot := Snapshot{ProjectPath: workspace.root, Configuration: configuration, Tree: root, Limits: metadata.Limits()}
 	if loaded != nil {
 		filter := loaded.SubsystemFilter()
 		snapshot.Subsystems = &filter

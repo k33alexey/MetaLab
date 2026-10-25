@@ -108,7 +108,7 @@ function createCatalogEditor(host, onChange) {
   // The field of a name: at is the way to the part in the catalog, none for
   // the catalog's own name.
   function nameField(value, apply, at) {
-    const input = textInput(value, value => { apply(value); touch(); }, {maxLength: 128});
+    const input = textInput(value, value => { apply(value); touch(); }, limited('name'));
     watchName(input, () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: source.catalog.name});
     return labeledField('Имя', input);
   }
@@ -213,11 +213,11 @@ function createCatalogEditor(host, onChange) {
     const code = node('div', undefined, 'catalog-code');
     code.append(node('div', 'Код', 'catalog-section-title'));
     code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));
-    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), {type: 'number', min: 0, max: 50}));
+    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), limited('code', {type: 'number', min: 0})));
     code.append(checkField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
     code.append(checkField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
     panel.append(code);
-    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), {type: 'number', min: 0, max: 150}));
+    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), limited('description', {type: 'number', min: 0})));
     return panel;
   }
   function clearTitleFields() { titleFieldCleanups.forEach(destroy => destroy()); titleFieldCleanups = []; }

@@ -17,11 +17,11 @@ function createLanguagesEditor(host, onChange) {
   function touch() { onChange(); }
   /* Языки названы на языке Studio и меняются вместе с ним. */
   StudioLanguage.onChange(() => { if (source) render(); });
-  /* Предел — только тот, что есть в модели: имя языка — 255 знаков, у
-     комментария предела нет. */
+  /* Предел — только тот, что есть в модели (limited): у имени — предел имени,
+     у комментария предела нет. */
   function textField(label, value, apply, options = {}) {
     return labeledField(label, textInput(value, value => { apply(value); touch(); },
-      {maxLength: options.unbounded ? undefined : options.maxLength || 255, disabled: options.disabled}));
+      {maxLength: options.maxLength, disabled: options.disabled}));
   }
   // Passive fallback only: reachable if the editor is reopened (e.g. after
   // an external file change) without a specific language re-selected yet.
@@ -41,13 +41,13 @@ function createLanguagesEditor(host, onChange) {
     const locked = language.code === 'en';
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', title(language)));
-    panel.append(textField('Код', language.code, () => {}, {disabled: true, maxLength: 16}));
+    panel.append(textField('Код', language.code, () => {}, {disabled: true}));
     const name = textInput(language.name, value => {
       const before = language.name;
       model.setLanguageField(language.code, 'name', value);
       synonym.follow(before, value);
       touch();
-    }, {maxLength: 255, disabled: locked});
+    }, limited('name', {disabled: locked}));
     watchName(name, () => {
       const configuration = model.value();
       return {path: 'configuration.yaml', description: configuration, at: ['languages', String(configuration.languages.findIndex(item => item.code === language.code))]};
@@ -60,7 +60,7 @@ function createLanguagesEditor(host, onChange) {
     synonymCleanup = synonym.destroy;
     panel.append(labeledField('Синоним', synonym));
     panel.append(textField('Комментарий', language.comment,
-      value => model.setLanguageField(language.code, 'comment', value), {disabled: locked, unbounded: true}));
+      value => model.setLanguageField(language.code, 'comment', value), {disabled: locked}));
     if (locked) panel.append(node('div', 'Всегда доступен, нельзя изменить или удалить', 'catalog-uuid'));
     return panel;
   }

@@ -77,8 +77,8 @@ function createProjectEditor(host, onChange) {
   StudioLanguage.onChange(() => { if (source) render(); });
   function rerender() { onChange(); render(); }
   function touch() { onChange(); }
-  /* Длину ограничивает только то, что ограничено в модели: имя — 255
-     знаков, как у всего, что называется идентификатором. У комментария,
+  /* Длину ограничивает только то, что ограничено в модели (limited): имя —
+     пределом имени, как всё, что называется идентификатором. У комментария,
      поставщика, версии и подписи предела нет ни в справке, ни в
      конфигураторе (подпись мобильного клиента в sb — 113 КБ). */
   function textField(label, value, apply, options = {}) {
@@ -195,7 +195,7 @@ function createProjectEditor(host, onChange) {
       model.setName(value);
       synonym.text.follow(before, value);
       touch();
-    }, {maxLength: 255});
+    }, limited('name'));
     watchName(name, () => ({path: 'configuration.yaml', name: name.value}));
     identity.append(labeledField('Имя', name), synonym);
     identity.append(textField('Комментарий', source.configuration.comment,
@@ -277,7 +277,7 @@ function createProjectEditor(host, onChange) {
       ['', 'Как в ML'], ['russian', 'Русский'], ['english', 'Английский'],
     ]));
     settings.append(textField('Префикс имён', source.configuration.namePrefix,
-      value => model.setField('namePrefix', value), {maxLength: 255}));
+      value => model.setField('namePrefix', value), limited('name')));
     settings.append(dictionariesField('Дополнительные словари поиска'));
     settings.append(checkField('Включать в содержание справки', 'includeHelpInContents'));
     panel.append(settings);

@@ -181,3 +181,54 @@ func TestAddOpensTheNextObjectAtOnce(t *testing.T) {
 		t.Errorf("«Добавить» gave %+v; want no dialog, Справочник1 in the tree and its window, Реквизит1, Реквизит2, ТабличнаяЧасть1", steps)
 	}
 }
+
+// limitsWalk opens the windows of a catalog, of a role, of a language and of
+// the project and answers the ceilings their fields are set by.
+const limitsWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
+  const input = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .role-identity label')]
+    .find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
+  const ceiling = element => element.type === 'number' ? Number(element.max || 0) : element.maxLength;
+  node('Товары').click(); await studio.settle();
+  for (const caption of ['Имя', 'Заголовок', 'Длина кода', 'Длина наименования']) steps['catalog ' + caption] = ceiling(input('#catalog-editor', caption));
+  node('Кладовщик').click(); await studio.settle();
+  for (const caption of ['Имя роли', 'Заголовок', 'Комментарий']) steps['role ' + caption] = ceiling(input('#role-editor', caption));
+  node('Українська').click(); await studio.settle();
+  for (const caption of ['Имя', 'Синоним', 'Комментарий']) steps['language ' + caption] = ceiling(input('#languages-editor', caption));
+  document.querySelector('#tree summary').click(); await studio.settle();
+  for (const caption of ['Имя', 'Синоним']) steps['project ' + caption] = ceiling(input('#project-editor', caption));
+  return steps;
+})()`
+
+// TestTheFieldsOfAWindowAreSetByTheModel catches a window keeping a ceiling
+// of its own: a name of 128 where the model and the prototype take 255, a
+// synonym of 512 and a comment of 4000 where the model sets none, a code and
+// a description bounded by numbers of the page (METADATA-OBJECTS.md,
+// «Пределы на состав»). A browser answers -1 for a text with no ceiling.
+func TestTheFieldsOfAWindowAreSetByTheModel(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
+		if _, err := workspace.CreateRole("Кладовщик"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	result, err := browser.evaluate(ctx, page, limitsWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps map[string]int
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	for field, want := range map[string]int{
+		"catalog Имя": 255, "catalog Заголовок": -1, "catalog Длина кода": 50, "catalog Длина наименования": 150,
+		"role Имя роли": 255, "role Заголовок": -1, "role Комментарий": -1,
+		"language Имя": 255, "language Синоним": -1, "language Комментарий": -1,
+		"project Имя": 255, "project Синоним": -1,
+	} {
+		if got, ok := steps[field]; !ok || got != want {
+			t.Errorf("%s is set to %d (shown %v), want %d", field, got, ok, want)
+		}
+	}
+}

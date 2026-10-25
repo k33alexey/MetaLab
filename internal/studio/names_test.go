@@ -418,3 +418,22 @@ func TestTheTreeGivesTheWindowOfAnObject(t *testing.T) {
 		}
 	}
 }
+
+// TestTheProjectCarriesTheModelsLimits catches the description of ceilings
+// Studio sets its fields by drifting from the model's: a name of 255, a code
+// of 50, a description of 150 (METADATA-OBJECTS.md, «Пределы на состав»),
+// written out here, not read from the model.
+func TestTheProjectCarriesTheModelsLimits(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (metadata.EditorLimits{Name: 255, Code: 50, Description: 150}); snapshot.Limits != want {
+		t.Errorf("the project carries the limits %+v, want %+v", snapshot.Limits, want)
+	}
+}
