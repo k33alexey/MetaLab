@@ -887,15 +887,19 @@ func TestBinaryDataTakesItsQualifiersWhereTheWindowOffersIt(t *testing.T) {
 }
 
 // The key field of a table of object data is of a simple type: typed by a
-// reference to a table «Проверка конфигурации» refuses it (opis of 24.10.2026,
-// vneshnij-istochnik.md, snapshots series-2.531/23-25). Binary data it takes
-// - the configurator saves such keys (lombard1) - and a table of records keys
-// by references freely (stockBody). The expectations are the opis's and the
+// reference to a table, written out or by a defined type holding one,
+// «Проверка конфигурации» refuses it (opis of 24.10.2026 and 25.10.2026,
+// vneshnij-istochnik.md, snapshots series-2.531/23-25, series-2.535/17, 18).
+// Binary data it takes - the configurator saves such keys (lombard1) - so
+// does a defined type of a string, and a table of records keys by
+// references freely (stockBody). The expectations are the opis's and the
 // export's, written here.
 //
 // Defect caught: a table of object data keyed by a reference loaded, which
-// the designer refuses; the rule refusing a key of binary data, as a narrow
-// reading of «примитивных» would, or reaching a table of records.
+// the designer refuses; the written type checked and not the one it expands
+// to, so a defined type lets the reference through; the rule refusing a key
+// of binary data or of a defined type, as a narrow reading of «примитивных»
+// would, or reaching a table of records.
 func TestTheKeyOfAnObjectTableIsOfASimpleType(t *testing.T) {
 	t.Parallel()
 	keyed := func(types string) string {
@@ -915,9 +919,27 @@ func TestTheKeyOfAnObjectTableIsOfASimpleType(t *testing.T) {
 	if _, err := Load(root); err != nil {
 		t.Fatalf("an object table keyed by binary data was refused: %v", err)
 	}
-	if _, err := DecodeExternalTable("table.yaml", strings.NewReader("format: 1\nid: "+uuid.MustNew().String()+"\nname: Остатки\ntitle: {ru: Остатки}\n"+stockBody),
-		metadataConfiguration()); err != nil && strings.Contains(err.Error(), "the key of a table of object data") {
-		t.Fatalf("a table of records keyed by a reference was refused as one of object data: %v", err)
+	defined := uuid.MustNew().String()
+	for written, refused := range map[string]bool{
+		"[{kind: external-data-source-table, reference: " + goodsTable + "}]": true,
+		"[{kind: string, length: 20}]":                                        false,
+	} {
+		root = metadataProject(t)
+		writeExternalSource(t, root, warehouseSource, "Склад", "")
+		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Ключ\ntitle: {ru: Ключ}\ntypes: "+written+"\n")
+		writeExternalTable(t, root, "Склад", goodsTable, "Товары", keyed("[{kind: defined-type, reference: "+defined+"}]"))
+		_, err := Load(root)
+		if refused && (err == nil || !strings.Contains(err.Error(), `key_fields[0] names "Код", and the key of a table of object data is of a simple type`)) {
+			t.Errorf("an object table keyed by a defined type of %s: %v", written, err)
+		}
+		if !refused && err != nil {
+			t.Errorf("an object table keyed by a defined type of %s: %v", written, err)
+		}
+	}
+	root = metadataProject(t)
+	writeWarehouse(t, root)
+	if _, err := Load(root); err != nil {
+		t.Fatalf("a table of records keyed by a reference was refused: %v", err)
 	}
 }
 

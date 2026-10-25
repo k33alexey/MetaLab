@@ -545,11 +545,6 @@ func validateExternalTableShape(table ExternalTable, fields map[string]ExternalF
 	if len(table.KeyFields) > 1 {
 		issues = append(issues, "key_fields must name one field at most: a table of object data is keyed by one field, and more than one make it a table of records")
 	}
-	for index, name := range table.KeyFields {
-		if field, ok := fields[strings.ToLower(name)]; ok {
-			issues = append(issues, objectKeyFieldIssues(fmt.Sprintf("key_fields[%d]", index), field)...)
-		}
-	}
 	if table.Forms.Record != "" {
 		issues = append(issues, "forms.record belongs to a table of records, and this one holds object data")
 	}
@@ -738,6 +733,9 @@ func (catalog *Catalog) validateExternalDataSources() error {
 				}
 			}
 			if err := catalog.validateExternalFieldReferences(source, owner, table.Fields); err != nil {
+				return err
+			}
+			if err := catalog.validateObjectKeyField(owner, table); err != nil {
 				return err
 			}
 			// Null is the other answer the help gives besides a value of the
@@ -932,17 +930,28 @@ func (catalog *Catalog) validateExternalFieldReferences(source ExternalDataSourc
 	return nil
 }
 
-// objectKeyFieldIssues refuses the key field of a table of object data typed by
-// a reference to a table of a source: «Проверка конфигурации» answers «Тип
-// поля ключа таблицы с объектными данными может быть только одним из
-// примитивных типов» (opis of 24.10.2026, vneshnij-istochnik.md, snapshots
-// series-2.531/23-25). Binary data is not refused: the configurator saves
-// such keys (lombard1, two tables of МТ). A defined type as the key was not
-// tried and is not refused either.
-func objectKeyFieldIssues(path string, field ExternalField) []string {
-	for _, item := range field.Types {
-		if isExternalReference(item.Kind) {
-			return []string{fmt.Sprintf("%s names %q, and the key of a table of object data is of a simple type: the designer refuses a reference to a table there", path, field.Name)}
+// validateObjectKeyField refuses the key field of a table of object data typed
+// by a reference to a table of a source, written out or by a defined type
+// holding one: «Проверка конфигурации» answers «Тип поля ключа таблицы с
+// объектными данными может быть только одним из примитивных типов» to both
+// (opis of 24.10.2026 and 25.10.2026, vneshnij-istochnik.md, snapshots
+// series-2.531/23-25, series-2.535/17, 18). Binary data is not refused: the
+// configurator saves such keys (lombard1, two tables of МТ).
+func (catalog *Catalog) validateObjectKeyField(owner string, table ExternalTable) error {
+	if !table.ObjectTable() {
+		return nil
+	}
+	for index, name := range table.KeyFields {
+		field, ok := table.Field(name)
+		if !ok {
+			continue
+		}
+		expanded, err := catalog.expandTypes(field.Types, nil)
+		if err != nil {
+			return fmt.Errorf("%s key_fields[%d]: %w", owner, index, err)
+		}
+		if slices.ContainsFunc(expanded, func(item Type) bool { return isExternalReference(item.Kind) }) {
+			return fmt.Errorf("%s key_fields[%d] names %q, and the key of a table of object data is of a simple type: the designer refuses a reference to a table there, written out or by a defined type", owner, index, field.Name)
 		}
 	}
 	return nil
