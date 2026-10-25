@@ -814,24 +814,23 @@ func (catalog *Catalog) validateExternalTableFieldType(owner string, field Exter
 	return nil
 }
 
-// validateCubeResourceType refuses a resource of a cube referring to a table of
-// a source: the editor of its type offers the number, the string and the
-// defined types and no reference - neither to its own cube's dimension table
-// nor to another's - and «Проверка конфигурации» refuses a resource typed by
-// a defined type holding a reference to a dimension table, «Недопустимый
-// тип» (opis of 25.10.2026, vneshnij-istochnik.md, snapshots series-2.535/01,
-// 02). A defined type holding a reference to an object table was not tried
-// and is not refused.
+// validateCubeResourceType refuses a resource of a cube of any type but a
+// number and a string. The editor of its type offers the number, the string
+// and every defined type, and «Проверка конфигурации» refuses a resource
+// whose defined type holds anything else - a date, a boolean, an identifier, a
+// value storage, binary data, «Число + Дата», a reference to an object table,
+// to a dimension table or to a catalog: «Недопустимый тип»; it takes a defined
+// type of a string, of a number and of «Число + Строка» (opis of 25.10.2026,
+// vneshnij-istochnik.md, snapshots series-2.535/01, 02 and series-2.543/
+// 04-06). The check judges the type the resource expands to, so a type
+// written out is judged the same way.
 func (catalog *Catalog) validateCubeResourceType(owner string, resource ExternalCubeResource) error {
-	if slices.ContainsFunc(resource.Types, func(item Type) bool { return isExternalReference(item.Kind) }) {
-		return fmt.Errorf("%s resource %s refers to a table of a source: the designer gives a resource of a cube no reference", owner, resource.Name)
-	}
 	expanded, err := catalog.expandTypes(resource.Types, nil)
 	if err != nil {
 		return fmt.Errorf("%s resource %s: %w", owner, resource.Name, err)
 	}
-	if slices.ContainsFunc(expanded, func(item Type) bool { return item.Kind == ExternalDimensionTableType }) {
-		return fmt.Errorf("%s resource %s is typed by a defined type holding a reference to a dimension table: the designer refuses such a type of a resource of a cube", owner, resource.Name)
+	if slices.ContainsFunc(expanded, func(item Type) bool { return item.Kind != NumberType && item.Kind != StringType }) {
+		return fmt.Errorf("%s resource %s is not a number or a string, written out or by a defined type: the designer refuses any other type of a resource of a cube", owner, resource.Name)
 	}
 	return nil
 }

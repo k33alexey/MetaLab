@@ -280,14 +280,12 @@ func TestExternalCubeCarriesCharacteristicsInShape(t *testing.T) {
 // 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/20, 23-25); it is
 // one database, so nothing is noted. A field of a dimension table may too -
 // its own table, another cube's, another source's, the last noted (opis of
-// 25.10.2026, snapshots series-2.535/03-05). A resource refers to no table:
-// its editor offers none, and the check refuses a defined type holding a
-// reference to a dimension table, «Недопустимый тип» (snapshots 01, 02); a
-// defined type of a number it takes.
+// 25.10.2026, snapshots series-2.535/03-05). A resource refers to no table,
+// its own cube's or another's (snapshots 01, 02); the rest of what a
+// resource is TestAResourceOfACubeIsANumberOrAString's.
 // Catches the dimension or the field refused, as they were until 2.539 and
 // 2.545, noted as a reference to another source within one; a resource
-// referring to its own cube's table taken, as it was until 2.545, or one
-// typed by a defined type holding such a reference.
+// referring to its own cube's table taken, as it was until 2.545.
 func TestAnExternalCubeDimensionMayReferToAnotherCube(t *testing.T) {
 	t.Parallel()
 	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
@@ -347,24 +345,69 @@ func TestAnExternalCubeDimensionMayReferToAnotherCube(t *testing.T) {
 		purchases(root)
 		writeExternalTable(t, root, "Склад", objectTable, "Клиенты", "name_in_data_source: clients\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
 			"  - {id: "+uuid.MustNew().String()+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n")
-		if message := loadRefused(t, root, "a resource of "+name+" table"); !strings.Contains(message, "resource Количество refers to a table of a source") {
+		if message := loadRefused(t, root, "a resource of "+name+" table"); !strings.Contains(message, "resource Количество is not a number or a string") {
 			t.Errorf("a resource of %s table: %v", name, message)
 		}
 	}
+}
+
+// A resource of a cube is a number or a string: «Проверка конфигурации»
+// refuses one whose defined type holds a date, a boolean, an identifier, a
+// value storage, binary data, «Число + Дата», a reference to an object table
+// or to a catalog - «Недопустимый тип» - and takes a defined type of a string,
+// of a number and of «Число + Строка» (opis of 25.10.2026,
+// vneshnij-istochnik.md, «Досъёмка 25.10.2026 (вопросы В1–В2 серии 2.543)»,
+// snapshots series-2.543/04-06). The check judges the type expanded, so a
+// date written out is refused as well, and a number beside a string written
+// out is taken. The types are written here from the opis.
+//
+// Catches a defined type of a date or of a catalog taken in a resource, as it
+// was until 2.548; the composite of a number and a string refused; the type
+// written out judged apart from the one a defined type gives.
+func TestAResourceOfACubeIsANumberOrAString(t *testing.T) {
+	t.Parallel()
+	const catalogID, objectTable = "f8100000-0000-4000-8000-000000000041", "f8100000-0000-4000-8000-000000000042"
+	resource := func(types string) string {
+		return strings.Replace(salesCubeBody, "    types: [{kind: number, precision: 15, scale: 3}]\n", "    types: "+types+"\n", 1)
+	}
+	project := func(cubeBody string) string {
+		root := metadataProject(t)
+		writeMetadata(t, root, CatalogKind, catalogID, "format: 1\nid: "+catalogID+"\nname: Валюты\ntitle: {ru: Валюты}\n"+
+			"code: {type: string, length: 3}\ndescription_length: 50\n")
+		writeSalesCube(t, root, cubeBody, goodsDimTableBody)
+		writeExternalTable(t, root, "Склад", objectTable, "Клиенты", "name_in_data_source: clients\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n")
+		return root
+	}
+	const refusal = "resource Количество is not a number or a string"
 	defined := uuid.MustNew().String()
 	for written, refused := range map[string]bool{
-		"[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]": true,
-		"[{kind: number, precision: 15, scale: 3}]":                                        false,
+		"[{kind: date, date_parts: date}]": true,
+		"[{kind: boolean}]":                true,
+		"[{kind: uuid}]":                   true,
+		"[{kind: value-storage}]":          true,
+		"[{kind: binary-data}]":            true,
+		"[{kind: number, precision: 10}, {kind: date, date_parts: date}]":      true,
+		"[{kind: external-data-source-table, reference: " + objectTable + "}]": true,
+		"[{kind: catalog, reference: " + catalogID + "}]":                      true,
+		"[{kind: string, length: 10}]":                                         false,
+		"[{kind: number, precision: 10}]":                                      false,
+		"[{kind: number, precision: 10}, {kind: string, length: 10}]":          false,
 	} {
-		root = metadataProject(t)
+		root := project(resource("[{kind: defined-type, reference: " + defined + "}]"))
 		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Мера\ntitle: {ru: Мера}\ntypes: "+written+"\n")
-		writeSalesCube(t, root, resource("[{kind: defined-type, reference: "+defined+"}]"), goodsDimTableBody)
 		_, err := Load(root)
-		if refused && (err == nil || !strings.Contains(err.Error(), "resource Количество is typed by a defined type holding a reference to a dimension table")) {
+		if refused != (err != nil) || refused && !strings.Contains(err.Error(), refusal) {
 			t.Errorf("a resource of a defined type of %s: %v", written, err)
 		}
-		if !refused && err != nil {
-			t.Errorf("a resource of a defined type of %s: %v", written, err)
+	}
+	for written, refused := range map[string]bool{
+		"[{kind: date, date_parts: date}]":                            true,
+		"[{kind: number, precision: 10}, {kind: string, length: 10}]": false,
+	} {
+		_, err := Load(project(resource(written)))
+		if refused != (err != nil) || refused && !strings.Contains(err.Error(), refusal) {
+			t.Errorf("a resource of %s written out: %v", written, err)
 		}
 	}
 }
