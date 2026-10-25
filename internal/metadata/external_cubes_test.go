@@ -278,20 +278,30 @@ func TestExternalCubeCarriesCharacteristicsInShape(t *testing.T) {
 // its source: the editor of its type offers the dimension tables of every
 // cube, and «Проверка конфигурации» takes such a dimension (opis of
 // 24.10.2026, vneshnij-istochnik.md, snapshots series-2.531/20, 23-25); it is
-// one database, so nothing is noted. A field of a dimension table and a
-// resource keep to the tables of their own cube - their editors were not seen
-// offering another's.
-// Catches the dimension refused, as it was until 2.539, noted as a reference
-// to another source, or the rule of the dimension let through to the field of
-// a dimension table.
+// one database, so nothing is noted. A field of a dimension table may too -
+// its own table, another cube's, another source's, the last noted (opis of
+// 25.10.2026, snapshots series-2.535/03-05). A resource refers to no table:
+// its editor offers none, and the check refuses a defined type holding a
+// reference to a dimension table, «Недопустимый тип» (snapshots 01, 02); a
+// defined type of a number it takes.
+// Catches the dimension or the field refused, as they were until 2.539 and
+// 2.545, noted as a reference to another source within one; a resource
+// referring to its own cube's table taken, as it was until 2.545, or one
+// typed by a defined type holding such a reference.
 func TestAnExternalCubeDimensionMayReferToAnotherCube(t *testing.T) {
 	t.Parallel()
 	const otherCube, otherTable = "f8100000-0000-4000-8000-000000000021", "f8100000-0000-4000-8000-000000000022"
+	const foreignCube, foreignDimTable = "f8100000-0000-4000-8000-000000000031", "f8100000-0000-4000-8000-000000000032"
 	purchases := func(root string) {
 		other := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Склад", ExternalDataSourceCubesDirectory, "Закупки")
 		writeFile(t, filepath.Join(other, "object.yaml"), "format: 1\nid: "+otherCube+"\nname: Закупки\ntitle: {ru: Закупки}\nname_in_data_source: Purchases\n")
 		writeFile(t, filepath.Join(other, ExternalDimensionTablesDirectory, "Поставщики", "object.yaml"),
 			"format: 1\nid: "+otherTable+"\nname: Поставщики\ntitle: {ru: Поставщики}\nname_in_data_source: Suppliers\n")
+		writeExternalSource(t, root, otherSource, "Бухгалтерия", "")
+		foreign := filepath.Join(root, "metadata", string(ExternalDataSourceKind), "Бухгалтерия", ExternalDataSourceCubesDirectory, "Обороты")
+		writeFile(t, filepath.Join(foreign, "object.yaml"), "format: 1\nid: "+foreignCube+"\nname: Обороты\ntitle: {ru: Обороты}\nname_in_data_source: Turnovers\n")
+		writeFile(t, filepath.Join(foreign, ExternalDimensionTablesDirectory, "Счета", "object.yaml"),
+			"format: 1\nid: "+foreignDimTable+"\nname: Счета\ntitle: {ru: Счета}\nname_in_data_source: Accounts\n")
 	}
 	root := metadataProject(t)
 	writeSalesCube(t, root, strings.Replace(salesCubeBody, "reference: "+goodsDimTable, "reference: "+otherTable, 1), goodsDimTableBody)
@@ -303,19 +313,59 @@ func TestAnExternalCubeDimensionMayReferToAnotherCube(t *testing.T) {
 	if slices.ContainsFunc(catalog.Notes(), func(note Note) bool { return note.Kind == NoteForeignSourceReference }) {
 		t.Errorf("another cube of the same source is noted as another source: %+v", catalog.Notes())
 	}
-	root = metadataProject(t)
-	writeSalesCube(t, root, salesCubeBody, goodsDimTableBody+"  - {id: "+uuid.MustNew().String()+", name: Поставщик, title: {ru: Поставщик}, "+
-		"types: [{kind: external-data-source-dimension-table, reference: "+otherTable+"}], name_in_data_source: Supplier}\n")
-	purchases(root)
-	if message := loadRefused(t, root, "a field of a dimension table of another cube's table"); !strings.Contains(message, "refers to a dimension table of another cube") {
-		t.Fatalf("the error does not say what is wrong: %v", message)
+	field := func(name, table string) string {
+		return "  - {id: " + uuid.MustNew().String() + ", name: " + name + ", title: {ru: " + name + "}, " +
+			"types: [{kind: external-data-source-dimension-table, reference: " + table + "}], name_in_data_source: " + name + "}\n"
 	}
 	root = metadataProject(t)
-	writeSalesCube(t, root, strings.Replace(salesCubeBody, "    types: [{kind: number, precision: 15, scale: 3}]\n",
-		"    types: [{kind: external-data-source-dimension-table, reference: "+otherTable+"}]\n", 1), goodsDimTableBody)
+	writeSalesCube(t, root, salesCubeBody, goodsDimTableBody+field("Аналог", goodsDimTable)+field("Поставщик", otherTable)+field("Счет", foreignDimTable))
 	purchases(root)
-	if message := loadRefused(t, root, "a resource of another cube's table"); !strings.Contains(message, "field Количество refers to a dimension table of another cube") {
-		t.Fatalf("the error does not say what is wrong: %v", message)
+	catalog, err = Load(root)
+	if err != nil {
+		t.Fatalf("a field of a dimension table of its own, another cube's and another source's table was refused: %v", err)
+	}
+	var noted []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteForeignSourceReference {
+			noted = append(noted, note.Where)
+		}
+	}
+	if want := []string{"external-data-sources Склад cubes Продажи dimension-tables Товары fields Счет"}; !slices.Equal(noted, want) {
+		t.Errorf("noted %v, want %v", noted, want)
+	}
+	resource := func(types string) string {
+		return strings.Replace(salesCubeBody, "    types: [{kind: number, precision: 15, scale: 3}]\n", "    types: "+types+"\n", 1)
+	}
+	objectTable := uuid.MustNew().String()
+	for name, written := range map[string]string{
+		"another cube's": "[{kind: external-data-source-dimension-table, reference: " + otherTable + "}]",
+		"its own cube's": "[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]",
+		"an object":      "[{kind: external-data-source-table, reference: " + objectTable + "}]",
+	} {
+		root = metadataProject(t)
+		writeSalesCube(t, root, resource(written), goodsDimTableBody)
+		purchases(root)
+		writeExternalTable(t, root, "Склад", objectTable, "Клиенты", "name_in_data_source: clients\ndata_type: object\nkey_fields: [Код]\nfields:\n"+
+			"  - {id: "+uuid.MustNew().String()+", name: Код, title: {ru: Код}, types: [{kind: string, length: 10}], name_in_data_source: code}\n")
+		if message := loadRefused(t, root, "a resource of "+name+" table"); !strings.Contains(message, "resource Количество refers to a table of a source") {
+			t.Errorf("a resource of %s table: %v", name, message)
+		}
+	}
+	defined := uuid.MustNew().String()
+	for written, refused := range map[string]bool{
+		"[{kind: external-data-source-dimension-table, reference: " + goodsDimTable + "}]": true,
+		"[{kind: number, precision: 15, scale: 3}]":                                        false,
+	} {
+		root = metadataProject(t)
+		writeMetadata(t, root, DefinedTypeKind, defined, "format: 1\nid: "+defined+"\nname: Мера\ntitle: {ru: Мера}\ntypes: "+written+"\n")
+		writeSalesCube(t, root, resource("[{kind: defined-type, reference: "+defined+"}]"), goodsDimTableBody)
+		_, err := Load(root)
+		if refused && (err == nil || !strings.Contains(err.Error(), "resource Количество is typed by a defined type holding a reference to a dimension table")) {
+			t.Errorf("a resource of a defined type of %s: %v", written, err)
+		}
+		if !refused && err != nil {
+			t.Errorf("a resource of a defined type of %s: %v", written, err)
+		}
 	}
 }
 
