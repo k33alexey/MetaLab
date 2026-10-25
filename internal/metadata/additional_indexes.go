@@ -3,6 +3,8 @@ package metadata
 import (
 	"fmt"
 	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 // Дополнительные индексы — an index the developer asks the database for by
@@ -207,7 +209,7 @@ func validateAdditionalIndexes(indexes []AdditionalIndex, kind Kind, tables inde
 		switch folded := strings.ToLower(index.Name); {
 		case index.Name == "":
 			issues = append(issues, prefix+".name must not be empty")
-		case !validIdentifier(index.Name):
+		case !project.IsIdentifier(index.Name):
 			issues = append(issues, prefix+".name must be an identifier")
 		default:
 			if previous, exists := named[folded]; exists {

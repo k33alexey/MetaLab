@@ -355,8 +355,12 @@ func (workspace *Workspace) checkRoleSaveLocked(save RoleSave) (RoleSource, erro
 	if err := metadata.ValidateProjectRole(workspace.root, save.Role); err != nil {
 		return RoleSource{}, err
 	}
-	if err := workspace.checkRoleNameLocked(save.Role); err != nil {
-		return RoleSource{}, err
+	// A name the save leaves as it was is where it stood: «Все роли» saves
+	// many roles at once and would weigh each against the whole tree.
+	if save.Role.Name != opened.Role.Name {
+		if err := workspace.objectNameErrorLocked(save.Path, "", save.Role.Name); err != nil {
+			return RoleSource{}, err
+		}
 	}
 	return opened, nil
 }
@@ -478,30 +482,6 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 	return nil
 }
 
-func (workspace *Workspace) checkRoleNameLocked(role metadata.RoleDefinition) error {
-	descriptions, err := workspace.roleDescriptions()
-	if err != nil || len(descriptions) == 0 {
-		return err
-	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return err
-	}
-	for _, relative := range descriptions {
-		if path.Base(relative) == role.ID.String()+".yaml" {
-			continue
-		}
-		other, _, err := workspace.decodeRoleLocked(relative, configuration)
-		if err != nil {
-			return err
-		}
-		if strings.EqualFold(other.Name, role.Name) {
-			return fmt.Errorf("role %q already exists", role.Name)
-		}
-	}
-	return nil
-}
-
 func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
@@ -513,15 +493,15 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err != nil {
 		return RoleSource{}, err
 	}
+	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.RoleKind)), name); err != nil {
+		return RoleSource{}, err
+	}
 	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{configuration.DefaultLanguage: name}}
 	if err := metadata.ValidateRole("new role", role, configuration); err != nil {
 		return RoleSource{}, err
 	}
 	schema, err := metadata.LoadPermissionSchema(workspace.root)
 	if err != nil {
-		return RoleSource{}, err
-	}
-	if err := workspace.checkRoleNameLocked(role); err != nil {
 		return RoleSource{}, err
 	}
 	relative, _ := project.MetadataPath("roles", id)

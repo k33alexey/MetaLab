@@ -358,7 +358,7 @@ func validateRouteMap(route RouteMap, configuration project.Project) []string {
 		seen := map[string]bool{}
 		for number, variant := range point.Variants {
 			path := fmt.Sprintf("%s.variants[%d]", prefix, number)
-			if !validIdentifier(variant.Name) {
+			if !project.IsIdentifier(variant.Name) {
 				issues = append(issues, path+".name must be a valid identifier: the handler returns the variant by it")
 			}
 			if seen[strings.ToLower(variant.Name)] {
@@ -472,7 +472,7 @@ func validateRouteHandlers(prefix string, point RoutePoint) []string {
 		if !slices.Contains(routeEventsOfKind[point.Kind], event) {
 			issues = append(issues, fmt.Sprintf("%s.handlers.%s is not an event of a %s point", prefix, event, point.Kind))
 		}
-		if !validIdentifier(procedure) {
+		if !project.IsIdentifier(procedure) {
 			issues = append(issues, fmt.Sprintf("%s.handlers.%s must name a procedure", prefix, event))
 		}
 	}
@@ -497,7 +497,7 @@ func validateAddressingValues(prefix string, values []AddressingValue) []string 
 	for index, value := range values {
 		path := fmt.Sprintf("%s.addressing[%d]", prefix, index)
 		folded := strings.ToLower(value.Attribute)
-		if !validIdentifier(value.Attribute) {
+		if !project.IsIdentifier(value.Attribute) {
 			issues = append(issues, path+".attribute must be a valid identifier")
 			continue
 		}
@@ -552,7 +552,7 @@ func validateRouteDecorations(decorations []RouteDecoration, configuration proje
 // goes: its name and caption, its ports and how it is drawn.
 func validateRouteTransitionLook(prefix string, transition RouteTransition, configuration project.Project) []string {
 	var issues []string
-	if transition.Name != "" && (!validIdentifier(transition.Name) || utf8.RuneCountInString(transition.Name) > maxNameLength) {
+	if transition.Name != "" && (!project.IsIdentifier(transition.Name) || utf8.RuneCountInString(transition.Name) > maxNameLength) {
 		issues = append(issues, prefix+".name must be a valid identifier of at most 255 characters")
 	}
 	issues = append(issues, validateTitle(prefix+".title", transition.Title, configuration)...)

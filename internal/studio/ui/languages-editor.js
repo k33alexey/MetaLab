@@ -42,7 +42,12 @@ function createLanguagesEditor(host, onChange) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', title(language)));
     panel.append(textField('Код', language.code, () => {}, {disabled: true, maxLength: 16}));
-    panel.append(textField('Имя', language.name, value => model.setLanguageField(language.code, 'name', value), {disabled: locked}));
+    const name = textInput(language.name, value => { model.setLanguageField(language.code, 'name', value); touch(); }, {maxLength: 255, disabled: locked});
+    watchName(name, () => {
+      const configuration = model.value();
+      return {path: 'configuration.yaml', description: configuration, at: ['languages', String(configuration.languages.findIndex(item => item.code === language.code))]};
+    });
+    panel.append(labeledField('Имя', name));
     /* Синоним — многоязычное поле, как всякий читаемый человеком текст
        конфигурации: язык называется на всех языках проекта. */
     const synonym = createLocalizedField(source.configuration, code => language.title?.[code],

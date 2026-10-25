@@ -21,8 +21,8 @@ func TestNameTreatsUnderscoreAsALetter(t *testing.T) {
 		"_100": true, "_50_50": true, "Имя_Объекта": true, "_": true, "Имя1": true,
 		"1Имя": false, "Имя-1": false, "Имя 1": false, "": false,
 	} {
-		if got := validIdentifier(name); got != want {
-			t.Errorf("validIdentifier(%q) = %v, want %v", name, got, want)
+		if got := project.IsIdentifier(name); got != want {
+			t.Errorf("project.IsIdentifier(%q) = %v, want %v", name, got, want)
 		}
 	}
 }

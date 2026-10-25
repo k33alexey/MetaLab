@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -92,7 +93,7 @@ func validateAttachedMenu(path string, menu FormAttachedMenu, commandBar, ofForm
 	if menu.ID.IsZero() {
 		issues = append(issues, path+".id must be a non-zero UUID")
 	}
-	if menu.Name == "" && !ofForm || menu.Name != "" && (!validIdentifier(menu.Name) || utf8.RuneCountInString(menu.Name) > maxNameLength) {
+	if menu.Name == "" && !ofForm || menu.Name != "" && (!project.IsIdentifier(menu.Name) || utf8.RuneCountInString(menu.Name) > maxNameLength) {
 		issues = append(issues, path+".name must be a valid identifier of at most 255 characters")
 	}
 	if !commandBar && menu.HorizontalAlign != "" {

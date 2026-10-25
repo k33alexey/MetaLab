@@ -412,7 +412,7 @@ func validateColorValue(path string, value ColorValue) []string {
 			issues = append(issues, path+".rgb must be a colour written as #RRGGBB")
 		}
 	case WebColor, SystemColor:
-		if !validIdentifier(value.Name) {
+		if !project.IsIdentifier(value.Name) {
 			issues = append(issues, path+".name must name a colour of the palette")
 		}
 	case AutoColor:
@@ -516,7 +516,7 @@ func validateStyleItemReference(path string, reference *StyleItemReference) []st
 		return []string{path + " must name a standard style item or one of the configuration"}
 	case reference.Written != "" && !allDigits(reference.Written):
 		return []string{path + ".written must be the number the prototype wrote"}
-	case reference.Standard != "" && !validIdentifier(reference.Standard):
+	case reference.Standard != "" && !project.IsIdentifier(reference.Standard):
 		return []string{path + ".standard must be a valid identifier"}
 	case reference.Item != nil && reference.Item.IsZero():
 		return []string{path + ".item must be a non-zero UUID"}

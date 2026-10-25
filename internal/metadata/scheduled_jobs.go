@@ -166,7 +166,7 @@ func DecodeScheduledJob(source string, reader io.Reader, configuration project.P
 		if value.Module.IsZero() {
 			issues = append(issues, "module is required: a job runs a procedure of a common module")
 		}
-		if !validIdentifier(value.Procedure) {
+		if !project.IsIdentifier(value.Procedure) {
 			issues = append(issues, "procedure must be a valid identifier")
 		}
 		// No ceiling on either: the help names none, and the configurations being

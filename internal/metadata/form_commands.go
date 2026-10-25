@@ -77,7 +77,7 @@ func parseButtonCommand(value string) (buttonCommand, bool) {
 	}
 	parts := strings.Split(value, ".")
 	for _, part := range parts {
-		if !validIdentifier(part) {
+		if !project.IsIdentifier(part) {
 			return buttonCommand{}, false
 		}
 	}
@@ -144,7 +144,7 @@ func validateFormCommandParameter(path string, parameter *FormCommandParameter) 
 // name.
 func parseCommandObject(value string) (buttonCommand, bool) {
 	owner, object, found := strings.Cut(value, ".")
-	if _, known := commandOwnerKind(owner); !found || !known || !validIdentifier(object) {
+	if _, known := commandOwnerKind(owner); !found || !known || !project.IsIdentifier(object) {
 		return buttonCommand{}, false
 	}
 	return buttonCommand{owner: owner, object: object}, true

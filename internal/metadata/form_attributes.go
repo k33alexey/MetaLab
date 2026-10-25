@@ -356,7 +356,7 @@ func validateDynamicList(path string, attribute FormAttribute) []string {
 		if table.Object.IsZero() {
 			issues = append(issues, path+".main_table.object must be a non-zero UUID")
 		}
-		if table.Virtual != "" && !validIdentifier(table.Virtual) {
+		if table.Virtual != "" && !project.IsIdentifier(table.Virtual) {
 			issues = append(issues, path+".main_table.virtual must be the name of a virtual table")
 		}
 	}
@@ -368,7 +368,7 @@ func validateDynamicList(path string, attribute FormAttribute) []string {
 	seen := map[string]bool{}
 	for index, field := range settings.KeyFields {
 		place := fmt.Sprintf("%s.key_fields[%d]", path, index)
-		if !validIdentifier(field) {
+		if !project.IsIdentifier(field) {
 			issues = append(issues, place+" must be the name of a field")
 		} else if seen[strings.ToLower(field)] {
 			issues = append(issues, place+" is already in the key")

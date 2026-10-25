@@ -287,7 +287,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 		issues = append(issues, validateTitle(prefix+".title", command.Title, configuration)...)
 		switch command.Action {
 		case FormCommandCustom:
-			if command.Handler != "" && (!validIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > maxNameLength) {
+			if command.Handler != "" && (!project.IsIdentifier(command.Handler) || utf8.RuneCountInString(command.Handler) > maxNameLength) {
 				issues = append(issues, prefix+".handler must be a valid BSL routine name for a custom command")
 			}
 		case FormCommandSave, FormCommandSaveClose, FormCommandClose, FormCommandRefresh,
@@ -377,7 +377,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 			issues = append(issues, current.path+".id must be unique")
 		}
 		ids[item.ID] = true
-		if !validIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
+		if !project.IsIdentifier(item.Name) || utf8.RuneCountInString(item.Name) > maxNameLength {
 			issues = append(issues, current.path+".name must be a valid identifier of at most 255 characters")
 		}
 		folded := strings.ToLower(item.Name)
@@ -515,7 +515,7 @@ func validateManagedForm(value ManagedForm, configuration project.Project) []str
 		case class != formAdditionClass && item.AdditionSource != "":
 			issues = append(issues, current.path+".addition_source is allowed only for additions of a table")
 		case class != formAdditionClass:
-		case item.AdditionSource != "" && (!validIdentifier(item.AdditionSource) || utf8.RuneCountInString(item.AdditionSource) > maxNameLength):
+		case item.AdditionSource != "" && (!project.IsIdentifier(item.AdditionSource) || utf8.RuneCountInString(item.AdditionSource) > maxNameLength):
 			issues = append(issues, current.path+".addition_source must be the name of an element of the form")
 		case item.AdditionSource != "":
 			sourced = append(sourced, current)
@@ -580,7 +580,7 @@ func validateFormDataPath(path, value string) []string {
 		return []string{path + " must be a canonical data path"}
 	}
 	for _, part := range strings.Split(value, ".") {
-		if !validIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
+		if !project.IsIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
 			return []string{path + " must contain only valid identifier segments separated by dots"}
 		}
 	}

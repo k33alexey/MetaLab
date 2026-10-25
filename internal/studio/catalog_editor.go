@@ -101,6 +101,11 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if value.ID != opened.Catalog.ID {
 		return CatalogEditorSource{}, fmt.Errorf("catalog UUID cannot be changed")
 	}
+	if value.Name != opened.Catalog.Name {
+		if err := workspace.objectNameErrorLocked(relative, "", value.Name); err != nil {
+			return CatalogEditorSource{}, err
+		}
+	}
 	var encoded bytes.Buffer
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
@@ -159,39 +164,6 @@ func declaredFieldChanges(before, after metadata.CatalogDefinition) (added, remo
 	return added, removed
 }
 
-func (workspace *Workspace) checkCatalogNameLocked(value metadata.CatalogDefinition) error {
-	entries, err := os.ReadDir(filepath.Join(workspace.root, "metadata", string(metadata.CatalogKind)))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		// The folder is named by the object, so the object's own folder is the
-		// one bearing its name - that is the one a rename is allowed to keep.
-		if !entry.IsDir() || entry.Name() == value.Name {
-			continue
-		}
-		file, err := workspace.readSource("metadata/catalogs/" + entry.Name() + "/object.yaml")
-		if err != nil {
-			return err
-		}
-		other, err := metadata.DecodeCatalog(file.Path, strings.NewReader(file.Content), configuration)
-		if err != nil {
-			return err
-		}
-		if strings.EqualFold(other.Name, value.Name) {
-			return fmt.Errorf("catalog %q already exists", value.Name)
-		}
-	}
-	return nil
-}
-
 func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
@@ -201,6 +173,9 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	}
 	id, err := uuid.New()
 	if err != nil {
+		return CatalogEditorSource{}, err
+	}
+	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.CatalogKind)), name); err != nil {
 		return CatalogEditorSource{}, err
 	}
 	value := metadata.CatalogDefinition{
@@ -213,9 +188,6 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return CatalogEditorSource{}, err
 	}
 	if _, err := metadata.DecodeCatalog("new catalog", bytes.NewReader(encoded.Bytes()), configuration); err != nil {
-		return CatalogEditorSource{}, err
-	}
-	if err := workspace.checkCatalogNameLocked(value); err != nil {
 		return CatalogEditorSource{}, err
 	}
 	relative, err := project.ObjectMetadataPath(string(metadata.CatalogKind), name)

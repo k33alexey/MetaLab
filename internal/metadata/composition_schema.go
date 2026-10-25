@@ -152,7 +152,7 @@ func validateListSchema(path string, settings DynamicListSettings) []string {
 	names := map[string]bool{}
 	for index, parameter := range settings.DataParameters {
 		at := fmt.Sprintf("%s.data_parameters[%d]", path, index)
-		if !validIdentifier(parameter.Name) || utf8.RuneCountInString(parameter.Name) > maxNameLength {
+		if !project.IsIdentifier(parameter.Name) || utf8.RuneCountInString(parameter.Name) > maxNameLength {
 			issues = append(issues, at+".name must be the name of a parameter")
 		} else if folded := strings.ToLower(parameter.Name); names[folded] {
 			issues = append(issues, at+".name is the name of another parameter already")

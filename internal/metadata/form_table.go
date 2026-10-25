@@ -6,6 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -283,7 +284,7 @@ func validateTableDynamicList(path string, list TableDynamicList) []string {
 	}
 	issues = append(issues, oneOf(path+".update_on_data_change", list.UpdateOnDataChange, FormUpdateOnDataChangeAuto, FormUpdateOnDataChangeDontUpdate)...)
 	if group := list.UserSettingsGroup; group != "" && !formElementCode.MatchString(group) &&
-		(!validIdentifier(group) || utf8.RuneCountInString(group) > maxNameLength) {
+		(!project.IsIdentifier(group) || utf8.RuneCountInString(group) > maxNameLength) {
 		issues = append(issues, path+".user_settings_group must be the name or the code of an element of the form")
 	}
 	return issues

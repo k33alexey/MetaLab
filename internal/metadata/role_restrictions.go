@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -96,7 +97,7 @@ func restrictionRuleOf(right PermissionOperation) (RestrictionRule, bool) {
 func templateName(written string) (name string, parameters []string, ok bool) {
 	name, rest, bracketed := strings.Cut(written, "(")
 	name = strings.TrimSpace(name)
-	if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+	if !project.IsIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
 		return "", nil, false
 	}
 	if !bracketed {
@@ -108,7 +109,7 @@ func templateName(written string) (name string, parameters []string, ok bool) {
 	}
 	for _, parameter := range strings.Split(inner, ",") {
 		parameter = strings.TrimSpace(parameter)
-		if !validIdentifier(parameter) {
+		if !project.IsIdentifier(parameter) {
 			return "", nil, false
 		}
 		parameters = append(parameters, parameter)

@@ -264,7 +264,7 @@ func parsePredefinedValue(value string) (predefinedValueKind, []string, bool) {
 		return predefinedValueKind{}, nil, false
 	}
 	for _, part := range parts {
-		if !validIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
+		if !project.IsIdentifier(part) || utf8.RuneCountInString(part) > maxNameLength {
 			return predefinedValueKind{}, nil, false
 		}
 	}
@@ -523,7 +523,7 @@ func validateConditionalAppearance(path string, items []ConditionalAppearanceIte
 				if validateFormDataPath(place, field.Field) != nil {
 					issues = append(issues, place+" must be the path of a field of the list")
 				}
-			} else if !validIdentifier(field.Field) || utf8.RuneCountInString(field.Field) > maxNameLength {
+			} else if !project.IsIdentifier(field.Field) || utf8.RuneCountInString(field.Field) > maxNameLength {
 				issues = append(issues, place+" must be the name of an element of the form")
 			}
 		}

@@ -103,6 +103,27 @@ function textInput(value, apply, options = {}) {
   return input;
 }
 
+/* watchName checks a name once its field is left or Enter is pressed, as the
+   prototype checks it (docs/block-00/obshchee.md, «Имя и синоним»): a name
+   the server refuses is answered at once with the prototype's words, and the
+   field stays to be put right. The rule, the branch and the words are the
+   server's (/api/name, names.go); check() answers what to ask it - {path,
+   name} for the name of an object, {path, description, at} for a part of the
+   open one. Answers the promise of the last check, for a test to wait on. */
+function watchName(input, check) {
+  let last = Promise.resolve();
+  input.addEventListener('change', () => {
+    last = (async () => {
+      let answer;
+      try { answer = await postJSON('/api/name', check()); } catch { return; }
+      if (!answer.refusal) return;
+      await askChoice(answer.refusal, '', [['ok', 'ОК']]);
+      if (input.isConnected) input.focus();
+    })();
+  });
+  return () => last;
+}
+
 /* selectInput chooses one of choices, given as [value, text] pairs. */
 function selectInput(choices, value, apply, label) {
   const select = node('select');

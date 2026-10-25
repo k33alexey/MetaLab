@@ -265,7 +265,7 @@ func validateEventSubscription(value EventSubscriptionDefinition, configuration 
 	if value.Module.IsZero() {
 		issues = append(issues, "module must be a non-zero UUID")
 	}
-	if !validIdentifier(value.Procedure) {
+	if !project.IsIdentifier(value.Procedure) {
 		issues = append(issues, "procedure must start with a letter and contain only letters or digits")
 	}
 	return issues

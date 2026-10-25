@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
+	"github.com/k33alexey/MetaLab/internal/project"
 )
 
 // FormCommandInterface is where the commands that are no element of the form
@@ -119,7 +120,7 @@ func validateFormCommandInterface(value *FormCommandInterface, names, commands m
 				issues = append(issues, path+".command names no element of the form")
 			}
 			if group := line.Group; group != "" && !isFormStandardGroup(group) {
-				if name, found := strings.CutPrefix(group, "CommandGroup."); !(found && validIdentifier(name)) && !isUUIDText(group) {
+				if name, found := strings.CutPrefix(group, "CommandGroup."); !(found && project.IsIdentifier(name)) && !isUUIDText(group) {
 					issues = append(issues, path+".group must be a group of the panel, CommandGroup.<name> or the identifier of a command group")
 				}
 			} else if group != "" && !slices.Contains(panel.panel.groups, group) {
@@ -151,7 +152,7 @@ func validateFormCommandInterface(value *FormCommandInterface, names, commands m
 func parseInterfaceCommand(value string) (command buttonCommand, dimension string, ok bool) {
 	parts := strings.Split(value, ".")
 	if len(parts) == 5 && parts[0] == kinds.Must(InformationRegisterKind).Name.English && parts[2] == "StandardCommand" && parts[3] == "OpenByValue" &&
-		validIdentifier(parts[1]) && validIdentifier(parts[4]) {
+		project.IsIdentifier(parts[1]) && project.IsIdentifier(parts[4]) {
 		return buttonCommand{kind: objectStandardCommand, owner: parts[0], object: parts[1], name: parts[3]}, parts[4], true
 	}
 	command, ok = parseButtonCommand(value)

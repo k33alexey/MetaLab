@@ -21,14 +21,10 @@ function createCatalogModel(source) {
     if (container === 'catalog') return catalog.attributes;
     return catalog.tableParts.find(part => part.id === container)?.attributes;
   }
-  function usedNames(exclude) {
-    const names = new Set([catalog.name.toLocaleLowerCase()]);
-    for (const attribute of catalog.attributes) if (attribute.id !== exclude) names.add(attribute.name.toLocaleLowerCase());
-    for (const part of catalog.tableParts) {
-      if (part.id !== exclude) names.add(part.name.toLocaleLowerCase());
-      for (const attribute of part.attributes) if (attribute.id !== exclude) names.add(attribute.name.toLocaleLowerCase());
-    }
-    return names;
+  // The names taken in one branch: a new part is named apart from its
+  // siblings, the check of a typed name is the server's (watchName).
+  function names(list) {
+    return new Set(list.map(item => item.name.toLocaleLowerCase()));
   }
   return {
     value() { return structuredClone(catalog); },
@@ -43,7 +39,7 @@ function createCatalogModel(source) {
     addAttribute(container) {
       const list = attributeList(container);
       if (!list) return null;
-      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', usedNames()), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [structuredClone(typeOffer.newTypes.string)]};
+      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', names(list)), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [structuredClone(typeOffer.newTypes.string)]};
       list.push(attribute);
       return attribute;
     },
@@ -72,7 +68,7 @@ function createCatalogModel(source) {
       if (attribute) attribute.types = types;
     },
     addTablePart() {
-      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', usedNames()), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
+      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', names(catalog.tableParts)), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
       catalog.tableParts.push(part);
       return part;
     },
@@ -109,6 +105,18 @@ function createCatalogEditor(host, onChange) {
   function textField(label, value, apply, options = {}) {
     return labeledField(label, textInput(value, value => { apply(value); if (options.type === 'number') rerender(); else touch(); }, options));
   }
+  // The field of a name: at is the way to the part in the catalog, none for
+  // the catalog's own name.
+  function nameField(value, apply, at) {
+    const input = textInput(value, value => { apply(value); touch(); }, {maxLength: 128});
+    watchName(input, () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: source.catalog.name});
+    return labeledField('Имя', input);
+  }
+  // The way to an attribute: of the catalog, or of one of its table parts.
+  function attributeWay(container, attribute) {
+    const list = model.attributeList(container), at = ['attributes', String(list.indexOf(attribute))];
+    return container === 'catalog' ? at : ['tableParts', String(source.catalog.tableParts.findIndex(part => part.id === container)), ...at];
+  }
   function selectField(label, value, choices, apply) {
     return labeledField(label, selectInput(choices, value, value => { apply(value); rerender(); }));
   }
@@ -138,7 +146,7 @@ function createCatalogEditor(host, onChange) {
   function renderAttributePanel(container, attribute) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Реквизит'));
-    panel.append(textField('Имя', attribute.name, value => model.setAttributeName(container, attribute.id, value), {maxLength: 128}));
+    panel.append(nameField(attribute.name, value => model.setAttributeName(container, attribute.id, value), attributeWay(container, attribute)));
     panel.append(localizedTitleField(attribute, (language, value) => model.setAttributeTitle(container, attribute.id, language, value)));
     panel.append(checkField('Проверять заполнение', attribute.fillChecking === 'show-error',
       value => model.setAttributeFillChecking(container, attribute.id, value)));
@@ -173,7 +181,7 @@ function createCatalogEditor(host, onChange) {
   function renderTablePartPanel(part) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Табличная часть'));
-    panel.append(textField('Имя', part.name, value => model.setTablePartName(part.id, value), {maxLength: 128}));
+    panel.append(nameField(part.name, value => model.setTablePartName(part.id, value), ['tableParts', String(source.catalog.tableParts.indexOf(part))]));
     panel.append(localizedTitleField(part, (language, value) => model.setTablePartTitle(part.id, language, value)));
     panel.append(node('div', 'Реквизиты табличной части', 'catalog-section-title'));
     panel.append(renderAttributeList(part.id, part.attributes));
@@ -198,7 +206,7 @@ function createCatalogEditor(host, onChange) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Свойства справочника'));
     panel.append(node('div', `UUID: ${source.catalog.id}`, 'catalog-uuid'));
-    panel.append(textField('Имя', source.catalog.name, value => model.setName(value), {maxLength: 128}));
+    panel.append(nameField(source.catalog.name, value => model.setName(value)));
     panel.append(localizedTitleField(source.catalog, (language, value) => model.setTitle(language, value)));
     const code = node('div', undefined, 'catalog-code');
     code.append(node('div', 'Код', 'catalog-section-title'));

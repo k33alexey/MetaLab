@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -443,7 +444,7 @@ func validateFormExtension(extension FormExtension, attributes []FormAttribute) 
 		{"report_result", extension.ReportResult}, {"details_data", extension.DetailsData}, {"variant_appearance", extension.VariantAppearance},
 	} {
 		belongs(field.name, field.value != "", ReportObjectType)
-		if validIdentifier(field.value) && !slices.ContainsFunc(attributes, func(attribute FormAttribute) bool { return strings.EqualFold(attribute.Name, field.value) }) {
+		if project.IsIdentifier(field.value) && !slices.ContainsFunc(attributes, func(attribute FormAttribute) bool { return strings.EqualFold(attribute.Name, field.value) }) {
 			issues = append(issues, field.name+" names no attribute of the form")
 		}
 	}

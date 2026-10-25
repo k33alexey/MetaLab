@@ -265,6 +265,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerRoleRoutes(routes, workspace)
 	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
+	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)
 	routes.Handle("GET /ui/", http.FileServer(http.FS(assets)))
@@ -727,7 +728,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 	built := make(map[string]Node, len(project.MetadataKinds()))
 	for _, kind := range project.MetadataKinds() {
 		relative := filepath.Join("metadata", kind)
-		node := Node{ID: "metadata/" + kind, Kind: "metadata-group", Icon: kindIcon(kind), Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
+		node := Node{ID: branchOf(kind), Kind: "metadata-group", Icon: kindIcon(kind), Title: metadataTitle(kind), Path: filepath.ToSlash(relative)}
 		path := filepath.Join(workspace.root, relative)
 		switch {
 		case kind == "languages":

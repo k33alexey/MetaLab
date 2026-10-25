@@ -397,7 +397,7 @@ func (p Project) Validate() error {
 	if p.ID.IsZero() {
 		add("id", "must be a non-zero UUID")
 	}
-	if !isIdentifier(p.Name) {
+	if !IsIdentifier(p.Name) {
 		add("name", "must start with a letter and contain only letters or digits")
 	} else if utf8.RuneCountInString(p.Name) > MaxNameLength {
 		add("name", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
@@ -420,7 +420,7 @@ func (p Project) Validate() error {
 			add(prefix+".id", "must be unique")
 		}
 		seenIDs[language.ID] = struct{}{}
-		if !isIdentifier(language.Name) {
+		if !IsIdentifier(language.Name) {
 			add(prefix+".name", "must start with a letter and contain only letters or digits")
 		} else if utf8.RuneCountInString(language.Name) > MaxNameLength {
 			add(prefix+".name", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
@@ -568,7 +568,7 @@ func (p Project) Validate() error {
 	// may begin with: a prefix that cannot be part of an identifier produces
 	// objects that cannot be named.
 	if p.NamePrefix != "" {
-		if !isIdentifier(p.NamePrefix) {
+		if !IsIdentifier(p.NamePrefix) {
 			add("name_prefix", "must start with a letter and contain only letters or digits")
 		} else if utf8.RuneCountInString(p.NamePrefix) > MaxNameLength {
 			add("name_prefix", fmt.Sprintf("must not exceed %d characters", MaxNameLength))
@@ -600,10 +600,15 @@ func (p Project) Validate() error {
 	return nil
 }
 
-// isIdentifier is the prototype's rule for a name, the same one a metadata
-// object follows: a letter or an underscore first, then letters, digits and
-// underscores.
-func isIdentifier(value string) bool {
+// IsIdentifier is the prototype's rule for a name - of the configuration, a
+// language, a metadata object and everything inside one: a letter or an
+// underscore first, then letters, digits and underscores. The designer's own
+// hint says a name starts with a letter, but it accepts "_1111" for an object
+// and an attribute alike - the underscore counts as a letter (checked by the
+// owner on the platform, 01.10.2026) - and the configurations being moved keep
+// such names: enumeration values _100 and _50_50, and some 3600 names with an
+// underscore inside. The length is MaxNameLength's, apart.
+func IsIdentifier(value string) bool {
 	for index, current := range []rune(value) {
 		if current == '_' || unicode.IsLetter(current) {
 			continue

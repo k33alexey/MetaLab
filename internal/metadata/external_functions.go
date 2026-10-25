@@ -52,7 +52,7 @@ func validateExternalFunctions(functions []ExternalFunction, configuration proje
 			issues = append(issues, prefix+".id is used twice")
 		}
 		ids[function.ID] = true
-		if !validIdentifier(function.Name) || utf8.RuneCountInString(function.Name) > maxNameLength {
+		if !project.IsIdentifier(function.Name) || utf8.RuneCountInString(function.Name) > maxNameLength {
 			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 		} else if names[strings.ToLower(function.Name)] {
 			issues = append(issues, prefix+".name is used twice")

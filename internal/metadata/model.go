@@ -1874,7 +1874,7 @@ func validateBase(head descriptionHead, configuration project.Project) []string 
 	if head.id.IsZero() {
 		issues = append(issues, "id must be a non-zero UUID")
 	}
-	if !validIdentifier(head.name) {
+	if !project.IsIdentifier(head.name) {
 		issues = append(issues, "name must start with a letter or an underscore and contain only letters, digits or underscores")
 	}
 	if utf8.RuneCountInString(head.name) > maxNameLength {
@@ -2159,29 +2159,10 @@ func issuesError(source string, format int, issues []string) error {
 	return err
 }
 
-// validIdentifier is the prototype's rule for a name: a letter or an
-// underscore first, then letters, digits and underscores. The designer's own
-// hint says a name starts with a letter, but it accepts "_1111" for an object
-// and an attribute alike - the underscore counts as a letter (checked by the
-// owner on the platform, 01.10.2026) - and the configurations being moved keep
-// such names: enumeration values _100 and _50_50, and some 3600 names with an
-// underscore inside.
-func validIdentifier(value string) bool {
-	for index, symbol := range []rune(value) {
-		if symbol == '_' || unicode.IsLetter(symbol) {
-			continue
-		}
-		if index == 0 || !unicode.IsDigit(symbol) {
-			return false
-		}
-	}
-	return value != ""
-}
-
 // siblingNames are the names a list of siblings has taken so far, folded: the
 // values of an enumeration, the attributes of an object, its table parts, its
 // commands, the parameters of a form. A name is the prototype's identifier
-// (validIdentifier) of at most 255 characters (METADATA-OBJECTS «Пределы на
+// (project.IsIdentifier) of at most 255 characters (METADATA-OBJECTS «Пределы на
 // состав»), unique among its siblings with case ignored - one rule, which
 // eighteen places once wrote out each for itself, some without the length.
 type siblingNames struct {
@@ -2198,7 +2179,7 @@ func namesWithin(within string) *siblingNames {
 // take checks the name of the sibling at prefix and takes it.
 func (names *siblingNames) take(prefix, name string) []string {
 	var issues []string
-	if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+	if !project.IsIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
 		issues = append(issues, fmt.Sprintf("%s.name must be a valid identifier of at most %d characters", prefix, maxNameLength))
 	}
 	folded := foldedName(name)

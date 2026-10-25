@@ -145,7 +145,7 @@ func validateURLTemplates(templates []URLTemplate, configuration project.Project
 			issues = append(issues, where+".id is used twice")
 		}
 		ids[template.ID] = true
-		if !validIdentifier(template.Name) || utf8.RuneCountInString(template.Name) > maxNameLength {
+		if !project.IsIdentifier(template.Name) || utf8.RuneCountInString(template.Name) > maxNameLength {
 			issues = append(issues, where+".name must start with a letter and contain only letters or digits")
 		} else if names[strings.ToLower(template.Name)] {
 			issues = append(issues, where+".name is used twice")
@@ -220,7 +220,7 @@ func validateHTTPMethods(owner string, methods []HTTPServiceMethod, configuratio
 			issues = append(issues, where+".id is used twice")
 		}
 		ids[method.ID] = true
-		if !validIdentifier(method.Name) || utf8.RuneCountInString(method.Name) > maxNameLength {
+		if !project.IsIdentifier(method.Name) || utf8.RuneCountInString(method.Name) > maxNameLength {
 			issues = append(issues, where+".name must start with a letter and contain only letters or digits")
 		} else if names[strings.ToLower(method.Name)] {
 			issues = append(issues, where+".name is used twice")
@@ -237,7 +237,7 @@ func validateHTTPMethods(owner string, methods []HTTPServiceMethod, configuratio
 			issues = append(issues, where+".method answers "+method.Method+" at an address that already answers it")
 		}
 		verbs[method.Method] = true
-		if !validIdentifier(method.Handler) || utf8.RuneCountInString(method.Handler) > maxNameLength {
+		if !project.IsIdentifier(method.Handler) || utf8.RuneCountInString(method.Handler) > maxNameLength {
 			issues = append(issues, where+".handler must name a procedure of the service module")
 		}
 	}

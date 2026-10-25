@@ -342,7 +342,7 @@ func EffectiveFillingValue(filling *Value, types []Type) *Value {
 
 func validateChoiceFormReference(path string, form ChoiceFormReference) []string {
 	var issues []string
-	if !validIdentifier(form.Name) {
+	if !project.IsIdentifier(form.Name) {
 		issues = append(issues, path+".name must be a valid identifier")
 	}
 	switch {

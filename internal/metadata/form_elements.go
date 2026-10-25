@@ -354,7 +354,7 @@ func elementDataPath(value string) bool {
 			}
 			index = index[1:]
 		}
-		if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+		if !project.IsIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
 			return false
 		}
 	}
@@ -1686,7 +1686,7 @@ func validateExcludedCommands(path string, commands []string) []string {
 	seen := map[string]bool{}
 	for index, command := range commands {
 		switch {
-		case !validIdentifier(command):
+		case !project.IsIdentifier(command):
 			issues = append(issues, fmt.Sprintf("%s[%d] must be the name of a command", path, index))
 		case seen[command]:
 			issues = append(issues, fmt.Sprintf("%s[%d] names %s twice", path, index, command))
@@ -2065,7 +2065,7 @@ func validateGroupProperties(path string, group GroupProperties, kind FormElemen
 	issues = append(issues, validateElementPictureReference(path+".picture", group.Picture)...)
 	issues = append(issues, oneOf(path+".shape_representation", group.ShapeRepresentation, FormShapeAuto, FormShapeNone, FormShapeAlways, FormShapeWhenActive)...)
 	if name, item := group.commandSourceItem(); item {
-		if !validIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
+		if !project.IsIdentifier(name) || utf8.RuneCountInString(name) > maxNameLength {
 			issues = append(issues, path+".command_source must name an element of the form after Items.")
 		}
 	} else if group.CommandSource != "" && group.CommandSource != FormCommandSourceForm && group.CommandSource != FormCommandSourceGlobalCommands &&

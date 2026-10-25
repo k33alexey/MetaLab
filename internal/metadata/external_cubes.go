@@ -214,7 +214,7 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 			issues = append(issues, prefix+".id is used twice")
 		}
 		ids[field.ID] = true
-		if !validIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > maxNameLength {
+		if !project.IsIdentifier(field.Name) || utf8.RuneCountInString(field.Name) > maxNameLength {
 			issues = append(issues, prefix+".name must start with a letter, contain only letters or digits and not exceed 255 characters")
 		} else if names[strings.ToLower(field.Name)] {
 			issues = append(issues, prefix+".name is used twice")

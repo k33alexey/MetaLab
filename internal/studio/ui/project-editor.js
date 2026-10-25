@@ -195,7 +195,9 @@ function createProjectEditor(host, onChange) {
     panel.append(node('h3', 'Корень конфигурации'));
 
     const identity = section('Как называется');
-    identity.append(textField('Имя', source.configuration.name, value => model.setName(value), {maxLength: 255}));
+    const name = textInput(source.configuration.name, value => { model.setName(value); touch(); }, {maxLength: 255});
+    watchName(name, () => ({path: 'configuration.yaml', name: name.value}));
+    identity.append(labeledField('Имя', name));
     identity.append(localizedField('Синоним', 'title'));
     identity.append(textField('Комментарий', source.configuration.comment,
       value => model.setField('comment', value)));

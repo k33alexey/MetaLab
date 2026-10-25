@@ -13,8 +13,8 @@ func TestProjectIdentifierTreatsUnderscoreAsALetter(t *testing.T) {
 		"_Конфигурация": true, "Бух_Учёт": true, "Имя1": true,
 		"1Имя": false, "Имя-1": false, "": false,
 	} {
-		if got := isIdentifier(name); got != want {
-			t.Errorf("isIdentifier(%q) = %v, want %v", name, got, want)
+		if got := IsIdentifier(name); got != want {
+			t.Errorf("IsIdentifier(%q) = %v, want %v", name, got, want)
 		}
 	}
 }

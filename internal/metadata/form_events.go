@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -232,7 +233,7 @@ func validateFormEvents(path string, events map[FormEvent]string, allowed []Form
 		case !slices.Contains(allowed, event):
 			issues = append(issues, fmt.Sprintf("%s.events.%s is not an event of %s", path, event, holder))
 		}
-		if handler := events[event]; !validIdentifier(handler) || utf8.RuneCountInString(handler) > maxNameLength {
+		if handler := events[event]; !project.IsIdentifier(handler) || utf8.RuneCountInString(handler) > maxNameLength {
 			issues = append(issues, fmt.Sprintf("%s.events.%s must name a procedure of the module of the form", path, event))
 		}
 	}

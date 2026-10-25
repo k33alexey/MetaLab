@@ -322,7 +322,7 @@ func validatePictureSource(path string, picture *PictureReference) []string {
 		issues = append(issues, path+".file must be the name of an image file")
 	case !picture.Names() && !picture.LoadTransparent && picture.TransparentPixel == nil:
 		issues = append(issues, path+" must name a standard picture, a common picture or a file, or carry what is left of one")
-	case picture.Standard != "" && !validIdentifier(picture.Standard):
+	case picture.Standard != "" && !project.IsIdentifier(picture.Standard):
 		issues = append(issues, path+".standard must be a valid identifier")
 	case picture.Common != nil && picture.Common.IsZero():
 		issues = append(issues, path+".common must be a non-zero UUID")
