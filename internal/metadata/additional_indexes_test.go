@@ -157,6 +157,31 @@ func TestAnIndexIsRefusedWhenItCannotBeBuilt(t *testing.T) {
 	}
 }
 
+// Two indexes of one table with no key fields are each refused for having
+// none, and not as one key repeated: an empty key is no key, so there is
+// nothing to repeat. Defect caught: the second empty index told it «repeats
+// the table and the indexed fields» of the first - a refusal that sends the
+// developer to look for a copy that is not there (mutant of 2.556, `> 0` to
+// `>= 0` before the key is built).
+func TestTwoIndexesWithNoKeyAreNotOneKeyRepeated(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeMetadata(t, root, CatalogKind, indexCatalogID, indexCatalogBody(`additional_indexes:
+  - {name: Первый, additional_fields: [ИНН]}
+  - {name: Второй, additional_fields: [КПП]}
+`))
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("two indexes with no key fields were taken")
+	}
+	if got := strings.Count(err.Error(), "indexed_fields must name at least one field"); got != 2 {
+		t.Errorf("refused for no key fields %d times, want 2: %v", got, err)
+	}
+	if strings.Contains(err.Error(), "repeats the table and the indexed fields") {
+		t.Errorf("two empty keys were taken for one key repeated: %v", err)
+	}
+}
+
 // A virtual table of the kind is accepted by name and its fields are left
 // alone: they are the query language's fields, not the object's, and the model
 // of them is block 6. A name that is no table of this kind is still refused.

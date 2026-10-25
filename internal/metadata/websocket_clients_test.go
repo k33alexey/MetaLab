@@ -142,6 +142,9 @@ func TestWebSocketClientHeadersAreCheckedForTheHandshake(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct{ body, says string }{
 		"a line break in a value": {"headers:\n  - {name: X-Tenant, value: \"a\\r\\nAuthorization: Basic eA==\"}\n", "headers[0] X-Tenant must be one line"},
+		// The break first: the check looks from the first symbol (mutant
+		// of 2.556, `>= 0` to `> 0`).
+		"a line break first":      {"headers:\n  - {name: X-Tenant, value: \"\\r\\nAuthorization: Basic eA==\"}\n", "headers[0] X-Tenant must be one line"},
 		"a name with a space":     {"headers:\n  - {name: \"X Tenant\", value: a}\n", `"X Tenant" is not a header name`},
 		"a name with a colon":     {"headers:\n  - {name: \"X-Tenant:\", value: a}\n", `"X-Tenant:" is not a header name`},
 		"names differing by case": {"headers:\n  - {name: X-Tenant, value: a}\n  - {name: x-tenant, value: b}\n", `headers[1]: "X-Tenant" and "x-tenant" are one header`},

@@ -220,14 +220,15 @@ templates:
 // Defect caught: a template the designer refuses - with no slash first, a
 // symbol outside the set, a parameter that is not a whole segment, «*» not
 // last - carried as an address; or one it takes - an empty segment, any text
-// of a parameter - refused.
+// of a parameter - refused. «/{ a}» holds the space first: the check of the
+// name looks from its first symbol (mutant of 2.556, `>= 0` to `> 0`).
 func TestHTTPServiceTemplateTakesTheDesignersGrammar(t *testing.T) {
 	t.Parallel()
 	for template, valid := range map[string]bool{
 		"abc": false, "/a b": false, "/{x": false, "/a?b": false, "/{}": false, "/a*b": false,
 		"/{a}{b}": false, "/{a}b": false, "/a,b": false, "/a;b": false, "/a+b": false, "/a=b": false,
 		"/a@b": false, "/*/a": false, "/x}y": false, "/a:b": false,
-		"/x}": false, "/.": false, "/a/../b": false, "/{a b}": false,
+		"/x}": false, "/.": false, "/a/../b": false, "/{a b}": false, "/{ a}": false,
 		"/a.b": true, "/a-b": true, "/a~b": true, "/a$b": true, "/a(b)": true, "/a//b": true,
 		"/{1x}": true, "/{a.b}": true, "/{док}": true, "/*": true, "/": true, "/bill/{Версия}/*": true,
 		"/version/": true, "/a/*": true,
