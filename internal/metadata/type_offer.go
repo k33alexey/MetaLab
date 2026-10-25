@@ -443,8 +443,8 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 		offer.Rows = append(offer.Rows, TypeOfferRow{Kind: AnyReferenceSet, Name: typeNames[AnyReferenceSet]})
 	}
 	for _, kind := range at.folders {
-		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind, Objects: catalog.objectsToShow(typeOwners[kind], nil),
-			Alone: standsAlone(kind, at.model)})
+		offer.Rows = append(offer.Rows, TypeOfferRow{Name: typeName(kind), ObjectKind: kind,
+			Objects: catalog.offeredObjects(kind), Alone: standsAlone(kind, at.model)})
 	}
 	for _, kind := range at.values {
 		offer.Rows = append(offer.Rows, typeRow(kind))
@@ -460,10 +460,32 @@ func (catalog *Catalog) TypeOffer(place TypeChoicePlace) (TypeOffer, bool) {
 	}
 	for _, kind := range at.wholeKinds {
 		row := typeRow(kind)
-		row.ObjectKind, row.Objects = kind, catalog.objectsToShow(typeOwners[kind], nil)
+		row.ObjectKind, row.Objects = kind, catalog.offeredObjects(kind)
 		offer.Rows = append(offer.Rows, row)
 	}
 	return offer, true
+}
+
+// offeredObjects are the objects a row of the window holds, those of the type
+// of the kind, in the order of the tree. The ones that share a name are named
+// by their owner and their name through a dot: the name of a recalculation is
+// unique only within its register, and the prototype shows two of one name as
+// two rows alike, which ML tells apart as «Начисления.Перерасчет1» and
+// «Удержания.Перерасчет1» (decision of the owner of 25.10.2026, opis
+// podpiska-na-sobytie.md). One alone with its name keeps the name, as the
+// prototype's row does.
+func (catalog *Catalog) offeredObjects(kind TypeKind) []ReferenceTypeObject {
+	objects := catalog.objectsToShow(typeOwners[kind], nil)
+	count := map[string]int{}
+	for _, object := range objects {
+		count[object.Name]++
+	}
+	for index, object := range objects {
+		if owner := catalog.objects[object.ID].owner; count[object.Name] > 1 && owner != nil {
+			objects[index].Name = catalog.objects[*owner].name + "." + object.Name
+		}
+	}
+	return objects
 }
 
 // sourceReferenceRows are the folders of the references to something of an

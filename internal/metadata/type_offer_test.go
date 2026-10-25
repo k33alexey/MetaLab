@@ -313,13 +313,25 @@ func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) 
 // a whole and each object are what a subscription takes (opis of 24.10.2026,
 // podpiska-na-sobytie.md, «Досъёмка»).
 //
+// Two recalculations of one name in two registers are told apart by their
+// register through a dot, and one alone with its name keeps it (decision of
+// the owner of 25.10.2026, podpiska-na-sobytie.md).
+//
 // Defect caught: a row without its box, so the kind as a whole cannot be
 // chosen; the objects of another kind under a row; a recalculation missing,
-// or shown under its register's name; a kind offered that the subscription
-// then refuses.
+// or shown under its register's name; two of one name shown as two rows
+// alike, or every recalculation named with its register; a kind offered that
+// the subscription then refuses.
 func TestTheWindowOfASubscriptionSourceGivesEveryKindABoxAndItsObjects(t *testing.T) {
 	t.Parallel()
-	catalog, err := Load(compositeProject(t))
+	root := compositeProject(t)
+	deductions := uuid.MustNew().String()
+	writeMetadata(t, root, CalculationRegisterKind, deductions, "format: 1\nid: "+deductions+"\nname: Удержания\ntitle: {ru: Удержания}\n"+
+		"chart_of_calculation_types: "+cmpCalculationTypes+"\nperiodicity: month\n"+
+		"resources:\n  - {id: "+uuid.MustNew().String()+", name: Сумма, title: {ru: Сумма}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
+		"recalculations:\n  - {id: "+uuid.MustNew().String()+", name: Перерасчет, title: {ru: Перерасчёт}}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Особый, title: {ru: Особый}}\n")
+	catalog, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,8 +354,9 @@ func TestTheWindowOfASubscriptionSourceGivesEveryKindABoxAndItsObjects(t *testin
 		}
 	}
 	for row, want := range map[string][]string{
-		"ПерерасчетНаборЗаписей": {"Перерасчет"}, "ПоследовательностьНаборЗаписей": names(catalog.Sequences),
-		"СправочникОбъект": names(catalog.Catalogs), "ХранилищеНастроекМенеджер": names(catalog.SettingsStorages),
+		"ПерерасчетНаборЗаписей":         {"Начисления.Перерасчет", "Удержания.Перерасчет", "Особый"},
+		"ПоследовательностьНаборЗаписей": names(catalog.Sequences),
+		"СправочникОбъект":               names(catalog.Catalogs), "ХранилищеНастроекМенеджер": names(catalog.SettingsStorages),
 		"КонстантаМенеджерЗначения": names(catalog.Constants),
 	} {
 		// In the order of the tree, which the composite project does not
