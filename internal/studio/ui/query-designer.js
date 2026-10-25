@@ -6,7 +6,7 @@ function createQueryDesigner(dialog,onInsert) {
   const option=(value,title)=>{const node=document.createElement('option');node.value=value;node.textContent=title;return node};
   const sourceDefinition=path=>schema?.sources.find(item=>item.path===path);
   const sourceByAlias=alias=>design.sources.find(item=>item.alias===alias);
-  function uniqueAlias(base){const clean=base.replace(/[^\p{L}\p{N}]/gu,'')||'Источник',used=new Set(design.sources.map(item=>item.alias.toLocaleLowerCase()));let value=clean,index=1;while(used.has(value.toLocaleLowerCase()))value=clean+(++index);return value}
+  function uniqueAlias(base){return uniqueName(base.replace(/[^\p{L}\p{N}]/gu,'')||'Источник',new Set(design.sources.map(item=>item.alias.toLocaleLowerCase())))}
   function fieldKey(source,field){return source+'\u0000'+field}
   function selectedField(source,field){return design.fields.find(item=>fieldKey(item.source,item.field)===fieldKey(source,field))}
   function scheduleBuild(){clearTimeout(timer);timer=setTimeout(build,120)}

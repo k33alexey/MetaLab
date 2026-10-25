@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os/exec"
+	"slices"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -54,7 +56,7 @@ func TestTheNameOfAnObjectIsCheckedInItsBranch(t *testing.T) {
 			t.Errorf("%s named %q: %q, %v; want %q", test.path, test.name, answer.Refusal, err, test.want)
 		}
 	}
-	for name, want := range map[string]string{"контрагенты": refusedNotUnique, "": refusedEmpty, "Цены прайса": refusedRule} {
+	for name, want := range map[string]string{"контрагенты": refusedNotUnique, "Цены прайса": refusedRule} {
 		if _, err := workspace.CreateCatalog(name); err == nil || err.Error() != want {
 			t.Errorf("a catalog created as %q: %v, want %q", name, err, want)
 		}
@@ -224,5 +226,90 @@ func TestANewObjectHasNoSynonym(t *testing.T) {
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Errorf("a project with objects of no synonym does not load: %v", err)
+	}
+}
+
+// numberedInNode runs numberedName of studio-common.js on every case read
+// from stdin and prints the answers in the same order.
+const numberedInNode = `
+const {readFileSync} = await import('node:fs');
+const vm = await import('node:vm');
+const context = vm.createContext({});
+vm.runInContext(readFileSync(process.argv[1], 'utf8'), context);
+context.cases = JSON.parse(readFileSync(0, 'utf8'));
+process.stdout.write(JSON.stringify(vm.runInContext(
+  'cases.map(item => numberedName(item.base, new Set(item.taken.map(name => name.toLocaleLowerCase()))))', context)));
+`
+
+// TestANewNameIsNumberedLikeOnThePage catches «Добавить» naming otherwise
+// than the prototype - «Справочник1», «Реквизит1», the first number from 1
+// that is free, in any case (docs/block-00/obshchee.md) - and the page,
+// which names the parts, drifting from the server, which names the objects.
+// The former page gave the base alone first and then «База2».
+func TestANewNameIsNumberedLikeOnThePage(t *testing.T) {
+	type numbered struct {
+		Base  string   `json:"base"`
+		Taken []string `json:"taken"`
+		want  string
+	}
+	cases := []numbered{
+		{"Реквизит", []string{}, "Реквизит1"},
+		{"Реквизит", []string{"Реквизит"}, "Реквизит1"},
+		{"Реквизит", []string{"РЕКВИЗИТ1"}, "Реквизит2"},
+		{"Реквизит", []string{"Реквизит2"}, "Реквизит1"},
+		{"Справочник", []string{"Справочник1", "справочник3"}, "Справочник2"},
+	}
+	for _, item := range cases {
+		if got := numberedName(item.Base, item.Taken); got != item.want {
+			t.Errorf("the server names %q beside %v %q, want %q", item.Base, item.Taken, got, item.want)
+		}
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required for the page's half of this test")
+	}
+	payload, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answers []string
+	if err := json.Unmarshal(runInNode(t, node, numberedInNode, payload, "ui/studio-common.js"), &answers); err != nil || len(answers) != len(cases) {
+		t.Fatalf("node answered %v: %v", answers, err)
+	}
+	for index, item := range cases {
+		if answers[index] != item.want {
+			t.Errorf("the page names %q beside %v %q, want %q", item.Base, item.Taken, answers[index], item.want)
+		}
+	}
+}
+
+// TestAddMakesTheKindsNextObject catches «Добавить» asking a name or naming
+// the object otherwise than by its kind's word and the next number among its
+// branch: a catalog beside Справочник1 is Справочник2, a role is Роль1 - the
+// roles are another branch.
+func TestAddMakesTheKindsNextObject(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for range 2 {
+		created, err := workspace.CreateCatalog("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, created.Catalog.Name)
+	}
+	role, err := workspace.CreateRole("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names = append(names, role.Role.Name)
+	if want := []string{"Справочник1", "Справочник2", "Роль1"}; !slices.Equal(names, want) {
+		t.Errorf("«Добавить» named %v, want %v", names, want)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Errorf("the project with the new objects does not load: %v", err)
 	}
 }

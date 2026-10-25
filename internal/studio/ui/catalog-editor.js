@@ -39,7 +39,7 @@ function createCatalogModel(source) {
     addAttribute(container) {
       const list = attributeList(container);
       if (!list) return null;
-      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', names(list)), title: {}, types: [structuredClone(typeOffer.newTypes.string)]};
+      const attribute = {id: crypto.randomUUID(), name: numberedName('Реквизит', names(list)), title: {}, types: [structuredClone(typeOffer.newTypes.string)]};
       list.push(attribute);
       return attribute;
     },
@@ -68,7 +68,7 @@ function createCatalogModel(source) {
       if (attribute) attribute.types = types;
     },
     addTablePart() {
-      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', names(catalog.tableParts)), title: {}, attributes: []};
+      const part = {id: crypto.randomUUID(), name: numberedName('ТабличнаяЧасть', names(catalog.tableParts)), title: {}, attributes: []};
       catalog.tableParts.push(part);
       return part;
     },

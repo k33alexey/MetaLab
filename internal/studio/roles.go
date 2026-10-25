@@ -493,6 +493,12 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err != nil {
 		return RoleSource{}, err
 	}
+	// «Добавить» names nothing: the object is the kind's next number.
+	if name == "" {
+		if name, err = workspace.newObjectNameLocked(string(metadata.RoleKind)); err != nil {
+			return RoleSource{}, err
+		}
+	}
 	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.RoleKind)), name); err != nil {
 		return RoleSource{}, err
 	}

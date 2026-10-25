@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
@@ -133,6 +136,34 @@ func (workspace *Workspace) branchLocked(relative, group string) ([]Node, error)
 		return found, nil
 	}
 	return top, nil
+}
+
+// numberedName is the name «Добавить» gives what it makes: base and the
+// first number from 1 that no taken name has, in any case - «Справочник1»,
+// «Реквизит1» (docs/block-00/obshchee.md, «Добавить» без диалога имени).
+// Its twin on the page is numberedName of studio-common.js, which names the
+// parts an editor adds; TestANewNameIsNumberedLikeOnThePage runs both.
+func numberedName(base string, taken []string) string {
+	for index := 1; ; index++ {
+		name := base + strconv.Itoa(index)
+		if !slices.ContainsFunc(taken, func(other string) bool { return strings.EqualFold(other, name) }) {
+			return name
+		}
+	}
+}
+
+// newObjectNameLocked is the name of a new object of a kind: the kind's word
+// for one object, numbered among the objects at the top of its branch.
+func (workspace *Workspace) newObjectNameLocked(kind string) (string, error) {
+	siblings, err := workspace.branchLocked("", branchOf(kind))
+	if err != nil {
+		return "", err
+	}
+	taken := make([]string, len(siblings))
+	for index, sibling := range siblings {
+		taken[index] = sibling.Title
+	}
+	return numberedName(kinds.Must(kinds.Kind(kind)).Name.Russian, taken), nil
 }
 
 // branchOf is the node of the tree that holds the objects of a kind.

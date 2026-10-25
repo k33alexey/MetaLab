@@ -175,6 +175,12 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
+	// «Добавить» names nothing: the object is the kind's next number.
+	if name == "" {
+		if name, err = workspace.newObjectNameLocked(string(metadata.CatalogKind)); err != nil {
+			return CatalogEditorSource{}, err
+		}
+	}
 	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.CatalogKind)), name); err != nil {
 		return CatalogEditorSource{}, err
 	}

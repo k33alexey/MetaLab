@@ -195,3 +195,38 @@ test('a blank translation is taken away, a translation with text is written',()=
   assert.equal(context.setTranslation(text,'en','  \n'),text);
   assert.deepEqual({...context.setTranslation(text,'ru',' ')},{});
 });
+
+// Ловит текст из имени не по описи (obshchee.md, «Текст из имени»; снимки
+// obshchee/sinonim-*, naimenovanie-iz-imeni-*): слова — с заглавной после
+// строчной, со второго — со строчной. Где описи нет — цифра, «_», заглавная
+// без строчной после (вопрос В1 серии 2.559), — текста нет.
+test('the text of a name parts its words, and makes none where the inventory says nothing',()=>{
+  for(const [name,text] of [['ТестовыйСправочникОписи','Тестовый справочник описи'],['ВтороеИмя','Второе имя'],['ПервоеИмя','Первое имя'],
+    ['Товары','Товары'],['товарыСклада','товары склада'],['',''],['СтавкаНДС',''],['Реквизит1',''],['Вид_операции',''],['СчетА','']])
+    assert.equal(context.textFromName(name),text,name);
+});
+
+// Ловит текст, который не следует за именем, или следует и после правки
+// руками, или пишется не на том языке, что показывает поле.
+test('the text follows its name until it is put right by hand, in the language the field shows',()=>{
+  StudioLanguage.set('ru');
+  const title={en:'Goods'};
+  const field=createLocalizedField({languages:[{code:'ru'},{code:'en'}],defaultLanguage:'ru'},code=>title[code],(code,value)=>context.setTranslation(title,code,value),()=>{});
+  field.follow('','ПервоеИмя');
+  assert.equal(title.ru,'Первое имя');assert.equal(field.children[0].value,'Первое имя');
+  field.follow('ПервоеИмя','ВтороеИмя');
+  assert.equal(title.ru,'Второе имя');
+  field.follow('ВтороеИмя','ВтороеИмяН');
+  assert.equal('ru' in title,false,'a name with no text takes the text the name made away');
+  field.follow('ВтороеИмяН','ВтороеИмяНовое');
+  assert.equal(title.ru,'Второе имя новое');
+  title.ru='Своё';
+  field.follow('ВтороеИмяНовое','ТретьеИмя');
+  assert.equal(title.ru,'Своё');assert.equal(title.en,'Goods');
+  delete title.en;
+  StudioLanguage.set('en');
+  field.follow('','ПервоеИмя');
+  assert.equal(title.en,'Первое имя');assert.equal(title.ru,'Своё');
+  StudioLanguage.set('ru');
+  field.destroy();
+});

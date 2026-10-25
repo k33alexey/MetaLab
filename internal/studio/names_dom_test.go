@@ -130,3 +130,49 @@ func TestTheTitleFollowsTheName(t *testing.T) {
 		t.Errorf("the title beside the name: %+v; want «Товары склада», then «Свои товары» kept, an empty title of a new attribute, then «Цена закупки»", steps)
 	}
 }
+
+// addWalk presses «Добавить» on the branch of catalogs and answers whether a
+// dialog asked anything, the name the window opened on, and the names of two
+// attributes and a table part added in it.
+const addWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
+  const name = () => [...document.querySelectorAll('#catalog-editor .catalog-field')].find(item => item.firstChild.textContent === 'Имя').querySelector('input').value;
+  const press = async text => { [...document.querySelectorAll('#catalog-editor button')].find(button => button.textContent === text).click(); await studio.settle(); };
+  node('Справочники').click(); await studio.settle();
+  document.querySelector('#tree-add').click(); await studio.settle();
+  steps.dialog = !!document.querySelector('dialog[open]');
+  steps.object = name();
+  steps.tree = !!node('Справочник1');
+  await press('+ Реквизит');
+  steps.first = name();
+  await press('Справочник · свойства');
+  await press('+ Реквизит');
+  steps.second = name();
+  await press('+ Табличная часть');
+  steps.part = name();
+  return steps;
+})()`
+
+// TestAddOpensTheNextObjectAtOnce catches «Добавить» asking a name in a
+// dialog, or naming a new object or part otherwise than «<Вид>N» from one:
+// the prototype makes Справочник1 at once and opens its window, and its parts
+// are Реквизит1, Реквизит2, ТабличнаяЧасть1 (docs/block-00/obshchee.md,
+// «Добавить» без диалога имени).
+func TestAddOpensTheNextObjectAtOnce(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, addWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Dialog, Tree                bool
+		Object, First, Second, Part string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if steps.Dialog || !steps.Tree || steps.Object != "Справочник1" || steps.First != "Реквизит1" || steps.Second != "Реквизит2" || steps.Part != "ТабличнаяЧасть1" {
+		t.Errorf("«Добавить» gave %+v; want no dialog, Справочник1 in the tree and its window, Реквизит1, Реквизит2, ТабличнаяЧасть1", steps)
+	}
+}

@@ -119,8 +119,6 @@
   <script src="/ui/project-editor.js"></script>
   <script src="/ui/languages-editor.js"></script>
   <dialog id="save-data-dialog" aria-labelledby="save-data-title"><form id="save-data-form" method="dialog"><h3 id="save-data-title">Изменения затрагивают существующие данные</h3><p class="muted">Ниже — только то, что касается уже сохранённых данных. Остальные изменения применяются без подтверждения.</p><div id="save-data-changes"></div><label id="save-data-object-loss" hidden><input type="checkbox" id="save-data-object-loss-input"> Подтверждаю удаление объектов и данных, которые в них хранятся</label><label id="save-data-value-rewrite" hidden><input type="checkbox" id="save-data-value-rewrite-input"> Подтверждаю изменение значений в существующих строках</label><div class="role-bulk"><button id="save-data-submit" class="primary" type="submit" disabled>Сохранить данные</button><button id="save-data-cancel" type="button">Отмена</button></div></form></dialog>
-  <dialog id="role-create-dialog" aria-labelledby="role-create-title"><form id="role-create-form"><h3 id="role-create-title">Новая роль</h3><label>Имя роли<input id="role-create-name" required maxlength="128" placeholder="Например, Продавец" autocomplete="off"></label><p class="muted">Начните с буквы. Используйте буквы и цифры без пробелов.</p><p id="role-create-error" class="error" role="alert"></p><div class="role-bulk"><button id="role-create-submit" class="primary" type="submit">Создать</button><button id="role-create-cancel" type="button">Отмена</button></div></form></dialog>
-  <dialog id="catalog-create-dialog" aria-labelledby="catalog-create-title"><form id="catalog-create-form"><h3 id="catalog-create-title">Новый справочник</h3><label>Имя справочника<input id="catalog-create-name" required maxlength="128" placeholder="Например, Товары" autocomplete="off"></label><p class="muted">Начните с буквы. Используйте буквы и цифры без пробелов.</p><p id="catalog-create-error" class="error" role="alert"></p><div class="role-bulk"><button id="catalog-create-submit" class="primary" type="submit">Создать</button><button id="catalog-create-cancel" type="button">Отмена</button></div></form></dialog>
   <script src="/ui/query-designer.js"></script>
   <script>
     // Соглашение для нового UI-текста (092, Локализация интерфейса
@@ -412,30 +410,18 @@
     });
     editor.addEventListener('input',()=>{if(!currentFile||currentFile.isForm)return;bslEditor.change(editor.value);dirty=bslEditor.source()!==currentFile.content;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'});editor.addEventListener('keydown',event=>{if(event.key==='Tab'&&!editor.readOnly){event.preventDefault();const start=editor.selectionStart;editor.setRangeText('    ',start,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'))}});document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();save()}});saveButton.addEventListener('click',save);window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue=''}});
     document.querySelector('#refresh').addEventListener('click',async()=>{if(loadingFile)return;if(dirty&&!confirm('Отменить несохранённые изменения и перечитать проект?'))return;closeFile();await loadTree()});loadTree();setInterval(pollExternalChange,3000);
-    const roleCreateDialog=document.querySelector('#role-create-dialog'),roleCreateName=document.querySelector('#role-create-name'),roleCreateError=document.querySelector('#role-create-error');
-    document.querySelector('#role-create-cancel').addEventListener('click',()=>{if(!loadingFile)roleCreateDialog.close();});
-    roleCreateDialog.addEventListener('cancel',event=>{if(loadingFile)event.preventDefault();});
-    document.querySelector('#role-create-form').addEventListener('submit',async event=>{
-      event.preventDefault();if(loadingFile)return;
+    // «Добавить» makes the object at once, named the kind's next number by the
+    // server, and opens its window (docs/block-00/obshchee.md, «Добавить» без
+    // диалога имени); the name is put right in the window.
+    async function createObject(endpoint,show,objectOf){
+      if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
       loadingFile=true;setEditorsBusy(true);
-      const submit=document.querySelector('#role-create-submit');submit.disabled=true;roleCreateError.textContent='';
       try{
-        const value=await postJSON('/api/role',{name:roleCreateName.value.trim()});showRoleEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;roleCreateDialog.close();selectedNode={id:value.role.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Роль создана. Отметьте разрешённые действия.';
-      }catch(error){roleCreateError.textContent=String(error.message||error).trim();}
-      finally{loadingFile=false;submit.disabled=false;setEditorsBusy(false);}
-    });
-    const catalogCreateDialog=document.querySelector('#catalog-create-dialog'),catalogCreateName=document.querySelector('#catalog-create-name'),catalogCreateError=document.querySelector('#catalog-create-error');
-    document.querySelector('#catalog-create-cancel').addEventListener('click',()=>{if(!loadingFile)catalogCreateDialog.close();});
-    catalogCreateDialog.addEventListener('cancel',event=>{if(loadingFile)event.preventDefault();});
-    document.querySelector('#catalog-create-form').addEventListener('submit',async event=>{
-      event.preventDefault();if(loadingFile)return;
-      loadingFile=true;setEditorsBusy(true);
-      const submit=document.querySelector('#catalog-create-submit');submit.disabled=true;catalogCreateError.textContent='';
-      try{
-        const value=await postJSON('/api/catalog',{name:catalogCreateName.value.trim()});showCatalogEditor(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;catalogCreateDialog.close();selectedNode={id:value.catalog.id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Справочник создан.';
-      }catch(error){catalogCreateError.textContent=String(error.message||error).trim();}
-      finally{loadingFile=false;submit.disabled=false;setEditorsBusy(false);}
-    });
+        const value=await postJSON(endpoint,{});show(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
+        selectedNode={id:objectOf(value).id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';
+      }catch(error){showToolError(error);}
+      finally{loadingFile=false;setEditorsBusy(false);updateTreeToolbar();}
+    }
     // Generic configuration-tree toolbar: Add/Delete act on whatever is
     // currently selected in the tree, instead of one dedicated button per
     // metadata kind or a duplicate "Удалить" button inside each editor.
@@ -499,13 +485,9 @@
       if(loadingFile||treeFilter.subsystems)return;
       const context=currentAddContext();
       if(!context)return;
-      if(context.kind==='catalog'){
-        if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
-        catalogCreateError.textContent='';catalogCreateName.value='';catalogCreateDialog.showModal();catalogCreateName.focus();
-      }else if(context.kind==='role'){
-        if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
-        roleCreateError.textContent='';roleCreateName.value='';roleCreateDialog.showModal();roleCreateName.focus();
-      }else if(context.kind==='attribute'||context.kind==='tablepart'){
+      if(context.kind==='catalog')createObject('/api/catalog',showCatalogEditor,value=>value.catalog);
+      else if(context.kind==='role')createObject('/api/role',value=>showRoleEditor(value),value=>value.role);
+      else if(context.kind==='attribute'||context.kind==='tablepart'){
         catalogEditor.addFromTreeContext(context);
       }
     });

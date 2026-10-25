@@ -82,6 +82,18 @@ function uniqueName(base, used) {
   return name;
 }
 
+/* numberedName is the name «Добавить» gives what it makes: base and the
+   first number from 1 not taken - «Реквизит1», «ТабличнаяЧасть1»
+   (docs/block-00/obshchee.md, «Добавить» без диалога имени); used holds the
+   taken names in lower case. Its twin on the server is numberedName of
+   names.go, which names a new object; TestANewNameIsNumberedLikeOnThePage
+   runs both. */
+function numberedName(base, used) {
+  let index = 1;
+  while (used.has((base + index).toLocaleLowerCase())) index++;
+  return base + index;
+}
+
 /* node is the one way Studio editors build an element: a tag, its text and
    its class. */
 function node(tag, text, className) {
