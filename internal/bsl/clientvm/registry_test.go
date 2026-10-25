@@ -164,7 +164,10 @@ EndFunction`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// The deadline catches a debugger that hangs, not a slow one: under the
+	// whole of make ci with a cold build cache 3 seconds were once not enough
+	// (25.10.2026), while one run takes milliseconds.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	entry := started
 	if entry.State != vm.DebugPaused {
@@ -214,7 +217,7 @@ func TestRegistryReleaseStopsDebugger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if started.State != vm.DebugPaused {
 		if _, err := registry.WaitDebug(ctx, handle, started.Sequence); err != nil {

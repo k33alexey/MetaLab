@@ -27,7 +27,7 @@ func TestRemoteEndpointRoutesAllDebuggerOperations(t *testing.T) {
 			SetBreakpointsOperation, EvaluateOperation, StopOperation,
 		}
 		for _, operation := range operations {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			command, nextErr := agent.Next(ctx)
 			cancel()
 			if nextErr != nil {
@@ -160,7 +160,7 @@ func TestRemoteAgentServesVMEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	snapshot := started
 	for snapshot.State == vm.DebugRunning {

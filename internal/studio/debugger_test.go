@@ -48,7 +48,7 @@ func TestWorkspaceServerDebuggerUsesUnsavedSource(t *testing.T) {
 	if _, err := workspace.DebugCommand(vm.DebugContinue); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	finished, err := session.Wait(ctx, snapshot.Sequence)
 	if err != nil || finished.State != vm.DebugCompleted || finished.Result == nil || finished.Result.Value != "42" {
@@ -267,7 +267,7 @@ func TestWorkspaceFiltersAndRejectsDebugTargetFromAnotherDatabase(t *testing.T) 
 
 func waitWorkspaceDebugState(t *testing.T, workspace *Workspace, initial vm.DebugSnapshot, wanted vm.DebugState) vm.DebugSnapshot {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	snapshot := initial
 	for snapshot.State != wanted {

@@ -229,7 +229,7 @@ func compileDebugMachine(t *testing.T, source string) *Machine {
 
 func waitDebug(t *testing.T, session *DebugSession, after uint64) DebugSnapshot {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	snapshot, err := session.Wait(ctx, after)
 	if err != nil {

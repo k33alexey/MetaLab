@@ -207,7 +207,7 @@ EndFunction`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	entry := started
 	for entry.State == vm.DebugRunning {
