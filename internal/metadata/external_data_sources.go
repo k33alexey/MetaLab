@@ -317,9 +317,11 @@ func validateExternalFields(table ExternalTable, configuration project.Project) 
 type externalFieldGroup struct {
 	path   string
 	fields []ExternalField
-	// place is where the types of the fields stand: a field of a table of the
-	// source takes binary data (placeExternalField); a field of a table of
-	// a dimension was not seen with it and stands as a stored field.
+	// place is where the types of the fields stand: a field of a table and of
+	// a dimension table of the source takes binary data (placeExternalField:
+	// the window of either offers it, opis of 24.10.2026 and 25.10.2026,
+	// snapshots series-2.531/16, series-2.543/01); a dimension and a resource
+	// of a cube stand as a stored field.
 	place typePlace
 }
 

@@ -412,6 +412,33 @@ func TestAResourceOfACubeIsANumberOrAString(t *testing.T) {
 	}
 }
 
+// A field of a dimension table takes binary data with its qualifiers, as a
+// field of a table does: the window of either offers it (opis of 25.10.2026,
+// vneshnij-istochnik.md, snapshots series-2.535/03-05, series-2.543/01).
+// A dimension of the cube does not: its window offers no simple type.
+//
+// Catches the field of a dimension table checked as a stored field, which
+// refuses binary data, as it was until 2.549, or the schema of the
+// application refusing it.
+func TestAFieldOfADimensionTableTakesBinaryData(t *testing.T) {
+	t.Parallel()
+	binary := goodsDimTableBody + "  - {id: " + uuid.MustNew().String() + ", name: Файл, title: {ru: Файл}, " +
+		"types: [{kind: binary-data, length: 16, fixed_length: true}], name_in_data_source: '[Goods].[File]'}\n"
+	if _, err := DecodeExternalDimensionTable("table.yaml", strings.NewReader("format: 1\nid: "+goodsDimTable+"\nname: Товары\ntitle: {ru: Товары}\n"+binary),
+		metadataConfiguration()); err != nil {
+		t.Fatalf("a field of a dimension table of binary data: %v", err)
+	}
+	root := metadataProject(t)
+	writeSalesCube(t, root, salesCubeBody, binary)
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatalf("a dimension table with a field of binary data was refused: %v", err)
+	}
+	if _, err := catalog.ApplicationSchema(); err != nil {
+		t.Fatalf("the schema refused a dimension table with a field of binary data: %v", err)
+	}
+}
+
 // A hierarchical dimension table keeps the level the designer saved with it -
 // 1 in the files the designer writes (mdclasses, 8.3.25 and 8.3.27) - and is
 // read at level 0, as the help says such a table is. The defects caught: the

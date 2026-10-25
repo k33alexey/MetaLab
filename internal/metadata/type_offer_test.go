@@ -118,6 +118,12 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		[]string{"▸ОпределяемыйТип"})
 	expected[ExternalFieldChoice] = external
 	expected[ExternalFunctionChoice] = external
+	// A field of a dimension table: the window of a field of a table
+	// (snapshots series-2.535/03-05, series-2.543/01).
+	expected[DimensionTableFieldChoice] = external
+	// A resource of a cube (snapshots series-2.535/01, 02, series-2.543/02):
+	// the number, the string and the defined types.
+	expected[CubeResourceChoice] = []string{"□Число", "□Строка", "▸ОпределяемыйТип"}
 	// A dimension of a cube (snapshots 18, 20): the defined types and the
 	// dimension tables, here none.
 	expected[CubeDimensionChoice] = []string{"▸ОпределяемыйТип"}
@@ -130,7 +136,8 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 	// session parameter.
 	enumerations := map[TypeChoicePlace]int{RunningObjectChoice: 24, FormAttributeChoice: 24, DefinedTypeChoice: 24, SessionParameterChoice: 3}
 	required := map[TypeChoicePlace]bool{StoredFieldChoice: true, CharacteristicValueChoice: true, SessionParameterChoice: true,
-		ExternalFieldChoice: true, CubeDimensionChoice: true, NumericResourceChoice: true}
+		ExternalFieldChoice: true, CubeDimensionChoice: true, NumericResourceChoice: true, CubeResourceChoice: true,
+		DimensionTableFieldChoice: true}
 	for place, rows := range expected {
 		offer, ok := (&Catalog{}).TypeOffer(place)
 		if !ok {
@@ -143,10 +150,12 @@ func TestTypeOfferIsThePrototypes(t *testing.T) {
 		if offer.Required != required[place] {
 			t.Errorf("%s: a type required %v, the prototype %v", place, offer.Required, required[place])
 		}
-		// Only the field of a source and a dimension of a cube have no
-		// «Составной тип данных» (snapshots 16-18, 20, 22; a function has it,
-		// 19, 21).
-		if offer.Single != (place == ExternalFieldChoice || place == CubeDimensionChoice) {
+		// Only the field of a table and of a dimension table of a source, a
+		// dimension and a resource of a cube have no «Составной тип данных»
+		// (snapshots series-2.531/16-18, 20, 22, series-2.535/01-05; a
+		// function has it, 19, 21).
+		single := []TypeChoicePlace{ExternalFieldChoice, DimensionTableFieldChoice, CubeDimensionChoice, CubeResourceChoice}
+		if offer.Single != slices.Contains(single, place) {
 			t.Errorf("%s: without a composite %v", place, offer.Single)
 		}
 		// The folder holds as many enumerations as the window there, the
@@ -386,11 +395,16 @@ func names[T any](list []T) []string {
 // reference to another source, and the value of a function of binary data with
 // its qualifiers, as the window offers it (snapshots 19, 21).
 //
+// The window of a field of a dimension table is that of a field of a table,
+// object tables included, and that of a resource of a cube offers no table
+// at all (opis of 25.10.2026, snapshots series-2.543/01-03).
+//
 // Defect caught: a table that holds records offered as a reference; another
 // source's tables missing; an object named without its source, so two tables
 // of one name in two sources read alike; a reference the window offers
 // refused on loading, or taken without the note; binary data refused in a
-// function.
+// function; a field of a dimension table offered no object table; a resource
+// of a cube offered a table, or only some of the defined types.
 func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 	t.Parallel()
 	root := compositeProject(t)
@@ -420,7 +434,7 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 		"external-data-sources Бухгалтерия tables Счета fields Товар"}; !slices.Equal(slices.Sorted(slices.Values(noted)), want) {
 		t.Errorf("noted %v, want %v", noted, want)
 	}
-	for _, place := range []TypeChoicePlace{ExternalFieldChoice, ExternalFunctionChoice} {
+	for _, place := range []TypeChoicePlace{ExternalFieldChoice, ExternalFunctionChoice, DimensionTableFieldChoice} {
 		offer, _ := catalog.TypeOffer(place)
 		folders := map[string][]string{}
 		for _, row := range offer.Rows {
@@ -435,6 +449,20 @@ func TestTheWindowOfASourceOffersTheTablesOfEverySource(t *testing.T) {
 		if got, want := folders["ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка"], []string{"Склад.Продажи.Товары"}; !slices.Equal(got, want) {
 			t.Errorf("%s offers the dimension tables %v, want %v", place, got, want)
 		}
+	}
+	// A resource of a cube: the number, the string and every defined type of
+	// the project, not narrowed to those its check takes, and no table of
+	// any source (snapshots series-2.543/02, 03).
+	resource, _ := catalog.TypeOffer(CubeResourceChoice)
+	var resourceRows []string
+	for _, row := range resource.Rows {
+		resourceRows = append(resourceRows, row.Name.Russian)
+		if row.ObjectKind == DefinedType && len(row.Objects) != len(catalog.DefinedTypes) {
+			t.Errorf("a resource of a cube offers %d defined types of %d", len(row.Objects), len(catalog.DefinedTypes))
+		}
+	}
+	if want := []string{"Число", "Строка", "ОпределяемыйТип"}; !slices.Equal(resourceRows, want) {
+		t.Errorf("a resource of a cube offers %v, want %v", resourceRows, want)
 	}
 	// A dimension of a cube: the dimension tables alone (snapshots 18, 20).
 	offer, _ := catalog.TypeOffer(CubeDimensionChoice)

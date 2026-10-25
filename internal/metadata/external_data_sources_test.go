@@ -840,13 +840,8 @@ func TestABinaryFieldOfASourceTakesALengthAndFixedness(t *testing.T) {
 			t.Errorf("%s: want %q, got %v", types, want, err)
 		}
 	}
-	// A field of a table of a dimension was not seen with binary data: it
-	// stands as a stored field.
-	root := metadataProject(t)
-	writeSalesCube(t, root, noteCubeBody(), strings.Replace(goodsDimTableBody, "types: [{kind: string, length: 20}]", "types: [{kind: binary-data, length: 16}]", 1))
-	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "kind binary-data lives in memory only") {
-		t.Errorf("a field of a dimension table of binary data: %v", err)
-	}
+	// A field of a dimension table takes binary data too since 2.549
+	// (TestAFieldOfADimensionTableTakesBinaryData).
 	_, err := DecodeInformationRegister("register.yaml", strings.NewReader("format: 1\nid: "+uuid.MustNew().String()+"\nname: Цены\ntitle: {ru: Цены}\n"+
 		"write_mode: independent\nperiodicity: none\nresources:\n  - {id: "+uuid.MustNew().String()+", name: Цена, title: {ru: Цена}, types: [{kind: number, precision: 15, scale: 2}]}\n"+
 		"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Фото, title: {ru: Фото}, types: [{kind: binary-data, length: 16}]}\n"), metadataConfiguration())

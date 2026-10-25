@@ -47,8 +47,12 @@ const (
 	// offers both one list, the field without «Составной тип данных».
 	ExternalFieldChoice    TypeChoicePlace = "external-field"
 	ExternalFunctionChoice TypeChoicePlace = "external-function"
-	// CubeDimensionChoice is a dimension of a cube of an external source.
-	CubeDimensionChoice TypeChoicePlace = "cube-dimension"
+	// CubeDimensionChoice is a dimension of a cube of an external source,
+	// CubeResourceChoice a resource of one and DimensionTableFieldChoice a
+	// field of a dimension table of one.
+	CubeDimensionChoice       TypeChoicePlace = "cube-dimension"
+	CubeResourceChoice        TypeChoicePlace = "cube-resource"
+	DimensionTableFieldChoice TypeChoicePlace = "dimension-table-field"
 	// NumericResourceChoice is a resource of a register of accumulation, of
 	// accounting or of calculation: one window for the three.
 	NumericResourceChoice TypeChoicePlace = "numeric-resource"
@@ -193,6 +197,17 @@ var choicePlaces = map[TypeChoicePlace]choicePlace{
 	// types are read as a stored field's; validateCubeDimensionType holds
 	// the rest.
 	CubeDimensionChoice: {model: placeStored, definedTypes: true, sourceReferences: []Kind{ExternalDimensionTableKind},
+		required: true, single: true},
+	// A resource of a cube: the number, the string and every defined type,
+	// no reference and no «Составной тип данных» (opis of 25.10.2026,
+	// vneshnij-istochnik.md, snapshots series-2.535/01, 02, series-2.543/02,
+	// 03); the folder is not narrowed to the defined types the check takes,
+	// validateCubeResourceType refuses the rest.
+	CubeResourceChoice: {model: placeStored, primitives: []TypeKind{NumberType, StringType}, definedTypes: true,
+		required: true, single: true},
+	// A field of a dimension table: the window of a field of a table (opis of
+	// 25.10.2026, snapshots series-2.535/03-05, series-2.543/01).
+	DimensionTableFieldChoice: {model: placeExternalField, primitives: externalPrimitives, definedTypes: true, sourceReferences: sourceTables,
 		required: true, single: true},
 	// A resource of a register of accumulation, of accounting or of
 	// calculation: the number and every defined type, each of them alone

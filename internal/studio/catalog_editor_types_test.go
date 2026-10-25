@@ -314,8 +314,10 @@ func TestTheTypeWindowOfAFieldOfASourceIsSingle(t *testing.T) {
 		t.Skip("Node.js is required for this test")
 	}
 	for place, want := range map[metadata.TypeChoicePlace][]metadata.TypeKind{
-		metadata.ExternalFieldChoice:    {metadata.StringType},
-		metadata.ExternalFunctionChoice: {metadata.NumberType, metadata.StringType},
+		metadata.ExternalFieldChoice:       {metadata.StringType},
+		metadata.DimensionTableFieldChoice: {metadata.StringType},
+		metadata.CubeResourceChoice:        {metadata.StringType},
+		metadata.ExternalFunctionChoice:    {metadata.NumberType, metadata.StringType},
 	} {
 		offer, _ := (&metadata.Catalog{}).TypeOffer(place)
 		payload, err := json.Marshal(offer)
