@@ -49,7 +49,7 @@ function createProjectModel(source) {
       if (kept.length === 0) delete configuration[field]; else configuration[field] = kept;
     },
     addLanguage() {
-      const language = {name: 'Язык', title: 'Новый язык', code: uniqueCode()};
+      const language = {name: 'Язык', title: {}, code: uniqueCode()};
       configuration.languages.push(language);
       return language;
     },
@@ -96,7 +96,9 @@ function createProjectEditor(host, onChange) {
     const text = createLocalizedField(source.configuration, code => source.configuration[field]?.[code],
       (code, value) => model.setText(field, code, value), touch, options);
     fieldCleanups.push(text.destroy);
-    return labeledField(label, text);
+    const labeled = labeledField(label, text);
+    labeled.text = text;
+    return labeled;
   }
   /* Умолчание называет другой объект конфигурации, поэтому оно выбирается из
      того, что в конфигурации есть, а не набирается руками: набранный
@@ -195,10 +197,15 @@ function createProjectEditor(host, onChange) {
     panel.append(node('h3', 'Корень конфигурации'));
 
     const identity = section('Как называется');
-    const name = textInput(source.configuration.name, value => { model.setName(value); touch(); }, {maxLength: 255});
+    const synonym = localizedField('Синоним', 'title');
+    const name = textInput(source.configuration.name, value => {
+      const before = source.configuration.name;
+      model.setName(value);
+      synonym.text.follow(before, value);
+      touch();
+    }, {maxLength: 255});
     watchName(name, () => ({path: 'configuration.yaml', name: name.value}));
-    identity.append(labeledField('Имя', name));
-    identity.append(localizedField('Синоним', 'title'));
+    identity.append(labeledField('Имя', name), synonym);
     identity.append(textField('Комментарий', source.configuration.comment,
       value => model.setField('comment', value)));
     const languages = source.configuration.languages;

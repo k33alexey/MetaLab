@@ -31,6 +31,20 @@ function textPresentation(text, language, name) {
   return value || name;
 }
 
+/* textFromName is the text the prototype makes of a name for its synonym or
+   its description (docs/block-00/obshchee.md, «Текст из имени»): the words
+   of the name parted by spaces, from the second on in small letters -
+   «ТестовыйСправочникОписи» is «Тестовый справочник описи». A word begins
+   with a capital after a small letter. How the prototype parts a name with a
+   digit, an underscore or a capital no small letter follows («СтавкаНДС»,
+   «Реквизит1», «СчетА») the inventory does not say: such a name makes no
+   text (the series of 2.559, question В1), and the name stands where the
+   text would. */
+function textFromName(name) {
+  if (!name || /[\d_]|\p{Lu}(?!\p{Ll})/u.test(name)) return '';
+  return name.replace(/(?<=\p{Ll})\p{Lu}/gu, letter => ' ' + letter.toLocaleLowerCase());
+}
+
 /* setTranslation writes one translation of a localized text - a synonym,
    a text of the configuration: a blank one is no translation, as the model
    counts it (validateTitle: a translation says something in printable
@@ -266,7 +280,7 @@ function fieldWithButtons(control, buttons) {
    defaultLanguage; getValue(code) reads a translation, setValue(code, value)
    writes one; onChange() is called after every edit, in the field or in the
    window; options go to textInput - kind 'area', maxLength, disabled.
-   destroy() stops following the language of Studio. */
+   destroy() stops following the language of Studio; follow() is below. */
 /* titleTextOptions are the options of a localized title of an object. The
    single line and the limit of 512 are not the model's: BLOCKS, block 18,
    «переводимые тексты в Studio многострочны и без предела длины». */
@@ -287,6 +301,17 @@ function createLocalizedField(project, getValue, setValue, onChange, options = {
   }
   const field = fieldWithButtons(input, buttons);
   field.destroy = StudioLanguage.onChange(refresh);
+  /* follow(before, after) is the text following its name, one rule for
+     every pair «Имя» + «Синоним» and «Имя» + «Наименование» (ML-STUDIO.md,
+     «Поведение платформы»): while the text in the language the field shows
+     is empty or still the one the name before made, the name after makes it
+     anew; a text put right by hand stays. */
+  field.follow = (before, after) => {
+    const language = current(), written = getValue(language) || '';
+    if (written && written !== textFromName(before)) return;
+    setValue(language, textFromName(after));
+    refresh();
+  };
   refresh();
   return field;
 }

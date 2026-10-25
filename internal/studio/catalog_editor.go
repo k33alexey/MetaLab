@@ -178,8 +178,11 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.CatalogKind)), name); err != nil {
 		return CatalogEditorSource{}, err
 	}
+	// A new object has no synonym: the prototype's new object stands with an
+	// empty one (block-00, konstanta.md, snapshot novaya-osnovnye), its name
+	// shown in its place, and the synonym follows the name typed after.
 	value := metadata.CatalogDefinition{
-		Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{configuration.DefaultLanguage: name},
+		Format: metadata.CurrentFormat, ID: id, Name: name,
 		Code:              metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true},
 		DescriptionLength: 64,
 	}

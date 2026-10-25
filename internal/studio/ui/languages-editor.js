@@ -42,7 +42,12 @@ function createLanguagesEditor(host, onChange) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', title(language)));
     panel.append(textField('Код', language.code, () => {}, {disabled: true, maxLength: 16}));
-    const name = textInput(language.name, value => { model.setLanguageField(language.code, 'name', value); touch(); }, {maxLength: 255, disabled: locked});
+    const name = textInput(language.name, value => {
+      const before = language.name;
+      model.setLanguageField(language.code, 'name', value);
+      synonym.follow(before, value);
+      touch();
+    }, {maxLength: 255, disabled: locked});
     watchName(name, () => {
       const configuration = model.value();
       return {path: 'configuration.yaml', description: configuration, at: ['languages', String(configuration.languages.findIndex(item => item.code === language.code))]};

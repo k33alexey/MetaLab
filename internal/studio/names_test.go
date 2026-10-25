@@ -200,3 +200,29 @@ func cloneForTest(t *testing.T, catalog metadata.CatalogDefinition) metadata.Cat
 	}
 	return clone
 }
+
+// TestANewObjectHasNoSynonym catches a new catalog or role given its name as
+// its synonym: the prototype's new object stands with an empty synonym
+// (block-00, konstanta.md, snapshot novaya-osnovnye), and the name is shown
+// in its place until a name typed makes one.
+func TestANewObjectHasNoSynonym(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := workspace.CreateCatalog("Склады")
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := workspace.CreateRole("Кладовщик")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Catalog.Title) != 0 || len(role.Role.Title) != 0 {
+		t.Errorf("a new catalog has the synonym %v, a new role %v; want none", catalog.Catalog.Title, role.Role.Title)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Errorf("a project with objects of no synonym does not load: %v", err)
+	}
+}

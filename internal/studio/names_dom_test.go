@@ -80,3 +80,53 @@ func TestAFieldOfANameRefusesAtOnce(t *testing.T) {
 		}
 	}
 }
+
+// titleWalk types names into the window of a catalog and answers the title
+// shown beside the name after each: following the name, then put right by
+// hand and no longer following; and the title a new attribute gets.
+const titleWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;
+  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
+  const label = caption => [...document.querySelectorAll('#catalog-editor .catalog-field')].find(item => item.firstChild.textContent === caption);
+  const write = async (caption, text) => {
+    const input = label(caption).querySelector('input');
+    input.value = text;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    await studio.settle();
+  };
+  const title = () => label('Заголовок').querySelector('input').value;
+  node('Товары').click(); await studio.settle();
+  await write('Имя', 'ТоварыСклада');
+  steps.followed = title();
+  await write('Заголовок', 'Свои товары');
+  await write('Имя', 'Номенклатура');
+  steps.byHand = title();
+  [...document.querySelectorAll('#catalog-editor button')].find(button => button.textContent === '+ Реквизит').click();
+  await studio.settle();
+  steps.newTitle = title();
+  steps.newName = label('Имя').querySelector('input').value;
+  await write('Имя', 'ЦенаЗакупки');
+  steps.newFollowed = title();
+  return steps;
+})()`
+
+// TestTheTitleFollowsTheName catches the title of an object or a part that
+// does not follow its name, follows it after being put right by hand, or is
+// given to a new part as a fixed text: the prototype's new object has none
+// and its synonym follows the name typed (docs/block-00/obshchee.md, «Текст
+// из имени»; konstanta.md, «Новая константа»).
+func TestTheTitleFollowsTheName(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, titleWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct{ Followed, ByHand, NewTitle, NewName, NewFollowed string }
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if steps.Followed != "Товары склада" || steps.ByHand != "Свои товары" || steps.NewTitle != "" || steps.NewName == "" || steps.NewFollowed != "Цена закупки" {
+		t.Errorf("the title beside the name: %+v; want «Товары склада», then «Свои товары» kept, an empty title of a new attribute, then «Цена закупки»", steps)
+	}
+}

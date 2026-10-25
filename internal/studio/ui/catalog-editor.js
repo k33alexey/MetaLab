@@ -39,7 +39,7 @@ function createCatalogModel(source) {
     addAttribute(container) {
       const list = attributeList(container);
       if (!list) return null;
-      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', names(list)), title: {[source.defaultLanguage]: 'Новый реквизит'}, types: [structuredClone(typeOffer.newTypes.string)]};
+      const attribute = {id: crypto.randomUUID(), name: uniqueName('НовыйРеквизит', names(list)), title: {}, types: [structuredClone(typeOffer.newTypes.string)]};
       list.push(attribute);
       return attribute;
     },
@@ -68,7 +68,7 @@ function createCatalogModel(source) {
       if (attribute) attribute.types = types;
     },
     addTablePart() {
-      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', names(catalog.tableParts)), title: {[source.defaultLanguage]: 'Новая табличная часть'}, attributes: []};
+      const part = {id: crypto.randomUUID(), name: uniqueName('НоваяТабличнаяЧасть', names(catalog.tableParts)), title: {}, attributes: []};
       catalog.tableParts.push(part);
       return part;
     },
@@ -123,10 +123,13 @@ function createCatalogEditor(host, onChange) {
   function checkField(label, checked, apply) {
     return checkboxField(label, checked, value => { apply(value); rerender(); });
   }
-  function localizedTitleField(target, setTitle) {
-    const field = createLocalizedField(source, code => target.title?.[code], setTitle, touch, titleTextOptions);
-    titleFieldCleanups.push(field.destroy);
-    return labeledField('Заголовок', field);
+  // The name of the catalog or of a part and its title, which follows the
+  // name while it is not put right by hand (field.follow).
+  function nameAndTitle(target, setName, setTitle, at) {
+    const title = createLocalizedField(source, code => target.title?.[code], setTitle, touch, titleTextOptions);
+    titleFieldCleanups.push(title.destroy);
+    const name = nameField(target.name, value => { const before = target.name; setName(value); title.follow(before, value); }, at);
+    return [name, labeledField('Заголовок', title)];
   }
   // The type of an attribute is a field of its presentation with «…», which
   // opens the window «Редактирование типа данных» (showTypeEditor), as the
@@ -146,8 +149,8 @@ function createCatalogEditor(host, onChange) {
   function renderAttributePanel(container, attribute) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Реквизит'));
-    panel.append(nameField(attribute.name, value => model.setAttributeName(container, attribute.id, value), attributeWay(container, attribute)));
-    panel.append(localizedTitleField(attribute, (language, value) => model.setAttributeTitle(container, attribute.id, language, value)));
+    panel.append(...nameAndTitle(attribute, value => model.setAttributeName(container, attribute.id, value),
+      (language, value) => model.setAttributeTitle(container, attribute.id, language, value), attributeWay(container, attribute)));
     panel.append(checkField('Проверять заполнение', attribute.fillChecking === 'show-error',
       value => model.setAttributeFillChecking(container, attribute.id, value)));
     panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', model.indexingModes,
@@ -181,8 +184,8 @@ function createCatalogEditor(host, onChange) {
   function renderTablePartPanel(part) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Табличная часть'));
-    panel.append(nameField(part.name, value => model.setTablePartName(part.id, value), ['tableParts', String(source.catalog.tableParts.indexOf(part))]));
-    panel.append(localizedTitleField(part, (language, value) => model.setTablePartTitle(part.id, language, value)));
+    panel.append(...nameAndTitle(part, value => model.setTablePartName(part.id, value),
+      (language, value) => model.setTablePartTitle(part.id, language, value), ['tableParts', String(source.catalog.tableParts.indexOf(part))]));
     panel.append(node('div', 'Реквизиты табличной части', 'catalog-section-title'));
     panel.append(renderAttributeList(part.id, part.attributes));
     return panel;
@@ -206,8 +209,7 @@ function createCatalogEditor(host, onChange) {
     const panel = node('div', undefined, 'catalog-detail');
     panel.append(node('h3', 'Свойства справочника'));
     panel.append(node('div', `UUID: ${source.catalog.id}`, 'catalog-uuid'));
-    panel.append(nameField(source.catalog.name, value => model.setName(value)));
-    panel.append(localizedTitleField(source.catalog, (language, value) => model.setTitle(language, value)));
+    panel.append(...nameAndTitle(source.catalog, value => model.setName(value), (language, value) => model.setTitle(language, value)));
     const code = node('div', undefined, 'catalog-code');
     code.append(node('div', 'Код', 'catalog-section-title'));
     code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));

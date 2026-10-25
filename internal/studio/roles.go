@@ -496,7 +496,8 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.RoleKind)), name); err != nil {
 		return RoleSource{}, err
 	}
-	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name, Title: metadata.LocalizedText{configuration.DefaultLanguage: name}}
+	// No synonym, as a new catalog has none (CreateCatalog).
+	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name}
 	if err := metadata.ValidateRole("new role", role, configuration); err != nil {
 		return RoleSource{}, err
 	}

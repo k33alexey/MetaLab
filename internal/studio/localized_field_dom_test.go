@@ -222,7 +222,9 @@ func TestTheLocalizedFieldIsThePrototypes(t *testing.T) {
 		}
 	}
 	field("the title of the catalog Товары", steps.Catalog, "Товары", false)
-	field("the title of the role Кладовщик", steps.Role, "Кладовщик", false)
+	// A role made in Studio has no synonym, as the prototype's new object has
+	// none (TestANewObjectHasNoSynonym): the field shows nothing.
+	field("the title of the role Кладовщик", steps.Role, "", false)
 	// The language names itself in itself alone: in Russian, the language of
 	// Studio, its synonym says nothing, and the field shows nothing.
 	field("the synonym of the language Українська", steps.Language, "", false)
