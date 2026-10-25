@@ -13,9 +13,6 @@
 function createProjectModel(source) {
   const configuration = source.configuration;
   configuration.languages ||= [];
-  function uniqueCode() {
-    return uniqueName('lang', new Set(configuration.languages.map(item => item.code.toLocaleLowerCase())));
-  }
   return {
     value() { return structuredClone(configuration); },
     setName(name) { configuration.name = name; },
@@ -47,11 +44,6 @@ function createProjectModel(source) {
       const kept = (configuration[field] || []).filter(item => item !== id);
       if (granted) kept.push(id);
       if (kept.length === 0) delete configuration[field]; else configuration[field] = kept;
-    },
-    addLanguage() {
-      const language = {name: 'Язык', title: {}, code: uniqueCode()};
-      configuration.languages.push(language);
-      return language;
     },
     removeLanguage(code) {
       if (code === 'en') return;

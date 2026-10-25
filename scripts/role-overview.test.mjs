@@ -196,7 +196,8 @@ test('the Studio page loads the overview and opens it from the menu of the roles
   // Окно правит роли: «Сохранить» пишет изменённые роли одним запросом.
   assert.match(html,/endpoint='\/api\/roles';payload=\{roles:roleOverview\.value\(\)\}/);
   assert.ok(html.indexOf('/ui/role-editor.js')<html.indexOf('/ui/role-overview.js'));
-  assert.match(html,/node\.id==='project'\|\|node\.id==='metadata\/roles'\?Object\.entries\(overviewWindows\)/);
+  // Окна над ролями — команды корня и ветви, которую дерево отдаёт окну роли.
+  assert.match(html,/node\.id==='project'\|\|node\.kind==='metadata-group'&&objectEditors\[node\.editor\]\?\.editor===roleEditor\?Object\.entries\(overviewWindows\)/);
 });
 
 test('the overview is the two windows of the prototype, the second with two tabs',()=>{

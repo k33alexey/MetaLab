@@ -209,7 +209,7 @@ func TestRoleKeepsItsThreeFlags(t *testing.T) {
 	// the flag has to cross JSON both ways, not only YAML.
 	handler := NewHandler(workspace)
 	body, err := json.Marshal(map[string]any{"path": created.Path, "expectedRevision": created.Revision,
-		"role": map[string]any{"format": created.Role.Format, "id": created.Role.ID, "name": created.Role.Name, "title": created.Role.Title,
+		"object": map[string]any{"format": created.Role.Format, "id": created.Role.ID, "name": created.Role.Name, "title": created.Role.Title,
 			"independentChildRights": true, "grantNewFieldsByDefault": true}})
 	if err != nil {
 		t.Fatal(err)

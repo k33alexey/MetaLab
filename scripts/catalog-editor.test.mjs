@@ -22,6 +22,8 @@ function fixture(){return {
 test('Studio inline script remains valid JavaScript',()=>{
   const html=readFileSync(new URL('../internal/studio/ui/index.html',import.meta.url),'utf8');
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
+  // Окно объекта даёт дерево (Node.Editor), а не папка вида на странице.
+  assert.doesNotMatch(html,/metadata\/(catalogs|roles)|isCatalog|isRole\b|isRole[^O]/,'the page guesses a kind by its folder');
   assert.match(html,/\/api\/catalog/);assert.doesNotMatch(html,/id="catalog-create-dialog"/,"«Добавить» asks no name");assert.match(html,/id="tree-add"/);
 });
 test('new attribute gets a unique name and the type a new field takes, from the model',()=>{

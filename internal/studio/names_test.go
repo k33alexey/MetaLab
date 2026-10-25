@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -311,5 +314,107 @@ func TestAddMakesTheKindsNextObject(t *testing.T) {
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Errorf("the project with the new objects does not load: %v", err)
+	}
+}
+
+// TestARenamedCatalogTakesItsFolderAlong catches a catalog that cannot be
+// renamed in its window: its folder is named after it, and a save under a
+// new name was refused - «object Склады lies in a folder called
+// Справочник1» - so that «Добавить», which names the catalog Справочник1,
+// left a name that could not be put right. The folder goes with the name,
+// its forms with it, and a save refused after the move puts it back.
+func TestARenamedCatalogTakesItsFolderAlong(t *testing.T) {
+	t.Parallel()
+	root := copyDemoProjectForStudioTest(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreateCatalog("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := created.Catalog
+	refused.Name, refused.Code.Length = "Склады", 51
+	if _, err := workspace.SaveCatalogEditor(created.Path, refused, created.Revision); err == nil {
+		t.Fatal("a catalog of code length 51 was saved")
+	}
+	if _, err := workspace.ReadCatalogEditor(created.Path); err != nil {
+		t.Fatalf("a refused save left the catalog away from its folder: %v", err)
+	}
+	renamed := created.Catalog
+	renamed.Name = "Склады"
+	saved, err := workspace.SaveCatalogEditor(created.Path, renamed, created.Revision)
+	if err != nil {
+		t.Fatalf("a catalog is not renamed: %v", err)
+	}
+	if saved.Path != "metadata/catalogs/Склады/object.yaml" || saved.Catalog.Name != "Склады" {
+		t.Errorf("the renamed catalog lies at %s named %s", saved.Path, saved.Catalog.Name)
+	}
+	if _, err := os.Stat(filepath.Join(root, "metadata", "catalogs", "Справочник1")); !os.IsNotExist(err) {
+		t.Errorf("the old folder is still there: %v", err)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Errorf("the project with the renamed catalog does not load: %v", err)
+	}
+	if _, err := workspace.ReadCatalogEditor(saved.Path); err != nil {
+		t.Errorf("the renamed catalog does not open: %v", err)
+	}
+}
+
+// TestTheTreeGivesTheWindowOfAnObject catches the page guessing the window
+// of an object by the folder it lies in - «metadata/catalogs/…» in a regular
+// expression, a flag for each kind - instead of the tree saying it: the branch
+// of a kind with a window and every object of it carry its address, an
+// object of a kind with none and the groups inside an object carry nothing.
+func TestTheTreeGivesTheWindowOfAnObject(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := workspace.CreateRole("Кладовщик")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An object is found by its description, a branch and a group by the
+	// tree's identifier of it.
+	found := map[string]string{}
+	var walk func(nodes []Node)
+	walk = func(nodes []Node) {
+		for _, node := range nodes {
+			if node.Kind == "metadata" {
+				found[node.Path] = node.Editor
+			} else {
+				found[node.ID] = node.Editor
+			}
+			walk(node.Children)
+		}
+	}
+	walk(snapshot.Tree.Children)
+	goods := "metadata/catalogs/Товары/object.yaml"
+	place := map[string]string{
+		"metadata/catalogs": "/api/catalog", goods: "/api/catalog", "metadata/catalogs/Контрагенты/object.yaml": "/api/catalog",
+		"metadata/roles": "/api/role", role.Path: "/api/role",
+		"metadata/documents": "", "metadata/documents/ПродажаТоваров/object.yaml": "",
+	}
+	groups := 0
+	for id := range found {
+		if strings.HasSuffix(id, ":attributes") {
+			place[id] = ""
+			groups++
+		}
+	}
+	if groups == 0 {
+		t.Error("the tree shows no group «Реквизиты» to check")
+	}
+	for at, want := range place {
+		if got, ok := found[at]; !ok || got != want {
+			t.Errorf("the node %s gives the window %q (in the tree: %v), want %q", at, got, ok, want)
+		}
 	}
 }

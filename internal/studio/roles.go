@@ -598,6 +598,10 @@ func editorLanguages(configuration project.Project) []project.Language {
 	return configuration.Languages
 }
 
+// roleEditorAddress is where the window of a role is read, written, made and
+// deleted.
+const roleEditorAddress = "/api/role"
+
 func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("GET /api/roles", answerQuery(writeSourceError, func(*http.Request) (any, error) {
 		return workspace.ReadAllRoles()
@@ -607,7 +611,7 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 	}) (any, error) {
 		return workspace.SaveRoles(input.Roles)
 	}))
-	routes.HandleFunc("GET /api/role", func(response http.ResponseWriter, request *http.Request) {
+	routes.HandleFunc("GET "+roleEditorAddress, func(response http.ResponseWriter, request *http.Request) {
 		path := request.URL.Query().Get("path")
 		// A role unchanged since the caller read it is answered without the
 		// schema, which is the whole project read again.
@@ -631,19 +635,5 @@ func registerRoleRoutes(routes *http.ServeMux, workspace *Workspace) {
 		response.Header().Set("ETag", `"`+role.Revision+`"`)
 		webpage.JSON(response, http.StatusOK, role)
 	})
-	routes.HandleFunc("PUT /api/role", answerStudio(0, writeSourceError, func(input struct {
-		Path             string                  `json:"path"`
-		ExpectedRevision string                  `json:"expectedRevision"`
-		Role             metadata.RoleDefinition `json:"role"`
-	}) (any, error) {
-		return workspace.SaveRole(input.Path, input.Role, input.ExpectedRevision)
-	}))
-	routes.HandleFunc("POST /api/role", answerStudio(0, writeSourceError, func(input struct {
-		Name string `json:"name"`
-	}) (any, error) {
-		return workspace.CreateRole(input.Name)
-	}))
-	routes.HandleFunc("DELETE /api/role", answerRemoval(writeSourceError, func(request *http.Request) error {
-		return workspace.DeleteRole(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision"))
-	}))
+	registerObjectWindow(routes, roleEditorAddress, workspace.SaveRole, workspace.CreateRole, workspace.DeleteRole)
 }

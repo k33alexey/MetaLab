@@ -192,7 +192,7 @@ function createCatalogEditor(host, onChange) {
   }
   function renderSidebar() {
     const sidebar = node('div', undefined, 'catalog-sidebar');
-    const objectButton = node('button', 'Справочник · свойства', 'catalog-list-item');
+    const objectButton = node('button', `${source.kindTitle} · свойства`, 'catalog-list-item');
     objectButton.type = 'button';
     objectButton.classList.toggle('selected', selected.kind === 'catalog');
     objectButton.addEventListener('click', () => { selected = {kind: 'catalog'}; rerender(); });
@@ -207,7 +207,7 @@ function createCatalogEditor(host, onChange) {
   }
   function renderObjectPanel() {
     const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', 'Свойства справочника'));
+    panel.append(node('h3', source.kindTitle));
     panel.append(node('div', `UUID: ${source.catalog.id}`, 'catalog-uuid'));
     panel.append(...nameAndTitle(source.catalog, value => model.setName(value), (language, value) => model.setTitle(language, value)));
     const code = node('div', undefined, 'catalog-code');
@@ -266,6 +266,28 @@ function createCatalogEditor(host, onChange) {
         selected = {kind: 'tablepart', id};
         rerender();
       }
+    },
+    // What «Добавить» on a node of the tree inside this catalog adds:
+    // Реквизиты or an attribute - a sibling attribute in the same container
+    // (the catalog, or the enclosing table part); Табличные части - a table
+    // part; a table part - an attribute inside it. None for another node.
+    addContextOf(node) {
+      const id = node.id || '', fragment = node.fragment || '';
+      if (id.endsWith(':attributes')) return {kind: 'attribute', container: 'catalog'};
+      if (id.endsWith(':table-parts')) return {kind: 'tablepart'};
+      if (fragment.startsWith('attribute:')) return {kind: 'attribute', container: 'catalog'};
+      if (fragment.startsWith('tablepart:')) return {kind: 'attribute', container: fragment.slice('tablepart:'.length)};
+      return null;
+    },
+    // What «Удалить» on a node of the tree inside this catalog deletes: an
+    // attribute of the catalog or of a table part, or a table part.
+    deleteContextOf(node) {
+      const id = node.id || '', fragment = node.fragment || '';
+      if (fragment.startsWith('attribute:')) return {kind: 'attribute', container: 'catalog', id: fragment.slice('attribute:'.length)};
+      if (!fragment.startsWith('tablepart:')) return null;
+      if (!id.includes(':')) return {kind: 'tablepart', id};
+      const [container, attribute] = id.split(':');
+      return {kind: 'attribute', container, id: attribute};
     },
     // Adds a new attribute or table part on behalf of the tree's generic
     // "Add" toolbar button, positioned by where the tree selection was

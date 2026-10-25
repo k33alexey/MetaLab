@@ -67,14 +67,6 @@ test('removing the current default language falls back to another configured one
   assert.equal(saved.languages.length,1);
   assert.equal(saved.defaultLanguage,'en');
 });
-test('a new language gets a unique code and is independently editable',()=>{
-  const model=create(fixture());
-  const added=model.addLanguage();
-  assert.notEqual(added.code,'en');assert.notEqual(added.code,'ru');
-  model.setLanguageField(added.code,'name','Українська');model.setLanguageField(added.code,'title','Українська');
-  const saved=model.value().languages.find(item=>item.code===added.code);
-  assert.equal(saved.name,'Українська');assert.equal(saved.title,'Українська');
-});
 test('value() returns an independent clone',()=>{
   const source=fixture(),model=create(source);
   const value=model.value();value.languages.push({name:'x',title:'x',code:'x'});

@@ -2,6 +2,7 @@ package studio
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -37,6 +39,9 @@ type CatalogEditorSource struct {
 	TypeOffer       metadata.TypeOffer         `json:"typeOffer"`
 	Languages       []project.Language         `json:"languages"`
 	DefaultLanguage string                     `json:"defaultLanguage"`
+	// KindTitle names one object of the kind in the window, from the
+	// descriptor of the kind.
+	KindTitle string `json:"kindTitle"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -80,6 +85,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		KindTitle: kinds.Must(metadata.CatalogKind).Title,
 	}, nil
 }
 
@@ -133,15 +139,45 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if err != nil {
 		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
 	}
-	saved, err := workspace.saveSourceLocked(relative, encoded.String(), revision)
-	if err != nil {
-		if restoreErr := restoreRoles(); restoreErr != nil {
-			return CatalogEditorSource{}, fmt.Errorf("%w; %v", err, restoreErr)
+	// The catalog keeps a folder named after it, so a new name moves the
+	// folder - its forms and modules with it - and the description is
+	// written there; a refusal puts the folder back.
+	written, moveBack, err := workspace.followNameLocked(relative, opened.Catalog.Name, value.Name)
+	if err == nil {
+		var saved SourceFile
+		if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err == nil {
+			opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
+			return opened, nil
 		}
-		return CatalogEditorSource{}, err
+		err = errors.Join(err, moveBack())
 	}
-	opened.Catalog, opened.Revision = value, saved.Revision
-	return opened, nil
+	return CatalogEditorSource{}, errors.Join(err, restoreRoles())
+}
+
+// followNameLocked moves the folder of the object described at relative from
+// its name before to its name after, and answers where its description lies
+// then and how to move it back. An object of no folder of its own, and an
+// unchanged name, stay where they are.
+func (workspace *Workspace) followNameLocked(relative, before, after string) (string, func() error, error) {
+	stay := func() error { return nil }
+	kind, name, rest, ok := project.SplitObjectPath(relative)
+	if !ok || before == after || name != before {
+		return relative, stay, nil
+	}
+	moved, err := project.ObjectMetadataPath(kind, after)
+	if err != nil || len(rest) != 1 {
+		return relative, stay, err
+	}
+	from := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
+	to := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(moved)))
+	if err := renameFolder(from, to); err != nil {
+		return relative, stay, err
+	}
+	workspace.invalidateStudioIndexesLocked()
+	return moved, func() error {
+		workspace.invalidateStudioIndexesLocked()
+		return renameFolder(to, from)
+	}, nil
 }
 
 // declaredFieldChanges is the keys of the fields the catalog declares after
@@ -189,8 +225,10 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	// shown in its place, and the synonym follows the name typed after.
 	value := metadata.CatalogDefinition{
 		Format: metadata.CurrentFormat, ID: id, Name: name,
-		Code:              metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true},
-		DescriptionLength: 64,
+		Code: metadata.CatalogCode{Type: metadata.StringType, Length: 9, Auto: true, Unique: true},
+		// The prototype's new catalog: a code of 9, a description of 25
+		// (block-00, spravochnik.md, «Умолчания»).
+		DescriptionLength: 25,
 	}
 	var encoded bytes.Buffer
 	if err := metadata.Encode(&encoded, value); err != nil {
@@ -258,14 +296,8 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		}
 		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
 	}
-	offer, err := loadTypeOffer(workspace.root)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	return CatalogEditorSource{
-		Path: relative, Revision: sourceFile(relative, "yaml", encoded.Bytes()).Revision, Catalog: value, TypeOffer: offer,
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-	}, nil
+	// The new catalog opens as any catalog is read: one way to its window.
+	return workspace.readCatalogEditorLocked(relative)
 }
 
 // DeleteCatalog permanently removes one catalog's whole per-object folder
@@ -300,23 +332,13 @@ func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) err
 	return nil
 }
 
+// catalogEditorAddress is where the window of a catalog is read, written,
+// made and deleted.
+const catalogEditorAddress = "/api/catalog"
+
 func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET /api/catalog", answerQuery(writeSourceError, func(request *http.Request) (any, error) {
+	routes.HandleFunc("GET "+catalogEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
 		return workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
 	}))
-	routes.HandleFunc("PUT /api/catalog", answerStudio(0, writeSourceError, func(input struct {
-		Path             string                     `json:"path"`
-		ExpectedRevision string                     `json:"expectedRevision"`
-		Catalog          metadata.CatalogDefinition `json:"catalog"`
-	}) (any, error) {
-		return workspace.SaveCatalogEditor(input.Path, input.Catalog, input.ExpectedRevision)
-	}))
-	routes.HandleFunc("POST /api/catalog", answerStudio(0, writeSourceError, func(input struct {
-		Name string `json:"name"`
-	}) (any, error) {
-		return workspace.CreateCatalog(input.Name)
-	}))
-	routes.HandleFunc("DELETE /api/catalog", answerRemoval(writeSourceError, func(request *http.Request) error {
-		return workspace.DeleteCatalog(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision"))
-	}))
+	registerObjectWindow(routes, catalogEditorAddress, workspace.SaveCatalogEditor, workspace.CreateCatalog, workspace.DeleteCatalog)
 }

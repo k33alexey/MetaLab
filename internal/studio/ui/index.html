@@ -141,17 +141,21 @@
     const serverDebugger=createServerDebugger(document.querySelector('#debug-panel'),{current:()=>currentFile,source:()=>bslEditor.source(),routineAtCursor:()=>bslEditor.routineAtCursor(),breakpoints:()=>Array.from(debugBreakpoints,([path,lines])=>Array.from(lines,line=>({path,line}))).flat(),showLocation:async frame=>{if(await openFile(frame.location.path)){bslEditor.goTo({line:frame.location.line,column:frame.location.column});bslEditor.setExecutionLine(frame.location.line)}},clearLocation:()=>bslEditor.setExecutionLine(0)});
     const formDesigner=createFormDesigner(formHost,properties,()=>{if(!currentFile?.isForm)return;dirty=JSON.stringify(formDesigner.value().form)!==currentFile.initialForm;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Форма изменена':'Готово'},createFormHandler);
     const queryDesigner=createQueryDesigner(document.querySelector('#query-dialog'),insertDesignedQuery);
-    const roleEditor=createRoleEditor(document.querySelector('#role-editor'),()=>{if(!currentFile?.isRole)return;dirty=JSON.stringify(roleEditor.value())!==currentFile.initialRole;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роль изменена':'Готово'});
+    const roleEditor=createRoleEditor(document.querySelector('#role-editor'),()=>objectChanged(roleEditor));
     const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);},()=>{if(!currentFile?.isRoleOverview)return;dirty=roleOverview.value().length>0;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роли изменены':`${roleOverview.title()} · Готово`});
     const catalogHost=document.querySelector('#catalog-editor');
-    const catalogEditor=createCatalogEditor(catalogHost,()=>{if(!currentFile?.isCatalog)return;dirty=JSON.stringify(catalogEditor.value())!==currentFile.initialCatalog;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Справочник изменён':'Готово'});
+    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor));
+    // The windows of objects by the address the tree gives each object
+    // (Node.Editor): what part of the answer of the address the window edits.
+    const objectEditors={'/api/role':{editor:roleEditor,field:'role'},'/api/catalog':{editor:catalogEditor,field:'catalog'}};
+    function objectChanged(editor){if(objectEditors[currentFile?.editor]?.editor!==editor)return;dirty=JSON.stringify(editor.value())!==currentFile.initial;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'}
     const projectHost=document.querySelector('#project-editor');
     const projectEditor=createProjectEditor(projectHost,()=>{if(!currentFile?.isProject)return;dirty=JSON.stringify(projectEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Проект изменён':'Готово'});
     const languagesHost=document.querySelector('#languages-editor');
     const languagesEditor=createLanguagesEditor(languagesHost,()=>{if(!currentFile?.isLanguages)return;dirty=JSON.stringify(languagesEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Языки изменены':'Готово'});
     let selectedElement,selectedNode=null,currentFile=null,dirty=false,loadingFile=false,configuration=null;
     function editablePath(value){return value==='configuration.yaml'||value?.endsWith('.yaml')||value?.endsWith('.bsl')}
-    async function select(node,element){if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&currentFile?.isCatalog)catalogEditor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
+    async function select(node,element){if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&objectEditors[currentFile?.editor])objectEditors[currentFile.editor].editor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
     // Щелчки по дереву исполняются по очереди: второй щелчок двойного не
     // отказывает, пока первый ещё открывает файл, а двойной щелчок открывает
     // модуль после них.
@@ -167,7 +171,7 @@
     // команда — действие самого объекта (жирным) — исполняется и двойным
     // щелчком. «Все роли» и «Все ограничения доступа» — команды ветви «Роли»
     // и корня конфигурации (справка, «Все роли», «Все ограничения доступа»).
-    function treeCommands(node){const commands=(node.modules||[]).map(module=>[module.command,()=>openModule(module),!module.disabled,undefined,'open-module',module.main]);const overview=node.id==='project'||node.id==='metadata/roles'?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
+    function treeCommands(node){const commands=(node.modules||[]).map(module=>[module.command,()=>openModule(module),!module.disabled,undefined,'open-module',module.main]);const overview=node.id==='project'||node.kind==='metadata-group'&&objectEditors[node.editor]?.editor===roleEditor?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
     function offerTreeCommands(node,element){const commands=treeCommands(node);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)});const main=(node.modules||[]).find(module=>module.main);if(main)element.addEventListener('dblclick',async event=>{event.stopPropagation();await selecting;openModule(main)})}
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
@@ -178,11 +182,12 @@
     function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
     function insertDesignedQuery(query){if(!currentFile||currentFile.isForm||currentFile.language!=='bsl'){status.textContent='Откройте BSL-модуль для вставки запроса.';status.className='warning';return false}const lines=query.replaceAll('"','""').split('\n'),literal='"'+lines[0]+lines.slice(1).map(line=>'\n|'+line).join('')+'"',expression='Новый Запрос('+literal+')';editor.setRangeText(expression,editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));editor.focus();return true}
     function showFormEditor(value){closeEditors();editorHost.hidden=true;bslEditor.close();formDesigner.open(value)}
-    function showRoleEditor(value,preserveSelection=false){closeEditors(roleEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();roleEditor.open(value,preserveSelection);value.isRole=true;value.initialRole=JSON.stringify(roleEditor.value())}
-    function showCatalogEditor(value){closeEditors(catalogEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();catalogEditor.open(value);value.isCatalog=true;value.initialCatalog=JSON.stringify(catalogEditor.value())}
+    function showObject(address,value,preserveSelection=false){const {editor}=objectEditors[address];closeEditors(editor);formDesigner.close();editorHost.hidden=true;bslEditor.close();editor.open(value,preserveSelection);value.editor=address;value.initial=JSON.stringify(editor.value())}
     function showProjectEditor(value){closeEditors(projectEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
     function showLanguagesEditor(value){closeEditors(languagesEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
-    async function loadRole(path){const response=await fetch(`/api/role?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showRoleEditor(value);currentFile=value}
+    async function loadObject(address,path){const response=await fetch(`${address}?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showObject(address,value);currentFile=value}
+    // editorAt is the window the tree gives the object described at path.
+    function editorAt(path){let found='';const walk=nodes=>{for(const node of nodes||[]){if(found)return;if(node.kind==='metadata'&&node.path===path&&node.editor)found=node.editor;walk(node.children)}};walk(projectData?.tree?.children);return found}
     // Модуль, открытый командой меню объекта. Меню предлагает модуль, есть у
     // него текст или нет, как у прототипа, поэтому открытие его же и
     // создаёт: выбирать «создавать ли» не из чего, выбирают только
@@ -223,11 +228,10 @@
       }catch(error){status.textContent=String(error.message||error).trim();status.className='error';return false;}
       finally{loadingFile=false;}
     }
-    async function loadCatalog(path){const response=await fetch(`/api/catalog?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showCatalogEditor(value);currentFile=value}
     async function loadProjectConfiguration(){const response=await fetch('/api/project-configuration');if(!response.ok)throw new Error(await response.text());const value=await response.json();showProjectEditor(value);currentFile=value}
     async function loadLanguagesEditor(){const response=await fetch('/api/project-configuration');if(!response.ok)throw new Error(await response.text());const value=await response.json();showLanguagesEditor(value);currentFile=value}
     async function loadManagedForm(path){const response=await fetch(`/api/form?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();value.isForm=true;value.initialForm=JSON.stringify(value.form);currentFile=value;showFormEditor(value)}
-    async function openFile(path){if(loadingFile)return false;if(currentFile?.path===path)return true;if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;loadingFile=true;status.textContent='Открытие файла…';try{if(path==='configuration.yaml'){await loadProjectConfiguration()}else if((/^metadata\/common-forms\/[^/]+\/form\.yaml$/.test(path)||/^metadata\/[a-z-]+\/[^/]+\/(?:[a-z-]+\/[^/]+\/)*forms\/[^/]+\/form\.yaml$/.test(path))){await loadManagedForm(path)}else if(/^metadata\/roles\/[0-9a-f-]{36}\.yaml$/.test(path)){await loadRole(path)}else if(/^metadata\/catalogs\/[^/]+\/object\.yaml$/.test(path)){await loadCatalog(path)}else{const response=await fetch(`/api/file?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());currentFile=await response.json();currentFile.isForm=false;showSourceEditor(currentFile)}filePath.textContent=currentFile.path;dirty=false;saveButton.disabled=true;status.className='';status.textContent=currentFile.isProject?'Редактор проекта · Готово':currentFile.isRole?'Редактор ролей · Готово':currentFile.isCatalog?'Редактор справочника · Готово':currentFile.isForm?'Конструктор форм · Готово':`${currentFile.language.toUpperCase()} · Готово`;return true}catch(error){status.textContent=String(error.message||error);status.className='error';return false}finally{loadingFile=false}}
+    async function openFile(path){if(loadingFile)return false;if(currentFile?.path===path)return true;if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return false;loadingFile=true;status.textContent='Открытие файла…';try{if(path==='configuration.yaml'){await loadProjectConfiguration()}else if((/^metadata\/common-forms\/[^/]+\/form\.yaml$/.test(path)||/^metadata\/[a-z-]+\/[^/]+\/(?:[a-z-]+\/[^/]+\/)*forms\/[^/]+\/form\.yaml$/.test(path))){await loadManagedForm(path)}else if(editorAt(path)){await loadObject(editorAt(path),path)}else{const response=await fetch(`/api/file?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());currentFile=await response.json();currentFile.isForm=false;showSourceEditor(currentFile)}filePath.textContent=currentFile.path;dirty=false;saveButton.disabled=true;status.className='';status.textContent=currentFile.isProject?'Редактор проекта · Готово':currentFile.editor?'Готово':currentFile.isForm?'Конструктор форм · Готово':`${currentFile.language.toUpperCase()} · Готово`;return true}catch(error){status.textContent=String(error.message||error);status.className='error';return false}finally{loadingFile=false}}
     async function createFormHandler(command){if(!currentFile?.isForm)return;try{if(!await save())return;status.className='';status.textContent='Подготовка обработчика…';const result=await postJSON('/api/form/handler',{path:currentFile.path,expectedRevision:currentFile.revision,command});result.form.isForm=true;result.form.initialForm=JSON.stringify(result.form.form);currentFile=result.form;dirty=false;saveButton.disabled=true;await loadTree(false);if(await openFile(result.module.path)){const position=result.created?{line:result.location.range.start.line+2,column:1}:result.location.range.start;bslEditor.goTo(position);status.textContent=result.created?'Обработчик создан':'Обработчик открыт'}}catch(error){status.textContent=String(error.message||error).trim();status.className='error'}}
     async function save(){
       if(!currentFile||loadingFile)return false;if(!dirty)return true;
@@ -236,14 +240,13 @@
       try{
         let endpoint='/api/file',payload={path:currentFile.path,content:bslEditor.source(),expectedRevision:currentFile.revision};
         if(currentFile.isForm){endpoint='/api/form';payload={path:currentFile.path,form:formDesigner.value().form,expectedRevision:currentFile.revision};}
-        if(currentFile.isRole){endpoint='/api/role';payload={path:currentFile.path,role:roleEditor.value(),expectedRevision:currentFile.revision};}
+        const object=objectEditors[currentFile.editor];if(object){endpoint=currentFile.editor;payload={path:currentFile.path,object:object.editor.value(),expectedRevision:currentFile.revision};}
         if(currentFile.isRoleOverview){endpoint='/api/roles';payload={roles:roleOverview.value()};}
-        if(currentFile.isCatalog){endpoint='/api/catalog';payload={path:currentFile.path,catalog:catalogEditor.value(),expectedRevision:currentFile.revision};}
         if(currentFile.isProject){endpoint='/api/project-configuration';payload={configuration:currentFile.isLanguages?languagesEditor.value():projectEditor.value(),expectedRevision:currentFile.revision};}
         const response=await studioRequest(endpoint,{method:'PUT',body:payload});
         if(!response.ok){status.textContent=response.status===409?(currentFile.isRoleOverview?`Роль изменена вне Studio. Откройте «${roleOverview.title()}» заново и повторите правку.`:'Файл изменён вне Studio. Перезагрузите его и объедините изменения.'):await response.text();status.className=response.status===409?'warning':'error';return false;}
         let value=await response.json();
-        if(currentFile.isRoleOverview){roleOverview.open(value,true);value=currentFile;}else if(currentFile.isRole){showRoleEditor(value,true);}else if(currentFile.isCatalog){showCatalogEditor(value);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
+        if(currentFile.isRoleOverview){roleOverview.open(value,true);value=currentFile;}else if(object){showObject(currentFile.editor,value,true);}else if(currentFile.isProject){if(currentFile.isLanguages)showLanguagesEditor(value);else showProjectEditor(value);}else if(currentFile.isForm){value.isForm=true;value.initialForm=JSON.stringify(value.form);showFormEditor(value);}else{showSourceEditor(value);}
         currentFile=value;dirty=false;status.className='';status.textContent='Сохранено';await loadTree(false);return true;
       }catch(error){showToolError(error);return false;}
       finally{loadingFile=false;setEditorsBusy(false);saveButton.disabled=!dirty;}
@@ -311,13 +314,13 @@
       try{
         // A role is its description and its grid of rights together, so it is
         // compared by the role's own revision, not by the file's.
-        const response=await fetch(`/api/${opened.isRole?'role':'file'}?path=${encodeURIComponent(opened.path)}`,{headers:{'If-None-Match':`"${knownRevision}"`}});
+        const response=await fetch(`${opened.editor||'/api/file'}?path=${encodeURIComponent(opened.path)}`,{headers:{'If-None-Match':`"${knownRevision}"`}});
         if(response.status===304||!response.ok)return;
         const latest=await response.json();if(currentFile!==opened||loadingFile)return;
         if(latest.revision===opened.revision){delete opened.externalRevision;return;}
         if(dirty){opened.externalRevision=latest.revision;status.textContent='Файл изменён вне Studio. Сохранение заблокировано до перезагрузки.';status.className='warning';return;}
         loadingFile=true;setEditorsBusy(true);
-        try{if(opened.isRole)await loadRole(opened.path);else if(opened.isCatalog)await loadCatalog(opened.path);else if(opened.isProject){if(opened.isLanguages)await loadLanguagesEditor();else await loadProjectConfiguration();}else if(opened.isForm)await loadManagedForm(opened.path);else{currentFile=latest;showSourceEditor(latest);}}
+        try{if(opened.editor)await loadObject(opened.editor,opened.path);else if(opened.isProject){if(opened.isLanguages)await loadLanguagesEditor();else await loadProjectConfiguration();}else if(opened.isForm)await loadManagedForm(opened.path);else{currentFile=latest;showSourceEditor(latest);}}
         finally{loadingFile=false;setEditorsBusy(false);}
         status.textContent='Загружены внешние изменения';status.className='warning';
       }catch(error){showToolError(error);}
@@ -413,64 +416,31 @@
     // «Добавить» makes the object at once, named the kind's next number by the
     // server, and opens its window (docs/block-00/obshchee.md, «Добавить» без
     // диалога имени); the name is put right in the window.
-    async function createObject(endpoint,show,objectOf){
+    async function createObject(address){
       if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
       loadingFile=true;setEditorsBusy(true);
       try{
-        const value=await postJSON(endpoint,{});show(value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
-        selectedNode={id:objectOf(value).id,path:value.path,kind:'metadata'};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';
+        const value=await postJSON(address,{});showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
+        selectedNode={id:value[objectEditors[address].field].id,path:value.path,kind:'metadata',editor:address};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';
       }catch(error){showToolError(error);}
       finally{loadingFile=false;setEditorsBusy(false);updateTreeToolbar();}
     }
     // Generic configuration-tree toolbar: Add/Delete act on whatever is
-    // currently selected in the tree, instead of one dedicated button per
-    // metadata kind or a duplicate "Удалить" button inside each editor.
-    // Only catalogs and roles support whole-object creation/deletion so
-    // far — every other tree position leaves both buttons disabled until
-    // their own creation flow is built.
+    // currently selected in the tree. An object and the branch of its kind
+    // carry the address of the kind's window (Node.Editor): «Добавить» makes
+    // an object there, «Удалить» deletes one. Inside the open window its own
+    // parts are added and deleted by the window, which reads the node itself.
     function currentAddContext(){
       if(!selectedNode)return null;
-      const id=selectedNode.id||'',fragment=selectedNode.fragment||'',path=selectedNode.path||'';
-      // Inside the catalog currently open in the catalog editor, position on
-      // Реквизиты/an attribute adds a sibling attribute in the same
-      // container (catalog-level, or the enclosing table part); position on
-      // Табличные части/a table part adds inside that same spot.
-      if(currentFile?.isCatalog&&currentFile.path===path){
-        if(id.endsWith(':attributes'))return{kind:'attribute',container:'catalog'};
-        if(id.endsWith(':table-parts'))return{kind:'tablepart'};
-        if(fragment.startsWith('attribute:'))return{kind:'attribute',container:'catalog'};
-        if(fragment.startsWith('tablepart:'))return{kind:'attribute',container:fragment.slice('tablepart:'.length)};
-      }
-      if(id==='metadata/catalogs'||path.startsWith('metadata/catalogs/'))return{kind:'catalog'};
-      if(id==='metadata/roles'||path.startsWith('metadata/roles/'))return{kind:'role'};
-      return null;
+      const object=objectEditors[currentFile?.editor];
+      if(object&&currentFile.path===selectedNode.path){const inside=object.editor.addContextOf?.(selectedNode);if(inside)return{...inside,inside:true};}
+      return selectedNode.editor?{editor:selectedNode.editor}:null;
     }
-    // Whole objects (a catalog/role node itself) always carry Kind
-    // "metadata" — group nodes like "Реквизиты"/"Табличные части" share the
-    // same Path (their owning catalog's object.yaml) but are Kind "group",
-    // so checking Kind here is what stops "delete" on a group from being
-    // mistaken for "delete the whole catalog".
     function currentDeleteContext(){
       if(!selectedNode)return null;
-      const kind=selectedNode.kind||'',fragment=selectedNode.fragment||'',path=selectedNode.path||'',id=selectedNode.id||'';
-      if(kind==='metadata'){
-        if(/^metadata\/catalogs\/[^/]+\/object\.yaml$/.test(path))return{kind:'catalog',path};
-        if(/^metadata\/roles\/[0-9a-f-]{36}\.yaml$/.test(path))return{kind:'role',path};
-        return null;
-      }
-      if(currentFile?.isCatalog&&currentFile.path===path){
-        if(fragment.startsWith('attribute:')){
-          const attributeId=fragment.slice('attribute:'.length);
-          return{kind:'attribute',container:'catalog',id:attributeId};
-        }
-        if(fragment.startsWith('tablepart:')){
-          if(id.includes(':')){
-            const [container,attributeId]=id.split(':');
-            return{kind:'attribute',container,id:attributeId};
-          }
-          return{kind:'tablepart',id};
-        }
-      }
+      if(selectedNode.kind==='metadata')return selectedNode.editor?{editor:selectedNode.editor,path:selectedNode.path}:null;
+      const object=objectEditors[currentFile?.editor];
+      if(object&&currentFile.path===selectedNode.path){const inside=object.editor.deleteContextOf?.(selectedNode);if(inside)return{...inside,inside:true};}
       return null;
     }
     const treeAddButton=document.querySelector('#tree-add'),treeDeleteButton=document.querySelector('#tree-delete');
@@ -485,27 +455,23 @@
       if(loadingFile||treeFilter.subsystems)return;
       const context=currentAddContext();
       if(!context)return;
-      if(context.kind==='catalog')createObject('/api/catalog',showCatalogEditor,value=>value.catalog);
-      else if(context.kind==='role')createObject('/api/role',value=>showRoleEditor(value),value=>value.role);
-      else if(context.kind==='attribute'||context.kind==='tablepart'){
-        catalogEditor.addFromTreeContext(context);
-      }
+      if(context.inside)objectEditors[currentFile.editor].editor.addFromTreeContext(context);
+      else createObject(context.editor);
     });
     treeDeleteButton.addEventListener('click',async()=>{
       if(loadingFile||treeFilter.subsystems)return;
       const context=currentDeleteContext();
       if(!context)return;
-      if(context.kind==='attribute'||context.kind==='tablepart'){
+      if(context.inside){
         if(!confirm(`Удалить «${selectedNode.title}»?`))return;
-        catalogEditor.deleteFromTreeContext(context);
+        objectEditors[currentFile.editor].editor.deleteFromTreeContext(context);
         return;
       }
       if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
       if(!confirm(`Удалить «${selectedNode.title}»? Это действие необратимо.`))return;
       loadingFile=true;treeAddButton.disabled=true;treeDeleteButton.disabled=true;status.className='';status.textContent='Удаление…';
       try{
-        const endpoint=context.kind==='catalog'?'/api/catalog':'/api/role';
-        const response=await studioRequest(`${endpoint}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE'});
+        const response=await studioRequest(`${context.editor}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE'});
         if(!response.ok){status.textContent=await response.text();status.className='error';return;}
         closeFile();await loadTree();status.className='';status.textContent='Удалено.';
       }catch(error){showToolError(error);}

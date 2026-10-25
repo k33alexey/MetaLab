@@ -97,6 +97,7 @@ const titleWalk = `(async () => {
   };
   const title = () => label('Заголовок').querySelector('input').value;
   node('Товары').click(); await studio.settle();
+  steps.properties = document.querySelector('#catalog-editor .catalog-list-item').textContent;
   await write('Имя', 'ТоварыСклада');
   steps.followed = title();
   await write('Заголовок', 'Свои товары');
@@ -122,9 +123,13 @@ func TestTheTitleFollowsTheName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var steps struct{ Followed, ByHand, NewTitle, NewName, NewFollowed string }
+	var steps struct{ Properties, Followed, ByHand, NewTitle, NewName, NewFollowed string }
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	// The window names its kind by the descriptor's word.
+	if steps.Properties != "Справочник · свойства" {
+		t.Errorf("the window of a catalog names itself %q", steps.Properties)
 	}
 	if steps.Followed != "Товары склада" || steps.ByHand != "Свои товары" || steps.NewTitle != "" || steps.NewName == "" || steps.NewFollowed != "Цена закупки" {
 		t.Errorf("the title beside the name: %+v; want «Товары склада», then «Свои товары» kept, an empty title of a new attribute, then «Цена закупки»", steps)

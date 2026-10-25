@@ -26,7 +26,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if created.Catalog.Code.Type != metadata.StringType || created.Catalog.Code.Length != 9 || !created.Catalog.Code.Auto || !created.Catalog.Code.Unique ||
-		created.Catalog.DescriptionLength != 64 || len(created.Catalog.Attributes) != 0 {
+		created.Catalog.DescriptionLength != 25 || len(created.Catalog.Attributes) != 0 {
 		t.Fatalf("unexpected new catalog defaults: %+v", created.Catalog)
 	}
 	if _, err := workspace.CreateCatalog("ТОВАРЫ"); err == nil {

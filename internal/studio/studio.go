@@ -89,6 +89,60 @@ type Node struct {
 	// Modules are the modules the object opens from its menu, «Открыть
 	// модуль …», as the prototype's do: a module is no row of the tree.
 	Modules []NodeModule `json:"modules,omitempty"`
+	// Editor is the address of the window of the object, and on the branch
+	// of its kind the address «Добавить» makes one at; none where Studio has
+	// no window for the kind and opens the description as text.
+	Editor string `json:"editor,omitempty"`
+}
+
+// objectEditors are the windows Studio has for the objects of a kind, by the
+// address each is read, written, made and deleted at. They give way to one
+// window built by the descriptor of the kind (BLOCKS 2с, «окно и свойства
+// объекта — один построитель»).
+var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress}
+
+// registerObjectWindow serves what the window of an object writes at its
+// address, one way for every window (objectEditors): the object as edited,
+// under «object», with its description and the revision it was read at
+// (PUT); one made by «Добавить» - a name, or none for the kind's next number
+// (POST); one deleted by its description and revision (DELETE).
+func registerObjectWindow[Object, Window any](routes *http.ServeMux, address string, save func(string, Object, string) (Window, error),
+	create func(string) (Window, error), remove func(string, string) error) {
+	routes.HandleFunc("PUT "+address, answerStudio(0, writeSourceError, func(input struct {
+		Path             string `json:"path"`
+		ExpectedRevision string `json:"expectedRevision"`
+		Object           Object `json:"object"`
+	}) (any, error) {
+		return save(input.Path, input.Object, input.ExpectedRevision)
+	}))
+	routes.HandleFunc("POST "+address, answerStudio(0, writeSourceError, func(input struct {
+		Name string `json:"name"`
+	}) (any, error) {
+		return create(input.Name)
+	}))
+	routes.HandleFunc("DELETE "+address, answerRemoval(writeSourceError, func(request *http.Request) error {
+		return remove(request.URL.Query().Get("path"), request.URL.Query().Get("expectedRevision"))
+	}))
+}
+
+// markEditor gives the branch of a kind and every object in it the address
+// of the kind's window.
+func markEditor(branch *Node, kind string) {
+	address, ok := objectEditors[metadata.Kind(kind)]
+	if !ok {
+		return
+	}
+	branch.Editor = address
+	var mark func(nodes []Node)
+	mark = func(nodes []Node) {
+		for index := range nodes {
+			if nodes[index].Kind == "metadata" && strings.HasPrefix(nodes[index].Path, branch.Path+"/") {
+				nodes[index].Editor = address
+			}
+			mark(nodes[index].Children)
+		}
+	}
+	mark(branch.Children)
 }
 
 // NodeModule is one command of the menu of an object that opens a module of
@@ -777,6 +831,7 @@ func (workspace *Workspace) metadataTree(loaded *metadata.Catalog, language stri
 			workspace.offerCommonModuleSources(&node)
 		}
 		node.Properties = countProperties(node.Path, len(node.Children)+nestedObjects(node.Children))
+		markEditor(&node, kind)
 		built[kind] = node
 	}
 	// The branches stand in the order and the places the kinds give them.
