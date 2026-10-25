@@ -2,6 +2,9 @@ package metadata
 
 import (
 	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,12 +33,62 @@ func formModuleNamesProject(t *testing.T, objectModule, commonModule string) str
 	return root
 }
 
-// compileFormModules compiles the project's modules as ML Service does: read
-// for "Сохранить данные", carried in the snapshot through its JSON, compiled
-// from it.
+// compileFormModules compiles the project's modules as «Сохранить данные»
+// does (publication.SaveData): the project read, its forms and catalog put
+// into a snapshot and through its JSON, the modules named against the catalog
+// rebuilt out of that snapshot, compiled from the snapshot. Naming them
+// against the catalog of the load instead hid that the snapshot's catalog had
+// no names of the attributes of forms (case 2б-3, 25.10.2026).
 func compileFormModules(t *testing.T, root string) error {
 	t.Helper()
-	catalog, err := Load(root)
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := project.ValidateLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var forms []ManagedForm
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if _, ok := project.FormFolder(filepath.ToSlash(relative)); !ok {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		form, _, err := DecodeSource(filepath.ToSlash(relative), file, nil, configuration)
+		if err != nil {
+			return err
+		}
+		forms = append(forms, form.(ManagedForm))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := NewRuntimeSnapshot(loaded, forms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := json.Marshal(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot RuntimeSnapshot
+	if err := json.Unmarshal(stored, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := snapshot.Catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,12 +96,7 @@ func compileFormModules(t *testing.T, root string) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := json.Marshal(modules)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var snapshot RuntimeSnapshot
-	if err := json.Unmarshal(stored, &snapshot.Modules); err != nil {
+	if snapshot, err = snapshot.WithModules(modules); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = snapshot.CompileModules()
@@ -63,7 +111,11 @@ func compileFormModules(t *testing.T, root string) error {
 // is used in 719 of the 2125 forms of acc. And a form's module that names the
 // attributes of another form, or a column without its table: that is a name
 // the module has not; read in a routine that does not assign it, because a
-// name assigned to anywhere in a routine is a variable of the routine.
+// name assigned to anywhere in a routine is a variable of the routine. The
+// modules are compiled the way «Сохранить данные» compiles them, through the
+// snapshot: its catalog once had no names of the attributes of forms, so a
+// module reading Объект was refused and one declaring Перем Объект went
+// through (case 2б-3, 25.10.2026).
 func TestFormModuleNamesItsForm(t *testing.T) {
 	t.Parallel()
 	objectModule := `&НаКлиенте
@@ -99,16 +151,21 @@ func TestFormModuleNamesItsForm(t *testing.T) {
 		t.Fatalf("the modules of the forms name their forms: %v", err)
 	}
 
-	for name, test := range map[string]struct{ objectModule, commonModule, unknown string }{
-		"реквизит общей формы в форме отчёта": {"Процедура Обновить()\n\tЗначение = Пароль;\nКонецПроцедуры\n", "", "unknown identifier Пароль"},
-		"реквизит формы отчёта в общей форме": {"", "Процедура Обновить()\n\tЗначение = Список;\nКонецПроцедуры\n", "unknown identifier Список"},
-		"колонка без таблицы":                 {"Процедура Обновить()\n\tЗначение = Цена;\nКонецПроцедуры\n", "", "unknown identifier Цена"},
+	// A variable of the module under the name of an attribute of its form
+	// is the name declared twice (question В1 of series 2.470), in the form
+	// of an object and in a common one alike.
+	for name, test := range map[string]struct{ objectModule, commonModule, refusal string }{
+		"реквизит общей формы в форме отчёта":       {"Процедура Обновить()\n\tЗначение = Пароль;\nКонецПроцедуры\n", "", "unknown identifier Пароль"},
+		"реквизит формы отчёта в общей форме":       {"", "Процедура Обновить()\n\tЗначение = Список;\nКонецПроцедуры\n", "unknown identifier Список"},
+		"колонка без таблицы":                       {"Процедура Обновить()\n\tЗначение = Цена;\nКонецПроцедуры\n", "", "unknown identifier Цена"},
+		"переменная с именем реквизита формы":       {"Перем Объект;\n", "", "duplicate module variable Объект"},
+		"переменная с именем реквизита общей формы": {"", "Перем Пароль;\n", "duplicate module variable Пароль"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			err := compileFormModules(t, formModuleNamesProject(t, test.objectModule, test.commonModule))
-			if err == nil || !strings.Contains(err.Error(), test.unknown) {
-				t.Fatalf("a name the module has not: compiled or refused for another reason: %v", err)
+			if err == nil || !strings.Contains(err.Error(), test.refusal) {
+				t.Fatalf("a name the module has not, or has twice: compiled or refused for another reason: %v", err)
 			}
 		})
 	}

@@ -186,6 +186,27 @@ func (catalog *Catalog) keepFormAttributeNames(module project.ModuleAddress, for
 	catalog.formAttributeNames[foldedModuleAddress(module)] = names
 }
 
+// keepRuntimeFormAttributeNames keeps the names of the attributes of the forms
+// a published snapshot carries, for their modules, as the load keeps them from
+// the folders: a form an object keeps is found by its identifier among the
+// object forms, any other is a common form. «Сохранить данные» names the
+// modules against the catalog of the snapshot; without the names it compiled
+// the module of every form as if the form had no attributes (found walking the
+// cases of block 2б, 25.10.2026).
+func (catalog *Catalog) keepRuntimeFormAttributeNames(forms []ManagedForm, objectForms []RuntimeObjectForm) {
+	owners := make(map[uuid.UUID]RuntimeObjectForm, len(objectForms))
+	for _, form := range objectForms {
+		owners[form.ID] = form
+	}
+	for _, form := range forms {
+		module := project.ModuleAddress{Kind: string(CommonFormKind), Object: form.Name, Module: kinds.FormModule}
+		if owner, ok := owners[form.ID]; ok {
+			module = project.ModuleAddress{Kind: string(owner.ObjectKind), Object: owner.Object, Form: owner.Name, Module: kinds.FormModule}
+		}
+		catalog.keepFormAttributeNames(module, form)
+	}
+}
+
 // foldedModuleAddress is the address with its names in lower case: a name is
 // unique among its siblings with case ignored, and the path of a module and
 // the description of its object may write it differently.

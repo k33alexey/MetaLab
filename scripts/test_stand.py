@@ -170,7 +170,8 @@ ids["cc"] = nid()
 write("metadata/common-commands/ОбновитьЦены/object.yaml", head(ids["cc"], "ОбновитьЦены", "Обновить цены") + "group: navigation-panel-ordinary\n")
 write("metadata/common-commands/ОбновитьЦены/МодульКоманды.bsl", CMD_BSL)
 ids["seq"] = nid()
-write("metadata/sequences/Партии/object.yaml", head(ids["seq"], "Партии"))
+# Последовательность без документов прототип отвергает (2.504).
+write("metadata/sequences/Партии/object.yaml", head(ids["seq"], "Партии") + "documents: [10000000-0000-4000-8000-000000000201]\n")
 ids["journal"] = folder("document-journals", "ОбщийЖурнал", "documents: [10000000-0000-4000-8000-000000000201]\n")
 ids["http"] = nid()
 write("metadata/http-services/Биллинг/object.yaml", head(ids["http"], "Биллинг") + f"""root_url: billing
@@ -191,22 +192,24 @@ operations:
 write("metadata/web-services/ОбменДанными/МодульСервиса.bsl", "Функция Проверка()\n\tВозврат \"\";\nКонецФункции\n")
 src = "metadata/external-data-sources/Склад"
 ids["src"] = nid()
-write(src + "/object.yaml", head(ids["src"], "Склад") + f"functions:\n  - {{id: {nid()}, name: Остаток, title: {{ru: Остаток}}, expression_in_data_source: 'remains(&1)'}}\n")
+write(src + "/object.yaml", head(ids["src"], "Склад") + f"functions:\n  - {{id: {nid()}, name: Остаток, title: {{ru: Остаток}}, types: [{{kind: string, length: 10}}], expression_in_data_source: 'remains(&1)'}}\n")
 write(src + "/tables/Товары/object.yaml", head(nid(), "Товары") + f"""name_in_data_source: dbo.Goods
 data_type: non-object
 fields:
   - {{id: {nid()}, name: Код, title: {{ru: Код}}, types: [{{kind: string, length: 20}}], name_in_data_source: code}}
 """)
+# Измерение куба — ссылка на таблицу измерения своего куба (2.506).
+stores = nid()
 write(src + "/cubes/Продажи/object.yaml", head(nid(), "Продажи") + f"""name_in_data_source: Sales
 dimensions:
-  - {{id: {nid()}, name: Период, title: {{ru: Период}}, types: [{{kind: date}}]}}
+  - {{id: {nid()}, name: Склад, title: {{ru: Склад}}, types: [{{kind: external-data-source-dimension-table, reference: {stores}}}]}}
 resources:
   - {{id: {nid()}, name: Количество, title: {{ru: Количество}}, types: [{{kind: number, precision: 15, scale: 3}}], name_in_data_source: Quantity}}
 commands:
   - {{id: {nid()}, name: ОткрытьКуб, title: {{ru: Открыть куб}}, group: navigation-panel-ordinary}}
 """)
 write(src + "/cubes/Продажи/commands/ОткрытьКуб/МодульКоманды.bsl", CMD_BSL)
-write(src + "/cubes/Продажи/dimension-tables/Склады/object.yaml", head(nid(), "Склады") + f"""name_in_data_source: Stores
+write(src + "/cubes/Продажи/dimension-tables/Склады/object.yaml", head(stores, "Склады") + f"""name_in_data_source: Stores
 fields:
   - {{id: {nid()}, name: Адрес, title: {{ru: Адрес}}, types: [{{kind: string, length: 50}}], name_in_data_source: address}}
 commands:

@@ -5,15 +5,41 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/appconfig"
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/platform"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
+
+// Every stand scripts/test_stand.py makes reads whole, as the test cases
+// expect of it (docs/test-cases/blok-2v.md, «Стенды»): a rule of the model
+// that the script does not follow leaves the stand unread, and every case on
+// it fails at the first step. Defect caught: a function of a source with no
+// type, which the script wrote and the model refuses since 2.555, found
+// only when the cases of block 2б were walked.
+func TestTheStandsOfTheTestCasesRead(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not on the path")
+	}
+	for _, level := range []string{"c1", "c2", "c3"} {
+		t.Run(level, func(t *testing.T) {
+			folder := filepath.Join(t.TempDir(), "stand")
+			made, err := exec.Command("python3", "../test_stand.py", folder, level).CombinedOutput()
+			if err != nil {
+				t.Fatalf("test_stand.py %s: %v: %s", level, err, made)
+			}
+			if _, err := metadata.Load(folder); err != nil {
+				t.Fatalf("stand %s does not read: %v", level, err)
+			}
+		})
+	}
+}
 
 // up and down touch nothing in a folder that holds no stand: up refuses a
 // folder with something in it, down refuses a folder with no stand and does

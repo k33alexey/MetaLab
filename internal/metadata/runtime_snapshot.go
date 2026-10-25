@@ -229,6 +229,7 @@ func (snapshot RuntimeSnapshot) Catalog() (*Catalog, error) {
 		return nil, err
 	}
 	catalog.indexRuntimeObjectForms(snapshot.ObjectForms)
+	catalog.keepRuntimeFormAttributeNames(snapshot.Forms, snapshot.ObjectForms)
 	return catalog, nil
 }
 
