@@ -156,6 +156,38 @@ test('«Произвольный» is no type and stands alone',()=>{
   assert.equal(typePresentation(offer({arbitrary:true}),[]),'Произвольный');
 });
 
+// Defects caught: a type the place takes only by itself put beside another
+// without the prototype's question (snapshots series-2.531/12,
+// series-2.535/10), so the save refuses what the window built; the question
+// asked where nothing is taken away - outside a composite, or beside types
+// that may stand together; the objects of a folder marked alone standing
+// beside a type; «Произвольный» marked before not asking. The questions are
+// the prototype's: a type standing alone beside others - «excludes-others»;
+// a type beside one standing alone - «excludes-earlier»; «Да» leaves the new
+// type alone.
+test('a type that stands only by itself asks before it takes the others away',()=>{
+  const place=offer({required:false,arbitrary:true});
+  place.rows.push({kind:'value-storage',name:{russian:'ХранилищеЗначения'},alone:true});
+  place.rows.push({name:{russian:'ВнешнийИсточникДанныхТаблицаСсылка'},objectKind:'external-data-source-table',alone:true,
+    objects:[{id:'x1',name:'Склад.Товары'}]});
+  const model=typeEditorModel(place,[{kind:'string',length:10},{kind:'number',precision:10}]);
+  assert.equal(model.composite,true);
+  assert.equal(model.exclusion('date'),null);
+  assert.equal(model.exclusion('value-storage'),'excludes-others');
+  assert.equal(model.exclusion('external-data-source-table:x1'),'excludes-others');
+  model.mark('value-storage',true);
+  assert.deepEqual(plain(model.result().types),[{kind:'value-storage'}]);
+  assert.equal(model.exclusion('number'),'excludes-earlier');
+  assert.equal(model.exclusion('value-storage'),null);
+  model.mark('number',true);
+  assert.deepEqual(plain(model.result().types),[{kind:'number',precision:10}]);
+  model.mark('arbitrary',true);
+  assert.equal(model.exclusion('string'),'excludes-earlier');
+  const single=typeEditorModel(place,[{kind:'string',length:10}]);
+  assert.equal(single.composite,false);
+  assert.equal(single.exclusion('value-storage'),null);
+});
+
 // Defect caught: qualifiers forgotten when a type is unmarked and marked again.
 test('a type marked again keeps the qualifiers it had',()=>{
   const model=typeEditorModel(offer(),[{kind:'string',length:25}]);

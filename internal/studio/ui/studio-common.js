@@ -796,20 +796,23 @@ function askCancelInput() {
    «<kind>:<id>» for a type naming an object. A folder holds the objects of
    its kind or, the enumerations of the platform, types naming none. An offer
    that is single - a field of an external source - has no «Составной тип
-   данных», and a mark always takes the one before away. The window answers
-   result(): {types} in the order of the tree, or {refusal}. */
+   данных», and a mark always takes the one before away. A row the place
+   takes only by itself (TypeOfferRow.alone, and on a folder for the objects
+   inside it) and «Произвольный» stand alone in a composite too:
+   exclusion() names the question the window asks before such a mark. The
+   window answers result(): {types} in the order of the tree, or {refusal}. */
 function typeEditorModel(offer, types) {
   const rows = [];
   for (const [index, row] of offer.rows.entries()) {
     const key = row.arbitrary ? 'arbitrary' : row.kind || `folder:${row.objectKind || ''}:${index}`;
     const children = [
       ...(row.objects || []).map(object => ({key: `${row.objectKind}:${object.id}`, caption: object.name, icon: row.icon, checkable: true,
-        type: {kind: row.objectKind, reference: object.id}})),
+        type: {kind: row.objectKind, reference: object.id}, alone: !!row.alone})),
       ...(row.types || []).map(inside => ({key: inside.kind, caption: inside.name.russian, icon: inside.icon, checkable: true,
-        type: {kind: inside.kind}})),
+        type: {kind: inside.kind}, alone: !!inside.alone})),
     ];
     rows.push({key, caption: row.name.russian, icon: row.icon, checkable: !!(row.kind || row.arbitrary),
-      type: row.kind ? {kind: row.kind} : null, children});
+      type: row.kind ? {kind: row.kind} : null, children, alone: !!(row.alone || row.arbitrary)});
   }
   const order = rows.flatMap(row => [row, ...row.children]);
   const typeKey = type => type.reference ? `${type.kind}:${type.reference}` : type.kind;
@@ -822,6 +825,7 @@ function typeEditorModel(offer, types) {
   // first and not the one marked last (snapshots tip-95…106).
   let current = [...order].reverse().find(row => marked.has(row.key))?.key || order[0]?.key;
   const find = key => order.find(row => row.key === key);
+  const standsAlone = key => !!find(key)?.alone;
   function fresh(row) {
     if (!row.type) return null;
     return drafts.get(row.key) || structuredClone(offer.newTypes?.[row.type.kind] || row.type);
@@ -867,9 +871,20 @@ function typeEditorModel(offer, types) {
     setSearch(text) { search = text; },
     fold(key, open) { if (open) expanded.add(key); else expanded.delete(key); },
     choose(key) { if (find(key)) current = key; },
+    /* exclusion is the question the prototype asks before key is marked in
+       a composite (snapshots series-2.531/12, series-2.535/10): «excludes-
+       others» - the type stands alone and others are marked; «excludes-
+       earlier» - a type marked before stands alone; null - none. */
+    exclusion(key) {
+      if (!composite || marked.has(key) || !find(key)?.checkable) return null;
+      if (standsAlone(key) && marked.size > 0) return 'excludes-others';
+      if ([...marked.keys()].some(standsAlone)) return 'excludes-earlier';
+      return null;
+    },
     /* mark marks a type or takes it away, and makes its row current.
-       Without «Составной тип данных» a mark takes the one before away;
-       «Произвольный» stands alone. */
+       Without «Составной тип данных» a mark takes the one before away; a
+       type standing alone, or beside one marked before that does, takes
+       every other away - the window has asked exclusion() first. */
     mark(key, checked) {
       const row = find(key);
       if (!row?.checkable) return;
@@ -879,11 +894,10 @@ function typeEditorModel(offer, types) {
         marked.delete(key);
         return;
       }
-      if (!composite || key === 'arbitrary') {
+      if (!composite || standsAlone(key) || [...marked.keys()].some(standsAlone)) {
         for (const [other, type] of marked) if (type) drafts.set(other, type);
         marked.clear();
       }
-      marked.delete('arbitrary');
       marked.set(key, key === 'arbitrary' ? null : fresh(row));
     },
     /* setComposite: taking «Составной тип данных» away leaves the first type
@@ -962,11 +976,27 @@ function typePresentation(offer, types) {
   }).join(', ');
 }
 
+/* typeExclusionQuestions are the prototype's questions of a mark that takes
+   other types away, word for word (snapshots
+   configurator-2026-10-24/series-2.531/12 and
+   configurator-2026-10-25/series-2.535/10). */
+const typeExclusionQuestions = {
+  'excludes-others': 'Выбран тип, который не может быть включен в составной тип данных. Будут исключены остальные типы данных. Продолжить?',
+  'excludes-earlier': 'Ранее был выбран тип, который не может быть включен в составной тип данных и будет исключен. Продолжить?',
+};
+
 /* showTypeEditor opens the window «Редактирование типа данных» on types,
    offering what offer holds, and answers the description chosen, or null
    for «Отмена». One window chooses every type of Studio. */
 function showTypeEditor(offer, types) {
   const model = typeEditorModel(offer, types);
+  /* mark marks a type, asking first what the prototype asks when the mark
+     takes others away: «Да» marks, «Нет» leaves the marks as they were. */
+  async function mark(key, checked) {
+    const question = checked ? typeExclusionQuestions[model.exclusion(key)] : null;
+    if (!question || await showDialog({title: question, answers: [['yes', 'Да'], ['no', 'Нет']]}) === 'yes') model.mark(key, checked);
+    draw();
+  }
   const content = node('div', undefined, 'type-editor');
   const composite = checkboxField('Составной тип данных', model.composite, on => { model.setComposite(on); draw(); }, 'type-editor-composite');
   const search = node('input', undefined, 'type-editor-search');
@@ -990,7 +1020,7 @@ function showTypeEditor(offer, types) {
   });
   tree.addEventListener('keydown', event => {
     const shown = model.visible(), at = shown.findIndex(row => row.key === model.current);
-    if (markListKey(event, shown, model.current, key => { model.choose(key); draw(); }, (key, checked) => { model.mark(key, checked); draw(); })) return;
+    if (markListKey(event, shown, model.current, key => { model.choose(key); draw(); }, (key, checked) => { mark(key, checked); })) return;
     if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && at >= 0 && shown[at].folds) {
       event.preventDefault();
       model.fold(shown[at].key, event.key === 'ArrowRight');
@@ -1029,7 +1059,7 @@ function showTypeEditor(offer, types) {
         box.checked = row.checked;
         box.tabIndex = -1;
         box.setAttribute('aria-label', row.caption);
-        box.addEventListener('change', () => { model.mark(row.key, box.checked); draw(); });
+        box.addEventListener('change', () => { mark(row.key, box.checked); });
         line.append(box);
       } else line.append(node('span', undefined, 'type-editor-nobox'));
       line.append(row.icon ? iconElement(row.icon) : node('span', undefined, 'type-editor-noicon'), caption(row));
