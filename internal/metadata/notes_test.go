@@ -219,11 +219,6 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeMetadata(t, root, DataProcessorKind, id, "format: 1\nid: "+id+"\nname: Заполнение\ntitle: {ru: Заполнение}\n"+
 			"attributes:\n  - {id: "+uuid.MustNew().String()+", name: Отбор, title: {ru: Отбор}, types: [{kind: platform, name: \"cfg:Filter\"}]}\n")
 	},
-	NoteAnySettingsStorageManager: func(t *testing.T, root string) {
-		id := uuid.MustNew().String()
-		writeMetadata(t, root, DefinedTypeKind, id, "format: 1\nid: "+id+"\nname: Хранилище\ntitle: {ru: Хранилище}\n"+
-			"types: [{kind: settings-storage-manager}]\n")
-	},
 	NotePlatformValueByName: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    choice:\n"+
 			"      parameters: [{name: Отбор.ВидСравнения, values: [{kind: platform, data: \"dcsset:DataCompositionComparisonType.Equal\"}]}]\n"))

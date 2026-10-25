@@ -235,14 +235,14 @@ func (offer TypeOffer) newType(kind TypeKind) Type {
 // a whole; the folders of the managers the editor takes only by themselves
 // are marked so, and the others not. The model takes the key of a value of a
 // constant in a defined type only, beside another type too, and the manager
-// of any settings storage there only, with a note. Expectations from the opis
-// (opredelyaemyj-tip.md, «Не входят в составной тип» and «Досъёмка
-// 24.10.2026»), written here.
+// of any settings storage there only, with no note. Expectations from the
+// opis (opredelyaemyj-tip.md, «Не входят в составной тип», «Досъёмка
+// 24.10.2026» and «Досъёмка 25.10.2026»), written here.
 //
 // Defect caught: the constants or the storages missing from their rows; the
-// box of the whole kind refused on saving, or taken without a note, or taken
-// in a form; the key of a value taken where no window offers it, or refused
-// beside a string; a manager of a catalog put beside a string without the
+// box of the whole kind refused on saving, or noted though the designer
+// saves it, or taken in a form; the key of a value taken where no window
+// offers it, or refused beside a string; a manager of a catalog put beside a string without the
 // window asking.
 func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) {
 	t.Parallel()
@@ -297,10 +297,12 @@ func TestTheWindowOfADefinedTypeHoldsConstantsCriteriaAndStorages(t *testing.T) 
 	if err != nil {
 		t.Fatalf("a defined type of the manager of any settings storage: %v", err)
 	}
-	if notes := loaded.Notes(); !slices.ContainsFunc(notes, func(note Note) bool {
-		return note.Kind == NoteAnySettingsStorageManager && strings.HasPrefix(note.Where, "defined-types Хранилища")
+	// The designer saves it and its check is silent (opis of 25.10.2026):
+	// no note.
+	if notes := loaded.Notes(); slices.ContainsFunc(notes, func(note Note) bool {
+		return strings.HasPrefix(note.Where, "defined-types Хранилища")
 	}) {
-		t.Errorf("the manager of any settings storage is not noted: %+v", notes)
+		t.Errorf("the manager of any settings storage is noted: %+v", notes)
 	}
 }
 

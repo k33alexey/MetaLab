@@ -75,7 +75,6 @@ const (
 	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
 	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
 	NoteObjectOutsideOrder         NoteKind = "object-outside-order"
-	NoteAnySettingsStorageManager  NoteKind = "any-settings-storage-manager"
 )
 
 func init() {
@@ -339,10 +338,6 @@ func init() {
 				"объекта добавили мимо Studio. Это не состояние прототипа — его выгрузка пишет все объекты по порядку.",
 			"Объект стоит после названных, среди таких же — по имени; описание корня не меняется, пока порядок не запишет " +
 				"Studio."},
-		NoteKindInfo{NoteAnySettingsStorageManager,
-			"Менеджер любого хранилища настроек в определяемом типе: окно типа даёт строке «ХранилищеНастроекМенеджер» флажок " +
-				"вида целиком (опись 24.10.2026), а что при этом сохраняет конфигуратор, не проверено — в выгрузках такого нет.",
-			"Тип несётся как записан и не исполняется; при импорте место сверяется с тем, как конфигуратор его записал."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -437,7 +432,6 @@ func init() {
 	noteRules[NoteRestrictionWithoutSample] = noteRestrictionWithoutSample
 	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
 	noteRules[NoteObjectOutsideOrder] = noteObjectOutsideOrder
-	noteRules[NoteAnySettingsStorageManager] = noteAnySettingsStorageManager
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan, a
@@ -1054,16 +1048,6 @@ func notePlatformTypeByName(catalog *Catalog, note func(where, written string)) 
 		for _, item := range types {
 			if item.Kind == PlatformType {
 				note(where, item.Name)
-			}
-		}
-	})
-}
-
-func noteAnySettingsStorageManager(catalog *Catalog, note func(where, written string)) {
-	eachTypeList(catalog, func(where string, types []Type) {
-		for _, item := range types {
-			if item.Kind == SettingsStorageManagerType && item.Reference == nil {
-				note(where, string(item.Kind))
 			}
 		}
 	})

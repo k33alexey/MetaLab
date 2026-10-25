@@ -2019,8 +2019,9 @@ func validateTypesIn(path string, types []Type, place typePlace) []string {
 		// The manager of any settings storage: the editor of the type of a
 		// defined type gives the row «ХранилищеНастроекМенеджер» a box of the
 		// kind as a whole beside its storages (opis of 24.10.2026,
-		// opredelyaemyj-tip.md, snapshot 07). What the designer saves for it
-		// was not seen, so it is noted (NoteAnySettingsStorageManager).
+		// opredelyaemyj-tip.md, snapshot 07); the designer saves it as the name
+		// of the kind with no storage and its check is silent (opis of
+		// 25.10.2026, snapshots series-2.535/12-13), so it is taken unnoted.
 		anyStorage := item.Kind == SettingsStorageManagerType && place == placeDefinedType && item.Reference == nil
 		if referenced && !anyReport && !anyStorage && (item.Reference == nil || item.Reference.IsZero()) {
 			issues = append(issues, prefix+".reference is required")
