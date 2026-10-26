@@ -2,6 +2,9 @@ package studio
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -113,4 +116,104 @@ func TestTheConstructorOfATemplateIsThePrototypes(t *testing.T) {
 		Dialog    bool
 		Templates int
 	}{false, 1})
+}
+
+// objectTemplateWalk opens the page «Макеты» of the window of Товары, adds a
+// text template Печать by the constructor and reads the page and the
+// palette; saves; adds печать again and reads the refusal; then adds one by
+// «Добавить» on the branch «Макеты» of the tree and cancels it.
+const objectTemplateWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
+  const host = document.querySelector('#catalog-editor');
+  const dialog = () => document.querySelector('dialog[open]');
+  const press = caption => [...dialog().querySelectorAll('button')].find(item => item.textContent === caption).click();
+  const add = () => host.querySelector('.object-window-panel button[title=Добавить]');
+  await openObject('Товары');
+  await windowPage('Макеты');
+  steps.addAvailable = !add().disabled;
+  add().click(); await settle();
+  steps.constructor = dialog()?.querySelector('h3')?.textContent || '';
+  const name = dialog().querySelector('.catalog-field input');
+  name.value = 'Печать'; name.dispatchEvent(new Event('input', {bubbles: true}));
+  [...dialog().querySelectorAll('fieldset label')].find(label => label.textContent === 'Текстовый документ').querySelector('input').click();
+  press('Готово'); await settle();
+  steps.added = {rows: [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim()),
+    chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || '',
+    palette: document.querySelector('#inspector-title').textContent,
+    paletteRows: [...document.querySelectorAll('#properties .object-palette-row .object-palette-caption')].map(item => item.textContent),
+    kind: windowField('#properties', 'Тип макета').querySelector('select').value,
+    kindDisabled: windowField('#properties', 'Тип макета').querySelector('select').disabled,
+    synonym: windowField('#properties', 'Синоним').querySelector('input').value,
+    unsaved: !document.querySelector('#save').disabled};
+  document.querySelector('#save').click(); await settle();
+  steps.saved = !document.querySelector('#save').disabled;
+  add().click(); await settle();
+  const again = dialog().querySelector('.catalog-field input');
+  again.value = 'печать'; again.dispatchEvent(new Event('input', {bubbles: true}));
+  press('Готово'); await settle();
+  steps.refusal = dialog()?.querySelector('h3')?.textContent || '';
+  press('ОК'); await settle();
+  press('Отмена'); await settle();
+  treeRow('Макеты').click(); await settle();
+  document.querySelector('#tree-add').click(); await settle();
+  steps.fromTree = dialog()?.querySelector('h3')?.textContent || '';
+  press('Отмена'); await settle();
+  steps.left = {dialog: !!dialog(), unsaved: !document.querySelector('#save').disabled};
+  return steps;
+})()`
+
+// «Добавить» of the templates of a catalog - on its page «Макеты» and on its
+// branch of the tree - is the same constructor as a common template's
+// (docs/block-00/maket.md): the template made stands in the page chosen,
+// its palette the common template's - the kind unavailable; «Сохранить»
+// writes it; a name taken among the catalog's templates is refused with the
+// prototype's words. Defects caught: «Добавить» unavailable; the template
+// not added, not chosen, or of another kind; its palette not the
+// template's; a second template of one name added; the branch of the tree
+// opening nothing.
+func TestTheConstructorOfATemplateOfACatalog(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, objectTemplateWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		AddAvailable bool
+		Constructor  string
+		Added        struct {
+			Rows, PaletteRows     []string
+			Chosen, Palette, Kind string
+			Synonym               string
+			KindDisabled, Unsaved bool
+		}
+		Saved             bool
+		Refusal, FromTree string
+		Left              struct{ Dialog, Unsaved bool }
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("«Добавить» on the page", []any{steps.AddAvailable, steps.Constructor}, []any{true, "Конструктор макета"})
+	expect("its palette", steps.Added.PaletteRows, []string{"Имя", "Синоним", "Комментарий", "Тип макета", "Макет"})
+	expect("the template added", []any{steps.Added.Rows, steps.Added.Chosen, steps.Added.Palette, steps.Added.Kind, steps.Added.KindDisabled, steps.Added.Synonym, steps.Added.Unsaved},
+		[]any{[]string{"Макеты", "Печать"}, "Печать", "Свойства: Печать", "text", true, "Печать", true})
+	expect("saved", steps.Saved, false)
+	expect("a second печать", steps.Refusal, "Имя не уникально!")
+	expect("the branch of the tree", steps.FromTree, "Конструктор макета")
+	expect("cancelled", steps.Left, struct{ Dialog, Unsaved bool }{false, false})
+	content, err := os.ReadFile(filepath.Join(root, "metadata", "catalogs", "Товары", "object.yaml"))
+	if err != nil || !strings.Contains(string(content), "name: Печать") || !strings.Contains(string(content), "kind: text") {
+		t.Errorf("the catalog on disk does not declare Печать: %v", err)
+	}
 }

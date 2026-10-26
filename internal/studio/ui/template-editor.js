@@ -26,9 +26,10 @@ function createTemplateEditor(host, onChange, around = {}) {
    external component; «Готово», «Отмена», «Справка». project holds the
    languages; offer is the server's {name, kinds}: the name of a new
    template and the [key, caption] pairs of the kinds. draft, when given, is
-   the constructor as it was left. Answers the draft {name, title, comment,
-   kind, content} or null when cancelled. */
-async function showTemplateConstructor(project, offer, draft) {
+   the constructor as it was left; check(draft) is what the name is checked
+   by when its field is left (watchName). Answers the draft {name, title,
+   comment, kind, content} or null when cancelled. */
+async function showTemplateConstructor(project, offer, draft, check) {
   draft = structuredClone(draft || {name: offer.name, title: {}, comment: '', kind: offer.kinds[0][0]});
   const kinds = offer.kinds;
   const content = node('div', undefined, 'template-constructor');
@@ -36,7 +37,7 @@ async function showTemplateConstructor(project, offer, draft) {
   // A new name is put in its synonym, as everywhere a name is typed.
   if (!Object.keys(draft.title || {}).length) synonym.follow('', draft.name);
   const name = nameInput(draft.name, value => { const before = draft.name; draft.name = value; synonym.follow(before, value); },
-    () => ({path: '', kind: 'common-templates', name: draft.name}));
+    () => check(draft));
   const frame = radioFrame('Выберите тип макета:', kinds, draft.kind, kind => { draft.kind = kind; if (!loads()) { draft.content = undefined; draft.file = ''; } arrange(); });
   frame.querySelector('input[value="active-document"]').disabled = true;
   const loads = () => draft.kind === 'binary' || draft.kind === 'add-in';
@@ -63,4 +64,31 @@ async function showTemplateConstructor(project, offer, draft) {
   synonym.destroy?.();
   if (answer !== 'done') return null;
   return draft;
+}
+
+/* templateOffer is what the constructor offers, the server's: the name of a
+   new template and the kinds. */
+async function templateOffer() {
+  const response = await fetch('/api/template/new');
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+/* constructTemplate is «Добавить» of a template, common or of an object:
+   the constructor, then make(draft) - which answers what was made or throws
+   the refusal; a refusal is shown and the constructor opens again as it was
+   left. check(draft) checks the name, as in the constructor. Answers what
+   make answered, or null when the constructor is cancelled. */
+async function constructTemplate(project, check, make) {
+  const offer = await templateOffer();
+  let draft;
+  for (;;) {
+    draft = await showTemplateConstructor(project, offer, draft, check);
+    if (!draft) return null;
+    try {
+      return await make(draft);
+    } catch (error) {
+      await askChoice(String(error.message || error).trim(), '', [['ok', 'ОК']]);
+    }
+  }
 }

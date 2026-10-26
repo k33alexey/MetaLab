@@ -8,6 +8,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // TestTheConstructorMakesATemplate catches the constructor of a template
@@ -109,5 +110,68 @@ func TestTheKindsOfTheConstructorAreTheModels(t *testing.T) {
 		if kind[0] != string(metadata.HTMLTemplate) && metadata.TemplateContentFile(metadata.TemplateKind(kind[0])) == "" {
 			t.Errorf("%s is no kind of template the model keeps", kind[0])
 		}
+	}
+}
+
+// TestTheWindowOfACatalogWritesItsNewTemplates catches a template the
+// constructor added in the window of a catalog lost or misplaced on
+// «Сохранить»: binary data with its file - declared in the description, the
+// content in the folder of the template - and a text and binary data of
+// none; content for a kind that takes no file, or for a template the
+// catalog had, is refused; a description refused after the content was
+// written takes the content away. The project loads after each.
+func TestTheWindowOfACatalogWritesItsNewTemplates(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const goods = "metadata/catalogs/Товары/object.yaml"
+	opened, err := workspace.ReadCatalogEditor(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(workspace.root, "metadata", "catalogs", "Товары", "templates")
+	binary := []byte{7, 7, 7}
+	data, text, empty := uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	added := opened.Catalog
+	added.Templates = append(added.Templates, metadata.ObjectTemplate{ID: data, Name: "Данные", Kind: metadata.BinaryTemplate},
+		metadata.ObjectTemplate{ID: text, Name: "Текст", Kind: metadata.TextTemplate}, metadata.ObjectTemplate{ID: empty, Name: "Пустые", Kind: metadata.BinaryTemplate})
+	// The description is refused after the content is written: the content
+	// goes away with it.
+	refused := added
+	refused.DescriptionLength = -1
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: refused, TemplateContents: []TemplateContent{{ID: data, Content: binary}}}, opened.Revision); err == nil {
+		t.Fatal("a catalog of a negative description length was saved")
+	}
+	if _, err := os.Stat(folder); !os.IsNotExist(err) {
+		t.Fatalf("the refused save left the folder of templates: %v", err)
+	}
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, TemplateContents: []TemplateContent{{ID: text, Content: binary}}}, opened.Revision); err == nil {
+		t.Fatal("a file was loaded into a text")
+	}
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, TemplateContents: []TemplateContent{{ID: data, Content: binary}}}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(filepath.Join(folder, "Данные", "content.bin")); err != nil || !bytes.Equal(content, binary) {
+		t.Errorf("the content of Данные is %v (%v)", content, err)
+	}
+	for _, name := range []string{"Текст", "Пустые"} {
+		if _, err := os.Stat(filepath.Join(folder, name)); !os.IsNotExist(err) {
+			t.Errorf("%s, of no file, got a folder: %v", name, err)
+		}
+	}
+	// The constructor loads a file into a template it makes, not into one
+	// the catalog has - even one of binary data with no content yet.
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, TemplateContents: []TemplateContent{{ID: empty, Content: []byte{1}}}}, saved.Revision); err == nil {
+		t.Fatal("content was loaded into a template the catalog had")
+	}
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		t.Fatalf("the project with the new templates does not load: %v", err)
+	}
+	if catalog, _ := loaded.CatalogDefinition("Товары"); len(catalog.Templates) != len(opened.Catalog.Templates)+3 {
+		t.Errorf("the catalog has %d templates, want %d", len(catalog.Templates), len(opened.Catalog.Templates)+3)
 	}
 }

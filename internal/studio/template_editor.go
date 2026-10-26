@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // A common template has no window of its own: a double click and «Открыть
@@ -143,6 +145,37 @@ func (workspace *Workspace) CreateTemplate(draft TemplateDraft) (TemplateEditorS
 		}
 		return nil
 	}, workspace.readTemplateEditorLocked)
+}
+
+// TemplateContent is the content loaded from a file into a template a
+// window added: the template by its identifier and the bytes.
+type TemplateContent struct {
+	ID      uuid.UUID `json:"id"`
+	Content []byte    `json:"content"`
+}
+
+// templateContentFiles are the files of the contents loaded into the
+// templates an object of a kind named name adds: each must be a template
+// it did not have before (were), one of binary data or an external
+// component, as the constructor loads a file into those alone.
+func templateContentFiles(kind metadata.Kind, name string, were, are []metadata.ObjectTemplate, contents []TemplateContent) ([]newFile, error) {
+	var files []newFile
+	for _, content := range contents {
+		at := slices.IndexFunc(are, func(template metadata.ObjectTemplate) bool { return template.ID == content.ID })
+		if at < 0 || slices.ContainsFunc(were, func(template metadata.ObjectTemplate) bool { return template.ID == content.ID }) {
+			return nil, fmt.Errorf("content is loaded only into a template the window adds")
+		}
+		template := are[at]
+		if template.Kind != metadata.BinaryTemplate && template.Kind != metadata.AddInTemplate {
+			return nil, fmt.Errorf("a file is loaded only into binary data and an external component")
+		}
+		relative, err := project.ObjectTemplateContentPath(string(kind), name, template.Name, metadata.TemplateContentFile(template.Kind))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, newFile{relative: relative, content: content.Content})
+	}
+	return files, nil
 }
 
 // DeleteTemplate removes a common template's folder - its description and

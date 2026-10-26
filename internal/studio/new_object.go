@@ -124,14 +124,12 @@ func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string, 
 	}
 	// The description, then the files the object comes with; none of them
 	// may be there already.
-	for _, file := range append([]newFile{{relative, description}}, freshFiles(fresh.Files)...) {
-		written := filepath.Join(workspace.root, filepath.FromSlash(file.relative))
-		if err := writeNewFile(written, file.content); err != nil {
-			takeAway()
-			return "", fmt.Errorf("create %s: %w", kind, err)
-		}
-		undo = append(undo, func() { _ = os.Remove(written) })
+	takeFiles, err := workspace.writeNewFilesLocked(append([]newFile{{relative, description}}, freshFiles(fresh.Files)...))
+	if err != nil {
+		takeAway()
+		return "", fmt.Errorf("create %s: %w", kind, err)
 	}
+	undo = append(undo, takeFiles)
 	workspace.invalidateStudioIndexesLocked()
 	// The new object stands last among the objects of its kind; an order
 	// that cannot be written takes the object away again, as a refused
@@ -173,6 +171,46 @@ func freshFiles(fresh []metadata.FreshFile) []newFile {
 		files[index] = newFile{relative: file.Path, content: file.Content}
 	}
 	return files
+}
+
+// writeNewFilesLocked writes files that must not be there yet, each with the
+// folders it needs, and answers how to take them away again - the files
+// and the folders made for them; a refusal on the way takes away what was
+// written.
+func (workspace *Workspace) writeNewFilesLocked(files []newFile) (func(), error) {
+	var undo []func()
+	takeAway := func() {
+		for index := len(undo) - 1; index >= 0; index-- {
+			undo[index]()
+		}
+		workspace.invalidateStudioIndexesLocked()
+	}
+	for _, file := range files {
+		written := filepath.Join(workspace.root, filepath.FromSlash(file.relative))
+		// The folders the file needs, from the outermost missing one down.
+		var made []string
+		for directory := filepath.Dir(written); ; directory = filepath.Dir(directory) {
+			if _, err := os.Lstat(directory); err == nil {
+				break
+			}
+			made = append(made, directory)
+		}
+		for index := len(made) - 1; index >= 0; index-- {
+			if err := os.Mkdir(made[index], 0o755); err != nil {
+				takeAway()
+				return func() {}, err
+			}
+			directory := made[index]
+			undo = append(undo, func() { _ = os.Remove(directory) })
+		}
+		if err := writeNewFile(written, file.content); err != nil {
+			takeAway()
+			return func() {}, err
+		}
+		undo = append(undo, func() { _ = os.Remove(written) })
+	}
+	workspace.invalidateStudioIndexesLocked()
+	return takeAway, nil
 }
 
 // writeNewFile writes a file that must not be there yet, synced to disk;

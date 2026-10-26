@@ -10,6 +10,7 @@ function createCatalogModel(source) {
   // What the window «Редактирование типа данных» offers for a field the
   // database stores, as the server reads it off the model (TypeOffer).
   const typeOffer = source.typeOffer;
+  const contents = new Map();
   function attributeList(container) {
     if (container === 'catalog') return catalog.attributes;
     return catalog.tableParts.find(part => part.id === container)?.attributes;
@@ -75,6 +76,17 @@ function createCatalogModel(source) {
       const index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) list.splice(index, 1);
     },
+    // A template the constructor made (constructTemplate): it stands last;
+    // the content loaded from a file is written by «Сохранить» with it.
+    addTemplate(draft) {
+      const template = {id: crypto.randomUUID(), name: draft.name, kind: draft.kind};
+      if (Object.keys(draft.title || {}).length) template.title = draft.title;
+      if (draft.comment) template.comment = draft.comment;
+      (catalog.templates ||= []).push(template);
+      if (draft.content) contents.set(template.id, draft.content);
+      return template;
+    },
+    templateContents() { return [...contents].filter(([id]) => catalog.templates?.some(item => item.id === id)).map(([id, content]) => ({id, content})); },
     moveAttribute(container, id, by) {
       const list = attributeList(container), index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) moveInCircle(list, index, by);
@@ -371,10 +383,10 @@ function createCatalogEditor(host, onChange, around = {}) {
   // and templates move round the ends. Adding and deleting are the items of
   // the constructors of a form, of a command and of a template; a template
   // opens in its editor - each unavailable until its item.
-  function partsTree(icon, caption, kind, items, open, move) {
+  function partsTree(icon, caption, kind, items, open, move, add) {
     const inside = chosen?.kind === kind ? chosen : null, on = !!inside;
     const bar = panel([
-      panelButton('add', 'Добавить', false, () => {}),
+      panelButton('add', 'Добавить', !!add, () => add()),
       panelButton('change', 'Изменить', on && !!open, () => open(inside.id)),
       panelButton('delete', 'Удалить', false, () => {}),
       panelButton('move-up', 'Переместить вверх', on && !!move, () => { move(inside.id, -1); rerender(); }),
@@ -405,13 +417,31 @@ function createCatalogEditor(host, onChange, around = {}) {
       name => source.commandModules?.[name] && around.openFile?.(source.commandModules[name]), moveNamed(commands)), ...rows.childNodes);
     return page;
   }
+  // «Добавить» of a template - on the page or on the branch «Макеты» of the
+  // tree - opens the constructor of a template (maket.md); the name is
+  // checked among the templates of the catalog before it is added, and the
+  // template made is chosen.
+  async function addTemplate() {
+    const templates = () => catalog().templates || [];
+    const check = draft => ({path: source.path, description: {...model.value(), templates: [...templates(), {id: crypto.randomUUID(), name: draft.name, kind: draft.kind}]},
+      at: ['templates', String(templates().length)]});
+    const draft = await constructTemplate(source, check, async draft => {
+      const answer = await postJSON('/api/name', check(draft));
+      if (answer.refusal) throw new Error(answer.refusal);
+      return draft;
+    });
+    if (!draft || !source) return;
+    chosen = {kind: 'template', id: model.addTemplate(draft).name};
+    frame.show('templates');
+    rerender();
+  }
   function renderTemplatesPage() {
     const page = node('div', undefined, 'object-window-fields');
     const templates = catalog().templates || [];
     const designers = menuButton('Конструкторы', () => []);
     designers.disabled = true;
     designers.classList.add('object-window-button');
-    page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates)), designers);
+    page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates), addTemplate), designers);
     return page;
   }
   // «Подсистемы»: the subsystems of the project by their parents, a box at
@@ -632,6 +662,13 @@ function createCatalogEditor(host, onChange, around = {}) {
       const at = ['attributes', String(list.indexOf(attribute))];
       subject = attributeSubject(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]);
       tabs = source.partPalettes?.attribute; title = attribute.name;
+    } else if (chosen?.kind === 'template') {
+      const templates = catalog().templates || [], at = templates.findIndex(item => item.name === chosen.id), template = templates[at];
+      if (!template) { chosen = null; return; }
+      subject = {target: template, owner: 'catalogs', get: path => pathValue(template, path),
+        set: (path, value) => { if (value) setPathValue(template, path, value); else delete template[path]; },
+        setName: value => { template.name = value; chosen.id = value; }, check: () => ({path: source.path, description: model.value(), at: ['templates', String(at)]})};
+      tabs = source.partPalettes?.template; title = template.name;
     } else if (chosen?.kind === 'tablepart') {
       const part = parts.find(item => item.id === chosen.id);
       if (!part) { chosen = null; return; }
@@ -673,7 +710,7 @@ function createCatalogEditor(host, onChange, around = {}) {
     },
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged.
-    value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
+    value() { return model && {...model.value(), templateContents: model.templateContents(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
       basisFor: [...basisFor].sort(),
       roles: (source.roles || []).map(entry => ({id: entry.role.id, revision: entry.revision,
         permission: roleModels.get(entry.role.id).value().objects.find(item => item.object === source.catalog.id) || null})),
@@ -708,6 +745,7 @@ function createCatalogEditor(host, onChange, around = {}) {
       const id = node.id || '', fragment = node.fragment || '';
       if (id.endsWith(':attributes')) return {kind: 'attribute', container: 'catalog'};
       if (id.endsWith(':table-parts')) return {kind: 'tablepart'};
+      if (id.endsWith(':templates')) return {kind: 'template'};
       if (fragment.startsWith('attribute:')) return {kind: 'attribute', container: 'catalog'};
       if (fragment.startsWith('tablepart:')) return {kind: 'attribute', container: fragment.slice('tablepart:'.length)};
       return null;
@@ -727,6 +765,7 @@ function createCatalogEditor(host, onChange, around = {}) {
     // add them, and chooses it on the page «Данные».
     addFromTreeContext(context) {
       if (!source) return;
+      if (context.kind === 'template') { addTemplate(); return; }
       if (context.kind === 'tablepart' && !context.container) {
         chosen = {kind: 'tablepart', id: model.addTablePart().id};
       } else {

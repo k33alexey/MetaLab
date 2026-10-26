@@ -154,8 +154,9 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		},
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(), WindowRows: kinds.Must(metadata.CatalogKind).WindowRows(),
-		Palette:      kinds.Must(metadata.CatalogKind).Palette(),
-		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart")},
+		Palette: kinds.Must(metadata.CatalogKind).Palette(),
+		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart"),
+			"template": kinds.PartPalette("template")},
 	}, nil
 }
 
@@ -176,11 +177,14 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 // none where a page is not given, which leaves those objects as they are.
 type CatalogWindowValue struct {
 	metadata.CatalogDefinition
-	Subsystems        *[]uuid.UUID   `json:"subsystems,omitempty"`
-	FunctionalOptions *[]uuid.UUID   `json:"functionalOptions,omitempty"`
-	ExchangePlans     *[]MemberPlace `json:"exchangePlans,omitempty"`
-	BasisFor          *[]uuid.UUID   `json:"basisFor,omitempty"`
-	Roles             *[]RoleMark    `json:"roles,omitempty"`
+	// TemplateContents are the contents loaded from files into templates
+	// the constructor added in this window, by their identifiers.
+	TemplateContents  []TemplateContent `json:"templateContents,omitempty"`
+	Subsystems        *[]uuid.UUID      `json:"subsystems,omitempty"`
+	FunctionalOptions *[]uuid.UUID      `json:"functionalOptions,omitempty"`
+	ExchangePlans     *[]MemberPlace    `json:"exchangePlans,omitempty"`
+	BasisFor          *[]uuid.UUID      `json:"basisFor,omitempty"`
+	Roles             *[]RoleMark       `json:"roles,omitempty"`
 }
 
 // memberships are the pages of the window given, each with the objects it
@@ -279,10 +283,23 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 	// The catalog keeps a folder named after it, so a new name moves the
 	// folder - its forms and modules with it - and the description is
 	// written there; a refusal puts the folder back.
+	contents, err := templateContentFiles(metadata.CatalogKind, value.Name, opened.Catalog.Templates, value.Templates, window.TemplateContents)
+	if err != nil {
+		return CatalogEditorSource{}, errors.Join(err, restoreMembership(), restoreRoles())
+	}
 	written, moveBack, err := workspace.followNameLocked(relative, opened.Catalog.Name, value.Name)
 	if err == nil {
+		// The contents of new templates go into the folder before the
+		// description declares them, and away again if it is refused.
+		var takeContents func()
+		takeContents, err = workspace.writeNewFilesLocked(contents)
 		var saved SourceFile
-		if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err == nil {
+		if err == nil {
+			if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
+				takeContents()
+			}
+		}
+		if err == nil {
 			opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
 			for _, page := range pages {
 				markMembers(page)

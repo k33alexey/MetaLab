@@ -177,14 +177,7 @@ var palettes = map[Kind][]PaletteTab{
 	// obshchij-maket/07-novyj-maket-palitra: one tab, «Тип макета»
 	// unavailable once the template is made, «Макет: Открыть» opening the
 	// editor of its content.
-	CommonTemplate: {
-		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("макета", "о макете"), []PaletteRow{
-			{Key: "kind", Title: "Тип макета", Field: ChoiceField, Important: true, Fixed: true, Choices: TemplateKinds(),
-				Description: "Что хранит макет; выбирается в конструкторе макета и после не меняется."},
-			{Field: SeparatorField, Important: true},
-			{Key: "content", Title: "Макет", Field: WindowField, Important: true, Description: "Содержимое макета: открывается его редактором."},
-		})},
-	},
+	CommonTemplate: templatePalette,
 	// docs/block-00/obshchaya-kartinka.md, «Палитра»; snapshot
 	// obshchaya-kartinka/01-palitra: one tab, «Картинка: Открыть» opens the
 	// window of the picture, «Доступность для оформления» is unavailable
@@ -388,6 +381,19 @@ var palettes = map[Kind][]PaletteTab{
 	},
 }
 
+// templatePalette is the palette of a template, common or of an object -
+// the prototype's are the same (docs/block-00/maket.md): «Тип макета»
+// unavailable once the template is made, «Макет: Открыть» opening the editor
+// of its content.
+var templatePalette = []PaletteTab{
+	{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("макета", "о макете"), []PaletteRow{
+		{Key: "kind", Title: "Тип макета", Field: ChoiceField, Important: true, Fixed: true, Choices: TemplateKinds(),
+			Description: "Что хранит макет; выбирается в конструкторе макета и после не меняется."},
+		{Field: SeparatorField, Important: true},
+		{Key: "content", Title: "Макет", Field: WindowField, Important: true, Description: "Содержимое макета: открывается его редактором."},
+	})},
+}
+
 // templateKinds are the kinds of a template with the prototype's captions,
 // in the order the constructor of a template lists them (obshchij-maket.md,
 // «Команды»; snapshot obshchij-maket/03-konstruktor).
@@ -526,13 +532,14 @@ var (
 	}
 )
 
-// partPalettes are the palettes of the parts of an object - an attribute and
-// a table part - by the kind of the part (docs/block-00/rekvizit.md,
+// partPalettes are the palettes of the parts of an object - an attribute, a
+// table part, a template - by the kind of the part (docs/block-00/rekvizit.md,
 // tablichnaya-chast.md, «Палитра»; snapshots spravochnik/rekvizit-*). The
 // rows of an attribute depend on its type: Shown names the kind of its one
 // type a row stands at (type=string, type=number, type=reference), and
 // owner=<kind> the kind of the object the part belongs to.
 var partPalettes = map[string][]PaletteTab{
+	"template": templatePalette,
 	"attribute": {
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{
 			{Field: SeparatorField, Important: true},

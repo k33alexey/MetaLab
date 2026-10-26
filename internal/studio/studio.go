@@ -1101,9 +1101,10 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 			children = append(children, Node{ID: id.String() + ":commands", Kind: "group", Icon: commandIcon, Title: "Команды", Children: owned.commands})
 		}
 		// "Макеты" still stands in empty: a template's content has no editor
-		// yet.
+		// yet. It names the object's description, so that «Добавить» on it
+		// opens the constructor of a template in the object's window.
 		if layout.Templates {
-			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Icon: templateIcon, Title: "Макеты"})
+			children = append(children, Node{ID: id.String() + ":templates", Kind: "group", Icon: templateIcon, Title: "Макеты", Path: descriptionPath})
 		}
 		nodes = append(nodes, Node{
 			ID: id.String(), Kind: nodeKind, Icon: kindIcon(kind), Title: title, Path: descriptionPath, Children: children,
