@@ -17,19 +17,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
-// loadTypeOffer is what the window «Редактирование типа данных» offers for
-// an attribute of a catalog, a field the database stores. The model says it
-// (TypeOffer), with the objects of the project its rows name, so the editor
-// offers what the save accepts.
-func loadTypeOffer(root string) (metadata.TypeOffer, error) {
-	catalog, err := metadata.Load(root)
-	if err != nil {
-		return metadata.TypeOffer{}, err
-	}
-	offer, _ := catalog.TypeOffer(metadata.StoredFieldChoice)
-	return offer, nil
-}
-
 // CatalogEditorSource is the typed, revision-safe representation the
 // visual catalog editor reads and writes, in place of raw YAML.
 type CatalogEditorSource struct {
@@ -44,6 +31,9 @@ type CatalogEditorSource struct {
 	KindTitle string `json:"kindTitle"`
 	// Pages are the pages of the window, the kind's (kinds.WindowPages).
 	Pages []kinds.Page `json:"pages"`
+	// OwnerChoice is what the window choosing the owners of the catalog
+	// offers: the objects of the five kinds that may own it.
+	OwnerChoice []ObjectChoiceBranch `json:"ownerChoice"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -80,13 +70,18 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	offer, err := loadTypeOffer(workspace.root)
+	// What the window «Редактирование типа данных» offers for an attribute,
+	// a field the database stores, and the owners the window of the owners
+	// offers, the model says with the objects of the project.
+	loaded, err := metadata.Load(workspace.root)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
+	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		OwnerChoice: objectChoiceTree(loaded, metadata.CatalogOwnerKinds()),
+		Languages:   editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
 	}, nil
 }
@@ -322,6 +317,39 @@ func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) err
 	})
 }
 
+// ownerRefusals are the prototype's words at «ОК» of the window choosing the
+// owners of a catalog (docs/block-00/spravochnik.md, «Проверки»; snapshots
+// vladelcy-otkaz-*): the one of a catalog with predefined items, and the one
+// of an owner that is the catalog itself or closes a ring, naming the owner.
+var ownerRefusals = map[metadata.OwnerFault]string{
+	metadata.OwnerOfPredefined: "Справочнику, имеющему предопределенные данные, нельзя назначить владельца!",
+	metadata.OwnerItself:       "Данный справочник не может быть установлен в качестве владельца! (%s)",
+	metadata.OwnerInRing:       "Данный справочник не может быть установлен в качестве владельца! (%s)",
+}
+
+// CatalogOwnersRefusal answers the prototype's refusal of the owners the
+// window of the catalog at relative holds - catalog, unsaved - against the
+// owners of every other catalog of the project, or nothing.
+func (workspace *Workspace) CatalogOwnersRefusal(relative string, catalog metadata.CatalogDefinition) (NameAnswer, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	if err := validateCatalogEditorPath(relative); err != nil {
+		return NameAnswer{}, err
+	}
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		return NameAnswer{}, err
+	}
+	fault, owner := loaded.OwnersFault(catalog)
+	if fault == metadata.OwnerFits {
+		return NameAnswer{}, nil
+	}
+	if strings.Contains(ownerRefusals[fault], "%s") {
+		return NameAnswer{Refusal: fmt.Sprintf(ownerRefusals[fault], owner)}, nil
+	}
+	return NameAnswer{Refusal: ownerRefusals[fault]}, nil
+}
+
 // catalogEditorAddress is where the window of a catalog is read, written,
 // made and deleted.
 const catalogEditorAddress = "/api/catalog"
@@ -331,4 +359,10 @@ func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		return workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
 	}))
 	registerObjectWindow(routes, catalogEditorAddress, workspace.SaveCatalogEditor, workspace.CreateCatalog, workspace.DeleteCatalog)
+	routes.HandleFunc("POST "+catalogEditorAddress+"/owners", answerStudio(0, writeSourceError, func(input struct {
+		Path   string                     `json:"path"`
+		Object metadata.CatalogDefinition `json:"object"`
+	}) (any, error) {
+		return workspace.CatalogOwnersRefusal(input.Path, input.Object)
+	}))
 }

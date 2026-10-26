@@ -433,7 +433,7 @@ func TestTheProjectCarriesTheModelsLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (metadata.EditorLimits{Name: 255, Code: 50, Description: 150}); snapshot.Limits != want {
+	if want := (metadata.EditorLimits{Name: 255, Code: 50, Description: 150, Levels: 10}); snapshot.Limits != want {
 		t.Errorf("the project carries the limits %+v, want %+v", snapshot.Limits, want)
 	}
 }

@@ -61,6 +61,19 @@ func (kind SubordinationKind) reachesFolders() bool {
 // exist, one property along, and it named a fifth.
 var catalogOwnerKinds = []Kind{CatalogKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, ExchangePlanKind}
 
+// CatalogOwnerKinds are the kinds whose objects may own a catalog, the five
+// the window choosing the owners offers (docs/block-00/spravochnik.md,
+// snapshot vladelcy-pyat-vidov).
+func CatalogOwnerKinds() []Kind {
+	return slices.Clone(catalogOwnerKinds)
+}
+
+// KindObjects are the objects of a kind of the project, in the order of the
+// tree, as a window choosing among them lists them.
+func (catalog *Catalog) KindObjects(kind Kind) []ReferenceTypeObject {
+	return catalog.referenceTypeObjects(kind)
+}
+
 // ownerObject finds one owner by identifier among the kinds allowed to own.
 // The second result is false when no such object is there to own anything.
 func (catalog *Catalog) ownerObject(id uuid.UUID) (Kind, bool) {
@@ -161,69 +174,114 @@ func (catalog *Catalog) validateCatalogOwners() error {
 // справочник и не кольцо»): an owner of a catalog that keeps predefined items,
 // a catalog owning itself, and a ring of owners of any length. A ring would
 // also never end the deletion mark of a branch, which follows subordinate
-// catalogs down.
+// catalogs down. The rule is ownerFault's, the one the window of a catalog
+// asks too (OwnersFault).
 func (catalog *Catalog) validateOwnersAsTheDesignerDoes() error {
+	ownersOf := catalog.catalogOwners(CatalogDefinition{})
 	for _, definition := range catalog.Catalogs {
-		for index, id := range definition.Owners {
-			if len(definition.Predefined) > 0 {
-				return fmt.Errorf("catalog %s keeps predefined items and cannot belong to %s (owners[%d])",
-					definition.Name, catalog.ownerName(id), index)
+		fault, index := ownerFault(definition, ownersOf)
+		switch fault {
+		case OwnerOfPredefined:
+			return fmt.Errorf("catalog %s keeps predefined items and cannot belong to %s (owners[%d])",
+				definition.Name, catalog.ownerName(definition.Owners[index]), index)
+		case OwnerItself:
+			return fmt.Errorf("catalog %s cannot be its own owner (owners[%d])", definition.Name, index)
+		case OwnerInRing:
+			ring := []string{definition.Name}
+			for _, id := range ownerChain(definition.Owners[index], definition.ID, ownersOf) {
+				ring = append(ring, catalog.ownerName(id))
 			}
-			if id == definition.ID {
-				return fmt.Errorf("catalog %s cannot be its own owner (owners[%d])", definition.Name, index)
-			}
+			return fmt.Errorf("catalogs own each other in a ring: %s", strings.Join(append(ring, definition.Name), " belongs to "))
 		}
-	}
-	if ring := catalog.ownerRing(); len(ring) > 0 {
-		return fmt.Errorf("catalogs own each other in a ring: %s", strings.Join(ring, " belongs to "))
 	}
 	return nil
 }
 
-// ownerRing finds a ring of catalogs owning one another and names it from
-// the catalog it starts at round to that catalog again, or returns nil. The
-// catalogs are walked in their order and the owners in theirs, so one
-// configuration is always worded alike.
-func (catalog *Catalog) ownerRing() []string {
-	const (
-		unseen = iota
-		onPath
-		done
-	)
-	state := make(map[uuid.UUID]int, len(catalog.Catalogs))
-	var path []uuid.UUID
-	var ring []string
-	var walk func(id uuid.UUID) bool
-	walk = func(id uuid.UUID) bool {
-		state[id] = onPath
-		path = append(path, id)
-		for _, owner := range catalog.Catalogs[catalog.catalogByID[id]].Owners {
-			if _, isCatalog := catalog.catalogByID[owner]; !isCatalog || owner == id {
-				continue
+// OwnerFault is which of the designer's three refusals an owner of a catalog
+// meets (opis of the catalog, 14.10.2026, docs/block-00/spravochnik.md,
+// «Проверки»), or none.
+type OwnerFault int
+
+const (
+	OwnerFits OwnerFault = iota
+	// OwnerOfPredefined is any owner of a catalog that keeps predefined items.
+	OwnerOfPredefined
+	// OwnerItself is the catalog named as its own owner.
+	OwnerItself
+	// OwnerInRing is an owner subordinate to the catalog already, directly or
+	// through a chain of catalogs: naming it closes a ring.
+	OwnerInRing
+)
+
+// OwnersFault is what the designer says of the owners of a catalog as its
+// window holds them, against the owners every other catalog of the project
+// has: the refusal and the name of the owner it falls on, the first in the
+// order of the owners.
+func (catalog *Catalog) OwnersFault(definition CatalogDefinition) (OwnerFault, string) {
+	fault, index := ownerFault(definition, catalog.catalogOwners(definition))
+	if fault == OwnerFits {
+		return fault, ""
+	}
+	if definition.Owners[index] == definition.ID {
+		return fault, definition.Name
+	}
+	return fault, catalog.ownerName(definition.Owners[index])
+}
+
+// catalogOwners answers the owners of a catalog of the project by its
+// identifier, those of edited as the window holds them; none for an object
+// that is not a catalog, whose owners never lead back to one.
+func (catalog *Catalog) catalogOwners(edited CatalogDefinition) func(uuid.UUID) []uuid.UUID {
+	return func(id uuid.UUID) []uuid.UUID {
+		if id == edited.ID {
+			return edited.Owners
+		}
+		if index, ok := catalog.catalogByID[id]; ok {
+			return catalog.Catalogs[index].Owners
+		}
+		return nil
+	}
+}
+
+// ownerFault is the first of the designer's refusals among the owners of one
+// catalog, in their order, and the position of the owner it falls on; -1
+// where none falls. ownersOf answers the owners of another catalog.
+func ownerFault(definition CatalogDefinition, ownersOf func(uuid.UUID) []uuid.UUID) (OwnerFault, int) {
+	for index, id := range definition.Owners {
+		switch {
+		case len(definition.Predefined) > 0:
+			return OwnerOfPredefined, index
+		case id == definition.ID:
+			return OwnerItself, index
+		case ownerChain(id, definition.ID, ownersOf) != nil:
+			return OwnerInRing, index
+		}
+	}
+	return OwnerFits, -1
+}
+
+// ownerChain is the way from the catalog from up its owners to the catalog
+// to - from, its owner, that one's owner, the last one owned by to - or nil
+// where to owns none of them at any remove.
+func ownerChain(from, to uuid.UUID, ownersOf func(uuid.UUID) []uuid.UUID) []uuid.UUID {
+	seen := map[uuid.UUID]bool{}
+	var walk func(id uuid.UUID) []uuid.UUID
+	walk = func(id uuid.UUID) []uuid.UUID {
+		if seen[id] {
+			return nil
+		}
+		seen[id] = true
+		for _, owner := range ownersOf(id) {
+			if owner == to {
+				return []uuid.UUID{id}
 			}
-			switch state[owner] {
-			case onPath:
-				start := slices.Index(path, owner)
-				for _, member := range append(path[start:], owner) {
-					ring = append(ring, catalog.Catalogs[catalog.catalogByID[member]].Name)
-				}
-				return true
-			case unseen:
-				if walk(owner) {
-					return true
-				}
+			if rest := walk(owner); rest != nil {
+				return append([]uuid.UUID{id}, rest...)
 			}
 		}
-		path = path[:len(path)-1]
-		state[id] = done
-		return false
+		return nil
 	}
-	for _, definition := range catalog.Catalogs {
-		if state[definition.ID] == unseen && walk(definition.ID) {
-			return ring
-		}
-	}
-	return nil
+	return walk(from)
 }
 
 // ownerColumns gives a subordinate catalog's table the column its owner lives

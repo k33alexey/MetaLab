@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/schemadiff"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -298,5 +299,64 @@ func TestCatalogOwnersRefusedAsTheDesignerRefusesThem(t *testing.T) {
 				t.Fatalf("error = %v, expected it to say %q", err, testCase.says)
 			}
 		})
+	}
+}
+
+// The window of a catalog asks the same rule of the owners it holds,
+// unsaved, against the owners every other catalog of the project has
+// (docs/block-00/spravochnik.md, «Проверки»): the refusal falls on the first
+// owner it meets and names it - the catalog itself, or the owner closing the
+// ring; predefined items refuse any owner. Defects caught: the window's check
+// reading the saved owners of the catalog instead of those it is given; a
+// ring closed through a third catalog missed; the refusal naming the catalog
+// instead of the owner.
+func TestOwnersFaultReadsTheOwnersTheWindowHolds(t *testing.T) {
+	t.Parallel()
+	const a, b, c = "cb000000-0000-4000-8000-0000000000a1", "cb000000-0000-4000-8000-0000000000b1", "cb000000-0000-4000-8000-0000000000c1"
+	root := metadataProject(t)
+	ownedCatalog(t, root, a, "Склады", "", "")
+	ownedCatalog(t, root, b, "Ячейки", a, "")
+	ownedCatalog(t, root, c, "Полки", b, "")
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := func(name string) CatalogDefinition {
+		for _, item := range loaded.Catalogs {
+			if item.Name == name {
+				return item
+			}
+		}
+		t.Fatalf("no catalog %s", name)
+		return CatalogDefinition{}
+	}
+	with := func(name string, owners ...string) CatalogDefinition {
+		item := definition(name)
+		item.Owners = nil
+		for _, owner := range owners {
+			item.Owners = append(item.Owners, definition(owner).ID)
+		}
+		return item
+	}
+	predefined := with("Склады", "Ячейки")
+	predefined.Owners = []uuid.UUID{definition("Полки").ID}
+	predefined.Predefined = []PredefinedCatalogItem{{Name: "Основной"}}
+	for name, testCase := range map[string]struct {
+		definition CatalogDefinition
+		fault      OwnerFault
+		owner      string
+	}{
+		"no owners":       {with("Склады"), OwnerFits, ""},
+		"a chain":         {with("Полки", "Ячейки", "Склады"), OwnerFits, ""},
+		"itself":          {with("Склады", "Склады"), OwnerItself, "Склады"},
+		"a ring of two":   {with("Склады", "Ячейки"), OwnerInRing, "Ячейки"},
+		"a ring of three": {with("Склады", "Полки"), OwnerInRing, "Полки"},
+		"after a fit one": {with("Ячейки", "Склады", "Полки"), OwnerInRing, "Полки"},
+		"with predefined": {predefined, OwnerOfPredefined, "Полки"},
+	} {
+		fault, owner := loaded.OwnersFault(testCase.definition)
+		if fault != testCase.fault || owner != testCase.owner {
+			t.Errorf("%s: %v %q, want %v %q", name, fault, owner, testCase.fault, testCase.owner)
+		}
 	}
 }

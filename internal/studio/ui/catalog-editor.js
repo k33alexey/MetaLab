@@ -40,6 +40,20 @@ function createCatalogModel(source) {
     // A presentation or the explanation, by its key in the description.
     setPresentation(key, language, text) { setText(key, setTranslation(catalog[key], language, text)); },
     setDefaultPresentation(presentation) { catalog.defaultPresentation = presentation; },
+    // A setting of the hierarchy: enabled, kind, foldersOnTop, limitLevels,
+    // levelCount. Switched on, a hierarchy of no kind becomes one of folders
+    // and items and a limit of no count one of two levels - what the
+    // prototype's window shows of a catalog that never had one (spravochnik.md,
+    // okno-04, «Умолчания»): the model takes neither empty.
+    setHierarchy(key, value) {
+      const hierarchy = catalog.hierarchy ||= {};
+      hierarchy[key] = value;
+      if (key === 'enabled' && value && !hierarchy.kind) hierarchy.kind = 'folders-and-items';
+      if (key === 'limitLevels' && value && !(hierarchy.levelCount >= 1)) hierarchy.levelCount = 2;
+    },
+    setOwners(owners) { if (owners.length) catalog.owners = owners; else delete catalog.owners; },
+    setSubordination(subordination) { catalog.subordination = subordination; },
+    setCodeSeries(series) { catalog.code.series = series; },
     setCodeType(type) { catalog.code.type = type; },
     setCodeLength(length) { catalog.code.length = length; },
     setCodeAuto(auto) { catalog.code.auto = auto; },
@@ -246,17 +260,91 @@ function createCatalogEditor(host, onChange, around = {}) {
     return page;
   }
 
-  // «Нумерация»: so far its two flags, unavailable at a code of no length
-  // (spravochnik.md, okno-07); the frame «Серии кодов» is the item of the
-  // map «окно справочника: «Иерархия», «Владельцы», «Нумерация»».
-  function renderNumberingPage() {
-    const page = node('div', undefined, 'object-window-fields'), code = catalog().code;
-    page.append(
-      checkboxField('Автонумерация', !!code.auto, value => { model.setCodeAuto(value); rerender(); }, 'catalog-check object-window-flag', !code.length),
-      checkboxField('Контроль уникальности', !!code.unique, value => { model.setCodeUnique(value); rerender(); }, 'catalog-check object-window-flag', !code.length));
+  function flag(caption, checked, apply, disabled) {
+    return checkboxField(caption, checked, value => { apply(value); rerender(); }, 'catalog-check object-window-flag', disabled);
+  }
+  function choiceField(caption, choices, value, apply, disabled, className = 'catalog-field catalog-field-above') {
+    const select = selectInput(choices, value || '', value => { apply(value); rerender(); }, caption);
+    select.disabled = disabled;
+    return labeledField(caption, select, className);
+  }
+
+  // «Иерархия»: the flag «Иерархический справочник» and under it the kind,
+  // folders on top, the limit and the count of levels - unavailable without
+  // the flag, the count without the limit, each showing its value
+  // (spravochnik.md, okno-04; snapshot ierarhiya-vklyuchena).
+  function renderHierarchyPage() {
+    const page = node('div', undefined, 'object-window-fields'), hierarchy = catalog().hierarchy || {}, off = !hierarchy.enabled;
+    const inner = node('div', undefined, 'object-window-fields object-window-inner');
+    inner.append(
+      choiceField('Вид иерархии:', [['folders-and-items', 'Иерархия групп и элементов'], ['items', 'Иерархия элементов']], hierarchy.kind,
+        value => model.setHierarchy('kind', value), off),
+      flag('Размещать группы сверху', !!hierarchy.foldersOnTop, value => model.setHierarchy('foldersOnTop', value), off),
+      flag('Ограничение количества уровней иерархии', !!hierarchy.limitLevels, value => model.setHierarchy('limitLevels', value), off),
+      labeledField('Количество уровней иерархии', textInput(hierarchy.levelCount ?? 0, value => { model.setHierarchy('levelCount', value); rerender(); },
+        limited('levels', {type: 'number', min: 1, disabled: off || !hierarchy.limitLevels}))));
+    page.append(flag('Иерархический справочник', !!hierarchy.enabled, value => model.setHierarchy('enabled', value)), inner);
     return page;
   }
-  const builtPages = {main: renderMainPage, data: renderDataPage, numbering: renderNumberingPage};
+
+  // «Владельцы»: the list of owners by their full names, «Изменить» opening
+  // the window «Выбор объекта» of the five kinds that may own a catalog and
+  // «Удалить» taking the owner chosen in the list away; the use of
+  // subordination below, unavailable without owners (spravochnik.md,
+  // okno-05). The owners chosen are taken only when the model takes them:
+  // the server answers the prototype's refusal - predefined items, the
+  // catalog itself, a ring - and nothing is written (snapshots vladelcy-otkaz-*).
+  let currentOwner = null;
+  function ownerName(id) {
+    const find = branches => { for (const branch of branches || []) { const item = branch.objects?.find(object => object.id === id) || find(branch.children); if (item) return item; } return null; };
+    return find(source.ownerChoice)?.fullName || id;
+  }
+  async function chooseOwners() {
+    const owners = await chooseObjects('Выбор объекта', source.ownerChoice || [], catalog().owners || []);
+    if (!owners) return;
+    let answer;
+    try { answer = await postJSON(`${source.editor}/owners`, {path: source.path, object: {...model.value(), owners}}); } catch (error) { answer = {refusal: String(error.message || error)}; }
+    if (answer.refusal) { await askChoice(answer.refusal, '', [['ok', 'ОК']]); return; }
+    model.setOwners(owners);
+    rerender();
+  }
+  function renderOwnersPage() {
+    const page = node('div', undefined, 'object-window-fields object-window-owners'), owners = catalog().owners || [];
+    if (!owners.includes(currentOwner)) currentOwner = owners[0] ?? null;
+    const head = node('div', undefined, 'object-window-list-head');
+    const change = iconButton('change', 'Изменить'), remove = iconButton('delete', 'Удалить');
+    change.addEventListener('click', chooseOwners);
+    remove.disabled = !owners.length;
+    remove.addEventListener('click', () => { model.setOwners(owners.filter(id => id !== currentOwner)); rerender(); });
+    head.append(node('span', 'Список владельцев справочника:'), change, remove);
+    const list = node('div', undefined, 'object-window-list');
+    list.setAttribute('role', 'listbox');
+    for (const id of owners) {
+      const row = node('div', ownerName(id), 'object-window-list-row' + (id === currentOwner ? ' current' : ''));
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(id === currentOwner));
+      row.addEventListener('click', () => { currentOwner = id; frame.refresh(); });
+      row.addEventListener('dblclick', chooseOwners);
+      list.append(row);
+    }
+    page.append(head, list, choiceField('Использование подчинения:', [['to-items', 'Элементам'], ['to-folders', 'Группам'], ['to-folders-and-items', 'Группам и элементам']],
+      catalog().subordination, value => model.setSubordination(value), !owners.length));
+    return page;
+  }
+
+  // «Нумерация»: the two flags and the frame «Серии кодов», all unavailable
+  // at a code of no length (spravochnik.md, okno-07; snapshot
+  // novyy-numeraciya).
+  function renderNumberingPage() {
+    const page = node('div', undefined, 'object-window-fields'), code = catalog().code, off = !code.length;
+    page.append(
+      flag('Автонумерация', !!code.auto, value => model.setCodeAuto(value), off),
+      flag('Контроль уникальности', !!code.unique, value => model.setCodeUnique(value), off),
+      radioFrame('Серии кодов', [['whole', 'Во всем справочнике'], ['within-subordination', 'В пределах подчинения'],
+        ['within-owner-subordination', 'В пределах подчинения владельцу']], code.series, value => { model.setCodeSeries(value); rerender(); }, off));
+    return page;
+  }
+  const builtPages = {main: renderMainPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage, numbering: renderNumberingPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
     cleanups = [];
@@ -316,15 +404,19 @@ function createCatalogEditor(host, onChange, around = {}) {
   function focusPalette() { around.palette?.querySelector('input')?.focus(); }
 
   return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearPalette(); source = null; model = null; }, {
-    open(value) {
+    // Opened anew after «Сохранить» (keep), the window stays on its page
+    // with the same part chosen.
+    open(value, keep = false) {
+      const page = keep && frame ? frame.current() : 'main';
       if (source) clearPalette();
+      if (!keep) chosen = null;
       source = structuredClone(value);
       model = createCatalogModel(source);
-      chosen = null;
       host.hidden = false;
-      frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: 'main', page: renderPage,
+      frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
       host.replaceChildren(frame.element);
+      renderPalette();
     },
     value() { return model?.value(); },
     // Chooses the attribute or table part a node of the tree names

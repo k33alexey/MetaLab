@@ -206,12 +206,21 @@ function selectInput(choices, value, apply, label) {
 function clearableSelect(choices, value, apply, label) {
   const wrapper = node('span', undefined, 'clearable-select');
   const select = selectInput([['', ''], ...choices], value, apply, label);
-  const clear = node('button', '×', 'clearable-select-clear');
-  clear.type = 'button';
-  clear.setAttribute('aria-label', label ? `Очистить: ${label}` : 'Очистить');
-  clear.addEventListener('click', () => { select.value = ''; select.dispatchEvent(new Event('change', {bubbles: true})); });
+  const clear = clearButton(label ? `Очистить: ${label}` : 'Очистить', () => { select.value = ''; select.dispatchEvent(new Event('change', {bubbles: true})); });
+  clear.classList.add('clearable-select-clear');
   wrapper.append(select, clear);
   return wrapper;
+}
+
+/* clearButton is the prototype's clearing of a field, the cross: title
+   names it for a screen reader, act clears. */
+function clearButton(title, act) {
+  const clear = node('button', '×');
+  clear.type = 'button';
+  clear.title = title;
+  clear.setAttribute('aria-label', title);
+  clear.addEventListener('click', act);
+  return clear;
 }
 
 /* checkboxField is a box with its caption after it. */
@@ -697,6 +706,47 @@ function radioFrame(caption, choices, value, apply, disabled = false) {
   return frame;
 }
 
+/* chooseObjects is the platform's window «Выбор объекта» of objects of the
+   project marked by boxes (docs/block-00/spravochnik.md, the window of the
+   owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
+   a search over the names with its clearing, the tree of the branches of the
+   kinds offered - «Общие» holding its own, as the project tree - with a box
+   at every object and none at a branch, «ОК» and «Отмена» in a column at the
+   right. tree is the server's (objectChoiceTree): [{title, icon, children,
+   objects: [{id, name, icon}]}]; chosen are the identifiers marked first.
+   Answers the identifiers marked, in the order of the tree, on «ОК», and
+   null on «Отмена». */
+async function chooseObjects(title, tree, chosen) {
+  const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = [];
+  const search = textInput('', () => draw(), {placeholder: 'Поиск'});
+  search.setAttribute('aria-label', 'Поиск');
+  const searchRow = node('div', undefined, 'object-choice-search');
+  searchRow.append(search, clearButton('Очистить поиск', () => { search.value = ''; draw(); search.focus(); }));
+  const rows = node('div', undefined, 'object-choice-tree');
+  content.append(searchRow, rows);
+  (function collect(groups) { for (const group of groups) { collect(group.children || []); for (const item of group.objects || []) order.push(item.id); } })(tree);
+  function draw() {
+    const text = search.value.trim().toLocaleLowerCase();
+    const branch = group => {
+      const objects = (group.objects || []).filter(item => !text || item.name.toLocaleLowerCase().includes(text)).map(item => {
+        const box = node('input');
+        box.type = 'checkbox'; box.checked = marked.has(item.id); box.className = 'object-choice-box';
+        box.setAttribute('aria-label', item.name);
+        box.addEventListener('change', () => { if (box.checked) marked.add(item.id); else marked.delete(item.id); });
+        return treeNode({icon: item.icon, caption: item.name, mark: box}).element;
+      });
+      const children = [...(group.children || []).map(branch).filter(Boolean), ...objects];
+      if (text && !children.length) return null;
+      return treeNode({icon: group.icon, caption: group.title, children, open: !!text}).element;
+    };
+    rows.replaceChildren(...tree.map(branch).filter(Boolean));
+  }
+  draw();
+  const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
+  search.focus();
+  return await answer === 'ok' ? order.filter(id => marked.has(id)) : null;
+}
+
 /* objectWindow is the window of an object, one for every kind that has one,
    as the prototype's (docs/block-00/obshchee.md, «Окно объекта»): the title
    «<Вид> <Имя>»; the list of pages at the left, the page chosen beside it;
@@ -862,13 +912,15 @@ function menuButton(text, items, className) {
    how it stands first, toggled(open) is told each time it is opened or
    closed by hand - not of the row drawn open, whose details the browser
    reports opened too, after the fact: a search that opens what holds a
-   match would leave it all open once cleared (2.437, case 2в-25). Answers {element, row}: the element to put in the tree and the
+   match would leave it all open once cleared (2.437, case 2в-25). mark is
+   a box standing before the icon, as the prototype's window «Выбор
+   объекта» draws it. Answers {element, row}: the element to put in the tree and the
    row to hang clicks and the menu on. Every tree of Studio is made of these;
    the trees of marks - the filter by subsystems, the fields of a
    restriction - are rows of restrictionTreeRow. */
-function treeNode({icon, caption, children = [], open = false, toggled, foldOnDoubleClick = true}) {
+function treeNode({icon, caption, children = [], open = false, toggled, foldOnDoubleClick = true, mark}) {
   const row = node(children.length ? 'summary' : 'div', undefined, 'studio-tree-row'), sign = node('span', undefined, 'studio-tree-sign');
-  row.append(sign, iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
+  row.append(sign, ...(mark ? [mark] : []), iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
   if (!children.length) {
     row.classList.add('studio-tree-leaf');
     return {element: row, row};

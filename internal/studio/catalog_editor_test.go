@@ -80,10 +80,7 @@ func TestCatalogEditorCreateReadSaveAndConflicts(t *testing.T) {
 		t.Fatalf("invalid save modified file: %v", err)
 	}
 
-	offer, err := loadTypeOffer(workspace.root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	offer := again.TypeOffer
 	catalogs := slices.IndexFunc(offer.Rows, func(row metadata.TypeOfferRow) bool { return row.ObjectKind == metadata.CatalogType })
 	if catalogs < 0 || offer.Rows[catalogs].Name.Russian != "СправочникСсылка" ||
 		len(offer.Rows[catalogs].Objects) != 1 || offer.Rows[catalogs].Objects[0].ID != created.Catalog.ID {
