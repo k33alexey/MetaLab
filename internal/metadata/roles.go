@@ -816,9 +816,13 @@ func cloneRole(value RoleDefinition) RoleDefinition {
 
 // GrantObjectReadByDefault adds PermissionRead for objectID if the role does
 // not already grant any operation on it - used when GrantNewObjectsByDefault
-// is set, right after a new metadata object is created. Reports whether it
-// changed the role.
-func (role *RoleDefinition) GrantObjectReadByDefault(objectID uuid.UUID) bool {
+// is set, right after a new metadata object of the kind is created. A kind
+// the window of a role offers no «Чтение» on - a role, a common module, a
+// group of commands - is given nothing. Reports whether it changed the role.
+func (role *RoleDefinition) GrantObjectReadByDefault(kind Kind, objectID uuid.UUID) bool {
+	if !slices.Contains(usesOf(kind).offered, PermissionRead) {
+		return false
+	}
 	for index := range role.Objects {
 		if role.Objects[index].Object == objectID {
 			if slices.Contains(role.Objects[index].Operations, PermissionRead) || slices.Contains(role.Objects[index].Denied, PermissionRead) {

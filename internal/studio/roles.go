@@ -19,7 +19,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/uuid"
 	"github.com/k33alexey/MetaLab/internal/webpage"
 )
 
@@ -478,87 +477,10 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 	})
 }
 
+// CreateRole makes the next role, with the rights the prototype's new role
+// comes with, by the one way every object is made (CreateObject).
 func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return RoleSource{}, err
-	}
-	id, err := uuid.New()
-	if err != nil {
-		return RoleSource{}, err
-	}
-	// «Добавить» names nothing: the object is the kind's next number.
-	if name == "" {
-		if name, err = workspace.newObjectNameLocked(string(metadata.RoleKind)); err != nil {
-			return RoleSource{}, err
-		}
-	}
-	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.RoleKind)), name); err != nil {
-		return RoleSource{}, err
-	}
-	// No synonym, as a new catalog has none (CreateCatalog); the rights the
-	// prototype's new role comes with.
-	role := metadata.NewRole(id, name, configuration.ID)
-	if err := metadata.ValidateRole("new role", role, configuration); err != nil {
-		return RoleSource{}, err
-	}
-	schema, err := metadata.LoadPermissionSchema(workspace.root)
-	if err != nil {
-		return RoleSource{}, err
-	}
-	relative, _ := project.MetadataPath("roles", id)
-	// Metadata root was checked by ValidateLayout. Do not follow an existing
-	// role-directory symlink when creating the first source.
-	directory := filepath.Join(workspace.root, "metadata", "roles")
-	if err := os.Mkdir(directory, 0o755); err != nil && !os.IsExist(err) {
-		return RoleSource{}, err
-	}
-	info, err := os.Lstat(directory)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return RoleSource{}, ErrInvalidSourcePath
-	}
-	description, grid, err := metadata.EncodeRole(role)
-	if err != nil {
-		return RoleSource{}, err
-	}
-	// The grid goes first, as a save writes it (replaceRoleFilesLocked), and
-	// goes with the description when anything after it is refused.
-	descriptionPath := filepath.Join(workspace.root, filepath.FromSlash(relative))
-	gridPath := workspace.roleGridPath(relative)
-	takeAway := func() {
-		_ = os.Remove(descriptionPath)
-		_ = writeRoleGrid(gridPath, nil)
-	}
-	if err := writeRoleGrid(gridPath, grid); err != nil {
-		takeAway()
-		return RoleSource{}, fmt.Errorf("create role: %w", err)
-	}
-	file, err := os.OpenFile(descriptionPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		_ = writeRoleGrid(gridPath, nil)
-		return RoleSource{}, err
-	}
-	_, writeErr := file.Write(description)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		takeAway()
-		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
-	}
-	workspace.invalidateStudioIndexesLocked()
-	// The new role stands last among the roles; an order that cannot be
-	// written takes the role away again.
-	if _, err := workspace.placeInOrderLocked(metadata.RoleKind, id); err != nil {
-		takeAway()
-		workspace.invalidateStudioIndexesLocked()
-		return RoleSource{}, fmt.Errorf("place new role in the order: %w", err)
-	}
-	written := roleFiles{description: sourceFile(relative, "yaml", description), grid: grid}
-	return RoleSource{Path: relative, Revision: written.revision(), Role: role, Schema: schema, Palette: kinds.Must(metadata.RoleKind).Palette(), Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
+	return createObjectAs(workspace, metadata.RoleKind, name, workspace.readRoleLocked)
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

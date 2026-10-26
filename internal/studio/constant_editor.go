@@ -124,48 +124,10 @@ func encodeConstant(value metadata.Constant, configuration project.Project) (str
 	return encoded.String(), nil
 }
 
-// CreateConstant makes the next constant, «Константа1» and on, with the
-// prototype's values of a new one (docs/block-00/konstanta.md, «Новая
-// константа»): a string of 10 of variable length, the managed lock, the
-// history not used, the standard commands on, the filling not checked, the
-// quick choice and the history of choice left to the platform.
+// CreateConstant makes the next constant, «Константа1» and on, by the one
+// way every object is made (CreateObject) and opens its palette.
 func (workspace *Workspace) CreateConstant(name string) (ConstantEditorSource, error) {
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	id, err := uuid.New()
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	if name == "" {
-		if name, err = workspace.newObjectNameLocked(string(metadata.ConstantKind)); err != nil {
-			return ConstantEditorSource{}, err
-		}
-	}
-	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.ConstantKind)), name); err != nil {
-		return ConstantEditorSource{}, err
-	}
-	value := metadata.Constant{
-		Format: metadata.CurrentFormat, ID: id, Name: name,
-		Types:               []metadata.Type{{Kind: metadata.StringType, Length: 10}},
-		DataLock:            project.ManagedDataLock,
-		DataHistorySettings: metadata.DataHistorySettings{DataHistory: metadata.DataHistoryDontUse},
-		UseStandardCommands: true,
-		FillChecking:        metadata.DontCheckFilling,
-		Choice:              metadata.FieldChoice{QuickChoice: metadata.UsageAuto, HistoryOnInput: metadata.ChoiceHistoryAuto},
-	}
-	encoded, err := encodeConstant(value, configuration)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	relative, err := workspace.createObjectLocked(metadata.ConstantKind, id, name, []byte(encoded))
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	return workspace.readConstantEditorLocked(relative)
+	return createObjectAs(workspace, metadata.ConstantKind, name, workspace.readConstantEditorLocked)
 }
 
 // DeleteConstant removes a constant's folder - its description and modules -

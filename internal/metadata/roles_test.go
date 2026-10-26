@@ -428,7 +428,7 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 
 	// No existing entry for the object at all: creates one with Read.
 	role := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R", Title: LocalizedText{"ru": "R"}}
-	if !role.GrantObjectReadByDefault(objectID) {
+	if !role.GrantObjectReadByDefault(CatalogKind, objectID) {
 		t.Fatal("expected the first grant to change the role")
 	}
 	if len(role.Objects) != 1 || role.Objects[0].Object != objectID || !slices.Contains(role.Objects[0].Operations, PermissionRead) {
@@ -436,7 +436,7 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 	}
 
 	// Already has Read: idempotent, reports no change, no duplicate operation.
-	if role.GrantObjectReadByDefault(objectID) {
+	if role.GrantObjectReadByDefault(CatalogKind, objectID) {
 		t.Fatal("expected the second grant to be a no-op")
 	}
 	if len(role.Objects[0].Operations) != 1 {
@@ -446,7 +446,7 @@ func TestRoleAutoGrantDefaults(t *testing.T) {
 	// Has the object with a different operation only: Read is added alongside it.
 	other := RoleDefinition{Format: CurrentFormat, ID: uuid.MustNew(), Name: "R2", Title: LocalizedText{"ru": "R2"},
 		Objects: []ObjectPermission{{Object: objectID, Operations: []PermissionOperation{PermissionUpdate}}}}
-	if !other.GrantObjectReadByDefault(objectID) {
+	if !other.GrantObjectReadByDefault(CatalogKind, objectID) {
 		t.Fatal("expected Read to be added alongside an existing different operation")
 	}
 	if !slices.Contains(other.Objects[0].Operations, PermissionUpdate) || !slices.Contains(other.Objects[0].Operations, PermissionRead) {

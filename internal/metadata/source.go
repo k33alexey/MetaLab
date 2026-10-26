@@ -65,6 +65,9 @@ type kindInfo struct {
 	// interactive path (ApplicationKinds). The other kinds are carried and do
 	// not open yet; their execution is block 9's.
 	application bool
+	// fresh is an object of the kind as «Добавить» makes it (kindNewObjectOf,
+	// NewObject); nil for a kind Studio does not make yet.
+	fresh newObject
 }
 
 // LanguageKind names a language of the configuration where something may name
@@ -685,6 +688,7 @@ func init() {
 		}
 		kindInfos[index].uses.partsOffered = kindPartRightsOf[kindInfos[index].kind]
 		kindInfos[index].aloneInDefinedType = kindAloneInDefinedType[kindInfos[index].kind]
+		kindInfos[index].fresh = kindNewObjectOf[kindInfos[index].kind]
 	}
 	for _, item := range kindInfos {
 		owned := slices.Concat(item.objectTypes, item.namedBy)
