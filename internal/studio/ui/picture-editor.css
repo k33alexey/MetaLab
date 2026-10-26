@@ -1,0 +1,10 @@
+/* Окно общей картинки (obshchaya-kartinka/02-okno): поля сверху, ниже —
+   картинка слева и столбец кнопок справа, под ними тип картинки. */
+#picture-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:auto}
+#picture-editor[hidden]{display:none}
+.picture-window-body{display:flex;flex-direction:column;gap:2px;padding:10px 14px;max-width:560px}
+.picture-window-middle{display:flex;gap:10px;margin-top:14px}
+.picture-window-image{flex:1;display:flex;align-items:center;justify-content:center;min-height:240px;border:1px solid #4a4d54;background:var(--panel-bg,#2b2d30)}
+.picture-window-image img{max-width:100%;max-height:360px}
+.picture-window-buttons{display:flex;flex-direction:column;gap:6px;width:230px}
+.picture-window-type{display:flex;gap:16px;margin-top:10px;font-size:12px}

@@ -91,10 +91,13 @@ type Node struct {
 	// Modules are the modules the object opens from its menu, «Открыть
 	// модуль …», as the prototype's do: a module is no row of the tree.
 	Modules []NodeModule `json:"modules,omitempty"`
-	// Editor is the address of the window of the object, and on the branch
-	// of its kind the address «Добавить» makes one at; none where Studio has
-	// no window for the kind and opens the description as text.
+	// Editor is the address of the window of the object; none where Studio
+	// has no window for the kind and opens the description as text. Adds
+	// says «Добавить» makes an object of the kind there, on its branch and on
+	// each of its objects: false for a kind whose new object Studio does not
+	// make yet (metadata.NewObject).
 	Editor string `json:"editor,omitempty"`
+	Adds   bool   `json:"adds,omitempty"`
 }
 
 // objectEditors are the windows Studio has for the objects of a kind, by the
@@ -102,7 +105,7 @@ type Node struct {
 // window built by the descriptor of the kind (BLOCKS 2с, «окно и свойства
 // объекта — один построитель»).
 var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress,
-	metadata.ConstantKind: constantEditorAddress}
+	metadata.ConstantKind: constantEditorAddress, metadata.CommonPictureKind: pictureEditorAddress}
 
 // registerObjectWindow serves what the window of an object writes at its
 // address, one way for every window (objectEditors): the object as edited,
@@ -129,18 +132,20 @@ func registerObjectWindow[Object, Window any](routes *http.ServeMux, address str
 }
 
 // markEditor gives the branch of a kind and every object in it the address
-// of the kind's window.
+// of the kind's window, and «Добавить» where Studio makes the kind's new
+// object.
 func markEditor(branch *Node, kind string) {
 	address, ok := objectEditors[metadata.Kind(kind)]
 	if !ok {
 		return
 	}
-	branch.Editor = address
+	adds := metadata.MakesNewObject(metadata.Kind(kind))
+	branch.Editor, branch.Adds = address, adds
 	var mark func(nodes []Node)
 	mark = func(nodes []Node) {
 		for index := range nodes {
 			if nodes[index].Kind == "metadata" && strings.HasPrefix(nodes[index].Path, branch.Path+"/") {
-				nodes[index].Editor = address
+				nodes[index].Editor, nodes[index].Adds = address, adds
 			}
 			mark(nodes[index].Children)
 		}
@@ -323,6 +328,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
 	registerConstantEditorRoutes(routes, workspace)
+	registerPictureEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)

@@ -43,6 +43,10 @@ const BaseScreenDensity ScreenDensity = 100
 // not appear, and that is indistinguishable from a picture nobody added.
 var pictureFormats = []string{"png", "svg", "gif", "ico", "jpg", "bmp"}
 
+// PictureFormats are the formats an image of a picture is kept in, by the
+// extension of its file.
+func PictureFormats() []string { return slices.Clone(pictureFormats) }
+
 // CommonPictureDefinition is one image of the configuration's picture library.
 //
 // The image itself is not a property but a file, the same way a template's

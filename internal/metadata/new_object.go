@@ -76,6 +76,13 @@ var kindNewObjectOf = map[Kind]newObject{
 	CommandGroupKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
 		return Fresh{Value: CommandGroupDefinition{Format: CurrentFormat, ID: id, Name: name, Category: NavigationPanelCategory, Representation: CommandAuto}}
 	},
+	// obshchaya-kartinka.md: the window opens on «Добавить», with no image -
+	// the model takes a picture of none - and both availabilities off, as
+	// the help gives them by default (ОбщаяКартинка, ДоступностьДляВыбора,
+	// ДоступностьДляОформления).
+	CommonPictureKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: CommonPictureDefinition{Format: CurrentFormat, ID: id, Name: name}}
+	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».
 	EnumerationKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
@@ -94,6 +101,13 @@ func NewObject(kind Kind, id uuid.UUID, name string, configuration project.Proje
 		return Fresh{}, false
 	}
 	return item.fresh(id, name, configuration), true
+}
+
+// MakesNewObject says «Добавить» makes an object of the kind: its values
+// of a new one are known (NewObject).
+func MakesNewObject(kind Kind) bool {
+	item, ok := kindInfoOf(kind)
+	return ok && item.fresh != nil
 }
 
 // EncodeObject is the files of a description as the project keeps them: the

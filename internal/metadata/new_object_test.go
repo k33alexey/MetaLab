@@ -14,7 +14,7 @@ import (
 // itself would refuse to read back. The values are written out here from the
 // inventory of block 00, not taken from kindNewObjectOf: spravochnik.md
 // («Новый справочник»), konstanta.md, obshchij-modul.md, gruppa-komand.md,
-// perechislenie.md.
+// perechislenie.md, obshchaya-kartinka.md with the help's defaults.
 func TestANewObjectHasThePrototypesValues(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
@@ -42,6 +42,8 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 		}, nil},
 		{CommonModuleKind, CommonModuleDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Module: module, Server: true}, []string{moduleText}},
 		{CommandGroupKind, CommandGroupDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Category: "navigation-panel", Representation: "auto"}, nil},
+		// obshchaya-kartinka.md and the help: no image, neither availability.
+		{CommonPictureKind, CommonPictureDefinition{Format: CurrentFormat, ID: id, Name: "Новый"}, nil},
 		{EnumerationKind, Enumeration{
 			Format: CurrentFormat, ID: id, Name: "Новый",
 			ChoiceMode: "both-ways", QuickChoice: true, ChoiceHistoryOnInput: "auto", UseStandardCommands: false,

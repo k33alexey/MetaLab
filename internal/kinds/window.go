@@ -169,6 +169,21 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/obshchaya-kartinka.md, «Палитра»; snapshot
+	// obshchaya-kartinka/01-palitra: one tab, «Картинка: Открыть» opens the
+	// window of the picture, «Доступность для оформления» is unavailable
+	// until the picture is available for choice. The palette has no other
+	// tab for «только важные» to leave out, so this one keeps everything.
+	CommonPicture: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("картинки", "о картинке"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "picture", Title: "Картинка", Field: WindowField, Important: true, Description: "Изображение картинки: открывается её окном."},
+			{Key: "availableForChoice", Title: "Доступность для выбора", Field: FlagField, Important: true,
+				Description: "Картинку можно выбрать в приложении, задавая картинку ячейки, рисунка или колонтитула табличного документа."},
+			{Key: "availableForAppearance", Title: "Доступность для оформления", Field: FlagField, Important: true, Needs: []string{"availableForChoice"},
+				Description: "Картинку можно выбрать в приложении и для элемента условного оформления."},
+		})},
+	},
 	// docs/block-00/konstanta.md, «Палитра свойств»; snapshots
 	// konstanta/palitra-*: three tabs, «только важные» keeps «Основные» and
 	// «Данные»; the modules are named as the palette of a constant names
