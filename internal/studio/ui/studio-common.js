@@ -175,6 +175,17 @@ function watchName(input, check) {
   return () => last;
 }
 
+/* nameInput is the field of a name in every window of Studio: a text by the
+   model's ceiling of a name (limited) checked by the server once it is left
+   (watchName). apply(value) is called on every keystroke - where a title
+   follows the name, the caller lets it follow there; check() is watchName's.
+   options are textInput's (disabled). */
+function nameInput(value, apply, check, options = {}) {
+  const input = textInput(value, apply, limited('name', options));
+  watchName(input, check);
+  return input;
+}
+
 /* selectInput chooses one of choices, given as [value, text] pairs. */
 function selectInput(choices, value, apply, label) {
   const select = node('select');

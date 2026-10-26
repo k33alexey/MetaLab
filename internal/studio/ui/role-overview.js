@@ -935,12 +935,12 @@ function createRoleOverview(host, openRole, onChange) {
     state.changeName = name !== null; state.changeCondition = text !== null;
     const nameFlag = checkboxField('Изменять наименование', state.changeName, enabled => { state.changeName = enabled; }, 'role-check');
     const textFlag = checkboxField('Изменять текст', state.changeCondition, enabled => { state.changeCondition = enabled; }, 'role-check');
-    const nameInput = textInput(state.name, value => { state.name = value; state.changeName = true; nameFlag.querySelector('input').checked = true; });
-    nameInput.setAttribute('aria-label', 'Наименование');
+    const nameField = textInput(state.name, value => { state.name = value; state.changeName = true; nameFlag.querySelector('input').checked = true; });
+    nameField.setAttribute('aria-label', 'Наименование');
     const editor = queryTextField(state.condition, value => { state.condition = value; state.changeCondition = true; textFlag.querySelector('input').checked = true; }, 'Текст шаблона');
-    if (editing) content.append(nameFlag, node('div', 'Наименование:', 'role-restriction-caption'), nameInput,
+    if (editing) content.append(nameFlag, node('div', 'Наименование:', 'role-restriction-caption'), nameField,
       textFlag, node('div', 'Текст шаблона:', 'role-restriction-caption'), editor);
-    else content.append(node('div', 'Наименование', 'role-restriction-caption'), nameInput, node('div', 'Текст шаблона', 'role-restriction-caption'), editor);
+    else content.append(node('div', 'Наименование', 'role-restriction-caption'), nameField, node('div', 'Текст шаблона', 'role-restriction-caption'), editor);
     return {content, state};
   }
   const templateNameCheck = state => () => state.changeName && !state.name.trim() ? 'Укажите наименование шаблона.' : '';

@@ -302,3 +302,80 @@ func TestAValueBeyondItsCeilingAsksToCancel(t *testing.T) {
 		t.Errorf("a value beyond its ceiling: %+v", steps)
 	}
 }
+
+// roleNameWalk opens the role Кладовщик and types into the name of its
+// window a name the rule refuses, then a name of two words, then a comment;
+// it answers the refusal, whether the field was given back, the title after
+// the second name, and whether the window was marked changed by each.
+const roleNameWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  const field = caption => [...document.querySelectorAll('#role-editor .role-identity label')].find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
+  [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click();
+  await studio.settle();
+  const name = field('Имя роли');
+  const type = async (input, text) => {
+    input.focus();
+    input.value = text;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    document.querySelector('#refresh').focus();
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+    await studio.settle();
+  };
+  await type(name, 'Товары склада');
+  const dialog = document.querySelector('dialog[open]');
+  steps.refusal = dialog?.querySelector('h3').textContent || '';
+  [...(dialog?.querySelectorAll('button') || [])].find(button => button.textContent === 'ОК')?.click();
+  await studio.settle();
+  steps.focused = document.activeElement === name;
+  await type(name, 'СтаршийКладовщик');
+  steps.title = field('Заголовок').value;
+  steps.changedByName = !document.querySelector('#save').disabled;
+  document.querySelector('#save').click(); await studio.settle(); await studio.settle();
+  steps.saved = document.querySelector('#save').disabled;
+  const comment = field('Комментарий');
+  comment.value = 'Склад';
+  comment.dispatchEvent(new Event('input', {bubbles: true}));
+  await studio.settle();
+  steps.changedByComment = !document.querySelector('#save').disabled;
+  return steps;
+})()`
+
+// The name of a role is the field of every name of Studio (nameInput,
+// studio-common.js): a name the rule refuses is answered at once with the
+// prototype's words and the field is given back to be put right
+// (obshchee.md, «Имя и синоним»), the title follows the name (obshchee.md,
+// «Текст из имени»), and the comment is a text field of Studio that marks
+// the window changed. Defects caught: the role's field built by hand left
+// without the check, the following title or the ceiling (the ceiling is
+// TestEveryFieldTakesTheModelsCeiling's); a comment that changes nothing
+// until the field is left.
+func TestTheNameOfARoleIsTheFieldOfEveryName(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(workspace *Workspace) {
+		if _, err := workspace.CreateRole("Кладовщик"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	result, err := browser.evaluate(ctx, page, roleNameWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Refusal, Title                                  string
+		Focused, ChangedByName, Saved, ChangedByComment bool
+	}
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if got.Refusal != refusedRule || !got.Focused {
+		t.Errorf("the role's name «Товары склада» was answered %q (field given back: %v), want %q", got.Refusal, got.Focused, refusedRule)
+	}
+	if got.Title != "Старший кладовщик" || !got.ChangedByName || !got.Saved {
+		t.Errorf("after the name СтаршийКладовщик the title is %q, changed %v, saved %v; want «Старший кладовщик», changed, saved", got.Title, got.ChangedByName, got.Saved)
+	}
+	if !got.ChangedByComment {
+		t.Error("a comment typed did not mark the window changed")
+	}
+	for _, problem := range browser.problems() {
+		t.Errorf("browser: %s", problem)
+	}
+}

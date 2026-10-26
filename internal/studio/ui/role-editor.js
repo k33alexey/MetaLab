@@ -264,6 +264,10 @@ function createRoleModel(source) {
   }
   return {
     value: clean,
+    // The name and the title as they are edited, which the window's fields
+    // read: the title follows the name typed last (field.follow).
+    name() { return value.role.name; },
+    title(language) { return value.role.title?.[language]; },
     setName(name) { value.role.name = name; },
     setTitle(language, title) { value.role.title = setTranslation(value.role.title, language, title); },
     setComment(comment) { value.role.comment = comment; },
@@ -1122,8 +1126,8 @@ function createRoleEditor(host, onChange) {
   async function editTemplate(index){
     const current=model.templates()[index]||{name:'',condition:''},content=node('div',undefined,'role-restriction-form');
     let name=current.name,condition=current.condition||'';
-    const nameInput=node('input');nameInput.value=name;nameInput.setAttribute('aria-label','Наименование');nameInput.addEventListener('input',()=>{name=nameInput.value;});
-    content.append(node('div','Наименование','role-restriction-caption'),nameInput,node('div','Текст шаблона','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Текст шаблона'));
+    const nameField=node('input');nameField.value=name;nameField.setAttribute('aria-label','Наименование');nameField.addEventListener('input',()=>{name=nameField.value;});
+    content.append(node('div','Наименование','role-restriction-caption'),nameField,node('div','Текст шаблона','role-restriction-caption'),queryTextField(condition,text=>{condition=text;},'Текст шаблона'));
     const answer=await showDialog({title:'Шаблон ограничения',content,className:'role-restriction-dialog',answers:[['ok','ОК'],[null,'Отмена']],check:()=>name.trim()?'':'Укажите наименование шаблона.'});
     if(answer!=='ok')return;
     model.putTemplate(index,{name,condition});templateRow=index;changed();renderTemplates();
@@ -1144,11 +1148,10 @@ function createRoleEditor(host, onChange) {
     open(value, preserveSelection=false) {
       clearTitleField();
       const previous=preserveSelection?selected:null;source=structuredClone(value);model=createRoleModel(source);selected=preserveSelection?null:openRoleTree(source.schema,expanded);if(previous?.group)selected={group:previous.group};else if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
-      const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=node('input');name.value=source.role.name;Object.assign(name,limited('name'));name.addEventListener('input',()=>{const before=source.role.name;model.setName(name.value);titleField.follow(before,name.value);changed();});watchName(name,()=>({path:source.path,name:name.value}));label.append(name);identity.append(label);
-      const titleLabel=node('label','Заголовок'),titleField=createLocalizedField(source,code=>source.role.title[code],(code,value)=>model.setTitle(code,value),changed,titleTextOptions);
+      const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=nameInput(source.role.name,value=>{const before=model.name();model.setName(value);titleField.follow(before,value);changed();},()=>({path:source.path,name:name.value}));label.append(name);identity.append(label);
+      const titleLabel=node('label','Заголовок'),titleField=createLocalizedField(source,code=>model.title(code),(code,value)=>model.setTitle(code,value),changed,titleTextOptions);
       titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
-      const commentLabel=node('label','Комментарий'),comment=node('textarea');comment.value=source.role.comment||'';comment.rows=2;
-      comment.addEventListener('change',()=>{model.setComment(comment.value);changed();});commentLabel.append(comment);identity.append(commentLabel);
+      const commentLabel=node('label','Комментарий'),comment=textInput(source.role.comment,value=>{model.setComment(value);changed();},{kind:'area',rows:2});commentLabel.append(comment);identity.append(commentLabel);
       identity.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
       // The prototype asks before the flag for attributes changes whether to
       // set or clear the rights on every attribute and table part.

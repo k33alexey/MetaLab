@@ -190,13 +190,12 @@ function createProjectEditor(host, onChange) {
 
     const identity = section('Как называется');
     const synonym = localizedField('Синоним', 'title');
-    const name = textInput(source.configuration.name, value => {
+    const name = nameInput(source.configuration.name, value => {
       const before = source.configuration.name;
       model.setName(value);
       synonym.text.follow(before, value);
       touch();
-    }, limited('name'));
-    watchName(name, () => ({path: 'configuration.yaml', name: name.value}));
+    }, () => ({path: 'configuration.yaml', name: name.value}));
     identity.append(labeledField('Имя', name), synonym);
     identity.append(textField('Комментарий', source.configuration.comment,
       value => model.setField('comment', value)));

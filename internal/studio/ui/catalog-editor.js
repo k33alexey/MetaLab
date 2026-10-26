@@ -108,9 +108,8 @@ function createCatalogEditor(host, onChange) {
   // The field of a name: at is the way to the part in the catalog, none for
   // the catalog's own name.
   function nameField(value, apply, at) {
-    const input = textInput(value, value => { apply(value); touch(); }, limited('name'));
-    watchName(input, () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: source.catalog.name});
-    return labeledField('Имя', input);
+    return labeledField('Имя', nameInput(value, value => { apply(value); touch(); },
+      () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: source.catalog.name}));
   }
   // The way to an attribute: of the catalog, or of one of its table parts.
   function attributeWay(container, attribute) {
