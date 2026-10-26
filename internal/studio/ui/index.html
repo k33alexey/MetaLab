@@ -146,8 +146,10 @@
     const catalogHost=document.querySelector('#catalog-editor');
     const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor));
     // The windows of objects by the address the tree gives each object
-    // (Node.Editor): what part of the answer of the address the window edits.
-    const objectEditors={'/api/role':{editor:roleEditor,field:'role'},'/api/catalog':{editor:catalogEditor,field:'catalog'}};
+    // (Node.Editor): what part of the answer of the address the window edits,
+    // and the command over the common part of the object's menu that opens it
+    // (rol.md, «Команды»: «Открыть права» of a role).
+    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'}};
     function objectChanged(editor){if(objectEditors[currentFile?.editor]?.editor!==editor)return;dirty=JSON.stringify(editor.value())!==currentFile.initial;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'}
     const projectHost=document.querySelector('#project-editor');
     const projectEditor=createProjectEditor(projectHost,()=>{if(!currentFile?.isProject)return;dirty=JSON.stringify(projectEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Проект изменён':'Готово'});
@@ -170,9 +172,10 @@
     // каждого вида); модуль, которого объект не держит, — недоступен;
     // команда — действие самого объекта (жирным) — исполняется и двойным
     // щелчком. «Все роли» и «Все ограничения доступа» — команды ветви «Роли»
-    // и корня конфигурации (справка, «Все роли», «Все ограничения доступа»).
-    function treeCommands(node){const commands=(node.modules||[]).map(module=>[module.command,()=>openModule(module),!module.disabled,undefined,'open-module',module.main]);const overview=node.id==='project'||node.kind==='metadata-group'&&objectEditors[node.editor]?.editor===roleEditor?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
-    function offerTreeCommands(node,element){const commands=treeCommands(node);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)});const main=(node.modules||[]).find(module=>module.main);if(main)element.addEventListener('dblclick',async event=>{event.stopPropagation();await selecting;openModule(main)})}
+    // и корня конфигурации (справка, «Все роли», «Все ограничения доступа»);
+    // «Открыть права» — команда роли над общей частью, открывает её окно.
+    function treeCommands(node,element){const opens=node.kind==='metadata'&&objectEditors[node.editor]?.open;const commands=[...(opens?[[opens,()=>selectNode(node,element)]]:[]),...(node.modules||[]).map(module=>[module.command,()=>openModule(module),!module.disabled,undefined,'open-module',module.main])];const overview=node.id==='project'||node.kind==='metadata-group'&&objectEditors[node.editor]?.editor===roleEditor?Object.entries(overviewWindows).map(([view,text])=>[text,()=>openRoleOverview(view)]):[];return commands.length&&overview.length?[...commands,null,...overview]:[...commands,...overview]}
+    function offerTreeCommands(node,element){const commands=treeCommands(node,element);if(commands.length)element.addEventListener('contextmenu',event=>{event.stopPropagation();showContextMenu(event,commands)});const main=(node.modules||[]).find(module=>module.main);if(main)element.addEventListener('dblclick',async event=>{event.stopPropagation();await selecting;openModule(main)})}
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
     // правится. Перечень редакторов — здесь, один.

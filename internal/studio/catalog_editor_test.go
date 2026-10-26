@@ -129,15 +129,17 @@ func TestCatalogAutoGrantsDefaultAccessToRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grantingAfterCreate.Role.Objects) != 1 || grantingAfterCreate.Role.Objects[0].Object != created.Catalog.ID ||
-		!slices.Contains(grantingAfterCreate.Role.Objects[0].Operations, metadata.PermissionRead) {
+	// A new role comes with its rights on the configuration (NewRole); the
+	// catalog is the one entry the creation adds.
+	if catalogRights := rightsOn(grantingAfterCreate.Role, created.Catalog.ID); len(grantingAfterCreate.Role.Objects) != len(granting.Role.Objects)+1 ||
+		catalogRights == nil || !slices.Contains(catalogRights.Operations, metadata.PermissionRead) {
 		t.Fatalf("opted-in role did not gain default read access: %+v", grantingAfterCreate.Role.Objects)
 	}
 	plainAfterCreate, err := workspace.ReadRole(plain.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plainAfterCreate.Role.Objects) != 0 {
+	if len(plainAfterCreate.Role.Objects) != len(plain.Role.Objects) || rightsOn(plainAfterCreate.Role, created.Catalog.ID) != nil {
 		t.Fatalf("role without opt-in must stay untouched: %+v", plainAfterCreate.Role.Objects)
 	}
 
@@ -158,16 +160,28 @@ func TestCatalogAutoGrantsDefaultAccessToRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grantingAfterField.Role.Objects[0].Fields) != 1 || grantingAfterField.Role.Objects[0].Fields[0].Field != attributeID.String() {
-		t.Fatalf("opted-in role did not gain default field access: %+v", grantingAfterField.Role.Objects[0].Fields)
+	if fields := rightsOn(grantingAfterField.Role, created.Catalog.ID).Fields; len(fields) != 1 || fields[0].Field != attributeID.String() {
+		t.Fatalf("opted-in role did not gain default field access: %+v", fields)
 	}
 	plainAfterField, err := workspace.ReadRole(plain.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plainAfterField.Role.Objects) != 0 {
+	// The plain role sets rights for new attributes, as every new role does,
+	// and still gains none: it has no entry for the catalog.
+	if len(plainAfterField.Role.Objects) != len(plain.Role.Objects) || rightsOn(plainAfterField.Role, created.Catalog.ID) != nil {
 		t.Fatalf("role without any object access must not gain a field grant: %+v", plainAfterField.Role.Objects)
 	}
+}
+
+// rightsOn is what role says about object, nil when it says nothing.
+func rightsOn(role metadata.RoleDefinition, object uuid.UUID) *metadata.ObjectPermission {
+	for index := range role.Objects {
+		if role.Objects[index].Object == object {
+			return &role.Objects[index]
+		}
+	}
+	return nil
 }
 
 // TestDeletingAFieldTakesItOffTheRestrictionsOfRoles holds what the
@@ -312,7 +326,7 @@ func TestDeletingAFieldTakesItOffTheRightsOfRoles(t *testing.T) {
 			t.Fatal(err)
 		}
 		var keys []string
-		for _, field := range role.Role.Objects[0].Fields {
+		for _, field := range rightsOn(role.Role, created.Catalog.ID).Fields {
 			keys = append(keys, field.Field)
 		}
 		return keys

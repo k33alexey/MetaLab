@@ -51,7 +51,8 @@ func TestRoleEditorCreateReadSaveAndConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created.Role.Objects) != 0 || len(created.Role.Commands) != 0 || len(created.Schema.Objects) != 2 {
+	// What a new role grants is TestANewRoleComesWithThePrototypesRights's.
+	if len(created.Role.Commands) != 0 || len(created.Schema.Objects) != 2 {
 		t.Fatalf("unsafe new role: %+v", created)
 	}
 	encoded, _ := json.Marshal(created)
@@ -188,6 +189,77 @@ func TestARoleIsComparedByItsOwnRevision(t *testing.T) {
 	}
 }
 
+// A new role comes as the prototype's does (inventory of 15.10.2026, rol.md,
+// «Новая роль»; ACCESS-RIGHTS, «Новая роль у прототипа приходит не пустой»):
+// on the configuration the start of the application - ML's one right in
+// place of the thin, the web and the mobile client -, saving user data and
+// output, nothing else; the role is read back from disk as it was answered,
+// so its first save is not a conflict, and the project loads with it. A role
+// whose order cannot be written leaves neither its description nor its
+// rights. Defects caught: an empty new role (CreateRole before 2.565), a
+// grid not written or its revision not in the answer, and the rights left
+// behind by a refused creation.
+func TestANewRoleComesWithThePrototypesRights(t *testing.T) {
+	t.Parallel()
+	workspace, _ := roleWorkspace(t)
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreateRole("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []metadata.ObjectPermission{{Object: loaded.Project.ID, Operations: []metadata.PermissionOperation{"run-application", "save-user-data", "output"}}}
+	same := func(got []metadata.ObjectPermission) bool {
+		return slices.EqualFunc(got, want, func(a, b metadata.ObjectPermission) bool {
+			return a.Object == b.Object && slices.Equal(a.Operations, b.Operations) && len(a.Denied)+len(a.Fields)+len(a.Restrictions) == 0
+		})
+	}
+	if created.Role.Name != "Роль1" || !same(created.Role.Objects) {
+		t.Fatalf("the new role is %s with %+v, want Роль1 with %+v", created.Role.Name, created.Role.Objects, want)
+	}
+	read, err := workspace.ReadRole(created.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Revision != created.Revision || !same(read.Role.Objects) || !read.Role.GrantNewFieldsByDefault {
+		t.Fatalf("the role on disk is %+v at %s, answered at %s", read.Role, read.Revision, created.Revision)
+	}
+	if _, err := workspace.SaveRole(created.Path, created.Role, created.Revision); err != nil {
+		t.Fatalf("the first save of the new role: %v", err)
+	}
+	reloaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role, ok := reloaded.Role("Роль1"); !ok || !same(role.Objects) {
+		t.Fatalf("the project loads the new role as %+v", role)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("a folder without write permission does not refuse root")
+	}
+	roles := filepath.Join(workspace.root, "metadata", "roles")
+	before, err := os.ReadDir(roles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(workspace.root, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	_, createErr := workspace.CreateRole("")
+	if err := os.Chmod(workspace.root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if createErr == nil {
+		t.Fatal("a role whose order could not be written was made")
+	}
+	if after, err := os.ReadDir(roles); err != nil || len(after) != len(before) {
+		t.Fatalf("the refused role left %d entries in %s, want %d (%v)", len(after), roles, len(before), err)
+	}
+}
+
 // Restrictions must survive a real save/read cycle, and a restriction the
 // project cannot resolve must be refused before it reaches the working copy.
 // A role carries three flags of the prototype, and the third - independent
@@ -202,15 +274,17 @@ func TestRoleKeepsItsThreeFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Role.IndependentChildRights || created.Role.GrantNewObjectsByDefault || created.Role.GrantNewFieldsByDefault {
-		t.Fatalf("a new role was given a flag nobody set: %+v", created.Role)
+	// The prototype's new role sets rights for attributes by default alone
+	// (rol.md, «Новая роль»).
+	if created.Role.IndependentChildRights || created.Role.GrantNewObjectsByDefault || !created.Role.GrantNewFieldsByDefault {
+		t.Fatalf("a new role has not the flags of the prototype's: %+v", created.Role)
 	}
 	// Through the routes the editor uses, under the names the editor writes:
 	// the flag has to cross JSON both ways, not only YAML.
 	handler := NewHandler(workspace)
 	body, err := json.Marshal(map[string]any{"path": created.Path, "expectedRevision": created.Revision,
 		"object": map[string]any{"format": created.Role.Format, "id": created.Role.ID, "name": created.Role.Name, "title": created.Role.Title,
-			"independentChildRights": true, "grantNewFieldsByDefault": true}})
+			"independentChildRights": true, "grantNewObjectsByDefault": true, "grantNewFieldsByDefault": false}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +306,7 @@ func TestRoleKeepsItsThreeFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	role, ok := catalog.Role("Ответственный")
-	if !ok || !role.IndependentChildRights || !role.GrantNewFieldsByDefault || role.GrantNewObjectsByDefault {
+	if !ok || !role.IndependentChildRights || role.GrantNewFieldsByDefault || !role.GrantNewObjectsByDefault {
 		t.Fatalf("the flags did not survive saving and loading: %+v", role)
 	}
 }

@@ -502,8 +502,9 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err := workspace.objectNameErrorLocked("", branchOf(string(metadata.RoleKind)), name); err != nil {
 		return RoleSource{}, err
 	}
-	// No synonym, as a new catalog has none (CreateCatalog).
-	role := metadata.RoleDefinition{Format: metadata.CurrentFormat, ID: id, Name: name}
+	// No synonym, as a new catalog has none (CreateCatalog); the rights the
+	// prototype's new role comes with.
+	role := metadata.NewRole(id, name, configuration.ID)
 	if err := metadata.ValidateRole("new role", role, configuration); err != nil {
 		return RoleSource{}, err
 	}
@@ -522,34 +523,46 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return RoleSource{}, ErrInvalidSourcePath
 	}
-	// A new role says nothing about any object, so it has no grid.
-	description, _, err := metadata.EncodeRole(role)
+	description, grid, err := metadata.EncodeRole(role)
 	if err != nil {
 		return RoleSource{}, err
 	}
-	content := bytes.NewBuffer(description)
-	file, err := os.OpenFile(filepath.Join(workspace.root, filepath.FromSlash(relative)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	// The grid goes first, as a save writes it (replaceRoleFilesLocked), and
+	// goes with the description when anything after it is refused.
+	descriptionPath := filepath.Join(workspace.root, filepath.FromSlash(relative))
+	gridPath := workspace.roleGridPath(relative)
+	takeAway := func() {
+		_ = os.Remove(descriptionPath)
+		_ = writeRoleGrid(gridPath, nil)
+	}
+	if err := writeRoleGrid(gridPath, grid); err != nil {
+		takeAway()
+		return RoleSource{}, fmt.Errorf("create role: %w", err)
+	}
+	file, err := os.OpenFile(descriptionPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
+		_ = writeRoleGrid(gridPath, nil)
 		return RoleSource{}, err
 	}
-	_, writeErr := file.Write(content.Bytes())
+	_, writeErr := file.Write(description)
 	if writeErr == nil {
 		writeErr = file.Sync()
 	}
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
-		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		takeAway()
 		return RoleSource{}, fmt.Errorf("create role: write=%v, close=%v", writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
 	// The new role stands last among the roles; an order that cannot be
 	// written takes the role away again.
 	if _, err := workspace.placeInOrderLocked(metadata.RoleKind, id); err != nil {
-		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		takeAway()
 		workspace.invalidateStudioIndexesLocked()
 		return RoleSource{}, fmt.Errorf("place new role in the order: %w", err)
 	}
-	return RoleSource{Path: relative, Revision: sourceFile(relative, "yaml", content.Bytes()).Revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
+	written := roleFiles{description: sourceFile(relative, "yaml", description), grid: grid}
+	return RoleSource{Path: relative, Revision: written.revision(), Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

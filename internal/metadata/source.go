@@ -399,6 +399,21 @@ var configurationRights = inPrototypeOrder([]PermissionOperation{
 	PermissionExclusiveModeTerminationAtSessionStart,
 })
 
+// NewRole is a role as «Добавить» makes it: the prototype's new role is not
+// empty (inventory of 15.10.2026, rol.md, «Новая роль»). On the configuration
+// it grants the clients, the modes of the main window, the analytics client,
+// saving user data and output; in ML that is the start of the application in
+// place of the clients, saving user data and output - the modes of the window
+// and the analytics client ML does not keep (ACCESS-RIGHTS, «Новая роль у
+// прототипа приходит не пустой»). Of the three flags only rights for
+// attributes and table parts by default is set.
+func NewRole(id uuid.UUID, name string, configuration uuid.UUID) RoleDefinition {
+	return RoleDefinition{Format: CurrentFormat, ID: id, Name: name, GrantNewFieldsByDefault: true,
+		Objects: []ObjectPermission{{Object: configuration, Operations: inPrototypeOrder([]PermissionOperation{
+			PermissionRunApplication, PermissionSaveUserData, PermissionOutput,
+		})}}}
+}
+
 // inPrototypeOrder puts rights in the prototype's order (roleRights), the
 // order the editor shows them in.
 func inPrototypeOrder(rights []PermissionOperation) []PermissionOperation {
