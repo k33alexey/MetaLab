@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -19,7 +20,8 @@ const objectWindowSteps = `
   const openObject = async text => { treeRow(text).click(); await window.__studio.settle(); };
   const windowPage = async caption => { [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === caption).click(); await window.__studio.settle(); };
   const windowRow = async caption => { [...document.querySelectorAll('.object-window-body .studio-tree-row')].find(item => item.textContent.trim() === caption).click(); await window.__studio.settle(); };
-  const windowField = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .catalog-check')].find(label => label.querySelector('span').textContent === caption);
+  const windowField = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .catalog-check, ' + host + ' .object-palette-row')]
+    .find(label => label.querySelector('span').textContent === caption);
 `
 
 // catalogWindowWalk opens the window of the catalog Товары and reads it as
@@ -699,4 +701,121 @@ func TestThePresentationOfThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	expect("«Справка»", steps.Help, []string{"Включать в содержание справки", "Справочная информация"})
 	expect("«Справка» unavailable", steps.HelpUnavailable, []string{"Справочная информация"})
 	expect("the form opened", steps.Opened, "metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml")
+}
+
+// partPaletteWalk chooses in the window of the catalog Товары its string
+// attribute Артикул, its number attribute Цена, its table part Состав and
+// the attribute Количество of it, and reads the palette of each: the tabs,
+// the rows of a tab, values; it types a length beyond the ceiling of a
+// string and a length of the line number beyond its bound, answering «Да».
+const partPaletteWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const palette = () => document.querySelector('#properties .object-palette');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const tabs = () => [...palette().querySelectorAll('.studio-tab')].map(tab => tab.textContent);
+  const tab = async caption => { [...palette().querySelectorAll('.studio-tab')].find(item => item.textContent === caption).click(); await settle(); };
+  const rows = () => [...palette().querySelectorAll('.object-palette-row .object-palette-caption')].map(item => item.textContent);
+  const field = caption => windowField('#properties', caption).querySelector('input, select');
+  const read = async () => { const result = {title: document.querySelector('#inspector-title').textContent, tabs: tabs()}; for (const caption of tabs()) { await tab(caption); result[caption] = rows(); } await tab(tabs()[0]); return result; };
+  const commit = async (caption, value) => {
+    const input = field(caption);
+    input.focus(); input.value = value; document.querySelector('#refresh').focus(); input.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+    const dialog = document.querySelector('dialog[open]'), question = dialog?.querySelector('h3').textContent || '';
+    if (dialog) { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Да').click(); await settle(); }
+    return {question, value: field(caption).value};
+  };
+  await openObject('Товары');
+  await windowPage('Данные');
+  await windowRow('Артикул');
+  steps.string = await read();
+  steps.length = field('Длина').value;
+  steps.beyond = await commit('Длина', '2000');
+  windowField('#properties', 'Неограниченная длина').querySelector('input').click(); await settle();
+  steps.unlimited = field('Длина').value;
+  await tab('Использование');
+  steps.indexing = field('Индексировать').value;
+  await windowRow('Цена');
+  steps.number = await read();
+  steps.precision = [field('Длина').value, field('Точность').value];
+  await windowRow('Состав');
+  steps.part = await read();
+  await tab('Данные');
+  steps.lineNumber = await commit('Длина номера строки', '10');
+  steps.lineNumberTaken = await commit('Длина номера строки', '9');
+  await windowRow('Количество');
+  steps.partAttribute = await read();
+  return steps;
+})()`
+
+// The palette of a part chosen in the window of a catalog is the
+// prototype's (docs/block-00/rekvizit.md, tablichnaya-chast.md, «Палитра»;
+// snapshots spravochnik/rekvizit-*): an attribute - «Основные»,
+// «Использование», «Представление», its rows by the kind of its type, the
+// use only at an attribute of the catalog itself; a table part -
+// «Основные», «Данные», «Использование», «Представление». A qualifier is
+// written by the rules of the window of the type: a length of a string
+// beyond its ceiling is asked about, «Неограниченная длина» makes it 0; the
+// length of the line number takes 5 to 9. The expectations are written out
+// from the inventory. Defects caught: the old panel of five fields in place
+// of the palette; a row of a string at a number or back; the use at an
+// attribute of a table part; a qualifier written past the model's ceiling.
+func TestThePaletteOfAPartOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
+		goods, err := workspace.ReadCatalogEditor("metadata/catalogs/Товары/object.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		goods.Catalog.Attributes = append(goods.Catalog.Attributes, metadata.Attribute{ID: uuid.MustNew(), Name: "Цена",
+			Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 15, Scale: 2}}})
+		goods.Catalog.TableParts = append(goods.Catalog.TableParts, metadata.TablePart{ID: uuid.MustNew(), Name: "Состав",
+			Attributes: []metadata.Attribute{{ID: uuid.MustNew(), Name: "Количество", Types: []metadata.Type{{Kind: metadata.NumberType, Precision: 10}}}}})
+		if _, err := workspace.SaveCatalogEditor(goods.Path, goods.Catalog, goods.Revision); err != nil {
+			t.Fatal(err)
+		}
+	})
+	result, err := browser.evaluate(ctx, page, partPaletteWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type answered struct{ Question, Value string }
+	var steps struct {
+		String, Number, Part, PartAttribute map[string]any
+		Length, Unlimited, Indexing         string
+		Beyond, LineNumber, LineNumberTaken answered
+		Precision                           []string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	presentationOfAll := []string{"Заполнять из данных заполнения", "Значение заполнения", "Проверка заполнения", "Быстрый выбор",
+		"Создание при вводе", "История выбора при вводе", "Связь по типу"}
+	expect("an attribute of a string", steps.String, map[string]any{"title": "Свойства: Артикул", "tabs": []string{"Основные", "Использование", "Представление"},
+		"Основные":      []string{"Имя", "Синоним", "Комментарий", "Тип", "Длина", "Допустимая длина", "Неограниченная длина"},
+		"Использование": []string{"Использование", "Индексировать", "Полнотекстовый поиск", "История данных"},
+		"Представление": append([]string{"Режим пароля", "Подсказка", "Маска", "Многострочный режим", "Расширенное редактирование"}, presentationOfAll...)})
+	expect("the length of the string", steps.Length, "50")
+	expect("a length beyond the ceiling", steps.Beyond, answered{"В поле введены некорректные данные. Отменить ввод?", "50"})
+	expect("an unlimited length", steps.Unlimited, "0")
+	expect("indexing", steps.Indexing, "index")
+	expect("an attribute of a number", steps.Number, map[string]any{"title": "Свойства: Цена", "tabs": []string{"Основные", "Использование", "Представление"},
+		"Основные":      []string{"Имя", "Синоним", "Комментарий", "Тип", "Длина", "Точность", "Неотрицательное"},
+		"Использование": []string{"Использование", "Индексировать", "Полнотекстовый поиск", "История данных"},
+		"Представление": append([]string{"Формат", "Формат редактирования", "Подсказка", "Выделять отрицательные", "Минимальное значение", "Максимальное значение"}, presentationOfAll...)})
+	expect("the qualifiers of the number", steps.Precision, []string{"15", "2"})
+	expect("a table part", steps.Part, map[string]any{"title": "Свойства: Состав", "tabs": []string{"Основные", "Данные", "Использование", "Представление"},
+		"Основные": []string{"Имя", "Синоним", "Комментарий"}, "Данные": []string{"Стандартные реквизиты", "Длина номера строки"},
+		"Использование": []string{"Использование"}, "Представление": []string{"Подсказка", "Проверка заполнения"}})
+	expect("a line number of 10", steps.LineNumber.Question, "В поле введены некорректные данные. Отменить ввод?")
+	expect("a line number of 9", steps.LineNumberTaken, answered{"", "9"})
+	expect("an attribute of a table part", steps.PartAttribute["Использование"], []string{"Индексировать", "Полнотекстовый поиск", "История данных"})
 }

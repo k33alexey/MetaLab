@@ -34,6 +34,8 @@ type CatalogEditorSource struct {
 	// Palette is the tabs of the palette of the catalog and their rows, the
 	// kind's (kinds.Palette).
 	Palette []kinds.PaletteTab `json:"palette"`
+	// PartPalettes are the palettes of its parts: an attribute, a table part.
+	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 	// Choices are what the windows «Выбор объекта» of the catalog offer, by
 	// the property they choose: owners - the objects of the five kinds that
 	// may own it, basedOn - those of the eight that may be its basis.
@@ -89,7 +91,8 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		},
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
-		Palette: kinds.Must(metadata.CatalogKind).Palette(),
+		Palette:      kinds.Must(metadata.CatalogKind).Palette(),
+		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart")},
 	}, nil
 }
 

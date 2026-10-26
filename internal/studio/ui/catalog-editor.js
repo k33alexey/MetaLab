@@ -1,5 +1,20 @@
 'use strict';
 
+/* pathValue and setPathValue read and write a property of a description by
+   its key, dotted for one inside another - code.length, presentation.mask -
+   as the palette names it. A list, a text or a set of translations left
+   empty is not written at all. */
+function pathValue(object, path) {
+  return path.split('.').reduce((value, key) => value?.[key], object);
+}
+function setPathValue(object, path, value) {
+  const keys = path.split('.'), last = keys.pop();
+  let target = object;
+  for (const key of keys) target = target[key] ||= {};
+  const empty = value === '' || (Array.isArray(value) ? !value.length : value && typeof value === 'object' && !Object.keys(value).length);
+  if (empty) delete target[last]; else target[last] = value;
+}
+
 /* Catalog editor: fields/checkboxes/lists instead of hand-edited YAML.
    The model mutates `source.catalog` in place (no internal clone) so every
    render function can read straight from `source` and stay in sync. */
@@ -7,13 +22,6 @@ function createCatalogModel(source) {
   const catalog = source.catalog;
   catalog.attributes ||= [];
   catalog.tableParts ||= [];
-  // The platform indexes a field in one of three ways, not two. What the third
-  // one adds over the second its help does not say, so it is offered, stored
-  // and carried on unchanged.
-  const indexingModes = [
-    ['dont-index', 'Не индексировать'], ['index', 'Индексировать'],
-    ['index-with-additional-order', 'Индексировать с доп. упорядочиванием'],
-  ];
   // What the window «Редактирование типа данных» offers for a field the
   // database stores, as the server reads it off the model (TypeOffer).
   const typeOffer = source.typeOffer;
@@ -21,6 +29,7 @@ function createCatalogModel(source) {
     if (container === 'catalog') return catalog.attributes;
     return catalog.tableParts.find(part => part.id === container)?.attributes;
   }
+  function attributeOf(container, id) { return attributeList(container)?.find(item => item.id === id); }
   // The names taken in one branch: a new part is named apart from its
   // siblings, the check of a typed name is the server's (watchName).
   function names(list) {
@@ -33,7 +42,7 @@ function createCatalogModel(source) {
   }
   return {
     value() { return structuredClone(catalog); },
-    typeOffer, indexingModes, attributeList,
+    typeOffer, attributeList,
     setName(name) { catalog.name = name; },
     setTitle(language, text) { catalog.title = setTranslation(catalog.title, language, text); },
     setComment(text) { setText('comment', text); },
@@ -54,16 +63,13 @@ function createCatalogModel(source) {
     setOwners(owners) { if (owners.length) catalog.owners = owners; else delete catalog.owners; },
     // A property by its key in the description, dotted for one inside
     // another - code.length, hierarchy.enabled - as the palette names it.
-    get(path) { return path.split('.').reduce((value, key) => value?.[key], catalog); },
+    get(path) { return pathValue(catalog, path); },
     // Sets a property by its key: the settings of the hierarchy by their own
-    // rule (setHierarchy), an emptied list is not written at all.
+    // rule (setHierarchy), the rest by setPathValue.
     set(path, value) {
       const keys = path.split('.');
       if (keys[0] === 'hierarchy') { this.setHierarchy(keys[1], value); return; }
-      let target = catalog;
-      for (const key of keys.slice(0, -1)) target = target[key] ||= {};
-      const last = keys.at(-1);
-      if (Array.isArray(value) && !value.length) delete target[last]; else target[last] = value;
+      setPathValue(catalog, path, value);
     },
     setSubordination(subordination) { catalog.subordination = subordination; },
     setCodeSeries(series) { catalog.code.series = series; },
@@ -88,25 +94,9 @@ function createCatalogModel(source) {
       const list = attributeList(container), index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) moveInCircle(list, index, by);
     },
-    setAttributeName(container, id, name) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.name = name; },
-    setAttributeTitle(container, id, language, text) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (attribute) attribute.title = setTranslation(attribute.title, language, text);
-    },
-    setAttributeFillChecking(container, id, checked) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute) return;
-      if (checked) attribute.fillChecking = 'show-error'; else delete attribute.fillChecking;
-    },
-    setAttributeIndexing(container, id, indexing) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (!attribute) return;
-      if (indexing === 'dont-index') delete attribute.indexing; else attribute.indexing = indexing;
-    },
-    setAttributeTypes(container, id, types) {
-      const attribute = attributeList(container)?.find(item => item.id === id);
-      if (attribute) attribute.types = types;
-    },
+    setAttributeName(container, id, name) { const attribute = attributeOf(container, id); if (attribute) attribute.name = name; },
+    setAttributeTitle(container, id, language, text) { const attribute = attributeOf(container, id); if (attribute) attribute.title = setTranslation(attribute.title, language, text); },
+    setAttributeTypes(container, id, types) { const attribute = attributeOf(container, id); if (attribute) attribute.types = types; },
     addTablePart() {
       const part = {id: crypto.randomUUID(), name: numberedName('ТабличнаяЧасть', names(catalog.tableParts)), title: {}, attributes: []};
       catalog.tableParts.push(part);
@@ -376,82 +366,115 @@ function createCatalogEditor(host, onChange, around = {}) {
     return builtPages[key]?.() || null;
   }
 
-  // The palette: the properties of the attribute or the table part chosen
-  // in the window, as the prototype's palette follows the window.
-  function renderAttributePanel(container, attribute, way) {
-    const panel = node('div', undefined, 'catalog-detail');
-    panel.append(...nameAndSynonym(attribute, value => model.setAttributeName(container, attribute.id, value),
-      (language, value) => model.setAttributeTitle(container, attribute.id, language, value), way, paletteCleanups));
-    panel.append(checkboxField('Проверять заполнение', attribute.fillChecking === 'show-error',
-      value => { model.setAttributeFillChecking(container, attribute.id, value); rerender(); }));
-    panel.append(labeledField('Индексирование', selectInput(model.indexingModes, attribute.indexing || 'dont-index',
-      value => { model.setAttributeIndexing(container, attribute.id, value); rerender(); })));
-    // The type is a field of its presentation with «…», which opens the
-    // window «Редактирование типа данных» (showTypeEditor).
-    const shown = node('input');
-    shown.readOnly = true;
-    shown.value = typePresentation(model.typeOffer, attribute.types);
-    const pick = fieldChoiceButton('Редактирование типа данных', async () => {
-      const types = await showTypeEditor(model.typeOffer, attribute.types);
-      if (!types) return;
-      model.setAttributeTypes(container, attribute.id, types);
-      rerender();
-    });
-    panel.append(labeledField('Тип', fieldWithButtons(shown, [pick])));
-    return panel;
-  }
-  function renderTablePartPanel(part, way) {
-    const panel = node('div', undefined, 'catalog-detail');
-    panel.append(...nameAndSynonym(part, value => model.setTablePartName(part.id, value),
-      (language, value) => model.setTablePartTitle(part.id, language, value), way, paletteCleanups));
-    return panel;
-  }
   function clearPalette() {
     paletteCleanups.forEach(destroy => destroy());
     paletteCleanups = [];
     around.palette?.replaceChildren();
     around.paletteTitle?.('Свойства');
   }
-  // The palette of the catalog itself: the rows of the kind (source.palette)
-  // by their fields - the name with its synonym following it, a text in
-  // every language, a plain text, «Открыть» of a module.
-  function paletteControl(row) {
-    const target = catalog();
+  /* What a palette edits: the catalog or a part of it chosen in the window
+     (an attribute, a table part), each read and written by the key of a row
+     and named by its own rules. owner and type are what a row of a part is
+     shown by (kinds.PaletteRow.Shown). */
+  function catalogSubject() {
+    return {target: catalog(), get: path => model.get(path), set: (path, value) => model.set(path, value),
+      setName: value => model.setName(value), check: () => ({path: source.path, name: catalog().name})};
+  }
+  // The kind of the one type of an attribute as its palette tells them
+  // apart - string, number, reference - or composite.
+  function typeClass(types) {
+    if (types?.length !== 1) return 'composite';
+    return types[0].reference ? 'reference' : types[0].kind;
+  }
+  // A qualifier of the one type of an attribute, read off it as the window
+  // of the type shows it.
+  function qualifierOf(types, field) {
+    const type = types?.[0] || {};
+    return field === 'unlimited' ? !type.length : type[field];
+  }
+  function attributeSubject(container, attribute, way) {
+    return {target: attribute, owner: container === 'catalog' ? 'catalogs' : 'tablePart', type: typeClass(attribute.types),
+      get: path => path.startsWith('type.') ? qualifierOf(attribute.types, path.slice(5)) : pathValue(attribute, path),
+      // A qualifier is written by the model of the window of the type, by
+      // its rules and ceilings: a value beyond one is refused (false).
+      set(path, value) {
+        if (!path.startsWith('type.')) { setPathValue(attribute, path, value); return true; }
+        const types = typeEditorModel(model.typeOffer, attribute.types);
+        if (types.setQualifier(path.slice(5), value) === false) return false;
+        model.setAttributeTypes(container, attribute.id, types.result().types);
+        return true;
+      },
+      setName: value => model.setAttributeName(container, attribute.id, value),
+      check: () => ({path: source.path, description: model.value(), at: way})};
+  }
+  function tablePartSubject(part, way) {
+    return {target: part, owner: 'catalogs', get: path => pathValue(part, path), set: (path, value) => setPathValue(part, path, value),
+      setName: value => model.setTablePartName(part.id, value), check: () => ({path: source.path, description: model.value(), at: way})};
+  }
+  // A row stands where one of the conditions it is shown by holds.
+  function shownFor(subject) {
+    return row => !row.shown?.length || row.shown.some(condition => condition === `type=${subject.type}` || condition === `owner=${subject.owner}`);
+  }
+  // The field of a row of the palette by its kind (kinds.PaletteRow): the
+  // name with the synonym following it, a text in every language, a plain
+  // text, «Открыть» of a module or a window, a flag, a list, a number, a
+  // switch, a list of objects or fields, a main form, the type of a part, a
+  // value; null for a row the palette has no field for.
+  function paletteControl(subject, row) {
+    const target = subject.target;
     if (row.field === 'name') {
-      return nameInput(target.name, value => { const before = target.name; model.setName(value); paletteSynonym?.follow(before, value); touch(); },
-        () => ({path: source.path, name: target.name}));
+      return nameInput(target.name, value => { const before = target.name; subject.setName(value); paletteSynonym?.follow(before, value); touch(); }, subject.check);
     }
     if (row.field === 'localized') {
-      const field = localized(code => target[row.key]?.[code], (language, value) => row.key === 'title' ? model.setTitle(language, value) : model.setPresentation(row.key, language, value),
+      const field = localized(code => subject.get(row.key)?.[code], (language, value) => subject.set(row.key, setTranslation({...subject.get(row.key)}, language, value)),
         paletteCleanups, row.lines ? {kind: 'area', rows: row.lines} : titleTextOptions);
       if (row.key === 'title') paletteSynonym = field;
       return field;
     }
-    if (row.field === 'text') return textInput(target[row.key], value => { model.setComment(value); touch(); });
+    if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); touch(); });
     if (row.field === 'module' || row.field === 'window') {
       const link = node('button', 'Открыть', 'object-palette-link');
       link.type = 'button';
       // The windows of the standard attributes, characteristics,
-      // predefined items and additional indexes are items of their own.
+      // predefined items, additional indexes, the help and the choice of a
+      // field are items of their own.
       link.disabled = row.field === 'window';
       link.addEventListener('click', () => around.openModule?.(row.key));
       return link;
     }
-    const value = model.get(row.key), off = !available(row);
-    const set = next => { model.set(row.key, next); rerender(); };
+    if (row.field === 'type') {
+      const shown = node('input');
+      shown.readOnly = true;
+      shown.value = typePresentation(model.typeOffer, target.types);
+      const pick = fieldChoiceButton('Редактирование типа данных', async () => {
+        const types = await showTypeEditor(model.typeOffer, target.types);
+        if (types) { subject.set('types', types); rerender(); }
+      });
+      return fieldWithButtons(shown, [pick]);
+    }
+    const value = subject.get(row.key), off = !available(subject, row);
+    const set = next => { if (subject.set(row.key, next) === false) return false; rerender(); };
     let control;
     if (row.field === 'flag') {
       control = node('input');
       control.type = 'checkbox'; control.checked = !!value;
       control.addEventListener('change', () => set(control.checked));
     } else if (row.field === 'choice') {
-      control = selectInput(row.choices, value || '', set, row.title);
+      control = selectInput(row.choices, value || row.default || '', set, row.title);
     } else if (row.field === 'switch') {
       control = selectInput(row.choices, String(!!value), next => set(next === 'true'), row.title);
     } else if (row.field === 'number') {
-      control = textInput(value ?? 0, set, limited(row.limit, {type: 'number', min: row.min || 0}));
+      const options = {type: 'number', min: row.min || 0, ...(row.max ? {max: row.max} : {})};
+      control = textInput(value ?? 0, set, row.limit ? limited(row.limit, options) : options);
+    } else if (row.field === 'value') {
+      // A value of the part's type is entered by a field of that type,
+      // which the inventory does not show yet: shown, not edited (В8).
+      control = node('input');
+      control.readOnly = true; control.value = value?.data ?? '';
+      control.disabled = true;
+      return control;
     } else if (row.field === 'objects' || row.field === 'fields') {
-      return listControl(row, value || [], off);
+      return listControl(subject, row, value, off);
     } else if (row.field === 'form') {
       return formControl(row, value || '', off);
     } else return null;
@@ -460,9 +483,9 @@ function createCatalogEditor(host, onChange, around = {}) {
   }
   // A row is available while every property it needs is on: not false,
   // zero or empty, or the value named (kinds.PaletteRow.Needs).
-  function available(row) {
+  function available(subject, row) {
     return (row.needs || []).every(need => {
-      const [path, wanted] = need.split('='), value = model.get(path);
+      const [path, wanted] = need.split('='), value = subject.get(path);
       if (wanted !== undefined) return value === wanted;
       return Array.isArray(value) ? value.length > 0 : !!value;
     });
@@ -485,19 +508,22 @@ function createCatalogEditor(host, onChange, around = {}) {
   // A list of objects or of fields in one line, as the palette shows it:
   // their names by commas, «…» choosing them and the cross clearing them.
   // The owners are chosen as on the page «Владельцы» - with the model's
-  // refusal; the bases plainly; the fields of the data lock wait for their
-  // window, which the inventory does not show.
-  function listControl(row, items, off) {
+  // refusal; the bases plainly; the fields - of the data lock, of the input
+  // by string, the link by type - wait for their window, which the inventory
+  // does not show.
+  function listControl(subject, row, value, off) {
+    const items = Array.isArray(value) ? value : value ? [value] : [];
     const shown = node('input');
     shown.readOnly = true;
-    shown.value = row.field === 'objects' ? items.map(id => objectName(row.key, id)).join(', ') : items.map(field => field.standard || field.attribute).join(', ');
+    shown.value = row.field === 'objects' ? items.map(id => objectName(row.key, id)).join(', ')
+      : items.map(field => field.standard || field.attribute || [].concat(field.source || []).join('.')).join(', ');
     const pick = fieldChoiceButton(row.title, async () => {
       if (row.key === 'owners') { await chooseOwners(); return; }
       const chosen = await chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items);
-      if (chosen) { model.set(row.key, chosen); rerender(); }
+      if (chosen) { subject.set(row.key, chosen); rerender(); }
     });
     pick.disabled = off || row.field === 'fields';
-    const clear = clearButton(`Очистить: ${row.title}`, () => { model.set(row.key, []); rerender(); });
+    const clear = clearButton(`Очистить: ${row.title}`, () => { subject.set(row.key, []); rerender(); });
     clear.classList.add('field-button');
     clear.disabled = off || !items.length;
     shown.disabled = off;
@@ -507,23 +533,25 @@ function createCatalogEditor(host, onChange, around = {}) {
   function renderPalette() {
     if (!around.palette || !source) return;
     clearPalette();
+    paletteSynonym = null;
     const parts = catalog().tableParts, partAt = id => parts.findIndex(item => item.id === id);
+    let subject, tabs, title;
     if (chosen?.kind === 'attribute') {
       const list = model.attributeList(chosen.container), attribute = list?.find(item => item.id === chosen.id);
       if (!attribute) { chosen = null; return; }
       const at = ['attributes', String(list.indexOf(attribute))];
-      around.paletteTitle?.(`Свойства: ${attribute.name}`);
-      around.palette.append(renderAttributePanel(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]));
+      subject = attributeSubject(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]);
+      tabs = source.partPalettes?.attribute; title = attribute.name;
     } else if (chosen?.kind === 'tablepart') {
       const part = parts.find(item => item.id === chosen.id);
       if (!part) { chosen = null; return; }
-      around.paletteTitle?.(`Свойства: ${part.name}`);
-      around.palette.append(renderTablePartPanel(part, ['tableParts', String(partAt(part.id))]));
+      subject = tablePartSubject(part, ['tableParts', String(partAt(part.id))]);
+      tabs = source.partPalettes?.tablePart; title = part.name;
     } else {
-      paletteSynonym = null;
-      around.paletteTitle?.(`Свойства: ${catalog().name}`);
-      around.palette.append(objectPalette(source.palette || [], paletteControl));
+      subject = catalogSubject(); tabs = source.palette; title = catalog().name;
     }
+    around.paletteTitle?.(`Свойства: ${title}`);
+    around.palette.append(objectPalette(tabs || [], row => paletteControl(subject, row), shownFor(subject)));
   }
   function focusPalette() { around.palette?.querySelector('input')?.focus(); }
 

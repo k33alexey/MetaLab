@@ -14,7 +14,7 @@ const namesWalk = `(async () => {
   window.confirm = () => true;` + objectWindowSteps + `
   const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   const open = async text => { node(text).click(); await studio.settle(); };
-  const nameInput = host => [...document.querySelectorAll(host + ' .catalog-field')].find(label => label.firstChild.textContent === 'Имя').querySelector('input');
+  const nameInput = host => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .object-palette-row')].find(label => label.firstChild.textContent === 'Имя').querySelector('input');
   const type = async (host, text) => {
     const input = nameInput(host);
     input.focus();

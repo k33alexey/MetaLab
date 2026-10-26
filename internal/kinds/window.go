@@ -53,6 +53,16 @@ type PaletteRow struct {
 	Min   int    `json:"min,omitempty"`
 	// Lines is how many lines a text of several shows - the explanation.
 	Lines int `json:"lines,omitempty"`
+	// Max is the greatest value of a number the kind bounds itself.
+	Max int `json:"max,omitempty"`
+	// Default is the value a list shows where the description writes none,
+	// the model's meaning of an absent one (not indexed, not checked).
+	Default string `json:"default,omitempty"`
+	// Shown are what the row stands by at all, unlike Needs, which leave it
+	// standing unavailable: type=<kind> - the kind of the one type of the
+	// part (string, number, reference), owner=<kind> - the kind of the
+	// object the part belongs to.
+	Shown []string `json:"shown,omitempty"`
 }
 
 // PaletteTab is a tab of the palette - a category of its properties - and
@@ -86,6 +96,10 @@ const (
 	// FormField is a main form of the object, chosen among its forms,
 	// cleared, and opened by the magnifier.
 	FormField = "form"
+	// TypeField is the type of a part with «…» of the window «Редактирование
+	// типа данных»; ValueField a value of the part's type.
+	TypeField  = "type"
+	ValueField = "value"
 	// modulesRow stands in a palette for a row of every module the kind
 	// keeps (Layout.Modules), each its own caption and explanation.
 	modulesRow = "modules"
@@ -256,4 +270,137 @@ func (descriptor Descriptor) Palette() []PaletteTab {
 		result = append(result, tab)
 	}
 	return result
+}
+
+// usage are the values of a setting used, not used or left to the platform,
+// with the prototype's captions.
+var (
+	usage        = [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}}
+	autoUsage    = [][2]string{{"auto", "Авто"}, {"use", "Использовать"}, {"dont-use", "Не использовать"}}
+	autoHistory  = [][2]string{{"auto", "Авто"}, {"dont-use", "Не использовать"}}
+	attributeUse = [][2]string{{"for-item", "Для элемента"}, {"for-folder", "Для группы"}, {"for-folder-and-item", "Для группы и элемента"}}
+	fillChecks   = [][2]string{{"dont-check", "Не проверять"}, {"show-error", "Выдавать ошибку"}}
+)
+
+// partPalettes are the palettes of the parts of an object - an attribute and
+// a table part - by the kind of the part (docs/block-00/rekvizit.md,
+// tablichnaya-chast.md, «Палитра»; snapshots spravochnik/rekvizit-*). The
+// rows of an attribute depend on its type: Shown names the kind of its one
+// type a row stands at (type=string, type=number, type=reference), and
+// owner=<kind> the kind of the object the part belongs to.
+var partPalettes = map[string][]PaletteTab{
+	"attribute": {
+		{Key: "main", Title: "Основные", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: NameField, Important: true, Description: "Имя реквизита в коде и в запросах."},
+			{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true, Description: "Название реквизита для пользователя на каждом языке проекта."},
+			{Key: "comment", Title: "Комментарий", Field: TextField, Important: true, Description: "Заметка разработчика о реквизите."},
+			{Field: SeparatorField, Important: true},
+			{Key: "types", Title: "Тип", Field: TypeField, Important: true, Description: "Какие значения хранит реквизит."},
+			{Key: "type.length", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=string"},
+				Description: "Сколько знаков в строке; ноль — длина не ограничена."},
+			{Key: "type.fixedLength", Title: "Допустимая длина", Field: SwitchField, Important: true, Shown: []string{"type=string"},
+				Choices: [][2]string{{"false", "Переменная"}, {"true", "Фиксированная"}}, Description: "Строка хранится как набрана или дополняется пробелами до полной длины."},
+			{Key: "type.unlimited", Title: "Неограниченная длина", Field: FlagField, Important: true, Shown: []string{"type=string"},
+				Description: "Строка любой длины; такую строку нельзя индексировать и сравнивать в запросе."},
+			{Key: "type.precision", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=number"},
+				Description: "Сколько цифр в числе, вместе с дробной частью."},
+			{Key: "type.scale", Title: "Точность", Field: NumberField, Important: true, Shown: []string{"type=number"},
+				Description: "Сколько цифр после запятой."},
+			{Key: "type.nonNegative", Title: "Неотрицательное", Field: FlagField, Important: true, Shown: []string{"type=number"},
+				Description: "Отрицательное число в реквизит не записывается."},
+		}},
+		{Key: "use", Title: "Использование", Important: true, Rows: []PaletteRow{
+			{Key: "use", Title: "Использование", Field: ChoiceField, Important: true, Shown: []string{"owner=catalogs"}, Choices: attributeUse,
+				Description: "Чей это реквизит: элемента, группы или обоих."},
+			{Key: "indexing", Title: "Индексировать", Field: ChoiceField, Important: true, Default: "dont-index",
+				Choices:     [][2]string{{"dont-index", "Не индексировать"}, {"index", "Индексировать"}, {"index-with-additional-order", "Индексировать с доп. упорядочиванием"}},
+				Description: "Строит ли база индекс по реквизиту: отбор и упорядочивание по нему быстрее."},
+			{Key: "fullTextSearch", Title: "Полнотекстовый поиск", Field: ChoiceField, Important: true, Choices: usage,
+				Description: "Входит ли реквизит в полнотекстовый индекс."},
+			{Key: "dataHistory", Title: "История данных", Field: ChoiceField, Important: true, Choices: usage,
+				Description: "Хранятся ли изменения реквизита в истории данных."},
+		}},
+		{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
+			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=reference"},
+				Description: "Текст, который пользователь видит, наведя указатель на поле."},
+			{Key: "choice.foldersAndItems", Title: "Выбор групп и элементов", Field: ChoiceField, Important: true, Shown: []string{"type=reference"},
+				Choices:     [][2]string{{"items", "Элементы"}, {"folders", "Группы"}, {"folders-and-items", "Группы и элементы"}},
+				Description: "Что можно выбрать в поле из иерархического справочника: группы, элементы или то и другое."},
+			{Key: "choiceParameterLinks", Title: "Связи параметров выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+				Description: "Отбор выбираемых значений по значениям других реквизитов."},
+			{Key: "choiceParameters", Title: "Параметры выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+				Description: "Постоянный отбор выбираемых значений."},
+			{Key: "choiceForm", Title: "Форма выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+				Description: "Форма, из которой выбирается значение реквизита."},
+			{Key: "presentation.password", Title: "Режим пароля", Field: FlagField, Important: true, Shown: []string{"type=string"},
+				Description: "Набранное в поле показывается звёздочками."},
+			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=string"},
+				Description: "Текст, который пользователь видит, наведя указатель на поле."},
+			{Key: "presentation.mask", Title: "Маска", Field: TextField, Important: true, Shown: []string{"type=string"},
+				Description: "Шаблон набора: какие знаки и где можно набрать."},
+			{Key: "presentation.multiLine", Title: "Многострочный режим", Field: FlagField, Important: true, Shown: []string{"type=string"},
+				Description: "Поле показывает текст в несколько строк."},
+			{Key: "presentation.extendedEdit", Title: "Расширенное редактирование", Field: FlagField, Important: true, Shown: []string{"type=string"},
+				Description: "Текст правится с оформлением."},
+			{Key: "presentation.format", Title: "Формат", Field: LocalizedField, Important: true, Shown: []string{"type=number"},
+				Description: "Как число показывается в поле."},
+			{Key: "presentation.editFormat", Title: "Формат редактирования", Field: LocalizedField, Important: true, Shown: []string{"type=number"},
+				Description: "Как число показывается, пока его правят."},
+			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=number"},
+				Description: "Текст, который пользователь видит, наведя указатель на поле."},
+			{Key: "presentation.markNegatives", Title: "Выделять отрицательные", Field: FlagField, Important: true, Shown: []string{"type=number"},
+				Description: "Отрицательное число в поле выделяется цветом."},
+			{Key: "presentation.minValue", Title: "Минимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
+				Description: "Меньше этого значения в поле не набрать."},
+			{Key: "presentation.maxValue", Title: "Максимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
+				Description: "Больше этого значения в поле не набрать."},
+			{Field: SeparatorField, Important: true},
+			{Key: "filling.fromFillingValue", Title: "Заполнять из данных заполнения", Field: FlagField, Important: true,
+				Description: "Новый объект берёт значение реквизита из данных заполнения - например, из отбора списка."},
+			{Key: "filling.value", Title: "Значение заполнения", Field: ValueField, Important: true,
+				Description: "Значение реквизита у нового объекта."},
+			{Key: "fillChecking", Title: "Проверка заполнения", Field: ChoiceField, Important: true, Default: "dont-check", Choices: fillChecks,
+				Description: "Отказывает ли запись объекта с незаполненным реквизитом."},
+			{Field: SeparatorField, Important: true},
+			{Key: "choice.quickChoice", Title: "Быстрый выбор", Field: ChoiceField, Important: true, Choices: autoUsage,
+				Description: "Выбирается ли значение из выпадающего списка вместо формы выбора."},
+			{Key: "choice.createOnInput", Title: "Создание при вводе", Field: ChoiceField, Important: true, Choices: autoUsage,
+				Description: "Можно ли создать значение прямо из поля."},
+			{Key: "choice.historyOnInput", Title: "История выбора при вводе", Field: ChoiceField, Important: true, Choices: autoHistory,
+				Description: "Предлагаются ли первыми значения, которые пользователь уже выбирал."},
+			{Field: SeparatorField, Important: true},
+			{Key: "choice.linkByType", Title: "Связь по типу", Field: FieldsField, Important: true,
+				Description: "Реквизит, от значения которого зависит тип значения этого реквизита."},
+		}},
+	},
+	"tablePart": {
+		{Key: "main", Title: "Основные", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: NameField, Important: true, Description: "Имя табличной части в коде и в запросах."},
+			{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true, Description: "Название табличной части для пользователя на каждом языке проекта."},
+			{Key: "comment", Title: "Комментарий", Field: TextField, Important: true, Description: "Заметка разработчика о табличной части."},
+		}},
+		{Key: "data", Title: "Данные", Important: true, Rows: []PaletteRow{
+			{Key: "standardAttributes", Title: "Стандартные реквизиты", Field: WindowField, Important: true,
+				Description: "Окно стандартного реквизита табличной части — номера строки."},
+			{Key: "lineNumberLength", Title: "Длина номера строки", Field: NumberField, Important: true, Min: 5, Max: 9,
+				Description: "Сколько цифр в номере строки табличной части: от 5 до 9."},
+		}},
+		{Key: "use", Title: "Использование", Important: true, Rows: []PaletteRow{
+			{Key: "use", Title: "Использование", Field: ChoiceField, Important: true, Shown: []string{"owner=catalogs"}, Choices: attributeUse,
+				Description: "Чья это табличная часть: элемента, группы или обоих."},
+		}},
+		{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
+			{Key: "tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true,
+				Description: "Текст, который пользователь видит, наведя указатель на табличную часть."},
+			{Key: "fillChecking", Title: "Проверка заполнения", Field: ChoiceField, Important: true, Default: "dont-check", Choices: fillChecks,
+				Description: "Отказывает ли запись объекта с пустой табличной частью."},
+		}},
+	},
+}
+
+// PartPalette is the palette of a part of an object - "attribute",
+// "tablePart" - its tabs and rows, each row standing by what it is shown
+// for.
+func PartPalette(part string) []PaletteTab {
+	return slices.Clone(partPalettes[part])
 }

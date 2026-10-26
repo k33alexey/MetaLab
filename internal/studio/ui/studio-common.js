@@ -774,8 +774,9 @@ const PaletteView = {alphabetical: false, important: false, tab: ''};
    builds the field of a row, null for a row the object has no field for.
    «Отменить редактирование» brings back what the field held when it was
    entered, «Применить» leaves it - both available while a field is edited.
-   Answers the element. */
-function objectPalette(tabs, control) {
+   visible(row) says a row stands at all for the object shown (the rows of
+   an attribute by its type). Answers the element. */
+function objectPalette(tabs, control, visible = () => true) {
   const element = node('div', undefined, 'object-palette');
   const bar = node('div', undefined, 'object-palette-bar');
   const alphabet = iconButton('sort-alphabetical', 'Сортировка по алфавиту'), categories = iconButton('sort-by-category', 'Сортировка по категориям');
@@ -811,7 +812,7 @@ function objectPalette(tabs, control) {
     arrange();
   });
   apply.addEventListener('click', () => { editing?.blur(); editing = null; arrange(); });
-  const kept = item => !PaletteView.important || item.important;
+  const kept = item => (!PaletteView.important || item.important) && (!item.field || visible(item));
   function line(row, text) {
     if (row.field === 'separator') return node('hr', undefined, 'object-palette-separator');
     const label = node('div', undefined, 'object-palette-row'), caption = node('span', undefined, 'object-palette-caption');

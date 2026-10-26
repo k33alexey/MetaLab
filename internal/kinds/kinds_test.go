@@ -384,3 +384,59 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 		t.Errorf("«Основные» %q, want %q", main, want)
 	}
 }
+
+// The palettes of an attribute and of a table part are the prototype's,
+// written out from the inventory (docs/block-00/rekvizit.md,
+// tablichnaya-chast.md, «Палитра»; snapshots spravochnik/rekvizit-*): the
+// rows of an attribute by the kind of its type - a string, a number, a
+// reference - and those of every type; the use only at a part of a catalog.
+// Defects caught: a row of one kind of type shown at another, a row missing
+// or out of its place, the use shown at an attribute of a table part.
+func TestThePalettesOfTheParts(t *testing.T) {
+	shown := func(part, tab, condition string) []string {
+		var result []string
+		for _, item := range PartPalette(part) {
+			if item.Key != tab {
+				continue
+			}
+			for _, row := range item.Rows {
+				if row.Field == SeparatorField {
+					continue
+				}
+				if row.Description == "" {
+					t.Errorf("%s/%s: %q has no explanation", part, tab, row.Title)
+				}
+				if len(row.Shown) == 0 || slices.Contains(row.Shown, condition) {
+					result = append(result, row.Title)
+				}
+			}
+		}
+		return result
+	}
+	for name, testCase := range map[string]struct {
+		got, want []string
+	}{
+		"attribute, main, string":         {shown("attribute", "main", "type=string"), []string{"Имя", "Синоним", "Комментарий", "Тип", "Длина", "Допустимая длина", "Неограниченная длина"}},
+		"attribute, main, number":         {shown("attribute", "main", "type=number"), []string{"Имя", "Синоним", "Комментарий", "Тип", "Длина", "Точность", "Неотрицательное"}},
+		"attribute, main, reference":      {shown("attribute", "main", "type=reference"), []string{"Имя", "Синоним", "Комментарий", "Тип"}},
+		"attribute, use, of a catalog":    {shown("attribute", "use", "owner=catalogs"), []string{"Использование", "Индексировать", "Полнотекстовый поиск", "История данных"}},
+		"attribute, use, of a table part": {shown("attribute", "use", "owner=tablePart"), []string{"Индексировать", "Полнотекстовый поиск", "История данных"}},
+		"attribute, presentation, string": {shown("attribute", "presentation", "type=string"), []string{"Режим пароля", "Подсказка", "Маска",
+			"Многострочный режим", "Расширенное редактирование", "Заполнять из данных заполнения", "Значение заполнения", "Проверка заполнения",
+			"Быстрый выбор", "Создание при вводе", "История выбора при вводе", "Связь по типу"}},
+		"attribute, presentation, number": {shown("attribute", "presentation", "type=number"), []string{"Формат", "Формат редактирования", "Подсказка",
+			"Выделять отрицательные", "Минимальное значение", "Максимальное значение", "Заполнять из данных заполнения", "Значение заполнения",
+			"Проверка заполнения", "Быстрый выбор", "Создание при вводе", "История выбора при вводе", "Связь по типу"}},
+		"attribute, presentation, reference": {shown("attribute", "presentation", "type=reference"), []string{"Подсказка", "Выбор групп и элементов",
+			"Связи параметров выбора", "Параметры выбора", "Форма выбора", "Заполнять из данных заполнения", "Значение заполнения", "Проверка заполнения",
+			"Быстрый выбор", "Создание при вводе", "История выбора при вводе", "Связь по типу"}},
+		"table part, main":         {shown("tablePart", "main", ""), []string{"Имя", "Синоним", "Комментарий"}},
+		"table part, data":         {shown("tablePart", "data", ""), []string{"Стандартные реквизиты", "Длина номера строки"}},
+		"table part, use":          {shown("tablePart", "use", "owner=catalogs"), []string{"Использование"}},
+		"table part, presentation": {shown("tablePart", "presentation", ""), []string{"Подсказка", "Проверка заполнения"}},
+	} {
+		if !slices.Equal(testCase.got, testCase.want) {
+			t.Errorf("%s: %q, want %q", name, testCase.got, testCase.want)
+		}
+	}
+}

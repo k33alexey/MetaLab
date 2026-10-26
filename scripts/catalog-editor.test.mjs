@@ -40,24 +40,26 @@ test('model mutates source in place but value() returns an independent clone',()
   const value=model.value();value.attributes.push({});
   assert.equal(source.catalog.attributes.length,1);
 });
-test('attribute name, title and flags round-trip',()=>{
+test('attribute name and title round-trip',()=>{
   const model=create(fixture());
   const attribute=model.addAttribute('catalog');
   model.setAttributeName('catalog',attribute.id,'Артикул');
   model.setAttributeTitle('catalog',attribute.id,'ru','Артикул товара');
   model.setAttributeTitle('catalog',attribute.id,'en','');
-  model.setAttributeFillChecking('catalog',attribute.id,true);
-  model.setAttributeIndexing('catalog',attribute.id,'index-with-additional-order');
   const saved=model.value().attributes[0];
   assert.equal(saved.name,'Артикул');assert.deepEqual(saved.title,{ru:'Артикул товара'});
-  assert.equal(saved.fillChecking,'show-error');assert.equal(saved.indexing,'index-with-additional-order');
 });
-test('an unindexed field says nothing instead of saying dont-index',()=>{
-  const model=create(fixture());
-  const attribute=model.addAttribute('catalog');
-  model.setAttributeIndexing('catalog',attribute.id,'index');
-  model.setAttributeIndexing('catalog',attribute.id,'dont-index');
-  assert.equal('indexing' in model.value().attributes[0],false);
+test('a property is written by its dotted key, and left out when emptied',()=>{
+  const attribute={name:'Артикул'};
+  context.setPathValue(attribute,'presentation.mask','999');
+  context.setPathValue(attribute,'fillChecking','show-error');
+  assert.equal(context.pathValue(attribute,'presentation.mask'),'999');
+  assert.equal(attribute.fillChecking,'show-error');
+  context.setPathValue(attribute,'presentation.tooltip',{});
+  context.setPathValue(attribute,'choice.parameters',[]);
+  context.setPathValue(attribute,'comment','');
+  assert.deepEqual(JSON.parse(JSON.stringify(attribute)),{name:'Артикул',presentation:{mask:'999'},fillChecking:'show-error',choice:{}});
+  assert.equal(context.pathValue(attribute,'filling.value.data'),undefined);
 });
 test('the type the window chose replaces the attribute type, and the presentation names it',()=>{
   const model=create(fixture());
