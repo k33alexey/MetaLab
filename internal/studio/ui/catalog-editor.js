@@ -448,7 +448,27 @@ function createCatalogEditor(host, onChange, around = {}) {
     page.append(node('div', 'Подсистемы, в которых участвует справочник:', 'object-window-caption'), tree);
     return page;
   }
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+  // «Функциональные опции»: the options of the project in a list of boxes
+  // with a current row, marked where the catalog itself is in its content
+  // (spravochnik.md, page 3; snapshot okno-03); written into the options as
+  // the subsystems are.
+  let options = new Set(), currentOption = null;
+  function renderOptionsPage() {
+    const page = node('div', undefined, 'object-window-fields'), places = source.functionalOptions || [];
+    let list;
+    const draw = () => {
+      const fresh = checkList(places.map(place => ({key: place.id, caption: place.name, checked: options.has(place.id)})), currentOption,
+        (key, checked) => { if (checked) options.add(key); else options.delete(key); onChange(); draw(); },
+        key => { currentOption = key; draw(); });
+      fresh.classList.add('object-window-checks');
+      if (list) { const focused = list.contains(document.activeElement); list.replaceWith(fresh); if (focused) fresh.focus(); }
+      list = fresh;
+    };
+    draw();
+    page.append(node('div', 'Функциональные опции, в которых участвует справочник:', 'object-window-caption'), list);
+    return page;
+  }
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
     numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
@@ -525,16 +545,19 @@ function createCatalogEditor(host, onChange, around = {}) {
       if (!keep) chosen = null;
       source = structuredClone(value);
       model = createCatalogModel(source);
-      membership = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
+      const marked = places => new Set((places || []).filter(place => place.member).map(place => place.id));
+      membership = marked(source.subsystems);
+      options = marked(source.functionalOptions);
+      currentOption = source.functionalOptions?.[0]?.id ?? null;
       host.hidden = false;
       frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
       host.replaceChildren(frame.element);
       renderPalette();
     },
-    // The catalog and the subsystems marked on its page, in one order so a
-    // mark taken back leaves the window unchanged.
-    value() { return model && {...model.value(), subsystems: [...membership].sort()}; },
+    // The catalog and the subsystems and options marked on its pages, in one
+    // order so a mark taken back leaves the window unchanged.
+    value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort()}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.

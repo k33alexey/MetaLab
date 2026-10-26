@@ -1231,3 +1231,83 @@ func TestTheSubsystemsPageOfACatalogIsThePrototypes(t *testing.T) {
 	expect("saved", steps.Saved, true)
 	expect("opened anew", steps.Reopened, []string{"Продажи ✓", "Склад"})
 }
+
+// optionsPageWalk opens the page «Функциональные опции» of the window of the
+// catalog Товары, which is in the content of Склады and has its attribute
+// in Артикулы: reads the list and its marks; marks Артикулы and unmarks it -
+// the window stays unchanged - then marks Артикулы, unmarks Склады, saves
+// and opens the window anew.
+const optionsPageWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const rows = () => [...body().querySelectorAll('.check-list-row')]
+    .map(row => row.textContent.trim() + (row.querySelector('input').checked ? ' ✓' : ''));
+  const box = name => [...body().querySelectorAll('.check-list-row')].find(row => row.textContent.trim() === name).querySelector('input');
+  await openObject('Товары');
+  await windowPage('Функциональные опции');
+  steps.caption = body().querySelector('.object-window-caption').textContent;
+  steps.shown = rows();
+  steps.icons = body().querySelectorAll('.check-list-row svg').length;
+  steps.current = body().querySelector('.check-list-row.current')?.textContent;
+  box('Артикулы').click(); await settle();
+  steps.marked = !document.querySelector('#save').disabled;
+  box('Артикулы').click(); await settle();
+  steps.unmarked = !document.querySelector('#save').disabled;
+  box('Артикулы').click(); box('Склады').click(); await settle();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  await openObject('Товары');
+  await windowPage('Функциональные опции');
+  steps.reopened = rows();
+  return steps;
+})()`
+
+// The page «Функциональные опции» of the window of a catalog is the
+// prototype's (docs/block-00/spravochnik.md, page 3; snapshot okno-03): the
+// caption, the options of the project in a list, a box at each and no
+// icon, the first row current, marked where the catalog itself is in the content - not where only
+// its attribute is; a mark changes the window and the mark taken back
+// leaves it as it was; «Сохранить» writes the marks into the options and
+// the window opened anew shows them. Defects caught: the page empty; an
+// option marked for a part of the catalog; a mark that leaves the window
+// unchanged or a mark taken back that leaves it changed; a mark the save
+// does not write.
+func TestTheOptionsPageOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addCatalogOptions(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, optionsPageWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Caption                 string
+		Shown, Reopened         []string
+		Icons                   int
+		Current                 string
+		Marked, Unmarked, Saved bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("caption", steps.Caption, "Функциональные опции, в которых участвует справочник:")
+	expect("the list", steps.Shown, []string{"Артикулы", "Склады ✓"})
+	expect("icons", steps.Icons, 0)
+	expect("the current row", steps.Current, "Артикулы")
+	expect("a mark changes the window", steps.Marked, true)
+	expect("a mark taken back", steps.Unmarked, false)
+	expect("saved", steps.Saved, true)
+	expect("opened anew", steps.Reopened, []string{"Артикулы ✓", "Склады"})
+}
