@@ -133,7 +133,17 @@ function createCatalogEditor(host, onChange, around = {}) {
   // A structural edit builds the page anew; typing does not - building the
   // field anew would drop its focus - it only renames what shows the name.
   function rerender() { onChange(); frame.refresh(); renderPalette(); }
-  function touch() { onChange(); frame.setTitle(windowTitle()); if (frame.current() === 'data') frame.refresh(); }
+  // An edit in the palette draws the window anew and one in the window the
+  // palette: each shows what the other typed, and the one typed into keeps
+  // its focus. An edit of neither - in the window «Строки на разных языках»
+  // - draws both.
+  function touch() {
+    onChange();
+    frame.setTitle(windowTitle());
+    const inPalette = !!around.palette?.contains(document.activeElement), inWindow = host.contains(document.activeElement);
+    if (!inWindow) frame.refresh();
+    if (!inPalette) renderPalette();
+  }
   function windowTitle() { return `${source.kindTitle} ${catalog().name}`; }
   function localized(get, set, collect, options = titleTextOptions) {
     const field = createLocalizedField(source, get, set, touch, options);
@@ -385,7 +395,32 @@ function createCatalogEditor(host, onChange, around = {}) {
     paletteCleanups.forEach(destroy => destroy());
     paletteCleanups = [];
     around.palette?.replaceChildren();
+    around.paletteTitle?.('Свойства');
   }
+  // The palette of the catalog itself: the rows of the kind (source.palette)
+  // by their fields - the name with its synonym following it, a text in
+  // every language, a plain text, «Открыть» of a module.
+  function paletteControl(row) {
+    const target = catalog();
+    if (row.field === 'name') {
+      return nameInput(target.name, value => { const before = target.name; model.setName(value); paletteSynonym?.follow(before, value); touch(); },
+        () => ({path: source.path, name: target.name}));
+    }
+    if (row.field === 'localized') {
+      const field = localized(code => target[row.key]?.[code], (language, value) => row.key === 'title' ? model.setTitle(language, value) : model.setPresentation(row.key, language, value), paletteCleanups);
+      if (row.key === 'title') paletteSynonym = field;
+      return field;
+    }
+    if (row.field === 'text') return textInput(target[row.key], value => { model.setComment(value); touch(); });
+    if (row.field === 'module') {
+      const link = node('button', 'Открыть', 'object-palette-link');
+      link.type = 'button';
+      link.addEventListener('click', () => around.openModule?.(row.key));
+      return link;
+    }
+    return null;
+  }
+  let paletteSynonym = null;
   function renderPalette() {
     if (!around.palette || !source) return;
     clearPalette();
@@ -394,11 +429,17 @@ function createCatalogEditor(host, onChange, around = {}) {
       const list = model.attributeList(chosen.container), attribute = list?.find(item => item.id === chosen.id);
       if (!attribute) { chosen = null; return; }
       const at = ['attributes', String(list.indexOf(attribute))];
+      around.paletteTitle?.(`Свойства: ${attribute.name}`);
       around.palette.append(renderAttributePanel(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]));
     } else if (chosen?.kind === 'tablepart') {
       const part = parts.find(item => item.id === chosen.id);
       if (!part) { chosen = null; return; }
+      around.paletteTitle?.(`Свойства: ${part.name}`);
       around.palette.append(renderTablePartPanel(part, ['tableParts', String(partAt(part.id))]));
+    } else {
+      paletteSynonym = null;
+      around.paletteTitle?.(`Свойства: ${catalog().name}`);
+      around.palette.append(objectPalette(source.palette || [], paletteControl));
     }
   }
   function focusPalette() { around.palette?.querySelector('input')?.focus(); }
@@ -419,6 +460,16 @@ function createCatalogEditor(host, onChange, around = {}) {
       renderPalette();
     },
     value() { return model?.value(); },
+    // Shows the palette of the catalog itself, as a click on its node of the
+    // tree does: nothing in the window stays chosen. Answers whether the
+    // palette is the window's.
+    showPalette() {
+      if (!source || !around.palette) return false;
+      chosen = null;
+      frame.refresh();
+      renderPalette();
+      return true;
+    },
     // Chooses the attribute or table part a node of the tree names
     // (`attribute:<id>` or `tablepart:<id>`) on the page «Данные», so a click
     // on the configuration tree finds it inside the open window.

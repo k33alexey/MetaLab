@@ -706,6 +706,17 @@ function radioFrame(caption, choices, value, apply, disabled = false) {
   return frame;
 }
 
+/* searchField is the line of search over a list of the prototype's - the
+   window «Выбор объекта», the palette: the text and its clearing cross,
+   changed() called on every change. Answers the line and its input. */
+function searchField(className, changed) {
+  const search = textInput('', changed, {placeholder: 'Поиск'});
+  search.setAttribute('aria-label', 'Поиск');
+  const line = node('div', undefined, className);
+  line.append(search, clearButton('Очистить поиск', () => { search.value = ''; changed(); search.focus(); }));
+  return [line, search];
+}
+
 /* chooseObjects is the platform's window «Выбор объекта» of objects of the
    project marked by boxes (docs/block-00/spravochnik.md, the window of the
    owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
@@ -718,10 +729,7 @@ function radioFrame(caption, choices, value, apply, disabled = false) {
    null on «Отмена». */
 async function chooseObjects(title, tree, chosen) {
   const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = [];
-  const search = textInput('', () => draw(), {placeholder: 'Поиск'});
-  search.setAttribute('aria-label', 'Поиск');
-  const searchRow = node('div', undefined, 'object-choice-search');
-  searchRow.append(search, clearButton('Очистить поиск', () => { search.value = ''; draw(); search.focus(); }));
+  const [searchRow, search] = searchField('object-choice-search', () => draw());
   const rows = node('div', undefined, 'object-choice-tree');
   content.append(searchRow, rows);
   (function collect(groups) { for (const group of groups) { collect(group.children || []); for (const item of group.objects || []) order.push(item.id); } })(tree);
@@ -745,6 +753,95 @@ async function chooseObjects(title, tree, chosen) {
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
   search.focus();
   return await answer === 'ok' ? order.filter(id => marked.has(id)) : null;
+}
+
+/* PaletteView is how the palette of properties is shown, the same for every
+   object until changed, as the prototype's palette keeps its buttons
+   pressed from object to object: by categories (tabs) or by the alphabet,
+   only the important properties or all, and the tab last chosen. */
+const PaletteView = {alphabetical: false, important: false, tab: ''};
+
+/* objectPalette is the palette of properties of an object, one for every
+   kind (docs/block-00/obolochka.md, «Палитра свойств»; obshchee.md,
+   «Палитра свойств»): the buttons «Сортировка по алфавиту», «Сортировка по
+   категориям», «Показывать только важные», «Отменить редактирование» and
+   «Применить»; the search, which lists the properties of every tab whose
+   caption holds the text, the match marked; the tabs of the categories; a
+   row a property, its caption at the left; at the bottom the explanation of
+   the property chosen. tabs are the kind's (kinds.Palette): {key, title,
+   important, rows: [{key, title, field, important, description}]} - a tab
+   «только важные» keeps is important, and so is a row it keeps. control(row)
+   builds the field of a row, null for a row the object has no field for.
+   «Отменить редактирование» brings back what the field held when it was
+   entered, «Применить» leaves it - both available while a field is edited.
+   Answers the element. */
+function objectPalette(tabs, control) {
+  const element = node('div', undefined, 'object-palette');
+  const bar = node('div', undefined, 'object-palette-bar');
+  const alphabet = iconButton('sort-alphabetical', 'Сортировка по алфавиту'), categories = iconButton('sort-by-category', 'Сортировка по категориям');
+  const important = iconButton('only-important', 'Показывать только важные');
+  const cancel = iconButton('cancel-edit', 'Отменить редактирование'), apply = iconButton('apply', 'Применить');
+  const [searchRow, search] = searchField('object-palette-search', () => draw());
+  const strip = node('div'), rows = node('div', undefined, 'object-palette-rows'), explanation = node('div', undefined, 'object-palette-explanation');
+  bar.append(alphabet, categories, important, cancel, apply);
+  element.append(bar, searchRow, strip, rows, explanation);
+  alphabet.addEventListener('click', () => { PaletteView.alphabetical = true; draw(); });
+  categories.addEventListener('click', () => { PaletteView.alphabetical = false; draw(); });
+  important.addEventListener('click', () => { PaletteView.important = !PaletteView.important; draw(); });
+  // The field being edited and what it held when it was entered.
+  let editing = null, before = '';
+  function arrange() {
+    const changed = !!editing && editing.value !== before;
+    cancel.disabled = !changed; apply.disabled = !changed;
+  }
+  rows.addEventListener('focusin', event => {
+    const field = event.target;
+    if (!field.matches('input:not([type=checkbox]), textarea, select')) return;
+    editing = field; before = field.value; arrange();
+  });
+  rows.addEventListener('input', arrange);
+  rows.addEventListener('focusout', () => setTimeout(() => { if (!rows.contains(document.activeElement)) { editing = null; arrange(); } }));
+  cancel.addEventListener('mousedown', event => event.preventDefault());
+  apply.addEventListener('mousedown', event => event.preventDefault());
+  cancel.addEventListener('click', () => {
+    if (!editing) return;
+    editing.value = before;
+    editing.dispatchEvent(new Event('input', {bubbles: true}));
+    editing.dispatchEvent(new Event('change', {bubbles: true}));
+    arrange();
+  });
+  apply.addEventListener('click', () => { editing?.blur(); editing = null; arrange(); });
+  const kept = item => !PaletteView.important || item.important;
+  function line(row, text) {
+    const label = node('div', undefined, 'object-palette-row'), caption = node('span', undefined, 'object-palette-caption');
+    const at = text ? row.title.toLocaleLowerCase().indexOf(text) : -1;
+    if (at < 0) caption.textContent = row.title;
+    else caption.append(row.title.slice(0, at), node('mark', row.title.slice(at, at + text.length), 'object-palette-match'), row.title.slice(at + text.length));
+    label.append(caption, control(row) || node('span'));
+    label.addEventListener('focusin', () => { explanation.textContent = row.description || ''; });
+    label.addEventListener('click', () => { explanation.textContent = row.description || ''; });
+    return label;
+  }
+  function draw() {
+    const text = search.value.trim().toLocaleLowerCase(), shown = tabs.filter(kept);
+    alphabet.setAttribute('aria-pressed', String(PaletteView.alphabetical));
+    categories.setAttribute('aria-pressed', String(!PaletteView.alphabetical));
+    important.setAttribute('aria-pressed', String(PaletteView.important));
+    let list;
+    if (text || PaletteView.alphabetical) {
+      strip.replaceChildren();
+      list = shown.flatMap(tab => tab.rows.filter(kept)).filter(row => !text || row.title.toLocaleLowerCase().includes(text));
+      if (PaletteView.alphabetical) list = [...list].sort((left, right) => left.title.localeCompare(right.title, 'ru'));
+    } else {
+      if (!shown.some(tab => tab.key === PaletteView.tab)) PaletteView.tab = shown[0]?.key || '';
+      strip.replaceChildren(tabStrip(shown.map(tab => [tab.key, tab.title]), PaletteView.tab, key => { PaletteView.tab = key; draw(); }));
+      list = (shown.find(tab => tab.key === PaletteView.tab)?.rows || []).filter(kept);
+    }
+    rows.replaceChildren(...list.map(row => line(row, text)));
+    editing = null; arrange();
+  }
+  draw();
+  return element;
 }
 
 /* objectWindow is the window of an object, one for every kind that has one,

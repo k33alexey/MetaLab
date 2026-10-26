@@ -31,6 +31,9 @@ type CatalogEditorSource struct {
 	KindTitle string `json:"kindTitle"`
 	// Pages are the pages of the window, the kind's (kinds.WindowPages).
 	Pages []kinds.Page `json:"pages"`
+	// Palette is the tabs of the palette of the catalog and their rows, the
+	// kind's (kinds.Palette).
+	Palette []kinds.PaletteTab `json:"palette"`
 	// OwnerChoice is what the window choosing the owners of the catalog
 	// offers: the objects of the five kinds that may own it.
 	OwnerChoice []ObjectChoiceBranch `json:"ownerChoice"`
@@ -83,6 +86,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		OwnerChoice: objectChoiceTree(loaded, metadata.CatalogOwnerKinds()),
 		Languages:   editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
+		Palette: kinds.Must(metadata.CatalogKind).Palette(),
 	}, nil
 }
 

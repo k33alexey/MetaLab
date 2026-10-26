@@ -184,3 +184,19 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-choice-search{display:flex;gap:2px}.object-choice-search input{flex:1}
 .object-choice-tree{height:300px;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 4px}
 .object-choice-box{margin:0 4px 0 0;accent-color:#589df6}
+/* Палитра свойств (objectPalette): кнопки, поиск, вкладки, строки
+   «подпись — поле», внизу пояснение к выбранному свойству. */
+#properties-panel:has(.object-palette){display:flex;flex-direction:column;overflow:hidden}#properties:has(.object-palette){padding:0;display:flex;flex-direction:column;flex:1;min-height:0}
+.object-palette{display:flex;flex-direction:column;flex:1;min-height:0;font-size:12px}
+.object-palette-bar{display:flex;gap:2px;padding:4px 6px}
+.object-palette-bar button[aria-pressed=true]{background:#3c3f45!important;outline:1px solid #4a4d54}
+.object-palette-search{display:flex;gap:2px;padding:0 6px 4px}.object-palette-search input{flex:1;min-width:0}
+.object-palette .studio-tabs{padding:4px 6px 0;flex-wrap:wrap}
+.object-palette-rows{flex:1;overflow:auto;padding:4px 6px}
+.object-palette-row{display:grid;grid-template-columns:minmax(0,42%) minmax(0,1fr);align-items:center;gap:6px;padding:2px 0}
+.object-palette-row input:not([type=checkbox]),.object-palette-row select,.object-palette-row textarea,.object-palette-row .field-with-buttons{width:100%;box-sizing:border-box;padding:3px 6px;border:1px solid #4a4d54;border-radius:3px;background:var(--panel-bg,#2b2d30);color:inherit}
+.object-palette-row .field-with-buttons{padding:0;border:0}
+.object-palette-caption{color:#c3c6cc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.object-palette-match{background:transparent;color:#e0605e;font-weight:600}
+.object-palette-link{justify-self:start;padding:0!important;border:0!important;background:transparent!important;color:#589df6;text-decoration:underline;cursor:pointer}
+.object-palette-explanation{min-height:44px;padding:6px 8px;border-top:1px solid var(--border,#393b40);color:#aeb1b8}

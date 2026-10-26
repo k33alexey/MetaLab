@@ -369,3 +369,117 @@ func TestTheHierarchyOwnersAndNumberingOfACatalogAreThePrototypes(t *testing.T) 
 	expect("series", steps.Series, []string{"Во всем справочнике", "В пределах подчинения", "В пределах подчинения владельцу"})
 	expect("«Нумерация» at a code of no length", steps.NumberingAtZero, []string{"Автонумерация", "Контроль уникальности", "Серии кодов"})
 }
+
+// paletteWalk opens the catalog Товары and reads its palette: the title,
+// the buttons, the tabs, the rows of «Основные»; then «Показывать только
+// важные», the search by «модуль», the alphabet, a name typed in the palette
+// and «Отменить редактирование», and «Открыть» of the module of the object.
+const paletteWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const palette = () => document.querySelector('#properties .object-palette');
+  const tabs = () => [...palette().querySelectorAll('.studio-tab')].map(tab => tab.textContent);
+  const rows = () => [...palette().querySelectorAll('.object-palette-row .object-palette-caption')].map(item => item.textContent);
+  const button = title => palette().querySelector('.object-palette-bar button[title="' + title + '"]');
+  const click = async element => { element.click(); await studio.settle(); };
+  await openObject('Товары');
+  steps.title = document.querySelector('#inspector-title').textContent;
+  steps.buttons = [...palette().querySelectorAll('.object-palette-bar button')].map(item => item.title + (item.disabled ? ' (недоступна)' : ''));
+  steps.tabs = tabs();
+  steps.chosen = palette().querySelector('.studio-tab[aria-selected=true]').textContent;
+  steps.main = rows();
+  await click(button('Показывать только важные'));
+  steps.important = tabs();
+  await click(button('Показывать только важные'));
+  const search = palette().querySelector('.object-palette-search input');
+  search.value = 'модуль'; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  steps.found = {rows: rows(), tabs: tabs(), marked: [...palette().querySelectorAll('.object-palette-match')].map(item => item.textContent)};
+  search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  await click(button('Сортировка по алфавиту'));
+  steps.alphabet = {rows: rows(), tabs: tabs()};
+  await click(button('Сортировка по категориям'));
+  const name = [...palette().querySelectorAll('.object-palette-row')].find(row => row.textContent.startsWith('Имя')).querySelector('input');
+  name.focus(); name.value = 'ТоварыСклада'; name.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  steps.typed = {title: document.querySelector('#catalog-editor .object-window-title').textContent, cancel: button('Отменить редактирование').disabled,
+    window: windowField('#catalog-editor', 'Имя').querySelector('input').value};
+  await click(button('Отменить редактирование'));
+  steps.cancelled = {value: name.value, title: document.querySelector('#catalog-editor .object-window-title').textContent};
+  const inWindow = windowField('#catalog-editor', 'Комментарий').querySelector('input');
+  inWindow.focus(); inWindow.value = 'для склада'; inWindow.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  steps.fromWindow = [...palette().querySelectorAll('.object-palette-row')].find(item => item.textContent.startsWith('Комментарий')).querySelector('input').value;
+  const row = [...palette().querySelectorAll('.object-palette-row')].find(item => item.textContent.startsWith('Модуль объекта'));
+  row.click();
+  steps.explanation = palette().querySelector('.object-palette-explanation').textContent !== '';
+  await click(row.querySelector('button'));
+  steps.module = document.querySelector('#file-path').textContent;
+  return steps;
+})()`
+
+// The palette of a catalog is the prototype's (docs/block-00/obolochka.md,
+// «Палитра свойств»; spravochnik.md, «Палитра свойств»; snapshots
+// palitra-osnovnye, vazhnye-osnovnye, palitra-spravochnaya-informaciya):
+// «Свойства: <Имя>»; the five buttons, the two of editing unavailable until
+// a field is edited; four tabs, «Основные» chosen; on it the name, the
+// synonym, the comment and the two modules; «только важные» takes
+// «Справочная информация» away; the search lists the matching properties of
+// every tab without the tabs, the match marked; the alphabet lists them all
+// in its order without the tabs; a name typed in the palette renames the
+// window at once and «Отменить редактирование» brings the name back; a row
+// chosen shows its explanation; «Открыть» opens the module. The
+// expectations are written out from the inventory. Defects caught: the
+// read-only list of the tree in place of the palette; a tab or a row
+// missing; «только важные» that keeps or takes the wrong tab; a search or
+// an alphabet keeping the tabs; the editing buttons available with nothing
+// edited, or «Отменить» leaving the typed name; the window not following
+// the palette; «Открыть» opening nothing.
+func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, paletteWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type listed struct {
+		Rows, Tabs []string
+	}
+	var steps struct {
+		Title, Chosen, Module          string
+		Buttons, Tabs, Main, Important []string
+		Found                          struct{ Rows, Tabs, Marked []string }
+		Alphabet                       listed
+		Typed                          struct {
+			Title, Window string
+			Cancel        bool
+		}
+		FromWindow  string
+		Cancelled   struct{ Value, Title string }
+		Explanation bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("title", steps.Title, "Свойства: Товары")
+	expect("buttons", steps.Buttons, []string{"Сортировка по алфавиту", "Сортировка по категориям", "Показывать только важные",
+		"Отменить редактирование (недоступна)", "Применить (недоступна)"})
+	expect("tabs", steps.Tabs, []string{"Основные", "Данные", "Представление", "Справочная информация"})
+	expect("chosen tab", steps.Chosen, "Основные")
+	expect("«Основные»", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Модуль объекта", "Модуль менеджера"})
+	expect("only important", steps.Important, []string{"Основные", "Данные", "Представление"})
+	expect("search", steps.Found, struct{ Rows, Tabs, Marked []string }{[]string{"Модуль объекта", "Модуль менеджера"}, []string{}, []string{"Модуль", "Модуль"}})
+	expect("alphabet", steps.Alphabet, listed{[]string{"Имя", "Комментарий", "Модуль менеджера", "Модуль объекта", "Синоним"}, []string{}})
+	expect("typed in the palette", steps.Typed, struct {
+		Title, Window string
+		Cancel        bool
+	}{"Справочник ТоварыСклада", "ТоварыСклада", false})
+	expect("typed in the window, shown in the palette", steps.FromWindow, "для склада")
+	expect("cancelled", steps.Cancelled, struct{ Value, Title string }{"Товары", "Справочник Товары"})
+	expect("explanation", steps.Explanation, true)
+	expect("module opened", steps.Module, "metadata/catalogs/Товары/МодульОбъекта.bsl")
+}

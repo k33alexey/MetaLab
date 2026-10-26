@@ -292,3 +292,38 @@ func TestTheWindowOfACatalogHasThePrototypesPages(t *testing.T) {
 		t.Errorf("a constant has no window, yet lists %v", pages)
 	}
 }
+
+// The palette of a catalog has the four tabs of the prototype's, in its
+// order, «Справочная информация» the one «только важные» takes away, and on
+// «Основные» the name, the synonym, the comment and a row of each module of
+// the kind, written out from the inventory (docs/block-00/spravochnik.md,
+// «Палитра свойств»; snapshots palitra-osnovnye, vazhnye-osnovnye). Every
+// row has a caption, a field Studio builds and a line of explanation.
+// Defects caught: a tab left out or moved, a module row missing, a row
+// without its explanation, a row of a field the palette cannot build.
+func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
+	var tabs, important, main []string
+	for _, tab := range Must(Catalog).Palette() {
+		tabs = append(tabs, tab.Title)
+		if tab.Important {
+			important = append(important, tab.Title)
+		}
+		for _, row := range tab.Rows {
+			if row.Title == "" || row.Description == "" || !slices.Contains([]string{NameField, LocalizedField, TextField, ModuleField}, row.Field) {
+				t.Errorf("%s: row %+v lacks a caption, an explanation or a field Studio builds", tab.Title, row)
+			}
+			if tab.Key == "main" {
+				main = append(main, row.Title)
+			}
+		}
+	}
+	if want := []string{"Основные", "Данные", "Представление", "Справочная информация"}; !slices.Equal(tabs, want) {
+		t.Errorf("tabs %q, want %q", tabs, want)
+	}
+	if want := []string{"Основные", "Данные", "Представление"}; !slices.Equal(important, want) {
+		t.Errorf("tabs kept by «только важные» %q, want %q", important, want)
+	}
+	if want := []string{"Имя", "Синоним", "Комментарий", "Модуль объекта", "Модуль менеджера"}; !slices.Equal(main, want) {
+		t.Errorf("«Основные» %q, want %q", main, want)
+	}
+}
