@@ -210,5 +210,6 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-window-table select{font-size:12px}
 .object-window-based-on{height:100%}.object-window-based-on .object-window-list{min-height:120px}
 .object-window-designer{align-self:flex-end}
+.object-window-rights .object-window-list{flex:0 0 auto;height:96px;min-height:96px}.object-window-rights .check-list{max-height:120px;overflow:auto;margin-bottom:8px}
 .object-window-checks{flex:1;min-height:200px;overflow:auto}
 .object-window-caption{font-size:12.5px;margin:2px 0 6px}

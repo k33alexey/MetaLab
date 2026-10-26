@@ -57,8 +57,6 @@ const catalogWindowWalk = `(async () => {
   steps.explanationArea = !!windowField('#catalog-editor', 'Пояснение').querySelector('textarea');
   button('Далее>').click(); await studio.settle();
   steps.afterNext = {page: current(), bar: bar()};
-  await windowPage('Права');
-  steps.unbuilt = !host.querySelector('.object-window-body').children.length;
   await windowPage('Прочее');
   steps.lastBar = bar();
   await windowPage('Данные');
@@ -137,7 +135,6 @@ func TestTheWindowOfACatalogIsThePrototypes(t *testing.T) {
 			Page string
 			Bar  bar
 		}
-		Unbuilt                  bool
 		Frames                   []frame
 		Rows, Windows, Numbering []string
 		Panels                   [][]string
@@ -171,7 +168,6 @@ func TestTheWindowOfACatalogIsThePrototypes(t *testing.T) {
 		Page string
 		Bar  bar
 	}{"Подсистемы", bar{}})
-	expect("a page not built yet is empty", steps.Unbuilt, true)
 	expect("«Основные»", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Представление объекта", "Расширенное представление объекта",
 		"Представление списка", "Расширенное представление списка", "Пояснение"})
 	expect("captions beside or above", steps.Places, []string{"beside", "beside", "beside", "above", "above"})
@@ -1502,4 +1498,94 @@ func TestTheBasedOnPageOfACatalogIsThePrototypes(t *testing.T) {
 	expect("the basis of Контрагенты", steps.Partners, [][]string{{"Справочник.Товары"}, {"Справочник.Контрагенты", "Справочник.Товары", table}})
 	expect("saved", steps.Saved, true)
 	expect("opened anew", steps.Reopened, [][]string{{"Справочник.Товары"}, {"Справочник.Контрагенты", "Справочник.Товары", table}})
+}
+
+// rightsPageWalk opens the page «Права» of the window of the catalog
+// Товары, which Кладовщик reads under a restriction and Менеджер does not:
+// reads the roles, the rights and the restrictions of Кладовщик; chooses
+// Менеджер, marks «Интерактивное удаление», clears «Чтение», marks
+// «Просмотр», saves and opens the window anew.
+const rightsPageWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const roles = () => [...body().querySelectorAll('.object-window-list-row')].map(row => row.textContent + (row.classList.contains('current') ? ' *' : ''));
+  const rights = () => [...body().querySelectorAll('.check-list-row')].filter(row => row.querySelector('input').checked).map(row => row.textContent);
+  const right = name => [...body().querySelectorAll('.check-list-row')].find(row => row.textContent === name).querySelector('input');
+  const restrictions = () => [...body().querySelectorAll('.role-restrictions tbody tr')].map(row => [...row.cells].map(cell => cell.textContent).join(' | '));
+  await openObject('Товары');
+  await windowPage('Права');
+  steps.captions = [...body().querySelectorAll('.object-window-caption, .role-restrictions h4')].map(item => item.textContent);
+  steps.roles = roles();
+  steps.rights = rights();
+  steps.current = body().querySelector('.check-list-row.current')?.textContent;
+  steps.restrictions = restrictions();
+  [...body().querySelectorAll('.object-window-list-row')].find(row => row.textContent === 'Менеджер').click(); await settle();
+  steps.manager = {roles: roles(), rights: rights(), restrictions: restrictions()};
+  right('Интерактивное удаление').click(); await settle();
+  steps.deleting = rights();
+  right('Чтение').click(); await settle();
+  steps.unread = rights();
+  right('Просмотр').click(); await settle();
+  steps.viewing = rights();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  await openObject('Товары');
+  await windowPage('Права');
+  [...body().querySelectorAll('.object-window-list-row')].find(row => row.textContent === 'Менеджер').click(); await settle();
+  steps.reopened = rights();
+  return steps;
+})()`
+
+// The page «Права» of the window of a catalog is the prototype's
+// (docs/block-00/spravochnik.md, page 13; snapshot okno-13): «Роли:», the
+// first role current; «Права:», the rights the role gives on the catalog;
+// «Ограничения доступа к данным:» of the right current; another role chosen
+// shows its own; marking a right marks the rights it needs and clearing one
+// clears those needing it (rol.md, «Права зависят друг от друга»);
+// «Сохранить» writes the role and the window opened anew shows it. Defects
+// caught: the page empty; another role's rights or restrictions shown; the
+// rights marked one by one, apart from what they need; a change the save
+// does not write.
+func TestTheRightsPageOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) { addCatalogRoles(t, workspace) })
+	result, err := browser.evaluate(ctx, page, rightsPageWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Captions, Roles, Rights, Restrictions []string
+		Current                               string
+		Manager                               struct{ Roles, Rights, Restrictions []string }
+		Deleting, Unread, Viewing, Reopened   []string
+		Saved                                 bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("captions", steps.Captions, []string{"Роли:", "Права:", "Ограничения доступа к данным:"})
+	expect("the roles", steps.Roles, []string{"Кладовщик *", "Менеджер"})
+	expect("the rights of Кладовщик", steps.Rights, []string{"Чтение"})
+	expect("the current right", steps.Current, "Чтение")
+	expect("the restrictions of Кладовщик", steps.Restrictions, []string{"Прочие поля | Истина"})
+	expect("Менеджер chosen", steps.Manager.Roles, []string{"Кладовщик", "Менеджер *"})
+	expect("the rights of Менеджер", steps.Manager.Rights, []string{})
+	expect("the restrictions of Менеджер", steps.Manager.Restrictions, []string{"Ограничений нет"})
+	expect("«Интерактивное удаление» marked", steps.Deleting, []string{"Чтение", "Изменение", "Удаление", "Просмотр", "Редактирование", "Интерактивное удаление"})
+	expect("«Чтение» cleared", steps.Unread, []string{})
+	expect("«Просмотр» marked", steps.Viewing, []string{"Чтение", "Просмотр"})
+	expect("saved", steps.Saved, true)
+	expect("opened anew", steps.Reopened, []string{"Чтение", "Просмотр"})
 }

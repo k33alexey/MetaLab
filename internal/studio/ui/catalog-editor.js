@@ -542,7 +542,33 @@ function createCatalogEditor(host, onChange, around = {}) {
       ...block('other', 'Является основанием для:', basisFor, list => setBasedOn(withSelf(own, list.includes(self)), list)), designer);
     return page;
   }
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, 'based-on': renderBasedOnPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+  // «Права»: the roles of the project; the rights the role chosen gives on
+  // the catalog, a box at each, marking a right marking the rights it needs
+  // and clearing one clearing those needing it; its restrictions of access
+  // to data on the right current (spravochnik.md, page 13; snapshot okno-13;
+  // rol.md, «Права зависят друг от друга»). Each role is edited by the model
+  // of the window of a role over what it says about the catalog alone, and
+  // written with the catalog.
+  let roleModels = new Map(), currentRole = null;
+  const roleRight = {right: null, row: -1};
+  const rightCaption = key => source.rightsSchema?.rights?.find(item => item.key === key)?.title || key;
+  function renderRightsPage() {
+    const page = node('div', undefined, 'object-window-fields object-window-rights'), roles = source.roles || [];
+    const object = source.rightsSchema?.objects?.[0], model = roleModels.get(currentRole);
+    page.append(node('div', 'Роли:', 'object-window-caption'),
+      objectRows(roles.map(entry => [entry.role.id, entry.role.name]), currentRole, id => { currentRole = id; frame.refresh(); }));
+    const rights = model && object ? object.rights : [], members = object ? [{object}] : [];
+    if (!rights.includes(roleRight.right)) { roleRight.right = rights[0] ?? null; roleRight.row = -1; }
+    const redraw = () => { frame.refresh(); host.querySelector('.object-window-rights .check-list')?.focus(); };
+    const list = checkList(rights.map(right => ({key: right, caption: rightCaption(right), checked: model.groupMark(members, right) === 'all'})), roleRight.right,
+      (right, enabled) => { model.setGroup(members, right, enabled); onChange(); redraw(); },
+      right => { roleRight.right = right; roleRight.row = -1; redraw(); });
+    page.append(node('div', 'Права:', 'object-window-caption'), list);
+    if (model) page.append(roleRestrictionSection({model, object, caption: rightCaption, title: item => localizedTitle(item, source.defaultLanguage),
+      state: roleRight, changed: () => { onChange(); frame.refresh(); }}));
+    return page;
+  }
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, 'based-on': renderBasedOnPage, rights: renderRightsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
     numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
@@ -627,6 +653,8 @@ function createCatalogEditor(host, onChange, around = {}) {
       currentPlan = source.exchangePlans?.[0]?.id ?? null;
       basisFor = inTreeOrder(withSelf((source.basisFor || []).map(place => place.id), (source.catalog.basedOn || []).includes(source.catalog.id)));
       currentBasis = {own: null, other: null};
+      roleModels = new Map((source.roles || []).map(entry => [entry.role.id, createRoleModel({role: entry.role, schema: source.rightsSchema})]));
+      if (!roleModels.has(currentRole)) currentRole = source.roles?.[0]?.role.id ?? null;
       host.hidden = false;
       frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
@@ -636,7 +664,10 @@ function createCatalogEditor(host, onChange, around = {}) {
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged.
     value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
-      basisFor: [...basisFor].sort(), exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
+      basisFor: [...basisFor].sort(),
+      roles: (source.roles || []).map(entry => ({id: entry.role.id, revision: entry.revision,
+        permission: roleModels.get(entry.role.id).value().objects.find(item => item.object === source.catalog.id) || null})),
+      exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.

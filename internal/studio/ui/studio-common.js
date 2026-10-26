@@ -742,6 +742,13 @@ function objectList(caption, items, current, choose, change, remove) {
   drop.disabled = !items.length;
   drop.addEventListener('click', () => remove(current));
   head.append(node('span', caption), edit, drop);
+  return [head, objectRows(items, current, choose, change)];
+}
+
+/* objectRows is the list of rows of objectList, without its head: items are
+   [key, caption], one of them current; choose(key) makes a row current,
+   open() is a double click on a row. */
+function objectRows(items, current, choose, open = () => {}) {
   const list = node('div', undefined, 'object-window-list');
   list.setAttribute('role', 'listbox');
   for (const [key, text] of items) {
@@ -749,10 +756,10 @@ function objectList(caption, items, current, choose, change, remove) {
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
     row.addEventListener('click', () => choose(key));
-    row.addEventListener('dblclick', change);
+    row.addEventListener('dblclick', open);
     list.append(row);
   }
-  return [head, list];
+  return list;
 }
 
 /* choiceOrder is the identifiers of the objects of a tree of «Выбор

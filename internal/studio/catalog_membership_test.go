@@ -1,6 +1,8 @@
 package studio
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -458,5 +460,192 @@ func TestTheWindowOfACatalogWritesWhatItIsTheBasisFor(t *testing.T) {
 	}
 	if _, err := metadata.Load(root); err != nil {
 		t.Errorf("the lists written do not load: %v", err)
+	}
+}
+
+// mustID is the identifier written as text.
+func mustID(t *testing.T, text string) uuid.UUID {
+	t.Helper()
+	id, err := uuid.Parse(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// addCatalogRoles gives the demo project two roles: Кладовщик, reading
+// Товары under a restriction and Контрагенты too, and Менеджер, reading
+// Контрагенты alone.
+func addCatalogRoles(t *testing.T, workspace *Workspace) {
+	t.Helper()
+	goods, partners := mustID(t, "10000000-0000-4000-8000-000000000101"), mustID(t, "10000000-0000-4000-8000-000000000102")
+	for _, name := range []string{"Кладовщик", "Менеджер"} {
+		role, err := workspace.CreateRole(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		read := []metadata.PermissionOperation{metadata.PermissionRead}
+		role.Role.Objects = []metadata.ObjectPermission{{Object: partners, Operations: read}}
+		if name == "Кладовщик" {
+			role.Role.Objects = append([]metadata.ObjectPermission{
+				{Object: goods, Operations: read, Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionRead, Condition: "Истина"}}},
+			}, role.Role.Objects...)
+		}
+		if _, err := workspace.SaveRole(role.Path, role.Role, role.Revision); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A save of the window of a catalog writes what its page «Права» changes in
+// the roles - the catalog's entry alone, another object of the role left as
+// it was - and refuses, writing nothing, a change of a role changed on disk
+// since the window read it and one the role may not say; a catalog refused
+// after the roles puts them back. Defects caught: the page shown the whole
+// role, or a save taking the role's other objects away; a role changed in
+// another window overwritten; a right on a part the catalog has not, or a
+// restriction the role may not keep, written;
+// a role refused halfway left changed.
+func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addCatalogRoles(t, workspace)
+	const goods = "metadata/catalogs/Товары/object.yaml"
+	opened, err := workspace.ReadCatalogEditor(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown []string
+	for _, place := range opened.Roles {
+		shown = append(shown, fmt.Sprintf("%s %d", place.Role.Name, len(place.Role.Objects)))
+	}
+	if !slices.Equal(shown, []string{"Кладовщик 1", "Менеджер 0"}) {
+		t.Fatalf("the roles are shown as %v, want Кладовщик with one object, Менеджер with none", shown)
+	}
+	full, err := metadata.LoadPermissionSchema(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := full.Objects[slices.IndexFunc(full.Objects, func(item metadata.PermissionObject) bool { return item.ID == opened.Catalog.ID })]
+	if schema := opened.RightsSchema; len(schema.Objects) != 1 || !slices.Equal(schema.Objects[0].Rights, own.Rights) || len(schema.Requires) == 0 {
+		t.Fatalf("the schema of the page is %+v, want the catalog alone with its rights %v and what they require", schema.Objects, own.Rights)
+	}
+	keeper, manager := opened.Roles[0], opened.Roles[1]
+	view := []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionView}
+	marks := []RoleMark{{ID: keeper.Role.ID, Revision: keeper.Revision},
+		{ID: manager.Role.ID, Revision: manager.Revision, Permission: &metadata.ObjectPermission{Object: opened.Catalog.ID, Operations: view}}}
+	window := CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &marks}
+	roleOf := func(name string) metadata.RoleDefinition {
+		t.Helper()
+		loaded, err := metadata.Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role, _ := loaded.Role(name)
+		return role
+	}
+	says := func(role metadata.RoleDefinition, object uuid.UUID) string {
+		if entry := permissionOf(role, object); entry != nil {
+			return fmt.Sprint(entry.Operations, len(entry.Restrictions))
+		}
+		return "nothing"
+	}
+
+	// A right on a part the catalog has not, and a restriction of a right
+	// the role neither grants nor denies, are refused before anything is
+	// written.
+	for what, entry := range map[string]metadata.ObjectPermission{
+		"a right on a part the catalog has not": {Object: opened.Catalog.ID, Operations: view,
+			Fields: []metadata.FieldPermission{{Field: "10000000-0000-4000-8000-00000000ffff", Operations: []metadata.PermissionOperation{metadata.PermissionView}}}},
+		"a restriction of a right the role does not write": {Object: opened.Catalog.ID, Operations: view,
+			Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionUpdate, Condition: "Истина"}}},
+	} {
+		wrong := []RoleMark{{ID: manager.Role.ID, Revision: manager.Revision, Permission: &entry}}
+		if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &wrong}, opened.Revision); err == nil {
+			t.Errorf("%s was written", what)
+		}
+		if got := says(roleOf("Менеджер"), opened.Catalog.ID); got != "nothing" {
+			t.Errorf("%s refused left Менеджер saying %s", what, got)
+		}
+	}
+
+	// Refused halfway: the folder of the catalog takes no file.
+	folder := filepath.Join(root, "metadata", "catalogs", "Товары")
+	if err := os.Chmod(folder, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	_, refused := workspace.SaveCatalogWindow(goods, window, opened.Revision)
+	if err := os.Chmod(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if refused == nil {
+		t.Fatal("the catalog was written into a folder that takes no file")
+	}
+	if got := says(roleOf("Кладовщик"), opened.Catalog.ID); got != "[read] 1" {
+		t.Errorf("the refusal left Кладовщик saying %s of Товары", got)
+	}
+	if got := says(roleOf("Менеджер"), opened.Catalog.ID); got != "nothing" {
+		t.Errorf("the refusal left Менеджер saying %s of Товары", got)
+	}
+
+	// Кладовщик changed in another window: its change is refused, and
+	// nothing is written.
+	other, err := workspace.ReadRole(keeper.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.Role.Comment = "изменена в окне роли"
+	changed, err := workspace.SaveRole(other.Path, other.Role, other.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.SaveCatalogWindow(goods, window, opened.Revision); !errors.Is(err, ErrSourceChanged) {
+		t.Errorf("a role changed on disk was overwritten: %v", err)
+	}
+	if got := says(roleOf("Менеджер"), opened.Catalog.ID); got != "nothing" {
+		t.Errorf("the refusal of Кладовщик left Менеджер saying %s", got)
+	}
+
+	// The window read anew: Кладовщик loses Товары and keeps Контрагенты
+	// and the comment written in its own window; Менеджер gets its rights.
+	opened, err = workspace.ReadCatalogEditor(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks[0].Revision, marks[1].Revision = opened.Roles[0].Revision, opened.Roles[1].Revision
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &marks}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keeperRole := roleOf("Кладовщик")
+	if got := says(keeperRole, opened.Catalog.ID); got != "nothing" {
+		t.Errorf("Кладовщик says %s of Товары after the save", got)
+	}
+	if got := says(keeperRole, mustID(t, "10000000-0000-4000-8000-000000000102")); got != "[read] 0" || keeperRole.Comment != changed.Role.Comment {
+		t.Errorf("Кладовщик lost what else it says: %s, %q", got, keeperRole.Comment)
+	}
+	if got := says(roleOf("Менеджер"), opened.Catalog.ID); got != "[read view] 0" {
+		t.Errorf("Менеджер says %s of Товары after the save", got)
+	}
+	if saved.Roles[0].Revision == opened.Roles[0].Revision || len(saved.Roles[1].Role.Objects) != 1 {
+		t.Errorf("the answer of the save shows the roles as read before it: %+v", saved.Roles)
+	}
+
+	// Менеджер changed again: its entry is replaced where it stands, its
+	// other object kept.
+	insert := []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionInsert}
+	again := []RoleMark{{ID: manager.Role.ID, Revision: saved.Roles[1].Revision, Permission: &metadata.ObjectPermission{Object: opened.Catalog.ID, Operations: insert}}}
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, Roles: &again}, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	managerRole := roleOf("Менеджер")
+	if got := says(managerRole, opened.Catalog.ID); got != "[read insert] 0" {
+		t.Errorf("Менеджер says %s of Товары after the second save", got)
+	}
+	if got := says(managerRole, mustID(t, "10000000-0000-4000-8000-000000000102")); got != "[read] 0" {
+		t.Errorf("Менеджер lost Контрагенты: %s", got)
 	}
 }

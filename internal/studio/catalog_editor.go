@@ -57,10 +57,15 @@ type CatalogEditorSource struct {
 	// BasisFor are the objects entered on the basis of the catalog, by
 	// their full names, but the catalog itself (its list «Является
 	// основанием для»), and basisPlaces every object that may be.
-	BasisFor       []MemberPlace `json:"basisFor"`
-	basisPlaces    []MemberPlace
-	Forms          []NamedPath       `json:"forms"`
-	CommandModules map[string]string `json:"commandModules"`
+	BasisFor    []MemberPlace `json:"basisFor"`
+	basisPlaces []MemberPlace
+	// Roles are the roles of the project with what each says about the
+	// catalog alone, and RightsSchema the schema of its rights (its page
+	// «Права»).
+	Roles          []RolePlace               `json:"roles"`
+	RightsSchema   metadata.PermissionSchema `json:"rightsSchema"`
+	Forms          []NamedPath               `json:"forms"`
+	CommandModules map[string]string         `json:"commandModules"`
 }
 
 // NamedPath is a part of an object kept in a file of its own: its name and
@@ -131,8 +136,16 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		}
 	}
 	basis := basisPlaces(loaded, value.ID)
+	roles, err := workspace.rolePlacesLocked(roleOrder(loaded), value.ID, configuration)
+	if err != nil {
+		return CatalogEditorSource{}, err
+	}
+	schema, err := objectRightsSchema(workspace.root, value.ID)
+	if err != nil {
+		return CatalogEditorSource{}, err
+	}
 	return CatalogEditorSource{
-		BasisFor: members(basis), basisPlaces: basis,
+		BasisFor: members(basis), basisPlaces: basis, Roles: roles, RightsSchema: schema,
 		Forms: forms, CommandModules: commandModules, Subsystems: subsystemPlaces(loaded, value.ID),
 		FunctionalOptions: optionPlaces(loaded, metadata.CatalogKind, value.ID), ExchangePlans: exchangePlaces(loaded, value.ID),
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
@@ -159,14 +172,15 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 // the subsystems marked on its page «Подсистемы», the options marked on
 // «Функциональные опции», the exchange plans marked on «Обмен данными»
 // with their autoregistration and the objects listed «Является основанием
-// для» on «Ввод на основании» - none where a page is not given, which leaves
-// those objects as they are.
+// для» on «Ввод на основании», and what the roles say about it on «Права» -
+// none where a page is not given, which leaves those objects as they are.
 type CatalogWindowValue struct {
 	metadata.CatalogDefinition
 	Subsystems        *[]uuid.UUID   `json:"subsystems,omitempty"`
 	FunctionalOptions *[]uuid.UUID   `json:"functionalOptions,omitempty"`
 	ExchangePlans     *[]MemberPlace `json:"exchangePlans,omitempty"`
 	BasisFor          *[]uuid.UUID   `json:"basisFor,omitempty"`
+	Roles             *[]RoleMark    `json:"roles,omitempty"`
 }
 
 // memberships are the pages of the window given, each with the objects it
@@ -215,15 +229,32 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return CatalogEditorSource{}, err
 	}
+	// What the page «Права» changes in a role is checked before anything is
+	// written.
+	configuration, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return CatalogEditorSource{}, err
+	}
+	var edits map[uuid.UUID]*metadata.ObjectPermission
+	if window.Roles != nil {
+		if edits, err = workspace.roleEditsLocked(value.ID, opened.Roles, *window.Roles, configuration); err != nil {
+			return CatalogEditorSource{}, fmt.Errorf("the rights of the catalog: %w", err)
+		}
+	}
 	// The roles go first, put back if the catalog is then refused: a
 	// refusal halfway leaves neither a catalog the roles do not match nor
-	// roles naming fields it has not.
+	// roles naming fields it has not. A role takes the change of the page
+	// first, then that of the catalog's fields.
 	added, removed := declaredFieldChanges(opened.Catalog, value)
 	restoreRoles, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
+		entry, edited := edits[role.ID]
+		if edited {
+			putPermission(role, value.ID, entry)
+		}
 		// A deleted field leaves every role, its rights and its
 		// restrictions, as the prototype takes it off them (ACCESS-RIGHTS.md,
 		// «Удаление реквизита, по которому стоит ограничение роли»).
-		changed := role.DropFields(value.ID, removed)
+		changed := role.DropFields(value.ID, removed) || edited
 		if !role.GrantNewFieldsByDefault {
 			return changed
 		}
@@ -257,6 +288,17 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 				markMembers(page)
 			}
 			opened.BasisFor = members(opened.basisPlaces)
+			// The roles are read anew: the page and the fields change them,
+			// and each has a revision of its own. A role that does not read
+			// now stays as the window had it, and its next change is refused
+			// as one of a role changed on disk.
+			var order []uuid.UUID
+			for _, place := range opened.Roles {
+				order = append(order, place.Role.ID)
+			}
+			if roles, err := workspace.rolePlacesLocked(order, value.ID, configuration); err == nil {
+				opened.Roles = roles
+			}
 			return opened, nil
 		}
 		err = errors.Join(err, moveBack())
