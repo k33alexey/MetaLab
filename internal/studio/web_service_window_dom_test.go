@@ -26,7 +26,7 @@ const webServiceWindowWalk = `(async () => {
   steps.subsystems = [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   [...host.querySelectorAll('.object-window-body .studio-tree-row')].find(item => item.textContent.trim() === 'Склад').querySelector('input[type=checkbox]').click(); await settle();
   await windowPage('Операции');
-  steps.operations = host.querySelector('.object-window-body').children.length;
+  steps.operations = [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   await windowPage('Управление сеансами');
   steps.sessions = {captions: captions(), above: windowField('#web-service-editor', 'Повторное использование сеансов:').classList.contains('catalog-field-above'),
     reuse: windowField('#web-service-editor', 'Повторное использование сеансов:').querySelector('select').value,
@@ -53,7 +53,7 @@ const webServiceWindowWalk = `(async () => {
 // сеансами» - the reuse of sessions above its list and the lifetime;
 // «Прочее» - the button «Модуль», the namespace, the packages by their
 // namespaces with «…» unavailable, the file of publication; «Операции»
-// empty until its item. The palette shows what the window typed; «Сохранить»
+// the tree of its operations. The palette shows what the window typed; «Сохранить»
 // writes the service and the subsystem marked. Defects caught: a page, a
 // caption or its place not the prototype's; a package shown by its
 // identifier; the window and the palette apart; a mark not written.
@@ -74,7 +74,7 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 			Name     string
 		}
 		Subsystems []string
-		Operations int
+		Operations []string
 		Sessions   struct {
 			Captions   []string
 			Above      bool
@@ -110,7 +110,7 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 		Name     string
 	}{[]string{"Имя:", "Синоним:", "Комментарий:"}, "СкладСервис"})
 	expect("«Подсистемы»", steps.Subsystems, []string{"Продажи", "Склад"})
-	expect("«Операции» until its item", steps.Operations, 0)
+	expect("«Операции»", steps.Operations, []string{"Остаток"})
 	expect("«Управление сеансами»", steps.Sessions, struct {
 		Captions   []string
 		Above      bool
@@ -135,5 +135,130 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 	subsystem, _ := os.ReadFile(filepath.Join(root, "metadata", "subsystems", treeWarehouseSubsystem+".yaml"))
 	if !strings.Contains(string(service), "session_max_age: 45") || !strings.Contains(string(subsystem), webServiceGoods) {
 		t.Errorf("on disk: the service %q, the subsystem %q", service, subsystem)
+	}
+}
+
+// webServiceOperationsWalk opens «Операции» of СкладСервис: reads the panel
+// and the tree, adds an operation and reads its palette on both tabs, names
+// its procedure, adds a parameter and reads its palette, moves the new
+// operation up, deletes the parameter after the question, and saves.
+const webServiceOperationsWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#web-service-editor');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
+  const panel = () => [...host.querySelectorAll('.object-window-panel button')].map(item => item.title + (item.disabled ? ' (недоступна)' : ''));
+  const press = title => [...host.querySelectorAll('.object-window-panel button')].find(item => item.title === title).click();
+  const rows = () => [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
+  const palette = () => ({title: document.querySelector('#inspector-title').textContent,
+    tabs: [...document.querySelectorAll('#properties .studio-tab')].map(tab => tab.textContent),
+    rows: [...document.querySelectorAll('#properties .object-palette-row .object-palette-caption')].map(item => item.textContent)});
+  await openObject('СкладСервис');
+  await windowPage('Операции');
+  steps.opened = {panel: panel(), rows: rows()};
+  press('Добавить операцию'); await settle();
+  steps.operation = {rows: rows(), chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || '', palette: palette(),
+    type: windowField('#properties', 'Тип возвращаемого значения').querySelector('input').value,
+    typeChoice: windowField('#properties', 'Тип возвращаемого значения').querySelector('button').disabled, panel: panel()};
+  [...document.querySelectorAll('#properties .studio-tab')].find(tab => tab.textContent === 'Данные').click(); await settle();
+  const lock = windowField('#properties', 'Режим управления блокировкой данных').querySelector('select');
+  steps.lock = {value: lock.value, choices: [...lock.options].map(option => option.textContent)};
+  [...document.querySelectorAll('#properties .studio-tab')].find(tab => tab.textContent === 'Основные').click(); await settle();
+  const procedure = windowField('#properties', 'Имя процедуры').querySelector('input');
+  procedure.focus(); procedure.value = 'Проверка'; procedure.dispatchEvent(new Event('input', {bubbles: true})); document.querySelector('#refresh').focus(); procedure.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+  press('Добавить параметр'); await settle();
+  const direction = windowField('#properties', 'Направление передачи').querySelector('select');
+  steps.parameter = {rows: rows(), palette: palette(), direction: direction.value, choices: [...direction.options].map(option => option.textContent),
+    type: windowField('#properties', 'Тип значения').querySelector('input').value};
+  [...host.querySelectorAll('.object-window-body .studio-tree-row')].find(item => item.textContent.trim() === 'Операция1').click(); await settle();
+  press('Переместить вверх'); await settle();
+  steps.moved = rows();
+  [...host.querySelectorAll('.object-window-body .studio-tree-row')].find(item => item.textContent.trim() === 'Параметр1').click(); await settle();
+  press('Удалить'); await settle();
+  steps.question = document.querySelector('dialog[open] h3')?.textContent || '';
+  [...document.querySelectorAll('dialog[open] button')].find(item => item.textContent === 'Да').click(); await settle();
+  steps.deleted = rows();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = !document.querySelector('#save').disabled;
+  return steps;
+})()`
+
+// The page «Операции» of a web service is the prototype's (docs/block-00/
+// web-servis.md, «Окно», «Палитра», «Новый сервис»; snapshots
+// web-servis/02, 09, 10, 14, 15): the panel - «Добавить операцию»,
+// «Добавить параметр» (unavailable with nothing chosen), the shared buttons,
+// «Сортировать» unavailable - and the tree of the operations with their
+// parameters; a new operation «Операция1» returning a string of XMLSchema
+// with the lock managed, its palette on «Основные» and «Данные» of two
+// values; a new parameter «Параметр1», a string, «Входной», of three
+// directions; moving round the ends; deleting after the question;
+// «Сохранить» writing it all. Defects caught: a default not the
+// prototype's; a palette not the part's; the type choosable before its
+// window; the lock offering a third value; a part removed without the
+// question; the operations not written.
+func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addWebService(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, webServiceOperationsWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type palette struct {
+		Title      string
+		Tabs, Rows []string
+	}
+	var steps struct {
+		Opened    struct{ Panel, Rows []string }
+		Operation struct {
+			Rows, Panel  []string
+			Chosen, Type string
+			Palette      palette
+			TypeChoice   bool
+		}
+		Lock struct {
+			Value   string
+			Choices []string
+		}
+		Parameter struct {
+			Rows, Choices   []string
+			Palette         palette
+			Direction, Type string
+		}
+		Moved, Deleted []string
+		Question       string
+		Saved          bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("the page", steps.Opened, struct{ Panel, Rows []string }{[]string{"Добавить операцию", "Добавить параметр (недоступна)", "Изменить (недоступна)",
+		"Удалить (недоступна)", "Переместить вверх (недоступна)", "Переместить вниз (недоступна)", "Сортировать (недоступна)"}, []string{"Остаток"}})
+	expect("a new operation", []any{steps.Operation.Rows, steps.Operation.Chosen, steps.Operation.Palette, steps.Operation.Type, steps.Operation.TypeChoice},
+		[]any{[]string{"Остаток", "Операция1"}, "Операция1", palette{"Свойства: Операция1", []string{"Основные", "Данные"},
+			[]string{"Имя", "Синоним", "Комментарий", "Тип возвращаемого значения", "Возможно пустое значение", "В транзакции", "Имя процедуры"}},
+			"string (http://www.w3.org/2001/XMLSchema)", true})
+	expect("the lock of an operation", steps.Lock, struct {
+		Value   string
+		Choices []string
+	}{"managed", []string{"Автоматический", "Управляемый"}})
+	expect("a new parameter", []any{steps.Parameter.Rows, steps.Parameter.Palette, steps.Parameter.Direction, steps.Parameter.Choices, steps.Parameter.Type},
+		[]any{[]string{"Остаток", "Операция1", "Параметр1"}, palette{"Свойства: Параметр1", []string{"Основные"},
+			[]string{"Имя", "Синоним", "Комментарий", "Тип значения", "Возможно пустое значение", "Направление передачи"}},
+			"in", []string{"Входной", "Выходной", "Входной - Выходной"}, "string (http://www.w3.org/2001/XMLSchema)"})
+	expect("moved up", steps.Moved, []string{"Операция1", "Параметр1", "Остаток"})
+	expect("deleted", []any{steps.Question, steps.Deleted}, []any{"Удалить объект проекта?", []string{"Операция1", "Остаток"}})
+	expect("saved", steps.Saved, false)
+	service, _ := os.ReadFile(filepath.Join(root, "metadata", "web-services", "СкладСервис", "object.yaml"))
+	if !strings.Contains(string(service), "name: Операция1") || !strings.Contains(string(service), "procedure: Проверка") || strings.Contains(string(service), "Параметр1") {
+		t.Errorf("on disk the service is %s", service)
 	}
 }

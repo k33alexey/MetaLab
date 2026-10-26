@@ -177,6 +177,10 @@ const (
 	FieldsField    = "fields"
 	WindowField    = "window"
 	SeparatorField = "separator"
+	// XMLTypeField is a type named by the schema - the type of an operation
+	// of a web service and of its parameter: its name and namespace shown,
+	// «…» choosing it in the window of the types of the packages.
+	XMLTypeField = "xml-type"
 	// PackagesField is the XDTO packages a web service uses: the namespaces
 	// shown, «…» choosing them, the cross clearing them (web-servis.md).
 	PackagesField = "packages"
@@ -598,6 +602,38 @@ var (
 // owner=<kind> the kind of the object the part belongs to.
 var partPalettes = map[string][]PaletteTab{
 	"template": templatePalette,
+	// docs/block-00/web-servis.md, «Палитра»; snapshots web-servis/09, 10,
+	// 14, 15: an operation on two tabs, its lock of data on «Данные» of two
+	// values alone; a parameter on one.
+	"webServiceOperation": {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("операции", "об операции"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "returnType", Title: "Тип возвращаемого значения", Field: XMLTypeField, Important: true,
+				Description: "Тип значения, которое возвращает операция."},
+			{Key: "nillable", Title: "Возможно пустое значение", Field: FlagField, Important: true,
+				Description: "Операция может вернуть неопределённое значение."},
+			{Key: "transactioned", Title: "В транзакции", Field: FlagField, Important: true,
+				Description: "Процедура операции выполняется в транзакции."},
+			{Key: "procedure", Title: "Имя процедуры", Field: TextField, Important: true,
+				Description: "Процедура модуля сервиса, которая выполняется при вызове операции."},
+		})},
+		{Key: "data", Title: "Данные", Important: true, Rows: []PaletteRow{
+			{Key: "dataLockControl", Title: "Режим управления блокировкой данных", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"automatic", "Автоматический"}, {"managed", "Управляемый"}},
+				Description: "Как блокируются данные, которые меняет операция: платформой сама или кодом."},
+		}},
+	},
+	"webServiceParameter": {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("параметра", "о параметре"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "type", Title: "Тип значения", Field: XMLTypeField, Important: true, Description: "Тип значения параметра."},
+			{Key: "nillable", Title: "Возможно пустое значение", Field: FlagField, Important: true,
+				Description: "Параметр может получить неопределённое значение."},
+			{Key: "direction", Title: "Направление передачи", Field: ChoiceField, Important: true, Default: "in",
+				Choices:     [][2]string{{"in", "Входной"}, {"out", "Выходной"}, {"in-out", "Входной - Выходной"}},
+				Description: "Передаётся ли значение параметра в операцию, из неё или в обе стороны."},
+		})},
+	},
 	"attribute": {
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{
 			{Field: SeparatorField, Important: true},

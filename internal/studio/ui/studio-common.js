@@ -1053,6 +1053,18 @@ function paletteFields(context) {
       return field;
     }
     if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+    // A type named by the schema: «string (http://www.w3.org/2001/XMLSchema)»,
+    // «…» choosing it and the cross unavailable until the window of the
+    // types of the packages (a type of an operation is never cleared:
+    // web-servis.md, «Проверки»).
+    if (row.field === 'xml-type') {
+      const type = subject.get(row.key), shown = node('input');
+      shown.readOnly = true; shown.disabled = !available(subject, row);
+      shown.value = type?.name ? `${type.name}${type.namespace ? ` (${type.namespace})` : ''}` : '';
+      const pick = fieldChoiceButton(row.title, () => {}), clear = clearButton(`Очистить: ${row.title}`, () => {});
+      pick.disabled = true; clear.disabled = true; clear.classList.add('field-button');
+      return fieldWithButtons(shown, [pick, clear]);
+    }
     // The XDTO packages of a web service: their namespaces - a package of
     // the project named by its own (context.packages) - «…» choosing them
     // unavailable until the window of the choice, the cross clearing them.
@@ -1317,6 +1329,35 @@ function objectWindow({title, pages, chosen, page, actions, close, help}) {
   function show(key) { current = key; refresh(); }
   refresh();
   return {element, show, refresh, current: () => current, setTitle(text) { heading.textContent = text; }};
+}
+
+/* panelButton is a button of the panel over a tree of a window, its icon
+   and its title; windowPanel is the panel. */
+function panelButton(icon, title, enabled, act) {
+  const button = iconButton(icon, title);
+  button.disabled = !enabled;
+  button.addEventListener('click', act);
+  return button;
+}
+function windowPanel(buttons) {
+  const bar = node('div', undefined, 'object-window-panel');
+  bar.append(...buttons);
+  return bar;
+}
+
+/* partButtons are the buttons a panel of a tree of parts shares, acting on
+   the part chosen (on): «Изменить» (change), «Удалить» after the question
+   of every deletion (remove), «Переместить вверх» and «вниз» (move(by)),
+   and «Сортировать», unavailable until the window «Сортировка метаданных»
+   (the item of the map «порядок объектов»). */
+function partButtons(on, {change, remove, move}) {
+  return [
+    panelButton('change', 'Изменить', on, change),
+    panelButton('delete', 'Удалить', on, async () => { if (await askDeleteObject()) remove(); }),
+    panelButton('move-up', 'Переместить вверх', on, () => move(-1)),
+    panelButton('move-down', 'Переместить вниз', on, () => move(1)),
+    panelButton('sort', 'Сортировать', false, () => {}),
+  ];
 }
 
 /* showObjectWindow puts the window of an object (objectWindow) into host

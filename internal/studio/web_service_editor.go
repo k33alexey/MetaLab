@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -28,6 +29,8 @@ type WebServiceEditorSource struct {
 	// their identifiers: the field «Пакеты XDTO» names a package by its
 	// namespace.
 	Packages map[uuid.UUID]string `json:"packages"`
+	// PartPalettes are the palettes of its operations and their parameters.
+	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 }
 
 func (source WebServiceEditorSource) identity() (uuid.UUID, string) {
@@ -64,7 +67,8 @@ func (workspace *Workspace) readWebServiceEditorLocked(relative string) (WebServ
 	for _, item := range loaded.XDTOPackages {
 		packages[item.ID] = item.Namespace
 	}
-	return WebServiceEditorSource{objectHead: head, Service: value, Subsystems: subsystemPlaces(loaded, value.ID), Packages: packages}, nil
+	return WebServiceEditorSource{objectHead: head, Service: value, Subsystems: subsystemPlaces(loaded, value.ID), Packages: packages,
+		PartPalettes: map[string][]kinds.PaletteTab{"operation": kinds.PartPalette("webServiceOperation"), "parameter": kinds.PartPalette("webServiceParameter")}}, nil
 }
 
 // SaveWebServiceWindow writes the service and the subsystems its window

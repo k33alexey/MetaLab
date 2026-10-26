@@ -201,35 +201,17 @@ function createCatalogEditor(host, onChange, around = {}) {
     if (choice.id) row.addEventListener('dblclick', event => { event.stopPropagation(); choose(choice); focusPalette(); });
     return element;
   }
-  function panelButton(icon, title, enabled, act) {
-    const button = iconButton(icon, title);
-    button.disabled = !enabled;
-    button.addEventListener('click', act);
-    return button;
-  }
-  // The buttons a panel shares: change, delete, up and down act on what is
-  // chosen inside its tree, sorting waits for the window «Сортировка
-  // метаданных» (the item of the map «порядок объектов»).
-  function partButtons(choice, remove, move) {
-    const on = !!choice?.id;
-    return [
-      panelButton('change', 'Изменить', on, () => focusPalette()),
-      panelButton('delete', 'Удалить', on, async () => { if (await askDeleteObject()) { remove(); chosen = null; rerender(); } }),
-      panelButton('move-up', 'Переместить вверх', on, () => { move(-1); rerender(); }),
-      panelButton('move-down', 'Переместить вниз', on, () => { move(1); rerender(); }),
-      panelButton('sort', 'Сортировать', false, () => {}),
-    ];
-  }
-  function panel(buttons) {
-    const bar = node('div', undefined, 'object-window-panel');
-    bar.append(...buttons);
-    return bar;
+  // The buttons a panel of parts shares (partButtons), acting on what is
+  // chosen inside its tree.
+  function chosenPartButtons(choice, remove, move) {
+    return partButtons(!!choice?.id, {change: () => focusPalette(), remove: () => { remove(); chosen = null; rerender(); },
+      move: by => { move(by); rerender(); }});
   }
   function attributeChoice(container, attribute) { return {kind: 'attribute', container, id: attribute.id}; }
   function renderAttributesTree() {
     const folder = {kind: 'attributes'}, inside = chosen?.kind === 'attribute' && chosen.container === 'catalog' ? chosen : null;
     const add = panelButton('add', 'Добавить', true, () => { const attribute = model.addAttribute('catalog'); chosen = attributeChoice('catalog', attribute); rerender(); });
-    const bar = panel([add, ...partButtons(inside, () => model.removeAttribute('catalog', inside.id), by => model.moveAttribute('catalog', inside.id, by))]);
+    const bar = windowPanel([add, ...chosenPartButtons(inside, () => model.removeAttribute('catalog', inside.id), by => model.moveAttribute('catalog', inside.id, by))]);
     const tree = node('div', undefined, 'object-window-tree');
     tree.append(treeRow('attribute', 'Реквизиты', folder, catalog().attributes.map(attribute => treeRow('attribute', attribute.name, attributeChoice('catalog', attribute)))));
     return [bar, tree];
@@ -242,12 +224,12 @@ function createCatalogEditor(host, onChange, around = {}) {
     const addPart = panelButton('add', 'Добавить табличную часть', true, () => { const added = model.addTablePart(); chosen = {kind: 'tablepart', id: added.id}; rerender(); });
     const addAttribute = panelButton('attribute-add', 'Добавить реквизит', !!owner, () => { const attribute = model.addAttribute(owner); chosen = attributeChoice(owner, attribute); rerender(); });
     const buttons = inner
-      ? partButtons(inner, () => model.removeAttribute(inner.container, inner.id), by => model.moveAttribute(inner.container, inner.id, by))
-      : partButtons(part, () => model.removeTablePart(part.id), by => model.moveTablePart(part.id, by));
+      ? chosenPartButtons(inner, () => model.removeAttribute(inner.container, inner.id), by => model.moveAttribute(inner.container, inner.id, by))
+      : chosenPartButtons(part, () => model.removeTablePart(part.id), by => model.moveTablePart(part.id, by));
     const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
     tree.append(treeRow('tabular-section', 'Табличные части', folder, catalog().tableParts.map(item =>
       treeRow('tabular-section', item.name, {kind: 'tablepart', id: item.id}, item.attributes.map(attribute => treeRow('attribute', attribute.name, attributeChoice(item.id, attribute)))))));
-    return [panel([addPart, addAttribute, ...buttons]), tree];
+    return [windowPanel([addPart, addAttribute, ...buttons]), tree];
   }
   function renderDataPage() {
     const page = node('div', undefined, 'object-window-fields');
@@ -357,7 +339,7 @@ function createCatalogEditor(host, onChange, around = {}) {
   // opens in its editor - each unavailable until its item.
   function partsTree(icon, caption, kind, items, open, move, add) {
     const inside = chosen?.kind === kind ? chosen : null, on = !!inside;
-    const bar = panel([
+    const bar = windowPanel([
       panelButton('add', 'Добавить', !!add, () => add()),
       panelButton('change', 'Изменить', on && !!open, () => open(inside.id)),
       panelButton('delete', 'Удалить', false, () => {}),

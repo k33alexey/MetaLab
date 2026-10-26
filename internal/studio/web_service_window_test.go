@@ -124,3 +124,42 @@ func mustUUID(t *testing.T, text string) uuid.UUID {
 	}
 	return id
 }
+
+// TestTheOperationsOfAWebServiceAreSavedWithIt catches an operation added
+// in the window of a web service lost on «Сохранить» or one the model would
+// refuse taken: an operation with its parameter is written with the service
+// and read back; one whose procedure is not named yet - as a new one is -
+// is refused by the model's words and nothing is written.
+func TestTheOperationsOfAWebServiceAreSavedWithIt(t *testing.T) {
+	t.Parallel()
+	root := copyDemoProjectForStudioTest(t)
+	addWebService(t, root)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const stock = "metadata/web-services/СкладСервис/object.yaml"
+	opened, err := workspace.ReadWebServiceEditor(stock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xmlString := metadata.XMLTypeName{Namespace: "http://www.w3.org/2001/XMLSchema", Name: "string"}
+	unnamed := opened.Service
+	unnamed.Operations = append(slices.Clone(unnamed.Operations), metadata.WebServiceOperation{ID: uuid.MustNew(), Name: "Операция1", ReturnType: xmlString})
+	if _, err := workspace.SaveWebServiceWindow(stock, WebServiceWindowValue{WebServiceDefinition: unnamed}, opened.Revision); err == nil {
+		t.Fatal("an operation of no procedure was saved")
+	}
+	added := opened.Service
+	added.Operations = append(slices.Clone(added.Operations), metadata.WebServiceOperation{ID: uuid.MustNew(), Name: "Операция1", Procedure: "Проверка",
+		ReturnType: xmlString, Parameters: []metadata.WebServiceParameter{{ID: uuid.MustNew(), Name: "Параметр1", Type: xmlString, Direction: metadata.TransferIn}}})
+	saved, err := workspace.SaveWebServiceWindow(stock, WebServiceWindowValue{WebServiceDefinition: added}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operations := saved.Service.Operations; len(operations) != 2 || operations[1].Parameters[0].Name != "Параметр1" {
+		t.Errorf("saved %+v", operations)
+	}
+	if _, err := metadata.Load(root); err != nil {
+		t.Fatalf("the project does not load: %v", err)
+	}
+}
