@@ -119,6 +119,7 @@
   <script src="/ui/catalog-editor.js"></script>
   <script src="/ui/constant-editor.js"></script>
   <script src="/ui/picture-editor.js"></script>
+  <script src="/ui/template-editor.js"></script>
   <script src="/ui/project-editor.js"></script>
   <script src="/ui/languages-editor.js"></script>
   <dialog id="save-data-dialog" aria-labelledby="save-data-title"><form id="save-data-form" method="dialog"><h3 id="save-data-title">Изменения затрагивают существующие данные</h3><p class="muted">Ниже — только то, что касается уже сохранённых данных. Остальные изменения применяются без подтверждения.</p><div id="save-data-changes"></div><label id="save-data-object-loss" hidden><input type="checkbox" id="save-data-object-loss-input"> Подтверждаю удаление объектов и данных, которые в них хранятся</label><label id="save-data-value-rewrite" hidden><input type="checkbox" id="save-data-value-rewrite-input"> Подтверждаю изменение значений в существующих строках</label><div class="role-bulk"><button id="save-data-submit" class="primary" type="submit" disabled>Сохранить данные</button><button id="save-data-cancel" type="button">Отмена</button></div></form></dialog>
@@ -161,7 +162,10 @@
     // area stays empty (konstanta.md, «Окно редактирования»).
     const constantEditor=createConstantEditor(document.createElement('div'),()=>objectChanged(constantEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle,openFile:catalogAround.openFile,openModule:catalogAround.openModule});
     const pictureEditor=createPictureEditor(document.querySelector('#picture-editor'),()=>objectChanged(pictureEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle});
-    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture'}};
+    const templateEditor=createTemplateEditor(document.createElement('div'),()=>objectChanged(templateEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle});
+    // «Добавить» of a template opens its constructor, which makes the template at its own address; a refusal is shown and the constructor opens again as it was.
+    async function constructTemplate(){const response=await fetch('/api/template/new');if(!response.ok)throw new Error(await response.text());const offer=await response.json();let draft;for(;;){draft=await showTemplateConstructor(configuration,offer,draft);if(!draft)return null;try{const {file,...made}=draft;return await postJSON('/api/template/new',made)}catch(error){await askChoice(String(error.message||error).trim(),'',[['ok','ОК']])}}}
+    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture'},'/api/template':{editor:templateEditor,field:'template',construct:constructTemplate}};
     function objectChanged(editor){if(objectEditors[currentFile?.editor]?.editor!==editor)return;dirty=JSON.stringify(editor.value())!==currentFile.initial;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'}
     const projectHost=document.querySelector('#project-editor');
     const projectEditor=createProjectEditor(projectHost,()=>{if(!currentFile?.isProject)return;dirty=JSON.stringify(projectEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Проект изменён':'Готово'});
@@ -191,7 +195,7 @@
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
     // правится. Перечень редакторов — здесь, один.
-    const fileEditors=[roleOverview,roleEditor,catalogEditor,constantEditor,pictureEditor,projectEditor,languagesEditor];
+    const fileEditors=[roleOverview,roleEditor,catalogEditor,constantEditor,pictureEditor,templateEditor,projectEditor,languagesEditor];
     function closeEditors(kept){for(const item of fileEditors)if(item!==kept)item.close()}
     function setEditorsBusy(busy){for(const item of fileEditors)item.setDisabled(busy);formHost.inert=busy;editorHost.inert=busy}
     function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
@@ -437,7 +441,7 @@
       if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
       loadingFile=true;setEditorsBusy(true);
       try{
-        const value=await postJSON(address,{});showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
+        const value=objectEditors[address].construct?await objectEditors[address].construct():await postJSON(address,{});if(!value)return;showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
         selectedNode={id:value[objectEditors[address].field].id,path:value.path,kind:'metadata',editor:address,adds:true};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';
       }catch(error){showToolError(error);}
       finally{loadingFile=false;setEditorsBusy(false);updateTreeToolbar();}

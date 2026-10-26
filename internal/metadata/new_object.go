@@ -14,12 +14,20 @@ import (
 // snapshot novaya-osnovnye) - and the name is the caller's.
 type newObject func(id uuid.UUID, name string, configuration project.Project) Fresh
 
-// Fresh is a new object: its description and the modules it comes with,
-// empty, by where the project keeps them - a common module's text, which
-// the load requires and which opens at once (obshchij-modul.md).
+// Fresh is a new object: its description and the files it comes with, by
+// where the project keeps them - the empty text of a common module, which
+// the load requires and which opens at once (obshchij-modul.md), the
+// content of a template loaded from a file (obshchij-maket.md).
 type Fresh struct {
-	Value   any
-	Modules []string
+	Value any
+	Files []FreshFile
+}
+
+// FreshFile is a file of a new object: where it lies and what it holds,
+// nothing for an empty one.
+type FreshFile struct {
+	Path    string
+	Content []byte
 }
 
 // kindNewObjectOf is the new object of every kind Studio makes, kept beside
@@ -70,7 +78,7 @@ var kindNewObjectOf = map[Kind]newObject{
 	CommonModuleKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
 		module := uuid.Derive(id, "module")
 		text, _ := project.ModulePath(module)
-		return Fresh{Value: CommonModuleDefinition{Format: CurrentFormat, ID: id, Name: name, Module: module, Server: true}, Modules: []string{text}}
+		return Fresh{Value: CommonModuleDefinition{Format: CurrentFormat, ID: id, Name: name, Module: module, Server: true}, Files: []FreshFile{{Path: text}}}
 	},
 	// gruppa-komand.md, «Новая группа»: the navigation panel, shown «Авто».
 	CommandGroupKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
@@ -82,6 +90,13 @@ var kindNewObjectOf = map[Kind]newObject{
 	// ДоступностьДляОформления).
 	CommonPictureKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
 		return Fresh{Value: CommonPictureDefinition{Format: CurrentFormat, ID: id, Name: name}}
+	},
+	// obshchij-maket.md, «Конструктор макета»: a spreadsheet document, the
+	// kind the constructor has marked; the constructor gives the synonym,
+	// the comment, another kind and the content loaded from a file
+	// (NewTemplate).
+	CommonTemplateKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: CommonTemplateDefinition{Format: CurrentFormat, ObjectTemplate: ObjectTemplate{ID: id, Name: name, Kind: SpreadsheetTemplate}}}
 	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».

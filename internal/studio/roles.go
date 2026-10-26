@@ -480,7 +480,7 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 // CreateRole makes the next role, with the rights the prototype's new role
 // comes with, by the one way every object is made (CreateObject).
 func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
-	return createObjectAs(workspace, metadata.RoleKind, name, workspace.readRoleLocked)
+	return createObjectAs(workspace, metadata.RoleKind, name, nil, workspace.readRoleLocked)
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

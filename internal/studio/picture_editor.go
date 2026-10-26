@@ -18,7 +18,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // The window of a common picture (docs/block-00/obshchaya-kartinka.md,
@@ -284,16 +283,13 @@ func (workspace *Workspace) replacePictureImageLocked(relative string, images []
 // CreatePicture makes the next common picture by the one way every object
 // is made (CreateObject) and opens its window.
 func (workspace *Workspace) CreatePicture(name string) (PictureEditorSource, error) {
-	return createObjectAs(workspace, metadata.CommonPictureKind, name, workspace.readPictureEditorLocked)
+	return createObjectAs(workspace, metadata.CommonPictureKind, name, nil, workspace.readPictureEditorLocked)
 }
 
 // DeletePicture removes a common picture's folder - its description and
 // images - by the one order of steps of every deletion (deleteObjectLocked).
 func (workspace *Workspace) DeletePicture(relative, expectedRevision string) error {
-	return workspace.deleteObjectFolder(metadata.CommonPictureKind, relative, expectedRevision, func() (uuid.UUID, string, error) {
-		opened, err := workspace.readPictureEditorLocked(relative)
-		return opened.Picture.ID, opened.Revision, err
-	})
+	return deleteObjectFolder(workspace, metadata.CommonPictureKind, relative, expectedRevision, workspace.readPictureEditorLocked)
 }
 
 func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {

@@ -74,6 +74,10 @@ func (kind TemplateKind) contentFile() string {
 	}
 }
 
+// TemplateContentFile is the name a template of the kind keeps its content
+// under, empty for an HTML template, which keeps a file per language.
+func TemplateContentFile(kind TemplateKind) string { return kind.contentFile() }
+
 // ObjectTemplate is a prepared document an object keeps: a printed form, a
 // composition schema, a text, an archive with an external component.
 //

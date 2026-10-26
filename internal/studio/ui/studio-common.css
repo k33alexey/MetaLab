@@ -168,6 +168,11 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .studio-frame:disabled{color:#7a7d84}
 .studio-radio{display:flex;align-items:center;gap:6px;margin:3px 0}
 .studio-radio input{accent-color:#589df6;margin:0}
+/* Переключатель в диалоге — та же строка, что в окне, а недоступный —
+   с серой подписью, как у прототипа (Active document конструктора макета). */
+.localized-title-dialog label.studio-radio{display:flex;align-items:center;gap:6px;font-size:13px;color:inherit}
+.localized-title-dialog .studio-radio input{padding:0}
+.studio-radio:has(input:disabled),.catalog-field.disabled>span{color:#6f737a}
 .object-window-panel{display:flex;gap:2px;margin-top:8px;padding:2px 0}
 .object-window-tree{min-height:80px;max-height:160px;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 4px}
 .object-window-tree-tall{max-height:none;min-height:200px}

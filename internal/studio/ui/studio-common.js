@@ -1073,7 +1073,7 @@ function paletteFields(context) {
       });
       return fieldWithButtons(shown, [pick]);
     }
-    const value = subject.get(row.key), off = !available(subject, row);
+    const value = subject.get(row.key), off = !!row.fixed || !available(subject, row);
     const set = next => { if (subject.set(row.key, next) === false) return false; context.changed(); };
     let control;
     if (row.field === 'flag') {
@@ -1102,6 +1102,80 @@ function paletteFields(context) {
     control.disabled = off;
     return control;
   };
+}
+
+/* clearObjectPalette empties the palette of around (its element and its
+   title) and runs the cleanups of its fields, emptying the list in place. */
+function clearObjectPalette(around, cleanups) {
+  cleanups.forEach(destroy => destroy());
+  cleanups.length = 0;
+  around.palette?.replaceChildren();
+  around.paletteTitle?.('Свойства');
+}
+
+/* showObjectPalette draws in around.palette the palette of what title
+   names: the caption «Свойства: <title>», the kind's tabs with the fields
+   of paletteFields(context) for subject; the fields' cleanups are collected
+   in cleanups, run first. */
+function showObjectPalette(around, cleanups, title, tabs, subject, context) {
+  if (!around.palette) return;
+  clearObjectPalette(around, cleanups);
+  around.paletteTitle?.(`Свойства: ${title}`);
+  const fields = paletteFields({...context, cleanups: () => cleanups});
+  around.palette.append(objectPalette(tabs || [], row => fields(subject, row), paletteShown(subject)));
+}
+
+/* paletteEditor is the editor of an object of a kind without a window: its
+   double click, «Изменить» and «Свойства» open its palette, and the work
+   area stays as it was (obshchee.md, «Двойной щелчок и „Изменить"»). target
+   (source) is the object in what the server read, subject(source) what the
+   palette edits, context(source) what its fields open and offer beyond the
+   project, typing and redrawing. Typing renames the palette and leaves its
+   fields as they are; anything else draws it anew. */
+function paletteEditor(host, onChange, around, {target, subject, context = () => ({})}) {
+  let source = null;
+  const cleanups = [];
+  function typed() { onChange(); around.paletteTitle?.(`Свойства: ${target(source).name}`); }
+  function changed() { onChange(); render(); }
+  function render() {
+    if (!source) return;
+    showObjectPalette(around, cleanups, target(source).name, source.palette, subject(source), {project: source, typed, changed, ...context(source)});
+  }
+  StudioLanguage.onChange(() => render());
+  return hostedEditor(host, () => { if (source) clearObjectPalette(around, cleanups); source = null; }, {
+    open(value) {
+      if (source) clearObjectPalette(around, cleanups);
+      source = structuredClone(value);
+      render();
+    },
+    value() { return source && structuredClone(target(source)); },
+    // The palette is all the object shows: a click on its node shows it.
+    showPalette() {
+      if (!source || !around.palette) return false;
+      render();
+      return true;
+    },
+  });
+}
+
+/* chooseFileContent asks the browser for a file, of the extensions in
+   accept when given, and answers its name and its content in base64 - as
+   the server takes a file in JSON - or null when none is chosen. */
+function chooseFileContent(accept = '') {
+  return new Promise(resolve => {
+    const chooser = node('input');
+    chooser.type = 'file';
+    chooser.accept = accept;
+    chooser.addEventListener('change', async () => {
+      const file = chooser.files?.[0];
+      if (!file) { resolve(null); return; }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let text = '';
+      for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+      resolve({name: file.name, content: btoa(text)});
+    });
+    chooser.click();
+  });
 }
 
 /* objectWindow is the window of an object, one for every kind that has one,

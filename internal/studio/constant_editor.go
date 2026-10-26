@@ -10,7 +10,6 @@ import (
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
-	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // A constant has no window: its double click, «Изменить» and «Свойства»
@@ -127,16 +126,13 @@ func encodeConstant(value metadata.Constant, configuration project.Project) (str
 // CreateConstant makes the next constant, «Константа1» and on, by the one
 // way every object is made (CreateObject) and opens its palette.
 func (workspace *Workspace) CreateConstant(name string) (ConstantEditorSource, error) {
-	return createObjectAs(workspace, metadata.ConstantKind, name, workspace.readConstantEditorLocked)
+	return createObjectAs(workspace, metadata.ConstantKind, name, nil, workspace.readConstantEditorLocked)
 }
 
 // DeleteConstant removes a constant's folder - its description and modules -
 // by the one order of steps of every deletion (deleteObjectLocked).
 func (workspace *Workspace) DeleteConstant(relative, expectedRevision string) error {
-	return workspace.deleteObjectFolder(metadata.ConstantKind, relative, expectedRevision, func() (uuid.UUID, string, error) {
-		opened, err := workspace.readConstantEditorLocked(relative)
-		return opened.Constant.ID, opened.Revision, err
-	})
+	return deleteObjectFolder(workspace, metadata.ConstantKind, relative, expectedRevision, workspace.readConstantEditorLocked)
 }
 
 // constantEditorAddress is where the palette of a constant is read,

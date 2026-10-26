@@ -23,15 +23,16 @@ var ErrNoNewObject = fmt.Errorf("an object of this kind is not made by Studio ye
 func (workspace *Workspace) CreateObject(kind metadata.Kind, name string) (string, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	return workspace.createObjectLocked(kind, name)
+	return workspace.createObjectLocked(kind, name, nil)
 }
 
-// createObjectAs makes an object of a kind and reads it by the reading of
-// its window, under the one lock.
-func createObjectAs[Window any](workspace *Workspace, kind metadata.Kind, name string, read func(string) (Window, error)) (Window, error) {
+// createObjectAs makes an object of a kind - shaped by a constructor where
+// one is given (createObjectLocked) - and reads it by the reading of its
+// window, under the one lock.
+func createObjectAs[Window any](workspace *Workspace, kind metadata.Kind, name string, shape func(*metadata.Fresh) error, read func(string) (Window, error)) (Window, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	relative, err := workspace.createObjectLocked(kind, name)
+	relative, err := workspace.createObjectLocked(kind, name, shape)
 	if err != nil {
 		var none Window
 		return none, err
@@ -44,8 +45,9 @@ func createObjectAs[Window any](workspace *Workspace, kind metadata.Kind, name s
 // last among the objects of its kind, and gives it to the roles that are
 // given every new object. A refusal on the way takes the object away again:
 // no file, no folder, no line of the order and no right of a role is left of
-// it.
-func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string) (string, error) {
+// it. shape, when given, makes of the kind's new object what a constructor
+// asked for - another kind of template, its content - before it is checked.
+func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string, shape func(*metadata.Fresh) error) (string, error) {
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return "", err
@@ -66,6 +68,11 @@ func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string) 
 	fresh, ok := metadata.NewObject(kind, id, name, configuration)
 	if !ok {
 		return "", fmt.Errorf("%w: %s", ErrNoNewObject, kind)
+	}
+	if shape != nil {
+		if err := shape(&fresh); err != nil {
+			return "", err
+		}
 	}
 	description, rights, err := metadata.EncodeObject(fresh.Value)
 	if err != nil {
@@ -115,9 +122,9 @@ func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string) 
 			return "", fmt.Errorf("create %s: %w", kind, err)
 		}
 	}
-	// The description, then the empty modules the object comes with; none
-	// of them may be there already.
-	for _, file := range append([]newFile{{relative, description}}, newModules(fresh.Modules)...) {
+	// The description, then the files the object comes with; none of them
+	// may be there already.
+	for _, file := range append([]newFile{{relative, description}}, freshFiles(fresh.Files)...) {
 		written := filepath.Join(workspace.root, filepath.FromSlash(file.relative))
 		if err := writeNewFile(written, file.content); err != nil {
 			takeAway()
@@ -159,11 +166,11 @@ type newFile struct {
 	content  []byte
 }
 
-// newModules are the empty modules a new object comes with.
-func newModules(relatives []string) []newFile {
-	files := make([]newFile, len(relatives))
-	for index, relative := range relatives {
-		files[index] = newFile{relative: relative, content: []byte{}}
+// freshFiles are the files a new object comes with.
+func freshFiles(fresh []metadata.FreshFile) []newFile {
+	files := make([]newFile, len(fresh))
+	for index, file := range fresh {
+		files[index] = newFile{relative: file.Path, content: file.Content}
 	}
 	return files
 }

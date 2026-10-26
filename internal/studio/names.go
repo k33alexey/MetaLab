@@ -34,7 +34,10 @@ var nameRefusals = map[metadata.NameFault]string{
 // the editor holds it, unsaved, and At the way down to the part
 // (metadata.PartNameFault).
 type NameCheck struct {
-	Path        string          `json:"path"`
+	Path string `json:"path"`
+	// Kind is the kind of an object not made yet - the name a constructor
+	// gives it - checked among the objects of its branch.
+	Kind        string          `json:"kind,omitempty"`
 	Name        string          `json:"name"`
 	Description json.RawMessage `json:"description,omitempty"`
 	At          []string        `json:"at,omitempty"`
@@ -61,7 +64,14 @@ func (workspace *Workspace) nameFaultLocked(check NameCheck) (metadata.NameFault
 		return metadata.LanguageNameFault(check.Description, check.At)
 	}
 	if len(check.At) == 0 {
-		return workspace.objectNameFaultLocked(check.Path, "", check.Name)
+		group := ""
+		if check.Path == "" && check.Kind != "" {
+			if _, ok := kinds.Of(kinds.Kind(check.Kind)); !ok {
+				return metadata.NameFits, ErrInvalidSourcePath
+			}
+			group = branchOf(check.Kind)
+		}
+		return workspace.objectNameFaultLocked(check.Path, group, check.Name)
 	}
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
@@ -153,8 +163,12 @@ func numberedName(base string, taken []string) string {
 }
 
 // newObjectNameLocked is the name of a new object of a kind: the kind's word
-// for one object, numbered among the objects at the top of its branch.
+// for one object, numbered among the objects at the top of its branch, or
+// the name the kind gives by itself (kinds.Descriptor.NewName).
 func (workspace *Workspace) newObjectNameLocked(kind string) (string, error) {
+	if name, ok := kinds.Must(kinds.Kind(kind)).NewName(); ok {
+		return name, nil
+	}
 	siblings, err := workspace.branchLocked("", branchOf(kind))
 	if err != nil {
 		return "", err

@@ -8,51 +8,18 @@
    (valueSubject). around holds the palette, its title, and the opening of a
    module and of a file. */
 function createConstantEditor(host, onChange, around = {}) {
-  let source = null, cleanups = [];
-  const constant = () => source.constant;
-  function clear() {
-    cleanups.forEach(destroy => destroy());
-    cleanups = [];
-    around.palette?.replaceChildren();
-    around.paletteTitle?.('Свойства');
-  }
-  // Typing renames the palette and leaves its fields as they are; anything
-  // else draws the palette anew - the rows of a new type among them.
-  function typed() { onChange(); around.paletteTitle?.(`Свойства: ${constant().name}`); }
-  function changed() { onChange(); render(); }
-  function subject() {
-    return valueSubject(constant(), source.typeOffer, types => { constant().types = types; }, {owner: 'constants',
-      setName: value => { constant().name = value; }, check: () => ({path: source.path, name: constant().name})});
-  }
-  function render() {
-    if (!source || !around.palette) return;
-    clear();
-    around.paletteTitle?.(`Свойства: ${constant().name}`);
-    const fields = paletteFields({project: source, typeOffer: source.typeOffer, choices: source.choices, cleanups: () => cleanups,
-      typed, changed, openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
+  return paletteEditor(host, onChange, around, {
+    target: source => source.constant,
+    subject: source => valueSubject(source.constant, source.typeOffer, types => { source.constant.types = types; }, {owner: 'constants',
+      setName: value => { source.constant.name = value; }, check: () => ({path: source.path, name: source.constant.name})}),
+    context: source => ({typeOffer: source.typeOffer, choices: source.choices,
+      openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
       // The main form of a constant is a common form, named by its
       // identifier.
       form: id => {
         const form = objectChoiceItem(source.choices?.defaultForm, id);
         return {name: form?.name || id, path: form?.path};
       },
-      choose: (row, items) => chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items)});
-    const shown = subject();
-    around.palette.append(objectPalette(source.palette || [], row => fields(shown, row), paletteShown(shown)));
-  }
-  StudioLanguage.onChange(() => render());
-  return hostedEditor(host, () => { if (source) clear(); source = null; }, {
-    open(value) {
-      if (source) clear();
-      source = structuredClone(value);
-      render();
-    },
-    value() { return source && structuredClone(constant()); },
-    // The palette is all the constant has: a click on its node shows it.
-    showPalette() {
-      if (!source || !around.palette) return false;
-      render();
-      return true;
-    },
+      choose: (row, items) => chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items)}),
   });
 }

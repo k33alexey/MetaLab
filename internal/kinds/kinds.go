@@ -194,6 +194,19 @@ var references = map[Kind][]Words{
 	ExternalDimensionTable:     {{"ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка", "ExternalDataSourceCubeDimensionTableRef"}},
 }
 
+// newNames are the names «Добавить» gives a new object of a kind where it is
+// not the kind's word for one object numbered: a template is «Макет», as
+// the constructor of a template offers it (docs/block-00/obshchij-maket.md,
+// maket.md).
+var newNames = map[Kind]string{CommonTemplate: "Макет"}
+
+// NewName is the name «Добавить» gives a new object of the kind by itself,
+// and false for a kind whose new object is its word numbered.
+func (descriptor Descriptor) NewName() (string, bool) {
+	name, ok := newNames[descriptor.Kind]
+	return name, ok
+}
+
 // referenceOrder is the order the prototype's window «Редактирование типа
 // данных» lists the reference types of the configuration in - not the order
 // of the tree, where an exchange plan stands among the common objects and the

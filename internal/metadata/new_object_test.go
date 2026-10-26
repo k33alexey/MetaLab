@@ -22,9 +22,9 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 	module := uuid.Derive(id, "module")
 	moduleText, _ := project.ModulePath(module)
 	cases := []struct {
-		kind    Kind
-		want    any
-		modules []string
+		kind  Kind
+		want  any
+		files []FreshFile
 	}{
 		{CatalogKind, CatalogDefinition{
 			Format: CurrentFormat, ID: id, Name: "Новый",
@@ -40,7 +40,7 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 			DataHistorySettings: DataHistorySettings{DataHistory: "dont-use"}, UseStandardCommands: true,
 			FillChecking: "dont-check", Choice: FieldChoice{QuickChoice: "auto", HistoryOnInput: "auto"},
 		}, nil},
-		{CommonModuleKind, CommonModuleDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Module: module, Server: true}, []string{moduleText}},
+		{CommonModuleKind, CommonModuleDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Module: module, Server: true}, []FreshFile{{Path: moduleText}}},
 		{CommandGroupKind, CommandGroupDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Category: "navigation-panel", Representation: "auto"}, nil},
 		// obshchaya-kartinka.md and the help: no image, neither availability.
 		{CommonPictureKind, CommonPictureDefinition{Format: CurrentFormat, ID: id, Name: "Новый"}, nil},
@@ -55,8 +55,8 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 			t.Errorf("no new %s", item.kind)
 			continue
 		}
-		if !reflect.DeepEqual(fresh.Value, item.want) || !reflect.DeepEqual(fresh.Modules, item.modules) {
-			t.Errorf("the new %s is %+v with modules %v,\nwant %+v with %v", item.kind, fresh.Value, fresh.Modules, item.want, item.modules)
+		if !reflect.DeepEqual(fresh.Value, item.want) || !reflect.DeepEqual(fresh.Files, item.files) {
+			t.Errorf("the new %s is %+v with files %v,\nwant %+v with %v", item.kind, fresh.Value, fresh.Files, item.want, item.files)
 		}
 	}
 	// Every kind made is read back by the load's own reading, wherever its

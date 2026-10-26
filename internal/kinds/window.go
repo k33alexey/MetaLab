@@ -118,6 +118,10 @@ type PaletteRow struct {
 	// Default is the value a list shows where the description writes none,
 	// the model's meaning of an absent one (not indexed, not checked).
 	Default string `json:"default,omitempty"`
+	// Fixed is a property set once, when the object is made, and shown
+	// unavailable after: the kind of a template (obshchij-maket.md,
+	// «Палитра»).
+	Fixed bool `json:"fixed,omitempty"`
 	// Shown are what the row stands by at all, unlike Needs, which leave it
 	// standing unavailable: type=<kind> - the kind of the one type of the
 	// part (string, number, reference), owner=<kind> - the kind of the
@@ -169,6 +173,18 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/obshchij-maket.md, «Палитра»; snapshot
+	// obshchij-maket/07-novyj-maket-palitra: one tab, «Тип макета»
+	// unavailable once the template is made, «Макет: Открыть» opening the
+	// editor of its content.
+	CommonTemplate: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("макета", "о макете"), []PaletteRow{
+			{Key: "kind", Title: "Тип макета", Field: ChoiceField, Important: true, Fixed: true, Choices: TemplateKinds(),
+				Description: "Что хранит макет; выбирается в конструкторе макета и после не меняется."},
+			{Field: SeparatorField, Important: true},
+			{Key: "content", Title: "Макет", Field: WindowField, Important: true, Description: "Содержимое макета: открывается его редактором."},
+		})},
+	},
 	// docs/block-00/obshchaya-kartinka.md, «Палитра»; snapshot
 	// obshchaya-kartinka/01-palitra: one tab, «Картинка: Открыть» opens the
 	// window of the picture, «Доступность для оформления» is unavailable
@@ -371,6 +387,20 @@ var palettes = map[Kind][]PaletteTab{
 		}},
 	},
 }
+
+// templateKinds are the kinds of a template with the prototype's captions,
+// in the order the constructor of a template lists them (obshchij-maket.md,
+// «Команды»; snapshot obshchij-maket/03-konstruktor).
+var templateKinds = [][2]string{
+	{"spreadsheet", "Табличный документ"}, {"text", "Текстовый документ"}, {"binary", "Двоичные данные"},
+	{"active-document", "Active document"}, {"html", "HTML документ"}, {"geographical-schema", "Географическая схема"},
+	{"graphical-schema", "Графическая схема"}, {"composition-schema", "Схема компоновки данных"},
+	{"composition-appearance", "Макет оформления компоновки данных"}, {"add-in", "Внешняя компонента"},
+}
+
+// TemplateKinds are the kinds of a template and their captions, in the
+// constructor's order.
+func TemplateKinds() [][2]string { return slices.Clone(templateKinds) }
 
 // moduleExplanations are the lines the palette shows under a row of a
 // module.

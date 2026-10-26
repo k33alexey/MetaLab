@@ -355,7 +355,7 @@ func declaredFieldChanges(before, after metadata.CatalogDefinition) (added, remo
 // CreateCatalog makes the next catalog by the one way every object is made
 // (CreateObject) and opens it as any catalog is read.
 func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, error) {
-	return createObjectAs(workspace, metadata.CatalogKind, name, workspace.readCatalogEditorLocked)
+	return createObjectAs(workspace, metadata.CatalogKind, name, nil, workspace.readCatalogEditorLocked)
 }
 
 // DeleteCatalog permanently removes one catalog's whole per-object folder
@@ -364,24 +364,40 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 // pointing at this catalog) is not checked here — same as SaveCatalogEditor,
 // that is caught at the next full project Load, not at delete time.
 func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) error {
-	return workspace.deleteObjectFolder(metadata.CatalogKind, relative, expectedRevision, func() (uuid.UUID, string, error) {
-		opened, err := workspace.readCatalogEditorLocked(relative)
-		return opened.Catalog.ID, opened.Revision, err
-	})
+	return deleteObjectFolder(workspace, metadata.CatalogKind, relative, expectedRevision, workspace.readCatalogEditorLocked)
+}
+
+// windowSource is what a window of an object reads: the object's
+// identifier and the revision it was read at.
+type windowSource interface {
+	identity() (uuid.UUID, string)
+}
+
+func (source CatalogEditorSource) identity() (uuid.UUID, string) {
+	return source.Catalog.ID, source.Revision
+}
+func (source ConstantEditorSource) identity() (uuid.UUID, string) {
+	return source.Constant.ID, source.Revision
+}
+func (source PictureEditorSource) identity() (uuid.UUID, string) {
+	return source.Picture.ID, source.Revision
+}
+func (source TemplateEditorSource) identity() (uuid.UUID, string) {
+	return source.Template.ID, source.Revision
 }
 
 // deleteObjectFolder deletes an object of a kind that keeps a folder named
-// after it - its description, modules, forms - by the one order of steps of
-// every deletion (deleteObjectLocked), while the caller holds the revision
-// read last. read reads the object as its window does: its identifier and
-// revision.
-func (workspace *Workspace) deleteObjectFolder(kind metadata.Kind, relative, expectedRevision string, read func() (uuid.UUID, string, error)) error {
+// after it - its description, modules, forms, content - by the one order of
+// steps of every deletion (deleteObjectLocked), while the caller holds the
+// revision read last. read reads the object as its window does.
+func deleteObjectFolder[Window windowSource](workspace *Workspace, kind metadata.Kind, relative, expectedRevision string, read func(string) (Window, error)) error {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	id, revision, err := read()
+	opened, err := read(relative)
 	if err != nil {
 		return err
 	}
+	id, revision := opened.identity()
 	if revision != expectedRevision {
 		return ErrSourceChanged
 	}

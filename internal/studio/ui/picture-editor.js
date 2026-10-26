@@ -14,7 +14,8 @@
    decision of 15.10.2026, ML-STUDIO.md, «Окно общей картинки»).
    around holds the palette and its title. */
 function createPictureEditor(host, onChange, around = {}) {
-  let source = null, image = null, cleanups = [], paletteCleanups = [], frame = null;
+  let source = null, image = null, cleanups = [], frame = null;
+  const paletteCleanups = [];
   const picture = () => source.picture;
   // The formats an image of a picture is kept in (metadata.PictureFormats).
   const formats = ['png', 'svg', 'gif', 'ico', 'jpg', 'bmp'];
@@ -101,22 +102,12 @@ function createPictureEditor(host, onChange, around = {}) {
   }
   // «Выбрать из файла»: a file of one of the formats, read whole; it becomes
   // the picture when the window is saved.
-  function chooseFile() {
-    const input = node('input');
-    input.type = 'file';
-    input.accept = formats.map(format => '.' + format).join(',');
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const format = file.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
-      if (!formats.includes(format)) return;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let text = '';
-      for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-      image = {format, content: btoa(text)};
-      changed();
-    });
-    input.click();
+  async function chooseFile() {
+    const file = await chooseFileContent(formats.map(format => '.' + format).join(','));
+    const format = file?.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
+    if (!file || !formats.includes(format)) return;
+    image = {format, content: file.content};
+    changed();
   }
   // «Сохранить в файл»: the image as the browser saves a download, named
   // after the picture.
@@ -126,27 +117,18 @@ function createPictureEditor(host, onChange, around = {}) {
     link.download = `${picture().name}.${shown.format}`;
     link.click();
   }
-  function clearPalette() {
-    paletteCleanups.forEach(destroy => destroy());
-    paletteCleanups = [];
-    around.palette?.replaceChildren();
-    around.paletteTitle?.('Свойства');
-  }
   function renderPalette() {
-    if (!around.palette || !source) return;
-    clearPalette();
-    around.paletteTitle?.(`Свойства: ${picture().name}`);
+    if (!source) return;
     const subject = {target: picture(), get: key => picture()[key], set: (key, value) => key === 'comment' ? setText(key, value) : setFlag(key, value),
       setName: value => { picture().name = value; }, check: () => ({path: source.path, name: picture().name})};
-    const fields = paletteFields({project: source, cleanups: () => paletteCleanups, typed, changed: () => changed(),
-      windows: ['picture'], openWindow: () => host.querySelector('input')?.focus()});
-    around.palette.append(objectPalette(source.palette || [], row => fields(subject, row), paletteShown(subject)));
+    showObjectPalette(around, paletteCleanups, picture().name, source.palette, subject,
+      {project: source, typed, changed: () => changed(), windows: ['picture'], openWindow: () => host.querySelector('input')?.focus()});
   }
   function render() { renderWindow(); renderPalette(); }
   StudioLanguage.onChange(() => { if (source) render(); });
-  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearPalette(); source = null; image = null; }, {
+  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; image = null; }, {
     open(value) {
-      if (source) clearPalette();
+      if (source) clearObjectPalette(around, paletteCleanups);
       source = structuredClone(value);
       image = null;
       host.hidden = false;
