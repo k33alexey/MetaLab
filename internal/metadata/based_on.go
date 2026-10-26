@@ -2,7 +2,9 @@ package metadata
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -39,6 +41,9 @@ type BasisObject struct {
 	Kind Kind
 	ID   uuid.UUID
 	Name string
+	// FullName is how the prototype names it (help, ПолноеИмя):
+	// Справочник.Банки, ВнешнийИсточникДанных.Склад.Таблица.Остатки.
+	FullName string
 }
 
 // basisCarrier is one object that carries a list of bases, so that the eight
@@ -49,6 +54,50 @@ type basisCarrier struct {
 	id      uuid.UUID
 	name    string
 	basedOn []uuid.UUID
+}
+
+// basedOnField is the field of the description of every carrier holding its
+// list of bases.
+const basedOnField = "BasedOn"
+
+// BasisCarriers are the objects that may be entered on the basis of
+// another - the objects of the eight kinds and the tables of object data of
+// external sources - in the order of the tree: the objects a list «Является
+// основанием для» may name.
+func (catalog *Catalog) BasisCarriers() []BasisObject {
+	var result []BasisObject
+	for _, carrier := range catalog.basisCarriers() {
+		full := fullName(carrier.kind, carrier.name)
+		if source, table, inSource := strings.Cut(carrier.name, "."); inSource && carrier.kind == ExternalDataSourceTableKind {
+			full = fullName(ExternalDataSourceKind, source) + "." + fullName(carrier.kind, table)
+		}
+		result = append(result, BasisObject{Kind: carrier.kind, ID: carrier.id, Name: carrier.name, FullName: full})
+	}
+	return result
+}
+
+// ListBasis answers the description of a carrier, as DecodeSource reads it,
+// with basis put last into its list of bases - unless it is there - or taken
+// out of it; an error for a description that keeps no such list.
+func ListBasis(description any, basis uuid.UUID, member bool) (any, error) {
+	if description == nil {
+		return nil, fmt.Errorf("no description keeps a list of bases")
+	}
+	value := reflect.New(reflect.TypeOf(description)).Elem()
+	value.Set(reflect.ValueOf(description))
+	field := value.FieldByName(basedOnField)
+	if !field.IsValid() || field.Type() != reflect.TypeFor[[]uuid.UUID]() {
+		return nil, fmt.Errorf("%T keeps no list of bases", description)
+	}
+	list := slices.Clone(field.Interface().([]uuid.UUID))
+	switch at := slices.Index(list, basis); {
+	case !member && at >= 0:
+		list = slices.Delete(list, at, at+1)
+	case member && at < 0:
+		list = append(list, basis)
+	}
+	field.Set(reflect.ValueOf(list))
+	return value.Interface(), nil
 }
 
 // basisKinds are the eight kinds whose objects may be entered on the basis of
@@ -73,7 +122,7 @@ func (catalog *Catalog) basisCarriers() []basisCarrier {
 		for index := range list.Len() {
 			item := list.Index(index)
 			result = append(result, basisCarrier{kind, item.FieldByName("ID").Interface().(uuid.UUID), item.FieldByName("Name").String(),
-				item.FieldByName("BasedOn").Interface().([]uuid.UUID)})
+				item.FieldByName(basedOnField).Interface().([]uuid.UUID)})
 		}
 	}
 	// A table of a source is entered on the basis of other objects and may be

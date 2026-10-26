@@ -334,3 +334,129 @@ func TestTheWindowOfACatalogWritesItsExchangePlans(t *testing.T) {
 		t.Errorf("the plans written do not load: %v", err)
 	}
 }
+
+// enterSalesOnGoods makes the document ПродажаТоваров of the demo project
+// entered on the basis of the catalog Товары, and so a table of object data
+// Склад.Остатки of an external source it gives the project.
+func enterSalesOnGoods(t *testing.T, root string) string {
+	t.Helper()
+	source := filepath.Join(root, "metadata", "external-data-sources", "Склад")
+	for path, body := range map[string]string{
+		filepath.Join(source, "object.yaml"): "format: 1\nid: 30000000-0000-4000-8000-000000000601\nname: Склад\ntitle: {ru: Склад}\n",
+		filepath.Join(source, "tables", "Остатки", "object.yaml"): "format: 1\nid: 30000000-0000-4000-8000-000000000602\nname: Остатки\ntitle: {ru: Остатки}\n" +
+			"name_in_data_source: dbo.Stock\ndata_type: object\nkey_fields: [Код]\nfields:\n  - id: 30000000-0000-4000-8000-000000000603\n" +
+			"    name: Код\n    title: {ru: Код}\n    types: [{kind: string, length: 20}]\n    name_in_data_source: code\n" +
+			"based_on:\n  - 10000000-0000-4000-8000-000000000101\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sales := filepath.Join(root, "metadata", "documents", "ПродажаТоваров", "object.yaml")
+	content, err := os.ReadFile(sales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sales, append(content, []byte("based_on:\n  - 10000000-0000-4000-8000-000000000101\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return sales
+}
+
+// A save of the window of a catalog writes the list «Является основанием
+// для» of its page «Ввод на основании» into the lists of bases of the
+// objects named - a table of an external source as much as a catalog or a
+// document - the catalog put last into a list naming it anew, taken out
+// of one that named it - and a refusal of the catalog puts them back; the
+// catalog itself is not among them, its own list is the window's. Defects
+// caught: the list read off the wrong side; a mark not written into the
+// other object; a refusal leaving the other objects changed; the catalog
+// written twice by one save when it is its own basis.
+func TestTheWindowOfACatalogWritesWhatItIsTheBasisFor(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	sales := enterSalesOnGoods(t, root)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const goods, partnersFile = "metadata/catalogs/Товары/object.yaml", "metadata/catalogs/Контрагенты/object.yaml"
+	read := func(path string) string {
+		t.Helper()
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(content)
+	}
+	opened, err := workspace.ReadCatalogEditor(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown []string
+	for _, place := range opened.BasisFor {
+		shown = append(shown, place.Name)
+	}
+	if !slices.Equal(shown, []string{"Документ.ПродажаТоваров", "ВнешнийИсточникДанных.Склад.Таблица.Остатки"}) {
+		t.Fatalf("Товары is shown the basis for %v, want Документ.ПродажаТоваров and the table Склад.Остатки", shown)
+	}
+	stock := filepath.Join(root, "metadata", "external-data-sources", "Склад", "tables", "Остатки", "object.yaml")
+	partners, err := uuid.Parse("10000000-0000-4000-8000-000000000102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := []uuid.UUID{partners, opened.Catalog.ID}
+	value := opened.Catalog
+	value.BasedOn = []uuid.UUID{opened.Catalog.ID}
+	window := CatalogWindowValue{CatalogDefinition: value, BasisFor: &marked}
+	const member = "10000000-0000-4000-8000-000000000101"
+	salesBefore := read(sales)
+
+	// Refused halfway: the folder of the catalog takes no file.
+	folder := filepath.Join(root, "metadata", "catalogs", "Товары")
+	if err := os.Chmod(folder, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	_, refused := workspace.SaveCatalogWindow(goods, window, opened.Revision)
+	if err := os.Chmod(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if refused == nil {
+		t.Fatal("the catalog was written into a folder that takes no file")
+	}
+	if text := read(filepath.Join(root, partnersFile)); strings.Contains(text, "based_on") {
+		t.Errorf("the refusal left Контрагенты entered on the basis of Товары:\n%s", text)
+	}
+	if text := read(sales); !strings.Contains(text, "based_on") {
+		t.Errorf("the refusal left ПродажаТоваров without its basis:\n%s (before:\n%s)", text, salesBefore)
+	}
+
+	saved, err := workspace.SaveCatalogWindow(goods, window, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := read(filepath.Join(root, partnersFile)); !strings.Contains(text, "based_on:\n  - "+member) {
+		t.Errorf("Контрагенты is not entered on the basis of Товары:\n%s", text)
+	}
+	if text := read(sales); strings.Contains(text, "based_on") {
+		t.Errorf("ПродажаТоваров is left entered on the basis of Товары:\n%s", text)
+	}
+	if text := read(stock); strings.Contains(text, "based_on") {
+		t.Errorf("the table Склад.Остатки is left entered on the basis of Товары:\n%s", text)
+	}
+	if text := read(filepath.Join(root, goods)); !strings.Contains(text, "based_on:\n  - "+member) {
+		t.Errorf("Товары has not its own list:\n%s", text)
+	}
+	shown = nil
+	for _, place := range saved.BasisFor {
+		shown = append(shown, place.Name)
+	}
+	if !slices.Equal(shown, []string{"Справочник.Контрагенты"}) {
+		t.Errorf("after the save Товары is shown the basis for %v", shown)
+	}
+	if _, err := metadata.Load(root); err != nil {
+		t.Errorf("the lists written do not load: %v", err)
+	}
+}

@@ -18,7 +18,8 @@ import (
 // page 2; snapshot okno-02), «Функциональные опции» the options it is in
 // (page 3; snapshot okno-03), «Обмен данными» the exchange plans that
 // register its changes, each with its autoregistration (page 14; snapshot
-// okno-14). The content is the other object's, so a mark of the page is an
+// okno-14), «Ввод на основании» the objects entered on its basis (page 12;
+// snapshot okno-12). The content is the other object's, so a mark of the page is an
 // edit of that object, written with the object of the window by «Сохранить»
 // and taken back with it.
 
@@ -97,6 +98,38 @@ func exchangePlaces(loaded *metadata.Catalog, object uuid.UUID) []MemberPlace {
 	return places
 }
 
+// basisPlaces are the objects that may be entered on the basis of another,
+// in the order of the tree, by their full names, each marked where its list
+// of bases names the object. The object itself is left out: its own list is
+// the window's «Вводится на основании», written with it.
+func basisPlaces(loaded *metadata.Catalog, object uuid.UUID) []MemberPlace {
+	var marked []uuid.UUID
+	for _, carrier := range loaded.BasisFor(object) {
+		marked = append(marked, carrier.ID)
+	}
+	var places []MemberPlace
+	for _, carrier := range loaded.BasisCarriers() {
+		if carrier.ID == object {
+			continue
+		}
+		place := memberPlace(carrier.Kind, carrier.ID, carrier.Name)
+		place.Name, place.Member = carrier.FullName, slices.Contains(marked, carrier.ID)
+		places = append(places, place)
+	}
+	return places
+}
+
+// members are the places marked.
+func members(places []MemberPlace) []MemberPlace {
+	result := []MemberPlace{}
+	for _, place := range places {
+		if place.Member {
+			result = append(result, place)
+		}
+	}
+	return result
+}
+
 // wholeObject tells the item of the content of an option that is the object
 // itself.
 func wholeObject(kind metadata.Kind, object uuid.UUID) func(metadata.FunctionalOptionItem) bool {
@@ -161,6 +194,20 @@ func exchangeMembership(kind metadata.Kind, object uuid.UUID, places []MemberPla
 			}
 			plan.Content = listed(plan.Content, item, func(listed metadata.ExchangePlanContentItem) bool { return listed.Object == object }, mark != nil)
 			return plan, err
+		}}
+}
+
+// basisMembership is the list «Является основанием для» of the page «Ввод на
+// основании»: the list of bases of an object of any of the kinds that keep
+// one names the object.
+func basisMembership(object uuid.UUID, places []MemberPlace, marked []uuid.UUID) membership {
+	return membership{places: places, marked: marksOf(marked),
+		include: func(relative, content string, mark *MemberPlace, configuration project.Project) (any, error) {
+			description, _, err := metadata.DecodeSource(relative, strings.NewReader(content), nil, configuration)
+			if err != nil {
+				return nil, err
+			}
+			return metadata.ListBasis(description, object, mark != nil)
 		}}
 }
 

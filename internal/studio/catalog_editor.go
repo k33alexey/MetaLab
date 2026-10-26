@@ -51,11 +51,16 @@ type CatalogEditorSource struct {
 	// «Функциональные опции»), and ExchangePlans the exchange plans, those
 	// registering its changes marked with their autoregistration (its page
 	// «Обмен данными»).
-	Subsystems        []MemberPlace     `json:"subsystems"`
-	FunctionalOptions []MemberPlace     `json:"functionalOptions"`
-	ExchangePlans     []MemberPlace     `json:"exchangePlans"`
-	Forms             []NamedPath       `json:"forms"`
-	CommandModules    map[string]string `json:"commandModules"`
+	Subsystems        []MemberPlace `json:"subsystems"`
+	FunctionalOptions []MemberPlace `json:"functionalOptions"`
+	ExchangePlans     []MemberPlace `json:"exchangePlans"`
+	// BasisFor are the objects entered on the basis of the catalog, by
+	// their full names, but the catalog itself (its list «Является
+	// основанием для»), and basisPlaces every object that may be.
+	BasisFor       []MemberPlace `json:"basisFor"`
+	basisPlaces    []MemberPlace
+	Forms          []NamedPath       `json:"forms"`
+	CommandModules map[string]string `json:"commandModules"`
 }
 
 // NamedPath is a part of an object kept in a file of its own: its name and
@@ -125,7 +130,9 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 			commandModules[command.Name] = module
 		}
 	}
+	basis := basisPlaces(loaded, value.ID)
 	return CatalogEditorSource{
+		BasisFor: members(basis), basisPlaces: basis,
 		Forms: forms, CommandModules: commandModules, Subsystems: subsystemPlaces(loaded, value.ID),
 		FunctionalOptions: optionPlaces(loaded, metadata.CatalogKind, value.ID), ExchangePlans: exchangePlaces(loaded, value.ID),
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
@@ -150,14 +157,16 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 
 // CatalogWindowValue is what the window of a catalog writes: the catalog,
 // the subsystems marked on its page «Подсистемы», the options marked on
-// «Функциональные опции» and the exchange plans marked on «Обмен данными»
-// with their autoregistration - none where a page is not given, which
-// leaves those objects as they are.
+// «Функциональные опции», the exchange plans marked on «Обмен данными»
+// with their autoregistration and the objects listed «Является основанием
+// для» on «Ввод на основании» - none where a page is not given, which leaves
+// those objects as they are.
 type CatalogWindowValue struct {
 	metadata.CatalogDefinition
 	Subsystems        *[]uuid.UUID   `json:"subsystems,omitempty"`
 	FunctionalOptions *[]uuid.UUID   `json:"functionalOptions,omitempty"`
 	ExchangePlans     *[]MemberPlace `json:"exchangePlans,omitempty"`
+	BasisFor          *[]uuid.UUID   `json:"basisFor,omitempty"`
 }
 
 // memberships are the pages of the window given, each with the objects it
@@ -172,6 +181,9 @@ func (window CatalogWindowValue) memberships(opened CatalogEditorSource) []membe
 	}
 	if window.ExchangePlans != nil {
 		pages = append(pages, exchangeMembership(metadata.CatalogKind, opened.Catalog.ID, opened.ExchangePlans, *window.ExchangePlans))
+	}
+	if window.BasisFor != nil {
+		pages = append(pages, basisMembership(opened.Catalog.ID, opened.basisPlaces, *window.BasisFor))
 	}
 	return pages
 }
@@ -244,6 +256,7 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 			for _, page := range pages {
 				markMembers(page)
 			}
+			opened.BasisFor = members(opened.basisPlaces)
 			return opened, nil
 		}
 		err = errors.Join(err, moveBack())

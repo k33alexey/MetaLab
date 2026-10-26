@@ -1,8 +1,11 @@
 package metadata
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -219,5 +222,50 @@ func TestBrokenBasisIsRefused(t *testing.T) {
 				t.Fatalf("%s: refused for another reason: %v", name, err)
 			}
 		})
+	}
+}
+
+// ListBasis puts a basis last into the list of a carrier of any kind - a
+// table of an external source as much as a document - once, takes one out
+// leaving the rest, and refuses a description that keeps no list. Defects
+// caught: a basis named twice, the list of the description read changed in
+// place, a description of another kind taken for a carrier.
+func TestListBasisEditsTheListOfAnyCarrier(t *testing.T) {
+	a, err := uuid.Parse(basisReceipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := uuid.Parse(basisSale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := ExternalTable{BasedOn: []uuid.UUID{a}}
+	added, err := ListBasis(table, b, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := ListBasis(added, b, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := again.(ExternalTable).BasedOn; !slices.Equal(got, []uuid.UUID{a, b}) {
+		t.Errorf("the table is entered on the basis of %v, want %v", got, []uuid.UUID{a, b})
+	}
+	if !slices.Equal(table.BasedOn, []uuid.UUID{a}) {
+		t.Errorf("the description read was changed: %v", table.BasedOn)
+	}
+	document := DocumentDefinition{BasedOn: []uuid.UUID{a, b}}
+	removed, err := ListBasis(document, a, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(document.BasedOn, []uuid.UUID{a, b}) {
+		t.Errorf("the description read was changed: %v", document.BasedOn)
+	}
+	if got := removed.(DocumentDefinition).BasedOn; !slices.Equal(got, []uuid.UUID{b}) {
+		t.Errorf("the document is entered on the basis of %v, want %v", got, []uuid.UUID{b})
+	}
+	if _, err := ListBasis(SubsystemDefinition{}, a, true); err == nil {
+		t.Error("a subsystem was given a list of bases")
 	}
 }

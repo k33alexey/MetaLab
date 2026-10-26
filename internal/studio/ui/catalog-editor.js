@@ -308,23 +308,9 @@ function createCatalogEditor(host, onChange, around = {}) {
   function renderOwnersPage() {
     const page = node('div', undefined, 'object-window-fields object-window-owners'), owners = catalog().owners || [];
     if (!owners.includes(currentOwner)) currentOwner = owners[0] ?? null;
-    const head = node('div', undefined, 'object-window-list-head');
-    const change = iconButton('change', 'Изменить'), remove = iconButton('delete', 'Удалить');
-    change.addEventListener('click', chooseOwners);
-    remove.disabled = !owners.length;
-    remove.addEventListener('click', () => { model.setOwners(owners.filter(id => id !== currentOwner)); rerender(); });
-    head.append(node('span', 'Список владельцев справочника:'), change, remove);
-    const list = node('div', undefined, 'object-window-list');
-    list.setAttribute('role', 'listbox');
-    for (const id of owners) {
-      const row = node('div', objectName('owners', id), 'object-window-list-row' + (id === currentOwner ? ' current' : ''));
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', String(id === currentOwner));
-      row.addEventListener('click', () => { currentOwner = id; frame.refresh(); });
-      row.addEventListener('dblclick', chooseOwners);
-      list.append(row);
-    }
-    page.append(head, list, choiceField('Использование подчинения:', [['to-items', 'Элементам'], ['to-folders', 'Группам'], ['to-folders-and-items', 'Группам и элементам']],
+    page.append(...objectList('Список владельцев справочника:', owners.map(id => [id, objectName('owners', id)]), currentOwner,
+      id => { currentOwner = id; frame.refresh(); }, chooseOwners,
+      id => { model.setOwners(owners.filter(owner => owner !== id)); rerender(); }), choiceField('Использование подчинения:', [['to-items', 'Элементам'], ['to-folders', 'Группам'], ['to-folders-and-items', 'Группам и элементам']],
       catalog().subordination, value => model.setSubordination(value), !owners.length));
     return page;
   }
@@ -509,7 +495,54 @@ function createCatalogEditor(host, onChange, around = {}) {
     page.append(head, frameOfTable);
     return page;
   }
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+  // «Ввод на основании»: «Вводится на основании» - the catalog's own list of
+  // bases - and «Является основанием для» - the objects whose lists name
+  // it, written into them as the subsystems are - each with «Изменить»,
+  // the window «Выбор объекта» of the eight kinds, and «Удалить»; below,
+  // «Конструктор ввода на основании», unavailable (spravochnik.md, page 12;
+  // snapshot okno-12). The catalog in one list is in the other too: it is
+  // the basis of itself.
+  let basisFor = [], currentBasis = {own: null, other: null};
+  function basisName(id) {
+    return objectChoiceItem(source.choices?.basedOn, id)?.fullName || (source.basisFor || []).find(place => place.id === id)?.name || id;
+  }
+  // The objects a list «Является основанием для» names stand in the order of
+  // the tree, those it does not offer - the tables of external sources -
+  // after them, as the server reads them.
+  function inTreeOrder(ids) {
+    const order = choiceOrder(source.choices?.basedOn || []), rank = id => order.includes(id) ? order.indexOf(id) : order.length;
+    return [...ids].sort((a, b) => rank(a) - rank(b));
+  }
+  function setBasedOn(own, other) {
+    model.set('basedOn', own);
+    basisFor = inTreeOrder(other);
+    rerender();
+  }
+  // The catalog itself follows from one list into the other.
+  function withSelf(list, holds) {
+    const self = catalog().id, rest = list.filter(id => id !== self);
+    return holds ? [...rest, self] : rest;
+  }
+  function renderBasedOnPage() {
+    const page = node('div', undefined, 'object-window-fields object-window-based-on'), own = catalog().basedOn || [], self = catalog().id;
+    const block = (key, caption, list, set) => {
+      if (!list.includes(currentBasis[key])) currentBasis[key] = list[0] ?? null;
+      return objectList(caption, list.map(id => [id, basisName(id)]), currentBasis[key], id => { currentBasis[key] = id; frame.refresh(); },
+        async () => {
+          const chosen = await chooseObjects('Выбор объекта', source.choices?.basedOn || [], list);
+          // An object the window does not offer - a table of an external
+          // source - stays where it is.
+          if (chosen) set([...list.filter(id => !objectChoiceItem(source.choices?.basedOn, id)), ...chosen]);
+        },
+        id => set(list.filter(item => item !== id)));
+    };
+    const designer = node('button', 'Конструктор ввода на основании', 'object-window-designer');
+    designer.type = 'button'; designer.disabled = true;
+    page.append(...block('own', 'Вводится на основании:', own, list => setBasedOn(list, withSelf(basisFor, list.includes(self)))),
+      ...block('other', 'Является основанием для:', basisFor, list => setBasedOn(withSelf(own, list.includes(self)), list)), designer);
+    return page;
+  }
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, 'based-on': renderBasedOnPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
     numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
@@ -592,6 +625,8 @@ function createCatalogEditor(host, onChange, around = {}) {
       currentOption = source.functionalOptions?.[0]?.id ?? null;
       exchange = new Map((source.exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
       currentPlan = source.exchangePlans?.[0]?.id ?? null;
+      basisFor = inTreeOrder(withSelf((source.basisFor || []).map(place => place.id), (source.catalog.basedOn || []).includes(source.catalog.id)));
+      currentBasis = {own: null, other: null};
       host.hidden = false;
       frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
@@ -601,7 +636,7 @@ function createCatalogEditor(host, onChange, around = {}) {
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged.
     value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
-      exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
+      basisFor: [...basisFor].sort(), exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.

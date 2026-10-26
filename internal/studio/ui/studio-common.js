@@ -728,6 +728,41 @@ function markBox(caption, marked, key, changed = () => {}) {
   return box;
 }
 
+/* objectList is a list of objects of a page of the window of an object, the
+   prototype's (docs/block-00/spravochnik.md, pages «Владельцы» and «Ввод на
+   основании»; snapshots spravochnik/okno-05, okno-12): its caption with
+   «Изменить» and «Удалить» at the right and the rows beneath, one of them
+   current. items are [key, caption]; choose(key) makes a row current;
+   change() is «Изменить» and a double click on a row; remove(key) takes the
+   current row away, unavailable without rows. Answers [head, list]. */
+function objectList(caption, items, current, choose, change, remove) {
+  const head = node('div', undefined, 'object-window-list-head');
+  const edit = iconButton('change', 'Изменить'), drop = iconButton('delete', 'Удалить');
+  edit.addEventListener('click', change);
+  drop.disabled = !items.length;
+  drop.addEventListener('click', () => remove(current));
+  head.append(node('span', caption), edit, drop);
+  const list = node('div', undefined, 'object-window-list');
+  list.setAttribute('role', 'listbox');
+  for (const [key, text] of items) {
+    const row = node('div', text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(key === current));
+    row.addEventListener('click', () => choose(key));
+    row.addEventListener('dblclick', change);
+    list.append(row);
+  }
+  return [head, list];
+}
+
+/* choiceOrder is the identifiers of the objects of a tree of «Выбор
+   объекта» in its order: of a branch's branches first, then its own. */
+function choiceOrder(tree) {
+  const order = [];
+  (function collect(groups) { for (const group of groups) { collect(group.children || []); for (const item of group.objects || []) order.push(item.id); } })(tree);
+  return order;
+}
+
 /* chooseObjects is the platform's window «Выбор объекта» of objects of the
    project marked by boxes (docs/block-00/spravochnik.md, the window of the
    owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
@@ -739,11 +774,10 @@ function markBox(caption, marked, key, changed = () => {}) {
    Answers the identifiers marked, in the order of the tree, on «ОК», and
    null on «Отмена». */
 async function chooseObjects(title, tree, chosen) {
-  const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = [];
+  const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = choiceOrder(tree);
   const [searchRow, search] = searchField('object-choice-search', () => draw());
   const rows = node('div', undefined, 'object-choice-tree');
   content.append(searchRow, rows);
-  (function collect(groups) { for (const group of groups) { collect(group.children || []); for (const item of group.objects || []) order.push(item.id); } })(tree);
   function draw() {
     const text = search.value.trim().toLocaleLowerCase();
     const branch = group => {

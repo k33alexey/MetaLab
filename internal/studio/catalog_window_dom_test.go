@@ -1401,3 +1401,105 @@ func TestTheExchangePageOfACatalogIsThePrototypes(t *testing.T) {
 	expect("saved", steps.Saved, true)
 	expect("opened anew", steps.Reopened, []string{"Полный ✓ Разрешить", "Филиалы ✓ Запретить"})
 }
+
+// basedOnPageWalk opens the page «Ввод на основании» of the window of the
+// catalog Товары, the basis of the document ПродажаТоваров: reads the two
+// lists; takes ПродажаТоваров away; chooses Товары for «Вводится на
+// основании», then Контрагенты for «Является основанием для», saves and
+// opens the window anew.
+const basedOnPageWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const click = async element => { element.click(); await studio.settle(); };
+  const top = () => [...document.querySelectorAll('dialog[open]')].at(-1);
+  const press = async text => { [...top().querySelectorAll('button')].find(button => button.textContent === text).click(); await new Promise(resolve => setTimeout(resolve, 50)); await studio.settle(); };
+  const heads = () => [...body().querySelectorAll('.object-window-list-head')];
+  const lists = () => [...body().querySelectorAll('.object-window-list')].map(list => [...list.querySelectorAll('.object-window-list-row')].map(row => row.textContent));
+  const choose = async (at, name) => {
+    await click(heads()[at].querySelector('button[title=Изменить]'));
+    top().querySelectorAll('.object-choice-tree details').forEach(item => { item.open = true; });
+    [...top().querySelectorAll('.object-choice-tree .studio-tree-row')].find(row => row.textContent.trim() === name).querySelector('input').click();
+    await press('ОК');
+    return lists();
+  };
+  await openObject('Товары');
+  await windowPage('Ввод на основании');
+  steps.heads = heads().map(head => head.querySelector('span').textContent);
+  steps.shown = lists();
+  steps.removeOwn = heads()[0].querySelector('button[title=Удалить]').disabled;
+  const designer = body().querySelector('.object-window-designer');
+  steps.designer = {text: designer.textContent, disabled: designer.disabled};
+  await click(heads()[1].querySelector('button[title=Удалить]'));
+  steps.removed = lists();
+  steps.changed = !document.querySelector('#save').disabled;
+  steps.itself = await choose(0, 'Товары');
+  steps.partners = await choose(1, 'Контрагенты');
+  document.querySelector('#save').click(); await new Promise(resolve => setTimeout(resolve, 50)); await studio.settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  await openObject('Товары');
+  await windowPage('Ввод на основании');
+  steps.reopened = lists();
+  return steps;
+})()`
+
+// The page «Ввод на основании» of the window of a catalog is the
+// prototype's (docs/block-00/spravochnik.md, page 12; snapshot okno-12):
+// two lists by their captions, each with «Изменить» and «Удалить», the
+// objects by their full names, «Конструктор ввода на основании»
+// unavailable; «Удалить» takes the current object away, «Изменить» chooses
+// by «Выбор объекта»; the catalog chosen as its own basis stands in both
+// lists; a table of an external source, which «Выбор объекта» does not
+// offer, stays in the list chosen anew; the objects stand in the order of
+// the tree, the tables after them; «Сохранить» writes both and the window
+// opened anew shows them.
+// Defects caught: the page empty; «Является основанием для» not read off
+// the other objects; «Удалить» or «Изменить» doing nothing; the catalog
+// its own basis in one list only; a table lost by a choice; the order of
+// the list changing on opening anew; the save not writing the other
+// objects.
+func TestTheBasedOnPageOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	enterSalesOnGoods(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, basedOnPageWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Heads                                      []string
+		Shown, Removed, Itself, Partners, Reopened [][]string
+		RemoveOwn, Changed, Saved                  bool
+		Designer                                   struct {
+			Text     string
+			Disabled bool
+		}
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("captions", steps.Heads, []string{"Вводится на основании:", "Является основанием для:"})
+	table := "ВнешнийИсточникДанных.Склад.Таблица.Остатки"
+	expect("the lists", steps.Shown, [][]string{{}, {"Документ.ПродажаТоваров", table}})
+	expect("«Удалить» of an empty list unavailable", steps.RemoveOwn, true)
+	expect("the designer", steps.Designer, struct {
+		Text     string
+		Disabled bool
+	}{"Конструктор ввода на основании", true})
+	expect("taken away", steps.Removed, [][]string{{}, {table}})
+	expect("a removal changes the window", steps.Changed, true)
+	expect("its own basis", steps.Itself, [][]string{{"Справочник.Товары"}, {"Справочник.Товары", table}})
+	expect("the basis of Контрагенты", steps.Partners, [][]string{{"Справочник.Товары"}, {"Справочник.Контрагенты", "Справочник.Товары", table}})
+	expect("saved", steps.Saved, true)
+	expect("opened anew", steps.Reopened, [][]string{{"Справочник.Товары"}, {"Справочник.Контрагенты", "Справочник.Товары", table}})
+}
