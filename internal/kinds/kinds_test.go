@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -265,5 +266,29 @@ func TestTheLayoutSaysWhereAnObjectLies(t *testing.T) {
 		if item.Layout().Storage == unset {
 			t.Errorf("%s has no way to lie in the project", item.Kind)
 		}
+	}
+}
+
+// The window of a catalog lists the fifteen pages of the prototype's, in its
+// order, written out from the inventory (docs/block-00/spravochnik.md, «Окно
+// редактирования»; snapshots spravochnik/okno-01 … okno-15). Defect caught:
+// a page left out, renamed or moved, which the window would then show so.
+func TestTheWindowOfACatalogHasThePrototypesPages(t *testing.T) {
+	want := []string{"Основные", "Подсистемы", "Функциональные опции", "Иерархия", "Владельцы", "Данные", "Нумерация",
+		"Формы", "Поле ввода", "Команды", "Макеты", "Ввод на основании", "Права", "Обмен данными", "Прочее"}
+	var got []string
+	keys := map[string]bool{}
+	for _, page := range Must(Catalog).WindowPages() {
+		got = append(got, page.Title)
+		if page.Key == "" || keys[page.Key] {
+			t.Errorf("the page %q has the key %q, empty or repeated", page.Title, page.Key)
+		}
+		keys[page.Key] = true
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the window of a catalog lists %q, want %q", got, want)
+	}
+	if pages := Must(Constant).WindowPages(); len(pages) != 0 {
+		t.Errorf("a constant has no window, yet lists %v", pages)
 	}
 }

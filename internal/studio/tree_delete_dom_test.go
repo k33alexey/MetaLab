@@ -31,7 +31,7 @@ const treeDeleteWalk = `(async () => {
   await remove('Да');
   answer.roleAfterYes = !!row('Кладовщик');
   row('Товары').click(); await studio.settle();
-  const attributes = () => [...document.querySelectorAll('#catalog-editor .catalog-list-item')].map(item => item.textContent);
+  const attributes = () => [...document.querySelectorAll('#catalog-editor .object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   row('Артикул').click(); await studio.settle();
   await remove('Нет');
   answer.attributeAfterNo = attributes().includes('Артикул');

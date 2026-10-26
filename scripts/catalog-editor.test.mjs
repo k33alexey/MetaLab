@@ -95,3 +95,28 @@ test('object-level name, title and code settings round-trip',()=>{
   assert.deepEqual(saved.code,{type:'number',length:11,auto:false,unique:false});
   assert.equal(saved.descriptionLength,500);
 });
+test('an attribute and a table part move round the ends of their list, as the prototype moves them',()=>{
+  const model=create(fixture());
+  const [first,second,third]=[model.addAttribute('catalog'),model.addAttribute('catalog'),model.addAttribute('catalog')];
+  const order=()=>model.value().attributes.map(item=>item.id);
+  model.moveAttribute('catalog',first.id,-1);
+  assert.deepEqual(order(),[second.id,third.id,first.id]);
+  model.moveAttribute('catalog',first.id,1);
+  assert.deepEqual(order(),[first.id,second.id,third.id]);
+  model.moveAttribute('catalog',second.id,1);
+  assert.deepEqual(order(),[first.id,third.id,second.id]);
+  const one=model.addTablePart(),two=model.addTablePart();
+  model.moveTablePart(two.id,1);
+  assert.deepEqual(model.value().tableParts.map(item=>item.id),[two.id,one.id]);
+});
+test('the comment, the presentations and the explanation are written and left out when emptied',()=>{
+  const model=create(fixture());
+  model.setComment('для склада');model.setPresentation('objectPresentation','ru','Товар');model.setPresentation('explanation','en','Goods');
+  model.setDefaultPresentation('as-code');
+  let saved=model.value();
+  assert.equal(saved.comment,'для склада');assert.deepEqual(saved.objectPresentation,{ru:'Товар'});assert.deepEqual(saved.explanation,{en:'Goods'});
+  assert.equal(saved.defaultPresentation,'as-code');
+  model.setComment('');model.setPresentation('objectPresentation','ru','');
+  saved=model.value();
+  assert.equal('comment' in saved,false);assert.equal('objectPresentation' in saved,false);
+});

@@ -11,7 +11,7 @@ import (
 // the focus again after «ОК».
 const namesWalk = `(async () => {
   const studio = window.__studio, steps = {};
-  window.confirm = () => true;
+  window.confirm = () => true;` + objectWindowSteps + `
   const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   const open = async text => { node(text).click(); await studio.settle(); };
   const nameInput = host => [...document.querySelectorAll(host + ' .catalog-field')].find(label => label.firstChild.textContent === 'Имя').querySelector('input');
@@ -35,10 +35,10 @@ const namesWalk = `(async () => {
   steps.repeat = await type('#catalog-editor', 'контрагенты');
   steps.rule = await type('#catalog-editor', 'Товары склада');
   steps.free = await type('#catalog-editor', 'Номенклатура');
-  [...document.querySelectorAll('#catalog-editor .catalog-list-item')].find(item => item.textContent === 'Артикул').click();
-  await studio.settle();
-  steps.standard = await type('#catalog-editor', 'Код');
-  steps.empty = await type('#catalog-editor', '');
+  await windowPage('Данные');
+  await windowRow('Артикул');
+  steps.standard = await type('#properties', 'Код');
+  steps.empty = await type('#properties', '');
   document.querySelector('#refresh').click();
   await studio.settle();
   for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
@@ -86,25 +86,27 @@ func TestAFieldOfANameRefusesAtOnce(t *testing.T) {
 // hand and no longer following; and the title a new attribute gets.
 const titleWalk = `(async () => {
   const studio = window.__studio, steps = {};
-  window.confirm = () => true;
-  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
-  const label = caption => [...document.querySelectorAll('#catalog-editor .catalog-field')].find(item => item.firstChild.textContent === caption);
+  window.confirm = () => true;` + objectWindowSteps + `
+  let host = '#catalog-editor';
+  const label = caption => windowField(host, caption);
   const write = async (caption, text) => {
     const input = label(caption).querySelector('input');
     input.value = text;
     input.dispatchEvent(new Event('input', {bubbles: true}));
     await studio.settle();
   };
-  const title = () => label('Заголовок').querySelector('input').value;
-  node('Товары').click(); await studio.settle();
-  steps.properties = document.querySelector('#catalog-editor .catalog-list-item').textContent;
+  const title = () => label('Синоним').querySelector('input').value;
+  await openObject('Товары');
+  steps.properties = document.querySelector('#catalog-editor .object-window-title').textContent;
   await write('Имя', 'ТоварыСклада');
   steps.followed = title();
-  await write('Заголовок', 'Свои товары');
+  await write('Синоним', 'Свои товары');
   await write('Имя', 'Номенклатура');
   steps.byHand = title();
-  [...document.querySelectorAll('#catalog-editor button')].find(button => button.textContent === '+ Реквизит').click();
+  await windowPage('Данные');
+  document.querySelector('#catalog-editor .object-window-panel button[title=Добавить]').click();
   await studio.settle();
+  host = '#properties';
   steps.newTitle = title();
   steps.newName = label('Имя').querySelector('input').value;
   await write('Имя', 'ЦенаЗакупки');
@@ -128,7 +130,7 @@ func TestTheTitleFollowsTheName(t *testing.T) {
 		t.Fatalf("the walk answered %s: %v", result, err)
 	}
 	// The window names its kind by the descriptor's word.
-	if steps.Properties != "Справочник · свойства" {
+	if steps.Properties != "Справочник Номенклатура" && steps.Properties != "Справочник Товары" {
 		t.Errorf("the window of a catalog names itself %q", steps.Properties)
 	}
 	if steps.Followed != "Товары склада" || steps.ByHand != "Свои товары" || steps.NewTitle != "" || steps.NewName == "" || steps.NewFollowed != "Цена закупки" {
@@ -140,22 +142,21 @@ func TestTheTitleFollowsTheName(t *testing.T) {
 // dialog asked anything, the name the window opened on, and the names of two
 // attributes and a table part added in it.
 const addWalk = `(async () => {
-  const studio = window.__studio, steps = {};
-  const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
-  const name = () => [...document.querySelectorAll('#catalog-editor .catalog-field')].find(item => item.firstChild.textContent === 'Имя').querySelector('input').value;
-  const press = async text => { [...document.querySelectorAll('#catalog-editor button')].find(button => button.textContent === text).click(); await studio.settle(); };
-  node('Справочники').click(); await studio.settle();
+  const studio = window.__studio, steps = {};` + objectWindowSteps + `
+  const name = host => windowField(host, 'Имя').querySelector('input').value;
+  const press = async title => { document.querySelector('#catalog-editor .object-window-panel button[title="' + title + '"]').click(); await studio.settle(); };
+  await openObject('Справочники');
   document.querySelector('#tree-add').click(); await studio.settle();
   steps.dialog = !!document.querySelector('dialog[open]');
-  steps.object = name();
-  steps.tree = !!node('Справочник1');
-  await press('+ Реквизит');
-  steps.first = name();
-  await press('Справочник · свойства');
-  await press('+ Реквизит');
-  steps.second = name();
-  await press('+ Табличная часть');
-  steps.part = name();
+  steps.object = name('#catalog-editor');
+  steps.tree = !!treeRow('Справочник1');
+  await windowPage('Данные');
+  await press('Добавить');
+  steps.first = name('#properties');
+  await press('Добавить');
+  steps.second = name('#properties');
+  await press('Добавить табличную часть');
+  steps.part = name('#properties');
   return steps;
 })()`
 
@@ -191,7 +192,9 @@ const limitsWalk = `(async () => {
     .find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
   const ceiling = element => element.type === 'number' ? Number(element.max || 0) : element.maxLength;
   node('Товары').click(); await studio.settle();
-  for (const caption of ['Имя', 'Заголовок', 'Длина кода', 'Длина наименования']) steps['catalog ' + caption] = ceiling(input('#catalog-editor', caption));
+  for (const caption of ['Имя', 'Синоним']) steps['catalog ' + caption] = ceiling(input('#catalog-editor', caption));
+  [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === 'Данные').click(); await studio.settle();
+  for (const caption of ['Длина кода', 'Длина наименования']) steps['catalog ' + caption] = ceiling(input('#catalog-editor', caption));
   node('Кладовщик').click(); await studio.settle();
   for (const caption of ['Имя роли', 'Заголовок', 'Комментарий']) steps['role ' + caption] = ceiling(input('#role-editor', caption));
   node('Українська').click(); await studio.settle();
@@ -222,7 +225,7 @@ func TestTheFieldsOfAWindowAreSetByTheModel(t *testing.T) {
 		t.Fatalf("the walk answered %s: %v", result, err)
 	}
 	for field, want := range map[string]int{
-		"catalog Имя": 255, "catalog Заголовок": -1, "catalog Длина кода": 50, "catalog Длина наименования": 150,
+		"catalog Имя": 255, "catalog Синоним": -1, "catalog Длина кода": 50, "catalog Длина наименования": 150,
 		"role Имя роли": 255, "role Заголовок": -1, "role Комментарий": -1,
 		"language Имя": 255, "language Синоним": -1, "language Комментарий": -1,
 		"project Имя": 255, "project Синоним": -1,
@@ -249,6 +252,7 @@ const beyondWalk = `(async () => {
   };
   const answer = async text => { [...document.querySelectorAll('dialog[open] button')].find(button => button.textContent === text).click(); await studio.settle(); };
   node('Товары').click(); await studio.settle();
+  [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === 'Данные').click(); await studio.settle();
   const before = input('Длина кода').value;
   steps.question = (await commit('Длина кода', '51'))?.querySelector('h3').textContent || '';
   await answer('Да');
@@ -263,9 +267,9 @@ const beyondWalk = `(async () => {
   await answer('Да');
   steps.taken = !(await commit('Длина наименования', '120')) && document.querySelector('#status').textContent === 'Изменён';
   // The window of the type asks the same question of a length of 1025.
-  [...document.querySelectorAll('#catalog-editor .catalog-list-item')].find(item => item.textContent === 'Артикул').click();
+  [...document.querySelectorAll('#catalog-editor .object-window-body .studio-tree-row')].find(item => item.textContent.trim() === 'Артикул').click();
   await studio.settle();
-  document.querySelector('#catalog-editor button[title="Редактирование типа данных"]').click();
+  document.querySelector('#properties button[title="Редактирование типа данных"]').click();
   await studio.settle();
   const length = document.querySelector('dialog[open] .type-editor-number');
   const lengthBefore = length.value;

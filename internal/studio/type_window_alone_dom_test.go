@@ -25,9 +25,11 @@ const typeAloneWalk = `(async () => {
   const answer = async text => { [...top().querySelectorAll('button')].find(button => button.textContent === text).click(); await pause(); };
   [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Товары').click();
   await studio.settle();
-  [...document.querySelectorAll('#catalog-editor .catalog-list-item')].find(item => item.textContent.includes('Артикул')).click();
+  [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === 'Данные').click();
   await studio.settle();
-  document.querySelector('#catalog-editor button.field-choice[title="Редактирование типа данных"]').click();
+  [...document.querySelectorAll('#catalog-editor .object-window-body .studio-tree-row')].find(item => item.textContent.trim() === 'Артикул').click();
+  await studio.settle();
+  document.querySelector('#properties button.field-choice[title="Редактирование типа данных"]').click();
   await pause();
   [...editor().querySelectorAll('label')].find(label => label.textContent.includes('Составной тип данных')).querySelector('input').click();
   await pause();

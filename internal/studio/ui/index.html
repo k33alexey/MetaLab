@@ -144,7 +144,11 @@
     const roleEditor=createRoleEditor(document.querySelector('#role-editor'),()=>objectChanged(roleEditor));
     const roleOverview=createRoleOverview(document.querySelector('#role-overview'),async(path,objectID)=>{if(await openFile(path))roleEditor.selectObject(objectID);},()=>{if(!currentFile?.isRoleOverview)return;dirty=roleOverview.value().length>0;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Роли изменены':`${roleOverview.title()} · Готово`});
     const catalogHost=document.querySelector('#catalog-editor');
-    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor));
+    // The window of a catalog stands beside the palette, where the properties of
+    // what is chosen in it are shown; «Действия» offers the commands of the
+    // object's menu, not bold - the window's own action is not one of them;
+    // «Закрыть» closes it as the file it edits.
+    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor),{palette:properties,actions:()=>{const node=nodeAt(currentFile?.path);return node?treeCommands(node,selectedElement).map(item=>item&&item.slice(0,5)):[]},close:()=>{if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return;closeFile()}});
     // The windows of objects by the address the tree gives each object
     // (Node.Editor): what part of the answer of the address the window edits,
     // and the command over the common part of the object's menu that opens it
@@ -157,7 +161,7 @@
     const languagesEditor=createLanguagesEditor(languagesHost,()=>{if(!currentFile?.isLanguages)return;dirty=JSON.stringify(languagesEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Языки изменены':'Готово'});
     let selectedElement,selectedNode=null,currentFile=null,dirty=false,loadingFile=false,configuration=null;
     function editablePath(value){return value==='configuration.yaml'||value?.endsWith('.yaml')||value?.endsWith('.bsl')}
-    async function select(node,element){if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;if(node.fragment&&objectEditors[currentFile?.editor])objectEditors[currentFile.editor].editor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
+    async function select(node,element){if(editablePath(node.path)&&currentFile?.path!==node.path&&!await openFile(node.path))return;const inWindow=!!node.fragment&&!!objectEditors[currentFile?.editor]?.editor.selectFragment(node.fragment);if(currentFile?.path==='configuration.yaml'){if((node.fragment||'').startsWith('language:'))showLanguagesEditor(currentFile);else if(node.id==='project')showProjectEditor(currentFile);if(node.fragment)languagesEditor.selectFragment(node.fragment)}if(selectedElement)selectedElement.classList.remove('selected');selectedElement=element;element.classList.add('selected');selectedNode=node;updateTreeToolbar();document.querySelector('#selection').textContent=node.title;if(currentFile?.isForm&&currentFile.path===node.path||inWindow)return;properties.replaceChildren();for(const item of node.properties||[]){const row=document.createElement('div');row.className='property';const name=document.createElement('span'),value=document.createElement('span');name.textContent=item.name;value.textContent=item.value;row.append(name,value);properties.append(row)}}
     // Щелчки по дереву исполняются по очереди: второй щелчок двойного не
     // отказывает, пока первый ещё открывает файл, а двойной щелчок открывает
     // модуль после них.
@@ -189,8 +193,10 @@
     function showProjectEditor(value){closeEditors(projectEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();projectEditor.open(value);value.isProject=true;value.isLanguages=false;value.initialProject=JSON.stringify(projectEditor.value());status.className='';status.textContent='Редактор проекта · Готово'}
     function showLanguagesEditor(value){closeEditors(languagesEditor);formDesigner.close();editorHost.hidden=true;bslEditor.close();languagesEditor.open(value);value.isProject=true;value.isLanguages=true;value.initialProject=JSON.stringify(languagesEditor.value());status.className='';status.textContent='Языки · Готово'}
     async function loadObject(address,path){const response=await fetch(`${address}?path=${encodeURIComponent(path)}`);if(!response.ok)throw new Error(await response.text());const value=await response.json();showObject(address,value);currentFile=value}
-    // editorAt is the window the tree gives the object described at path.
-    function editorAt(path){let found='';const walk=nodes=>{for(const node of nodes||[]){if(found)return;if(node.kind==='metadata'&&node.path===path&&node.editor)found=node.editor;walk(node.children)}};walk(projectData?.tree?.children);return found}
+    // nodeAt is the node of the tree of the object described at path, and
+    // editorAt the window the tree gives it.
+    function nodeAt(path){let found=null;const walk=nodes=>{for(const node of nodes||[]){if(found)return;if(node.kind==='metadata'&&node.path===path)found=node;walk(node.children)}};walk(projectData?.tree?.children);return found}
+    function editorAt(path){return nodeAt(path)?.editor||''}
     // Модуль, открытый командой меню объекта. Меню предлагает модуль, есть у
     // него текст или нет, как у прототипа, поэтому открытие его же и
     // создаёт: выбирать «создавать ли» не из чего, выбирают только
@@ -466,11 +472,8 @@
       const context=currentDeleteContext();
       if(!context)return;
       if(!context.inside&&dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
-      // One question for an object and for a part of it, the prototype's
-      // (obshchee.md, «Удаление»: «Удалить объект конфигурации?», Да / Нет;
-      // the same on an attribute, vse-ogranicheniya-dostupa.md) in ML's words
-      // (ML-STUDIO.md, «„Проект" вместо „конфигурации"»).
-      if(await askChoice('Удалить объект проекта?','',[['yes','Да'],[null,'Нет']])!=='yes')return;
+      // One question for an object and for a part of it (askDeleteObject).
+      if(!await askDeleteObject())return;
       if(context.inside){objectEditors[currentFile.editor].editor.deleteFromTreeContext(context);return;}
       loadingFile=true;treeAddButton.disabled=true;treeDeleteButton.disabled=true;status.className='';status.textContent='Удаление…';
       try{

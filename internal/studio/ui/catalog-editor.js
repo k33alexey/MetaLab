@@ -26,11 +26,20 @@ function createCatalogModel(source) {
   function names(list) {
     return new Set(list.map(item => item.name.toLocaleLowerCase()));
   }
+  // A text of the object nobody has written - in no language - is not
+  // written at all.
+  function setText(key, value) {
+    if (typeof value === 'string' ? value : Object.keys(value).length) catalog[key] = value; else delete catalog[key];
+  }
   return {
     value() { return structuredClone(catalog); },
     typeOffer, indexingModes, attributeList,
     setName(name) { catalog.name = name; },
     setTitle(language, text) { catalog.title = setTranslation(catalog.title, language, text); },
+    setComment(text) { setText('comment', text); },
+    // A presentation or the explanation, by its key in the description.
+    setPresentation(key, language, text) { setText(key, setTranslation(catalog[key], language, text)); },
+    setDefaultPresentation(presentation) { catalog.defaultPresentation = presentation; },
     setCodeType(type) { catalog.code.type = type; },
     setCodeLength(length) { catalog.code.length = length; },
     setCodeAuto(auto) { catalog.code.auto = auto; },
@@ -47,6 +56,10 @@ function createCatalogModel(source) {
       const list = attributeList(container);
       const index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) list.splice(index, 1);
+    },
+    moveAttribute(container, id, by) {
+      const list = attributeList(container), index = list?.findIndex(item => item.id === id) ?? -1;
+      if (index >= 0) moveInCircle(list, index, by);
     },
     setAttributeName(container, id, name) { const attribute = attributeList(container)?.find(item => item.id === id); if (attribute) attribute.name = name; },
     setAttributeTitle(container, id, language, text) {
@@ -76,6 +89,10 @@ function createCatalogModel(source) {
       const index = catalog.tableParts.findIndex(part => part.id === id);
       if (index >= 0) catalog.tableParts.splice(index, 1);
     },
+    moveTablePart(id, by) {
+      const index = catalog.tableParts.findIndex(part => part.id === id);
+      if (index >= 0) moveInCircle(catalog.tableParts, index, by);
+    },
     setTablePartName(id, name) { const part = catalog.tableParts.find(item => item.id === id); if (part) part.name = name; },
     setTablePartTitle(id, language, text) {
       const part = catalog.tableParts.find(item => item.id === id);
@@ -84,187 +101,243 @@ function createCatalogModel(source) {
   };
 }
 
-function createCatalogEditor(host, onChange) {
-  let source, model, selected = {kind: 'catalog'}, titleFieldCleanups = [];
-  function title(item) { return localizedTitle(item, source.defaultLanguage); }
-  /* Подписи в списках показываются на текущем языке Studio и меняются вместе
+/* The window of a catalog, the prototype's (docs/block-00/spravochnik.md,
+   «Окно редактирования»): the frame of every object's window (objectWindow)
+   with the pages the kind lists (source.pages). Built so far: «Основные»,
+   «Данные» and the two flags of «Нумерация»; a page whose item of the map is
+   not done yet is listed and empty. around holds what the window stands
+   among: palette - where the properties of the attribute or table part
+   chosen in the window stand, as the prototype's palette shows them;
+   actions() - the commands of the object's menu «Действия» offers; close() -
+   «Закрыть». */
+function createCatalogEditor(host, onChange, around = {}) {
+  let source, model, frame, chosen = null, cleanups = [], paletteCleanups = [];
+  const catalog = () => source.catalog;
+  /* Подписи в окне показываются на текущем языке Studio и меняются вместе
      с ним. */
-  StudioLanguage.onChange(() => { if (source) renderBody(); });
-  // Structural edits (add/remove, selection change, checkboxes, selects) can
-  // afford a full re-render. Free-text typing cannot — recreating the input
-  // on every keystroke would drop focus and the cursor position, so a text
-  // edit only refreshes the sidebar (names may have changed) and leaves the
-  // focused detail panel alone.
-  function rerender() { onChange(); renderBody(); }
-  function touch() { onChange(); refreshSidebar(); }
-  function refreshSidebar() {
-    const body = host.querySelector('.catalog-body');
-    if (!body || !body.firstChild) return;
-    body.replaceChild(renderSidebar(), body.firstChild);
-  }
-  function textField(label, value, apply, options = {}) {
-    return labeledField(label, textInput(value, value => { apply(value); if (options.type === 'number') rerender(); else touch(); }, options));
+  StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
+  // A structural edit builds the page anew; typing does not - building the
+  // field anew would drop its focus - it only renames what shows the name.
+  function rerender() { onChange(); frame.refresh(); renderPalette(); }
+  function touch() { onChange(); frame.setTitle(windowTitle()); if (frame.current() === 'data') frame.refresh(); }
+  function windowTitle() { return `${source.kindTitle} ${catalog().name}`; }
+  function localized(get, set, collect, options = titleTextOptions) {
+    const field = createLocalizedField(source, get, set, touch, options);
+    collect.push(field.destroy);
+    return field;
   }
   // The field of a name: at is the way to the part in the catalog, none for
   // the catalog's own name.
   function nameField(value, apply, at) {
     return labeledField('Имя', nameInput(value, value => { apply(value); touch(); },
-      () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: source.catalog.name}));
+      () => at ? {path: source.path, description: model.value(), at} : {path: source.path, name: catalog().name}));
   }
-  // The way to an attribute: of the catalog, or of one of its table parts.
-  function attributeWay(container, attribute) {
-    const list = model.attributeList(container), at = ['attributes', String(list.indexOf(attribute))];
-    return container === 'catalog' ? at : ['tableParts', String(source.catalog.tableParts.findIndex(part => part.id === container)), ...at];
-  }
-  function selectField(label, value, choices, apply) {
-    return labeledField(label, selectInput(choices, value, value => { apply(value); rerender(); }));
-  }
-  function checkField(label, checked, apply) {
-    return checkboxField(label, checked, value => { apply(value); rerender(); });
-  }
-  // The name of the catalog or of a part and its title, which follows the
+  // The name of the catalog or of a part and its synonym, which follows the
   // name while it is not put right by hand (field.follow).
-  function nameAndTitle(target, setName, setTitle, at) {
-    const title = createLocalizedField(source, code => target.title?.[code], setTitle, touch, titleTextOptions);
-    titleFieldCleanups.push(title.destroy);
-    const name = nameField(target.name, value => { const before = target.name; setName(value); title.follow(before, value); }, at);
-    return [name, labeledField('Заголовок', title)];
+  function nameAndSynonym(target, setName, setTitle, at, collect) {
+    const synonym = localized(code => target.title?.[code], setTitle, collect);
+    const name = nameField(target.name, value => { const before = target.name; setName(value); synonym.follow(before, value); }, at);
+    return [name, labeledField('Синоним', synonym)];
   }
-  // The type of an attribute is a field of its presentation with «…», which
-  // opens the window «Редактирование типа данных» (showTypeEditor), as the
-  // palette of the prototype has it.
-  function renderTypeField(container, attribute) {
+  function numberField(label, value, apply, field) {
+    return labeledField(label, textInput(value, value => { apply(value); rerender(); }, limited(field, {type: 'number', min: 0})));
+  }
+
+  // «Основные»: the name, the synonym and the comment; below them the four
+  // presentations and the explanation, each caption above its field, each a
+  // text in every language (spravochnik.md, okno-01).
+  const presentations = [
+    ['objectPresentation', 'Представление объекта'], ['extendedObjectPresentation', 'Расширенное представление объекта'],
+    ['listPresentation', 'Представление списка'], ['extendedListPresentation', 'Расширенное представление списка'],
+    ['explanation', 'Пояснение', {kind: 'area', rows: 3}],
+  ];
+  function renderMainPage() {
+    const page = node('div', undefined, 'object-window-fields');
+    page.append(...nameAndSynonym(catalog(), value => model.setName(value), (language, value) => model.setTitle(language, value), undefined, cleanups));
+    page.append(labeledField('Комментарий', textInput(catalog().comment, value => { model.setComment(value); touch(); })));
+    page.append(node('div', undefined, 'object-window-gap'));
+    for (const [key, caption, options] of presentations) {
+      page.append(labeledField(caption, localized(code => catalog()[key]?.[code], (language, value) => model.setPresentation(key, language, value), cleanups, options),
+        'catalog-field catalog-field-above'));
+    }
+    return page;
+  }
+
+  // «Данные»: the lengths, the frames «Тип кода» and «Основное
+  // представление», the trees of the attributes and of the table parts, each
+  // with its panel, and the buttons of the windows of the standard
+  // attributes, characteristics, common attributes and additional indexes -
+  // unavailable until their windows are built (spravochnik.md, okno-06).
+  function same(left, right) { return !!left && !!right && left.kind === right.kind && left.container === right.container && left.id === right.id; }
+  function choose(choice) { chosen = choice; frame.refresh(); renderPalette(); }
+  function treeRow(icon, caption, choice, children = []) {
+    const {element, row} = treeNode({icon, caption, children, open: true});
+    row.classList.toggle('selected', same(chosen, choice));
+    row.addEventListener('click', () => choose(choice));
+    if (choice.id) row.addEventListener('dblclick', event => { event.stopPropagation(); choose(choice); focusPalette(); });
+    return element;
+  }
+  function panelButton(icon, title, enabled, act) {
+    const button = iconButton(icon, title);
+    button.disabled = !enabled;
+    button.addEventListener('click', act);
+    return button;
+  }
+  // The buttons a panel shares: change, delete, up and down act on what is
+  // chosen inside its tree, sorting waits for the window «Сортировка
+  // метаданных» (the item of the map «порядок объектов»).
+  function partButtons(choice, remove, move) {
+    const on = !!choice?.id;
+    return [
+      panelButton('change', 'Изменить', on, () => focusPalette()),
+      panelButton('delete', 'Удалить', on, async () => { if (await askDeleteObject()) { remove(); chosen = null; rerender(); } }),
+      panelButton('move-up', 'Переместить вверх', on, () => { move(-1); rerender(); }),
+      panelButton('move-down', 'Переместить вниз', on, () => { move(1); rerender(); }),
+      panelButton('sort', 'Сортировать', false, () => {}),
+    ];
+  }
+  function panel(buttons) {
+    const bar = node('div', undefined, 'object-window-panel');
+    bar.append(...buttons);
+    return bar;
+  }
+  function attributeChoice(container, attribute) { return {kind: 'attribute', container, id: attribute.id}; }
+  function renderAttributesTree() {
+    const folder = {kind: 'attributes'}, inside = chosen?.kind === 'attribute' && chosen.container === 'catalog' ? chosen : null;
+    const add = panelButton('add', 'Добавить', true, () => { const attribute = model.addAttribute('catalog'); chosen = attributeChoice('catalog', attribute); rerender(); });
+    const bar = panel([add, ...partButtons(inside, () => model.removeAttribute('catalog', inside.id), by => model.moveAttribute('catalog', inside.id, by))]);
+    const tree = node('div', undefined, 'object-window-tree');
+    tree.append(treeRow('attribute', 'Реквизиты', folder, catalog().attributes.map(attribute => treeRow('attribute', attribute.name, attributeChoice('catalog', attribute)))));
+    return [bar, tree];
+  }
+  function renderTablePartsTree() {
+    const folder = {kind: 'tableparts'};
+    // What is chosen inside the tree: a table part, or an attribute of one.
+    const part = chosen?.kind === 'tablepart' ? chosen : null, inner = chosen?.kind === 'attribute' && chosen.container !== 'catalog' ? chosen : null;
+    const owner = part?.id || inner?.container;
+    const addPart = panelButton('add', 'Добавить табличную часть', true, () => { const added = model.addTablePart(); chosen = {kind: 'tablepart', id: added.id}; rerender(); });
+    const addAttribute = panelButton('attribute-add', 'Добавить реквизит', !!owner, () => { const attribute = model.addAttribute(owner); chosen = attributeChoice(owner, attribute); rerender(); });
+    const buttons = inner
+      ? partButtons(inner, () => model.removeAttribute(inner.container, inner.id), by => model.moveAttribute(inner.container, inner.id, by))
+      : partButtons(part, () => model.removeTablePart(part.id), by => model.moveTablePart(part.id, by));
+    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+    tree.append(treeRow('tabular-section', 'Табличные части', folder, catalog().tableParts.map(item =>
+      treeRow('tabular-section', item.name, {kind: 'tablepart', id: item.id}, item.attributes.map(attribute => treeRow('attribute', attribute.name, attributeChoice(item.id, attribute)))))));
+    return [panel([addPart, addAttribute, ...buttons]), tree];
+  }
+  function renderDataPage() {
+    const page = node('div', undefined, 'object-window-fields');
+    const code = catalog().code;
+    page.append(numberField('Длина кода', code.length, value => model.setCodeLength(value), 'code'));
+    page.append(numberField('Длина наименования', catalog().descriptionLength, value => model.setDescriptionLength(value), 'description'));
+    const frames = node('div', undefined, 'object-window-frames');
+    frames.append(
+      radioFrame('Тип кода', [['number', 'Число'], ['string', 'Строка']], code.type, value => { model.setCodeType(value); rerender(); }, !code.length),
+      radioFrame('Основное представление', [['as-code', 'В виде кода'], ['as-description', 'В виде наименования']], catalog().defaultPresentation,
+        value => { model.setDefaultPresentation(value); rerender(); }));
+    page.append(frames, ...renderAttributesTree(), ...renderTablePartsTree());
+    const windows = node('div', undefined, 'object-window-buttons');
+    for (const caption of ['Стандартные реквизиты', 'Характеристики', 'Общие реквизиты', 'Дополнительные индексы']) {
+      const button = node('button', caption);
+      button.type = 'button'; button.disabled = true;
+      windows.append(button);
+    }
+    page.append(windows);
+    return page;
+  }
+
+  // «Нумерация»: so far its two flags, unavailable at a code of no length
+  // (spravochnik.md, okno-07); the frame «Серии кодов» is the item of the
+  // map «окно справочника: «Иерархия», «Владельцы», «Нумерация»».
+  function renderNumberingPage() {
+    const page = node('div', undefined, 'object-window-fields'), code = catalog().code;
+    page.append(
+      checkboxField('Автонумерация', !!code.auto, value => { model.setCodeAuto(value); rerender(); }, 'catalog-check object-window-flag', !code.length),
+      checkboxField('Контроль уникальности', !!code.unique, value => { model.setCodeUnique(value); rerender(); }, 'catalog-check object-window-flag', !code.length));
+    return page;
+  }
+  const builtPages = {main: renderMainPage, data: renderDataPage, numbering: renderNumberingPage};
+  function renderPage(key) {
+    cleanups.forEach(destroy => destroy());
+    cleanups = [];
+    return builtPages[key]?.() || null;
+  }
+
+  // The palette: the properties of the attribute or the table part chosen
+  // in the window, as the prototype's palette follows the window.
+  function renderAttributePanel(container, attribute, way) {
+    const panel = node('div', undefined, 'catalog-detail');
+    panel.append(...nameAndSynonym(attribute, value => model.setAttributeName(container, attribute.id, value),
+      (language, value) => model.setAttributeTitle(container, attribute.id, language, value), way, paletteCleanups));
+    panel.append(checkboxField('Проверять заполнение', attribute.fillChecking === 'show-error',
+      value => { model.setAttributeFillChecking(container, attribute.id, value); rerender(); }));
+    panel.append(labeledField('Индексирование', selectInput(model.indexingModes, attribute.indexing || 'dont-index',
+      value => { model.setAttributeIndexing(container, attribute.id, value); rerender(); })));
+    // The type is a field of its presentation with «…», which opens the
+    // window «Редактирование типа данных» (showTypeEditor).
     const shown = node('input');
     shown.readOnly = true;
     shown.value = typePresentation(model.typeOffer, attribute.types);
-    const choose = fieldChoiceButton('Редактирование типа данных', async () => {
+    const pick = fieldChoiceButton('Редактирование типа данных', async () => {
       const types = await showTypeEditor(model.typeOffer, attribute.types);
       if (!types) return;
       model.setAttributeTypes(container, attribute.id, types);
       rerender();
     });
-    return labeledField('Тип', fieldWithButtons(shown, [choose]));
-  }
-  function renderAttributePanel(container, attribute) {
-    const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', 'Реквизит'));
-    panel.append(...nameAndTitle(attribute, value => model.setAttributeName(container, attribute.id, value),
-      (language, value) => model.setAttributeTitle(container, attribute.id, language, value), attributeWay(container, attribute)));
-    panel.append(checkField('Проверять заполнение', attribute.fillChecking === 'show-error',
-      value => model.setAttributeFillChecking(container, attribute.id, value)));
-    panel.append(selectField('Индексирование', attribute.indexing || 'dont-index', model.indexingModes,
-      value => model.setAttributeIndexing(container, attribute.id, value)));
-    panel.append(renderTypeField(container, attribute));
+    panel.append(labeledField('Тип', fieldWithButtons(shown, [pick])));
     return panel;
   }
-  // A list of the sidebar: a button per item, the one chosen marked, and a
-  // button that adds one. choice(item) is what choosing the item selects;
-  // add() adds one and answers its choice, or null when none was added.
-  function choiceList(items, choice, addText, add) {
-    const list = node('div', undefined, 'catalog-list');
-    const same = (left, right) => left.kind === right.kind && left.container === right.container && left.id === right.id;
-    for (const item of items) {
-      const button = node('button', title(item), 'catalog-list-item');
-      button.type = 'button';
-      button.classList.toggle('selected', same(selected, choice(item)));
-      button.addEventListener('click', () => { selected = choice(item); rerender(); });
-      list.append(button);
+  function renderTablePartPanel(part, way) {
+    const panel = node('div', undefined, 'catalog-detail');
+    panel.append(...nameAndSynonym(part, value => model.setTablePartName(part.id, value),
+      (language, value) => model.setTablePartTitle(part.id, language, value), way, paletteCleanups));
+    return panel;
+  }
+  function clearPalette() {
+    paletteCleanups.forEach(destroy => destroy());
+    paletteCleanups = [];
+    around.palette?.replaceChildren();
+  }
+  function renderPalette() {
+    if (!around.palette || !source) return;
+    clearPalette();
+    const parts = catalog().tableParts, partAt = id => parts.findIndex(item => item.id === id);
+    if (chosen?.kind === 'attribute') {
+      const list = model.attributeList(chosen.container), attribute = list?.find(item => item.id === chosen.id);
+      if (!attribute) { chosen = null; return; }
+      const at = ['attributes', String(list.indexOf(attribute))];
+      around.palette.append(renderAttributePanel(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]));
+    } else if (chosen?.kind === 'tablepart') {
+      const part = parts.find(item => item.id === chosen.id);
+      if (!part) { chosen = null; return; }
+      around.palette.append(renderTablePartPanel(part, ['tableParts', String(partAt(part.id))]));
     }
-    const more = node('button', addText);
-    more.type = 'button';
-    more.addEventListener('click', () => { const next = add(); if (next) selected = next; rerender(); });
-    list.append(more);
-    return list;
   }
-  function renderAttributeList(container, attributes) {
-    const choice = attribute => ({kind: 'attribute', container, id: attribute.id});
-    return choiceList(attributes, choice, '+ Реквизит', () => { const attribute = model.addAttribute(container); return attribute && choice(attribute); });
-  }
-  function renderTablePartPanel(part) {
-    const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', 'Табличная часть'));
-    panel.append(...nameAndTitle(part, value => model.setTablePartName(part.id, value),
-      (language, value) => model.setTablePartTitle(part.id, language, value), ['tableParts', String(source.catalog.tableParts.indexOf(part))]));
-    panel.append(node('div', 'Реквизиты табличной части', 'catalog-section-title'));
-    panel.append(renderAttributeList(part.id, part.attributes));
-    return panel;
-  }
-  function renderSidebar() {
-    const sidebar = node('div', undefined, 'catalog-sidebar');
-    const objectButton = node('button', `${source.kindTitle} · свойства`, 'catalog-list-item');
-    objectButton.type = 'button';
-    objectButton.classList.toggle('selected', selected.kind === 'catalog');
-    objectButton.addEventListener('click', () => { selected = {kind: 'catalog'}; rerender(); });
-    sidebar.append(objectButton);
-    // The two folders stand as the project tree's do, with their icons.
-    const partChoice = part => ({kind: 'tablepart', id: part.id});
-    sidebar.append(
-      treeNode({icon: 'attribute', caption: 'Реквизиты', open: true, children: [renderAttributeList('catalog', source.catalog.attributes)]}).element,
-      treeNode({icon: 'tabular-section', caption: 'Табличные части', open: true,
-        children: [choiceList(source.catalog.tableParts, partChoice, '+ Табличная часть', () => partChoice(model.addTablePart()))]}).element);
-    return sidebar;
-  }
-  function renderObjectPanel() {
-    const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', source.kindTitle));
-    panel.append(node('div', `UUID: ${source.catalog.id}`, 'catalog-uuid'));
-    panel.append(...nameAndTitle(source.catalog, value => model.setName(value), (language, value) => model.setTitle(language, value)));
-    const code = node('div', undefined, 'catalog-code');
-    code.append(node('div', 'Код', 'catalog-section-title'));
-    code.append(selectField('Тип кода', source.catalog.code.type, [['string', 'Строка'], ['number', 'Число']], value => model.setCodeType(value)));
-    code.append(textField('Длина кода', source.catalog.code.length, value => model.setCodeLength(value), limited('code', {type: 'number', min: 0})));
-    code.append(checkField('Автонумерация', !!source.catalog.code.auto, value => model.setCodeAuto(value)));
-    code.append(checkField('Проверять уникальность', !!source.catalog.code.unique, value => model.setCodeUnique(value)));
-    panel.append(code);
-    panel.append(textField('Длина наименования', source.catalog.descriptionLength, value => model.setDescriptionLength(value), limited('description', {type: 'number', min: 0})));
-    return panel;
-  }
-  function clearTitleFields() { titleFieldCleanups.forEach(destroy => destroy()); titleFieldCleanups = []; }
-  function renderBody() {
-    const body = host.querySelector('.catalog-body');
-    if (!body) return;
-    clearTitleFields();
-    body.replaceChildren();
-    body.append(renderSidebar());
-    let panel;
-    if (selected.kind === 'attribute') {
-      const attribute = model.attributeList(selected.container)?.find(item => item.id === selected.id);
-      if (attribute) panel = renderAttributePanel(selected.container, attribute);
-      else { selected = {kind: 'catalog'}; panel = renderObjectPanel(); }
-    } else if (selected.kind === 'tablepart') {
-      const part = source.catalog.tableParts.find(item => item.id === selected.id);
-      if (part) panel = renderTablePartPanel(part);
-      else { selected = {kind: 'catalog'}; panel = renderObjectPanel(); }
-    } else {
-      panel = renderObjectPanel();
-    }
-    body.append(panel);
-  }
-  return hostedEditor(host, () => { clearTitleFields(); source = null; model = null; }, {
+  function focusPalette() { around.palette?.querySelector('input')?.focus(); }
+
+  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearPalette(); source = null; model = null; }, {
     open(value) {
-      clearTitleFields();
+      if (source) clearPalette();
       source = structuredClone(value);
       model = createCatalogModel(source);
-      selected = {kind: 'catalog'};
+      chosen = null;
       host.hidden = false;
-      host.replaceChildren();
-      const body = node('div', undefined, 'catalog-body');
-      host.append(body);
-      renderBody();
+      frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: 'main', page: renderPage,
+        actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
+      host.replaceChildren(frame.element);
     },
     value() { return model?.value(); },
-    // Selects the attribute or table part a node of the tree names
-    // (`attribute:<id>` or `tablepart:<id>`), so a click on the main
-    // configuration tree jumps straight to it inside the open editor.
+    // Chooses the attribute or table part a node of the tree names
+    // (`attribute:<id>` or `tablepart:<id>`) on the page «Данные», so a click
+    // on the configuration tree finds it inside the open window.
     select(kind, id) {
-      if (!source) return;
-      if (kind === 'attribute' && source.catalog.attributes.some(item => item.id === id)) {
-        selected = {kind: 'attribute', container: 'catalog', id};
-        rerender();
-      } else if (kind === 'tablepart' && source.catalog.tableParts.some(item => item.id === id)) {
-        selected = {kind: 'tablepart', id};
-        rerender();
-      }
+      if (!source) return false;
+      if (kind === 'attribute' && catalog().attributes.some(item => item.id === id)) chosen = {kind: 'attribute', container: 'catalog', id};
+      else if (kind === 'tablepart' && catalog().tableParts.some(item => item.id === id)) chosen = {kind: 'tablepart', id};
+      else return false;
+      frame.show('data');
+      renderPalette();
+      return true;
     },
     // What «Добавить» on a node of the tree inside this catalog adds:
     // Реквизиты or an attribute - a sibling attribute in the same container
@@ -288,40 +361,29 @@ function createCatalogEditor(host, onChange) {
       const [container, attribute] = id.split(':');
       return {kind: 'attribute', container, id: attribute};
     },
-    // Adds a new attribute or table part on behalf of the tree's generic
-    // "Add" toolbar button, positioned by where the tree selection was
-    // (Реквизиты/an attribute -> new sibling attribute in the same
-    // container; Табличные части/a table part -> new attribute inside it,
-    // or a new table part) — same effect as this editor's own "+ Реквизит"
-    // / "+ Табличная часть" buttons, just triggered from the tree.
+    // Adds an attribute or a table part by «Добавить» of the tree, where the
+    // tree's selection puts it (addContextOf), as the window's own panels
+    // add them, and chooses it on the page «Данные».
     addFromTreeContext(context) {
       if (!source) return;
       if (context.kind === 'tablepart' && !context.container) {
-        const part = model.addTablePart();
-        selected = {kind: 'tablepart', id: part.id};
-        rerender();
-        return;
+        chosen = {kind: 'tablepart', id: model.addTablePart().id};
+      } else {
+        const container = context.container || 'catalog', attribute = model.addAttribute(container);
+        if (!attribute) return;
+        chosen = attributeChoice(container, attribute);
       }
-      const container = context.container || 'catalog';
-      const attribute = model.addAttribute(container);
-      if (attribute) {
-        selected = {kind: 'attribute', container, id: attribute.id};
-        rerender();
-      }
+      frame.show('data');
+      rerender();
     },
-    // Removes the attribute or table part on behalf of the tree's generic
-    // "Delete" toolbar button — the only way to delete these now that this
-    // editor no longer carries its own duplicate "Удалить" buttons.
+    // Deletes an attribute or a table part by «Удалить» of the tree, which
+    // has asked its question already.
     deleteFromTreeContext(context) {
       if (!source) return;
-      if (context.kind === 'tablepart') {
-        model.removeTablePart(context.id);
-      } else if (context.kind === 'attribute') {
-        model.removeAttribute(context.container, context.id);
-      } else {
-        return;
-      }
-      selected = {kind: 'catalog'};
+      if (context.kind === 'tablepart') model.removeTablePart(context.id);
+      else if (context.kind === 'attribute') model.removeAttribute(context.container, context.id);
+      else return;
+      chosen = null;
       rerender();
     },
   });

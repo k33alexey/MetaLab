@@ -101,7 +101,7 @@ const localizedFieldWalk = `(async () => {
   document.querySelector('#save').click(); await studio.settle();
   steps.saved = document.querySelector('#save').disabled;
   await open('Товары');
-  steps.catalog = drawn('#catalog-editor', 'Заголовок');
+  steps.catalog = drawn('#catalog-editor', 'Синоним');
   await open('Кладовщик');
   steps.role = drawn('#role-editor', 'Заголовок');
   await open('Українська');

@@ -42,6 +42,8 @@ type CatalogEditorSource struct {
 	// KindTitle names one object of the kind in the window, from the
 	// descriptor of the kind.
 	KindTitle string `json:"kindTitle"`
+	// Pages are the pages of the window, the kind's (kinds.WindowPages).
+	Pages []kinds.Page `json:"pages"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -85,7 +87,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(metadata.CatalogKind).Title,
+		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
 	}, nil
 }
 

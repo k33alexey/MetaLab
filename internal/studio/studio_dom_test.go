@@ -92,7 +92,7 @@ const studioPageWalk = `(async () => {
     ]],
     ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
     ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.studio-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}, {press: '.overview-block .role-bulk button[data-command=filter]'}]}]],
-    ['catalog', '#catalog-editor', null, [{select: '.catalog-list-item', then: [{press: '.field-with-buttons button'}]}]],
+    ['catalog', '#catalog-editor', null, [{select: '.object-window-page', then: [{press: '.field-with-buttons button'}, {select: '.object-window-body .studio-tree-row'}]}]],
     ['project', '#project-editor', null, [{press: '.field-with-buttons button'}]],
     ['languages', '#languages-editor', null, [{press: '.field-with-buttons button:enabled'}]],
   ];
@@ -464,7 +464,10 @@ func startChrome(t *testing.T, chrome string) *devtools {
 	}
 	arguments := []string{"--headless=new", "--remote-debugging-pipe", "--user-data-dir=" + t.TempDir(),
 		"--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-sync",
-		"--disable-background-networking", "--disable-component-update", "--mute-audio", "about:blank"}
+		"--disable-background-networking", "--disable-component-update", "--mute-audio",
+		// Wide enough for the palette beside a window: Studio hides it below
+		// 850 pixels, and the headless window is 800 by default.
+		"--window-size=1280,800", "about:blank"}
 	if runtime.GOOS == "linux" {
 		// CI runners refuse Chrome the user namespaces its sandbox needs;
 		// the page is Studio's own, served by this test.

@@ -459,7 +459,8 @@ function restrictionFieldsCaption(object, restriction, title) {
    hides and empties the host, setDisabled(flag) makes the host inert while
    Studio opens, saves or creates something, selectFragment(fragment) passes
    the part a node of the tree names - `kind:id`, as the server writes it
-   (Fragment of a node, studio.go) - to own.select(kind, id). own - the
+   (Fragment of a node, studio.go) - to own.select(kind, id), and answers
+   whether the editor chose the part it names. own - the
    editor's own methods, open, value and the rest. */
 function hostedEditor(host, reset, own) {
   return {
@@ -467,7 +468,7 @@ function hostedEditor(host, reset, own) {
     setDisabled(disabled) { host.inert = disabled; },
     selectFragment(fragment) {
       const at = fragment ? fragment.indexOf(':') : -1;
-      if (at > 0) own.select?.(fragment.slice(0, at), fragment.slice(at + 1));
+      return at > 0 && !!own.select?.(fragment.slice(0, at), fragment.slice(at + 1));
     },
     ...own,
   };
@@ -654,6 +655,99 @@ function closeContextMenu() {
    of the button pressed, or null when the dialog is closed without one. */
 function askChoice(question, explanation, answers) {
   return showDialog({title: question, explanation, answers});
+}
+
+/* askDeleteObject is the one question before an object or a part of it is
+   deleted, the prototype's (obshchee.md, «Удаление»: «Удалить объект
+   конфигурации?», Да / Нет; the same on an attribute) in ML's words
+   (ML-STUDIO.md, «„Проект" вместо „конфигурации"»), asked by the tree and by
+   the panels of a window alike. Answers whether «Да» was pressed. */
+async function askDeleteObject() {
+  return await askChoice('Удалить объект проекта?', '', [['yes', 'Да'], [null, 'Нет']]) === 'yes';
+}
+
+/* moveInCircle moves the item at index of list one place up (by -1) or down
+   (by 1) in place, round the ends as the prototype moves an object in its
+   branch: the first up goes last, the last down goes first (obshchee.md,
+   «Перемещение и сортировка»). Answers the index it stands at then. */
+function moveInCircle(list, index, by) {
+  const to = (index + by + list.length) % list.length;
+  const [item] = list.splice(index, 1);
+  list.splice(to, 0, item);
+  return to;
+}
+
+/* radioFrame is a frame of the prototype's window with its caption on the
+   border and a choice of one in it: choices are [value, text] in their
+   order, value the one chosen - none while the object says none - and
+   apply(value) is called when another is chosen; disabled leaves the choice
+   shown and unavailable, as the prototype's «Тип кода» at a code of no
+   length. */
+function radioFrame(caption, choices, value, apply, disabled = false) {
+  const frame = node('fieldset', undefined, 'studio-frame'), name = 'radio-' + crypto.randomUUID();
+  frame.append(node('legend', caption));
+  frame.disabled = disabled;
+  for (const [key, text] of choices) {
+    const label = node('label', undefined, 'studio-radio'), input = node('input');
+    input.type = 'radio'; input.name = name; input.value = key; input.checked = key === value;
+    input.addEventListener('change', () => { if (input.checked) apply(key); });
+    label.append(input, node('span', text));
+    frame.append(label);
+  }
+  return frame;
+}
+
+/* objectWindow is the window of an object, one for every kind that has one,
+   as the prototype's (docs/block-00/obshchee.md, «Окно объекта»): the title
+   «<Вид> <Имя>»; the list of pages at the left, the page chosen beside it;
+   at the bottom «Действия ▾», «<Назад», «Далее>», «Закрыть», «Справка» -
+   «<Назад» unavailable on the first page, «Далее>» on the last. pages are
+   the kind's ({key, title}, kinds.WindowPages), chosen the key shown first;
+   page(key) builds a page anew, empty where nothing of it is built yet;
+   actions() answers the items of «Действия» above the window's own three,
+   «Изменить», «Скопировать» and «Удалить», which the window shows
+   unavailable (spravochnik.md, «Меню «Действия» окна»); close() is
+   «Закрыть», help the page of studioHelp «Справка» opens. Answers
+   {element, show(key), refresh(), current(), setTitle(text)}: refresh()
+   builds the page shown anew. */
+function objectWindow({title, pages, chosen, page, actions, close, help}) {
+  const element = node('div', undefined, 'object-window'), heading = node('div', title, 'object-window-title');
+  const list = node('div', undefined, 'object-window-pages'), body = node('div', undefined, 'object-window-body');
+  list.setAttribute('role', 'listbox');
+  let current = pages.some(item => item.key === chosen) ? chosen : pages[0]?.key;
+  const tabs = pages.map(item => {
+    const tab = node('button', item.title, 'object-window-page');
+    tab.type = 'button'; tab.dataset.page = item.key;
+    tab.setAttribute('role', 'option');
+    tab.addEventListener('click', () => show(item.key));
+    return tab;
+  });
+  list.append(...tabs);
+  const own = [['Изменить', () => {}, false, 'F2', 'change'], ['Скопировать', () => {}, false, 'F9', 'clone'], ['Удалить', () => {}, false, 'Del', 'delete']];
+  const menu = menuButton('Действия', () => { const items = actions?.() || []; return items.length ? [...items, null, ...own] : own; });
+  const back = node('button', '<Назад'), next = node('button', 'Далее>'), shut = node('button', 'Закрыть'), aid = node('button', 'Справка');
+  for (const button of [back, next, shut, aid]) button.type = 'button';
+  const step = by => { const at = pages.findIndex(item => item.key === current) + by; if (pages[at]) show(pages[at].key); };
+  back.addEventListener('click', () => step(-1));
+  next.addEventListener('click', () => step(1));
+  shut.addEventListener('click', () => close?.());
+  aid.addEventListener('click', () => showHelp(help));
+  const bar = node('div', undefined, 'object-window-bar');
+  bar.append(menu, back, next, shut, aid);
+  const middle = node('div', undefined, 'object-window-middle');
+  middle.append(list, body);
+  element.append(heading, middle, bar);
+  function refresh() {
+    const at = pages.findIndex(item => item.key === current);
+    for (const tab of tabs) tab.setAttribute('aria-selected', String(tab.dataset.page === current));
+    back.disabled = at <= 0;
+    next.disabled = at < 0 || at === pages.length - 1;
+    body.replaceChildren(...[page(current)].filter(Boolean));
+    body.dataset.page = current;
+  }
+  function show(key) { current = key; refresh(); }
+  refresh();
+  return {element, show, refresh, current: () => current, setTitle(text) { heading.textContent = text; }};
 }
 
 /* queryTextField edits a text in the query language - the condition of a

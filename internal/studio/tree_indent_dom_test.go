@@ -40,6 +40,7 @@ const treeIndentWalk = `(async () => {
   answer.roles = await read(document.querySelector('#role-overview .role-tree'));
   answer.loose.push(...loose(document.querySelector('#role-overview .role-tree')));
   row('Товары').click(); await studio.settle();
+  [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === 'Данные').click(); await studio.settle();
   answer.catalog = await read(document.querySelector('#catalog-editor'));
   return answer;
 })()`
