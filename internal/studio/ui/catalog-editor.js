@@ -422,7 +422,8 @@ function createCatalogEditor(host, onChange, around = {}) {
         () => ({path: source.path, name: target.name}));
     }
     if (row.field === 'localized') {
-      const field = localized(code => target[row.key]?.[code], (language, value) => row.key === 'title' ? model.setTitle(language, value) : model.setPresentation(row.key, language, value), paletteCleanups);
+      const field = localized(code => target[row.key]?.[code], (language, value) => row.key === 'title' ? model.setTitle(language, value) : model.setPresentation(row.key, language, value),
+        paletteCleanups, row.lines ? {kind: 'area', rows: row.lines} : titleTextOptions);
       if (row.key === 'title') paletteSynonym = field;
       return field;
     }
@@ -451,6 +452,8 @@ function createCatalogEditor(host, onChange, around = {}) {
       control = textInput(value ?? 0, set, limited(row.limit, {type: 'number', min: row.min || 0}));
     } else if (row.field === 'objects' || row.field === 'fields') {
       return listControl(row, value || [], off);
+    } else if (row.field === 'form') {
+      return formControl(row, value || '', off);
     } else return null;
     control.disabled = off;
     return control;
@@ -463,6 +466,21 @@ function createCatalogEditor(host, onChange, around = {}) {
       if (wanted !== undefined) return value === wanted;
       return Array.isArray(value) ? value.length > 0 : !!value;
     });
+  }
+  // A main form, as the palette shows it: its name, «…» choosing it among
+  // the forms - its window the inventory does not show, unavailable until
+  // shot - the cross clearing it and the magnifier opening it.
+  function formControl(row, name, off) {
+    const shown = node('input');
+    shown.readOnly = true; shown.value = name; shown.disabled = off;
+    const pick = fieldChoiceButton(row.title, () => {});
+    pick.disabled = true;
+    const clear = clearButton(`Очистить: ${row.title}`, () => { model.set(row.key, ''); rerender(); });
+    clear.classList.add('field-button');
+    clear.disabled = off || !name;
+    const open = fieldButton('field-translations', `Открыть: ${row.title}`, () => around.openFile?.(source.path.replace(/object\.yaml$/, `forms/${name}/form.yaml`)));
+    open.disabled = off || !name;
+    return fieldWithButtons(shown, [pick, clear, open]);
   }
   // A list of objects or of fields in one line, as the palette shows it:
   // their names by commas, «…» choosing them and the cross clearing them.

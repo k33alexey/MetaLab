@@ -294,7 +294,8 @@ func TestTheWindowOfACatalogHasThePrototypesPages(t *testing.T) {
 }
 
 // The palette of a catalog has the four tabs of the prototype's, in its
-// order, «Справочная информация» the one «только важные» takes away, and on
+// order - the last captioned «Справка» (the owner's decision of 26.10.2026) -
+// «Справка» the one «только важные» takes away, and on
 // «Основные» the name, the synonym, the comment and a row of each module of
 // the kind, written out from the inventory (docs/block-00/spravochnik.md,
 // «Палитра свойств»; snapshots palitra-osnovnye, vazhnye-osnovnye). Every
@@ -302,8 +303,8 @@ func TestTheWindowOfACatalogHasThePrototypesPages(t *testing.T) {
 // Defects caught: a tab left out or moved, a module row missing, a row
 // without its explanation, a row of a field the palette cannot build.
 func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
-	var tabs, important, main, data, dataImportant []string
-	fields := []string{NameField, LocalizedField, TextField, ModuleField, FlagField, ChoiceField, NumberField, SwitchField, ObjectsField, FieldsField, WindowField}
+	var tabs, important, main, data, dataImportant, presentation, presentationImportant, help []string
+	fields := []string{NameField, LocalizedField, TextField, ModuleField, FlagField, ChoiceField, NumberField, SwitchField, ObjectsField, FieldsField, WindowField, FormField}
 	for _, tab := range Must(Catalog).Palette() {
 		tabs = append(tabs, tab.Title)
 		if tab.Important {
@@ -327,6 +328,13 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 				if row.Important {
 					dataImportant = append(dataImportant, row.Title)
 				}
+			case "presentation":
+				presentation = append(presentation, row.Title)
+				if row.Important {
+					presentationImportant = append(presentationImportant, row.Title)
+				}
+			case "help":
+				help = append(help, row.Title)
 			}
 		}
 	}
@@ -342,13 +350,31 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	if !slices.Equal(data, wantData) {
 		t.Errorf("«Данные» %q, want %q", data, wantData)
 	}
+	// «Представление» and «Справка» (snapshots
+	// palitra-predstavlenie-ne-ierarhicheskiy, vazhnye-predstavlenie,
+	// palitra-spravochnaya-informaciya).
+	if want := []string{"Использовать стандартные команды", "Основное представление", "Быстрый выбор", "Способ выбора", "Ввод по строке",
+		"Способ поиска строки при вводе по строке", "Полнотекстовый поиск при вводе по строке",
+		"Режим получения данных выбора при вводе по строке", "Создание при вводе", "История выбора при вводе",
+		"Основная форма объекта", "Основная форма группы", "Основная форма списка", "Основная форма выбора", "Основная форма выб. группы",
+		"Представление объекта", "Расширенное представление объекта", "Представление списка", "Расширенное представление списка",
+		"Пояснение"}; !slices.Equal(presentation, want) {
+		t.Errorf("«Представление» %q, want %q", presentation, want)
+	}
+	if want := []string{"Способ поиска строки при вводе по строке", "Полнотекстовый поиск при вводе по строке",
+		"Режим получения данных выбора при вводе по строке"}; !slices.Equal(presentationImportant, want) {
+		t.Errorf("«Представление» kept by «только важные» %q, want %q", presentationImportant, want)
+	}
+	if want := []string{"Включать в содержание справки", "Справочная информация"}; !slices.Equal(help, want) {
+		t.Errorf("«Справка» %q, want %q", help, want)
+	}
 	wantImportant := slices.DeleteFunc(slices.Clone(wantData), func(title string) bool {
 		return title == "Характеристики" || title == "Поля блокировки данных"
 	})
 	if !slices.Equal(dataImportant, wantImportant) {
 		t.Errorf("«Данные» kept by «только важные» %q, want %q", dataImportant, wantImportant)
 	}
-	if want := []string{"Основные", "Данные", "Представление", "Справочная информация"}; !slices.Equal(tabs, want) {
+	if want := []string{"Основные", "Данные", "Представление", "Справка"}; !slices.Equal(tabs, want) {
 		t.Errorf("tabs %q, want %q", tabs, want)
 	}
 	if want := []string{"Основные", "Данные", "Представление"}; !slices.Equal(important, want) {

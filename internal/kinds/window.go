@@ -51,6 +51,8 @@ type PaletteRow struct {
 	// and Min its least value.
 	Limit string `json:"limit,omitempty"`
 	Min   int    `json:"min,omitempty"`
+	// Lines is how many lines a text of several shows - the explanation.
+	Lines int `json:"lines,omitempty"`
 }
 
 // PaletteTab is a tab of the palette - a category of its properties - and
@@ -81,6 +83,9 @@ const (
 	FieldsField    = "fields"
 	WindowField    = "window"
 	SeparatorField = "separator"
+	// FormField is a main form of the object, chosen among its forms,
+	// cleared, and opened by the magnifier.
+	FormField = "form"
 	// modulesRow stands in a palette for a row of every module the kind
 	// keeps (Layout.Modules), each its own caption and explanation.
 	modulesRow = "modules"
@@ -164,8 +169,63 @@ var palettes = map[Kind][]PaletteTab{
 			{Key: "additionalIndexes", Title: "Дополнительные индексы", Field: WindowField, Important: true,
 				Description: "Окно дополнительных индексов: индексы базы сверх тех, что платформа строит сама."},
 		}},
-		{Key: "presentation", Title: "Представление", Important: true},
-		{Key: "help", Title: "Справочная информация"},
+		// «только важные» keeps three rows of the input by string
+		// (snapshot vazhnye-predstavlenie).
+		{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
+			{Key: "useStandardCommands", Title: "Использовать стандартные команды", Field: FlagField,
+				Description: "Платформа сама даёт команды справочника: открыть список, создать элемент и другие."},
+			{Key: "defaultPresentation", Title: "Основное представление", Field: ChoiceField,
+				Choices:     [][2]string{{"as-code", "В виде кода"}, {"as-description", "В виде наименования"}},
+				Description: "Чем элемент представлен в одну строку: кодом или наименованием."},
+			{Key: "quickChoice", Title: "Быстрый выбор", Field: FlagField,
+				Description: "Элемент выбирается из выпадающего списка, а не из формы выбора."},
+			{Key: "choiceMode", Title: "Способ выбора", Field: ChoiceField,
+				Choices:     [][2]string{{"both-ways", "Обоими способами"}, {"from-form", "Из формы"}, {"quick-choice", "Быстрый выбор"}},
+				Description: "Как выбирается элемент в поле: из формы, быстрым выбором или обоими способами."},
+			{Key: "inputByString", Title: "Ввод по строке", Field: FieldsField,
+				Description: "Поля, по которым элемент находится по набранному в поле тексту, в порядке поиска."},
+			{Key: "searchStringMode", Title: "Способ поиска строки при вводе по строке", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"begin", "Начало"}, {"any-part", "Любая часть"}},
+				Description: "Где в поле ищется набранный текст: в начале или в любой части."},
+			{Key: "fullTextSearchOnInput", Title: "Полнотекстовый поиск при вводе по строке", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}},
+				Description: "Набранный текст ищется по полнотекстовому индексу, а не сравнением полей."},
+			{Key: "choiceDataGetMode", Title: "Режим получения данных выбора при вводе по строке", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"directly", "Непосредственно"}, {"background", "Фоновый"}},
+				Description: "Ждёт ли пользователь, пока ищутся элементы по набранному тексту, или поиск идёт в фоне."},
+			{Key: "createOnInput", Title: "Создание при вводе", Field: ChoiceField,
+				Choices:     [][2]string{{"auto", "Авто"}, {"use", "Использовать"}, {"dont-use", "Не использовать"}},
+				Description: "Можно ли создать новый элемент из поля, в котором его не нашли."},
+			{Key: "choiceHistoryOnInput", Title: "История выбора при вводе", Field: ChoiceField,
+				Choices:     [][2]string{{"auto", "Авто"}, {"dont-use", "Не использовать"}},
+				Description: "Предлагаются ли первыми элементы, которые пользователь уже выбирал."},
+			{Field: SeparatorField},
+			{Key: "forms.object", Title: "Основная форма объекта", Field: FormField, Description: "Форма, которой открывается элемент."},
+			{Key: "forms.folder", Title: "Основная форма группы", Field: FormField, Needs: []string{"hierarchy.enabled", "hierarchy.kind=folders-and-items"},
+				Description: "Форма, которой открывается группа."},
+			{Key: "forms.list", Title: "Основная форма списка", Field: FormField, Description: "Форма, которой открывается список справочника."},
+			{Key: "forms.choice", Title: "Основная форма выбора", Field: FormField, Description: "Форма, из которой выбирается элемент."},
+			{Key: "forms.folderChoice", Title: "Основная форма выб. группы", Field: FormField, Needs: []string{"hierarchy.enabled", "hierarchy.kind=folders-and-items"},
+				Description: "Форма, из которой выбирается группа."},
+			{Field: SeparatorField},
+			{Key: "objectPresentation", Title: "Представление объекта", Field: LocalizedField,
+				Description: "Как называется один элемент: «Товар», а не «Товары»."},
+			{Key: "extendedObjectPresentation", Title: "Расширенное представление объекта", Field: LocalizedField,
+				Description: "Более длинное название элемента, там, где для него есть место: заголовок формы элемента."},
+			{Key: "listPresentation", Title: "Представление списка", Field: LocalizedField, Description: "Как называется весь список: «Товары»."},
+			{Key: "extendedListPresentation", Title: "Расширенное представление списка", Field: LocalizedField,
+				Description: "Более длинное название списка: заголовок формы списка."},
+			{Key: "explanation", Title: "Пояснение", Field: LocalizedField, Lines: 3,
+				Description: "Фраза, которой справочник предлагается пользователю рядом с командой, открывающей его."},
+		}},
+		// The caption of the tab is «Справка», not the prototype's «Справочная
+		// информация» (the owner's decision of 26.10.2026, ML-STUDIO.md,
+		// «закладка „Справка" палитры»); the property on it keeps its name.
+		{Key: "help", Title: "Справка", Rows: []PaletteRow{
+			{Key: "includeHelpInContents", Title: "Включать в содержание справки", Field: FlagField,
+				Description: "Справка справочника входит в оглавление справки проекта."},
+			{Key: "help", Title: "Справочная информация", Field: WindowField, Description: "Текст справки справочника."},
+		}},
 	},
 }
 

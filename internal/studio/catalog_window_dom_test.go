@@ -2,6 +2,8 @@ package studio
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -471,13 +473,15 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	expect("title", steps.Title, "Свойства: Товары")
 	expect("buttons", steps.Buttons, []string{"Сортировка по алфавиту", "Сортировка по категориям", "Показывать только важные",
 		"Отменить редактирование (недоступна)", "Применить (недоступна)"})
-	expect("tabs", steps.Tabs, []string{"Основные", "Данные", "Представление", "Справочная информация"})
+	// The last tab is captioned «Справка» (the owner's decision of 26.10.2026).
+	expect("tabs", steps.Tabs, []string{"Основные", "Данные", "Представление", "Справка"})
 	expect("chosen tab", steps.Chosen, "Основные")
 	expect("«Основные»", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Модуль объекта", "Модуль менеджера"})
 	expect("only important", steps.Important, []string{"Основные", "Данные", "Представление"})
 	expect("search", steps.Found, struct{ Rows, Tabs, Marked []string }{[]string{"Модуль объекта", "Модуль менеджера"}, []string{}, []string{"Модуль", "Модуль"}})
-	// Every row of every tab, five of «Основные» and twenty-six of «Данные».
-	expect("alphabet", steps.Alphabet, listed{[]string{"Длина кода", "Имя", "Комментарий", "Модуль менеджера", "Модуль объекта", "Синоним"}, []string{}, 31, true})
+	// Every row of every tab: five of «Основные», twenty-six of «Данные»,
+	// twenty of «Представление» and two of «Справка».
+	expect("alphabet", steps.Alphabet, listed{[]string{"Длина кода", "Имя", "Комментарий", "Модуль менеджера", "Модуль объекта", "Синоним"}, []string{}, 53, true})
 	expect("typed in the palette", steps.Typed, struct {
 		Title, Window string
 		Cancel        bool
@@ -599,4 +603,100 @@ func TestTheDataOfThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	expect("a basis cleared", steps.Cleared, "")
 	expect("history on", steps.History, []string{})
 	expect("«только важные» takes away", steps.ImportantGone, []string{"Характеристики", "Поля блокировки данных"})
+}
+
+// palettePresentationWalk reads the tabs «Представление» and «Справка» of
+// the palette of the catalog Товары, which has its main form of the object:
+// the rows, the lines between groups, what is unavailable, the forms, the
+// explanation of several lines, the rows «только важные» keeps; then opens
+// the form by the magnifier.
+const palettePresentationWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const palette = () => document.querySelector('#properties .object-palette');
+  const rows = () => [...palette().querySelectorAll('.object-palette-row')];
+  const captions = () => rows().map(row => row.querySelector('.object-palette-caption').textContent);
+  const row = caption => rows().find(item => item.querySelector('.object-palette-caption').textContent === caption);
+  const unavailable = () => rows().filter(item => [...item.querySelectorAll('input, select, textarea, button')].every(element => element.disabled))
+    .map(item => item.querySelector('.object-palette-caption').textContent);
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const tab = async caption => { [...palette().querySelectorAll('.studio-tab')].find(item => item.textContent === caption).click(); await settle(); };
+  await openObject('Товары');
+  await tab('Представление');
+  steps.count = rows().length;
+  steps.separators = palette().querySelectorAll('.object-palette-separator').length;
+  steps.unavailable = unavailable();
+  steps.form = row('Основная форма объекта').querySelector('input').value;
+  steps.formButtons = [...row('Основная форма объекта').querySelectorAll('button')].map(button => button.title + (button.disabled ? ' (недоступна)' : ''));
+  steps.explanation = !!row('Пояснение').querySelector('textarea');
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  steps.important = captions();
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  await tab('Справка');
+  steps.help = captions();
+  steps.helpUnavailable = unavailable();
+  await tab('Представление');
+  row('Основная форма объекта').querySelector('button[title="Открыть: Основная форма объекта"]').click(); await settle();
+  steps.opened = document.querySelector('#file-path').textContent;
+  return steps;
+})()`
+
+// The tabs «Представление» and «Справка» of the palette of a catalog are
+// the prototype's (docs/block-00/spravochnik.md, «Палитра свойств»;
+// snapshots palitra-predstavlenie-ne-ierarhicheskiy, vazhnye-predstavlenie,
+// palitra-spravochnaya-informaciya), the last captioned «Справка» (the
+// owner's decision of 26.10.2026): twenty rows in three groups; the forms of
+// a group unavailable at a catalog without a hierarchy of groups; a main form
+// by its name with «…», the cross and the magnifier, «…» unavailable while
+// its window is not shot; the explanation of several lines; «только важные»
+// keeps three rows of the input by string; «Справка» - the flag of the
+// contents and the window of the help, unavailable until built; the
+// magnifier opens the form. Defects caught: a row or a group missing; the
+// forms of a group available without groups; «только важные» keeping more or
+// less; the magnifier opening nothing.
+func TestThePresentationOfThePaletteOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	writeProjectFile(t, root, "metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml",
+		"format: 1\nid: 10000000-0000-4000-8000-00000000f101\nname: ФормаЭлемента\ntitle: {ru: Форма элемента}\nkind: object\n")
+	description := filepath.Join(root, "metadata", "catalogs", "Товары", "object.yaml")
+	content, err := os.ReadFile(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(description, append(content, []byte("forms: {object: ФормаЭлемента}\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, palettePresentationWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Count, Separators                                          int
+		Unavailable, FormButtons, Important, Help, HelpUnavailable []string
+		Form, Opened                                               string
+		Explanation                                                bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("rows of «Представление»", steps.Count, 20)
+	expect("lines between groups", steps.Separators, 2)
+	expect("unavailable", steps.Unavailable, []string{"Основная форма группы", "Основная форма выб. группы"})
+	expect("the main form of the object", steps.Form, "ФормаЭлемента")
+	expect("its buttons", steps.FormButtons, []string{"Основная форма объекта (недоступна)", "Очистить: Основная форма объекта", "Открыть: Основная форма объекта"})
+	expect("explanation of several lines", steps.Explanation, true)
+	expect("«только важные»", steps.Important, []string{"Способ поиска строки при вводе по строке", "Полнотекстовый поиск при вводе по строке",
+		"Режим получения данных выбора при вводе по строке"})
+	expect("«Справка»", steps.Help, []string{"Включать в содержание справки", "Справочная информация"})
+	expect("«Справка» unavailable", steps.HelpUnavailable, []string{"Справочная информация"})
+	expect("the form opened", steps.Opened, "metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml")
 }

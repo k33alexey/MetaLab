@@ -148,7 +148,7 @@
     // what is chosen in it are shown; «Действия» offers the commands of the
     // object's menu, not bold - the window's own action is not one of them;
     // «Закрыть» closes it as the file it edits.
-    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor),{palette:properties,paletteTitle:text=>{document.querySelector('#inspector-title').textContent=text;document.querySelector('#selection').textContent=''},openModule:role=>{const module=nodeAt(currentFile?.path)?.modules?.find(item=>item.path.endsWith('/'+role+'.bsl'));if(module)openModule(module)},actions:()=>{const node=nodeAt(currentFile?.path);return node?treeCommands(node,selectedElement).map(item=>item&&item.slice(0,5)):[]},close:()=>{if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return;closeFile()}});
+    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor),{palette:properties,paletteTitle:text=>{document.querySelector('#inspector-title').textContent=text;document.querySelector('#selection').textContent=''},openFile:path=>openFile(path),openModule:role=>{const module=nodeAt(currentFile?.path)?.modules?.find(item=>item.path.endsWith('/'+role+'.bsl'));if(module)openModule(module)},actions:()=>{const node=nodeAt(currentFile?.path);return node?treeCommands(node,selectedElement).map(item=>item&&item.slice(0,5)):[]},close:()=>{if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return;closeFile()}});
     // The windows of objects by the address the tree gives each object
     // (Node.Editor): what part of the answer of the address the window edits,
     // and the command over the common part of the object's menu that opens it
