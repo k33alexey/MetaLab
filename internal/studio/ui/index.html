@@ -116,6 +116,7 @@
   <script src="/ui/role-editor.js"></script>
   <script src="/ui/role-overview.js"></script>
   <script src="/ui/catalog-editor.js"></script>
+  <script src="/ui/constant-editor.js"></script>
   <script src="/ui/project-editor.js"></script>
   <script src="/ui/languages-editor.js"></script>
   <dialog id="save-data-dialog" aria-labelledby="save-data-title"><form id="save-data-form" method="dialog"><h3 id="save-data-title">Изменения затрагивают существующие данные</h3><p class="muted">Ниже — только то, что касается уже сохранённых данных. Остальные изменения применяются без подтверждения.</p><div id="save-data-changes"></div><label id="save-data-object-loss" hidden><input type="checkbox" id="save-data-object-loss-input"> Подтверждаю удаление объектов и данных, которые в них хранятся</label><label id="save-data-value-rewrite" hidden><input type="checkbox" id="save-data-value-rewrite-input"> Подтверждаю изменение значений в существующих строках</label><div class="role-bulk"><button id="save-data-submit" class="primary" type="submit" disabled>Сохранить данные</button><button id="save-data-cancel" type="button">Отмена</button></div></form></dialog>
@@ -148,12 +149,16 @@
     // what is chosen in it are shown; «Действия» offers the commands of the
     // object's menu, not bold - the window's own action is not one of them;
     // «Закрыть» closes it as the file it edits.
-    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor),{palette:properties,paletteTitle:text=>{document.querySelector('#inspector-title').textContent=text;document.querySelector('#selection').textContent=''},openFile:path=>openFile(path),openModule:role=>{const module=nodeAt(currentFile?.path)?.modules?.find(item=>item.path.endsWith('/'+role+'.bsl'));if(module)openModule(module)},actions:()=>{const node=nodeAt(currentFile?.path);return node?treeCommands(node,selectedElement).map(item=>item&&item.slice(0,5)):[]},close:()=>{if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return;closeFile()}});
+    const catalogAround={palette:properties,paletteTitle:text=>{document.querySelector('#inspector-title').textContent=text;document.querySelector('#selection').textContent=''},openFile:path=>openFile(path),openModule:role=>{const module=nodeAt(currentFile?.path)?.modules?.find(item=>item.path.endsWith('/'+role+'.bsl'));if(module)openModule(module)},actions:()=>{const node=nodeAt(currentFile?.path);return node?treeCommands(node,selectedElement).map(item=>item&&item.slice(0,5)):[]},close:()=>{if(dirty&&!confirm('Текущий файл изменён. Отменить несохранённые изменения?'))return;closeFile()}};
+    const catalogEditor=createCatalogEditor(catalogHost,()=>objectChanged(catalogEditor),catalogAround);
     // The windows of objects by the address the tree gives each object
     // (Node.Editor): what part of the answer of the address the window edits,
     // and the command over the common part of the object's menu that opens it
     // (rol.md, «Команды»: «Открыть права» of a role).
-    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'}};
+    // A constant has no window: its palette is all its editor shows, the work
+    // area stays empty (konstanta.md, «Окно редактирования»).
+    const constantEditor=createConstantEditor(document.createElement('div'),()=>objectChanged(constantEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle,openFile:catalogAround.openFile,openModule:catalogAround.openModule});
+    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'}};
     function objectChanged(editor){if(objectEditors[currentFile?.editor]?.editor!==editor)return;dirty=JSON.stringify(editor.value())!==currentFile.initial;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'}
     const projectHost=document.querySelector('#project-editor');
     const projectEditor=createProjectEditor(projectHost,()=>{if(!currentFile?.isProject)return;dirty=JSON.stringify(projectEditor.value())!==currentFile.initialProject;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Проект изменён':'Готово'});
@@ -183,7 +188,7 @@
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
     // правится. Перечень редакторов — здесь, один.
-    const fileEditors=[roleOverview,roleEditor,catalogEditor,projectEditor,languagesEditor];
+    const fileEditors=[roleOverview,roleEditor,catalogEditor,constantEditor,projectEditor,languagesEditor];
     function closeEditors(kept){for(const item of fileEditors)if(item!==kept)item.close()}
     function setEditorsBusy(busy){for(const item of fileEditors)item.setDisabled(busy);formHost.inert=busy;editorHost.inert=busy}
     function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}

@@ -819,3 +819,127 @@ func TestThePaletteOfAPartOfACatalogIsThePrototypes(t *testing.T) {
 	expect("a line number of 9", steps.LineNumberTaken, answered{"", "9"})
 	expect("an attribute of a table part", steps.PartAttribute["Использование"], []string{"Индексировать", "Полнотекстовый поиск", "История данных"})
 }
+
+// constantPaletteWalk adds a constant by «Добавить» on the branch
+// «Константы» and reads what opens: the work area, the palette, its tabs and
+// rows by the kind of the type, «только важные»; it types a name, changes
+// the length of the string, saves, and opens the module of the value.
+const constantPaletteWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const palette = () => document.querySelector('#properties .object-palette');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const tabs = () => [...palette().querySelectorAll('.studio-tab')].map(tab => tab.textContent);
+  const tab = async caption => { [...palette().querySelectorAll('.studio-tab')].find(item => item.textContent === caption).click(); await settle(); };
+  const rows = () => [...palette().querySelectorAll('.object-palette-row .object-palette-caption')].map(item => item.textContent);
+  const field = caption => windowField('#properties', caption).querySelector('input, select');
+  await openObject('Константы');
+  document.querySelector('#tree-add').click(); await settle();
+  steps.dialog = !!document.querySelector('dialog[open]');
+  steps.tree = !!treeRow('Константа1');
+  steps.workArea = [...document.querySelectorAll('main > div')].filter(item => !item.hidden && item.offsetParent !== null && item.id !== 'editor-host' && !item.classList.contains('editor-bar')).map(item => item.id);
+  steps.title = document.querySelector('#inspector-title').textContent;
+  steps.tabs = tabs();
+  steps.main = rows();
+  steps.values = {name: field('Имя').value, length: field('Длина').value, fixed: field('Допустимая длина').value};
+  await tab('Данные');
+  steps.data = {rows: rows(), lock: field('Режим управления блокировкой данных').value, history: field('История данных').value,
+    flags: [...palette().querySelectorAll('.object-palette-row input[type=checkbox]')].map(box => box.disabled)};
+  await tab('Представление');
+  steps.presentation = rows();
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  steps.important = tabs();
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  await tab('Основные');
+  const name = field('Имя');
+  name.focus(); name.value = 'ОсновнаяВалюта'; name.dispatchEvent(new Event('input', {bubbles: true})); await settle();
+  steps.renamed = {title: document.querySelector('#inspector-title').textContent, synonym: field('Синоним').value};
+  const length = field('Длина');
+  length.focus(); length.value = '25'; document.querySelector('#refresh').focus(); length.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = {unsaved: !document.querySelector('#save').disabled, tree: !!treeRow('ОсновнаяВалюта'), length: field('Длина').value};
+  [...palette().querySelectorAll('.object-palette-row')].find(row => row.textContent.startsWith('Модуль менеджера значения')).querySelector('button').click(); await settle();
+  steps.module = document.querySelector('#file-path').textContent;
+  await openObject('Константы');
+  document.querySelector('#tree-add').click(); await settle();
+  const another = field('Имя');
+  another.focus(); another.value = 'основнаявалюта'; another.dispatchEvent(new Event('input', {bubbles: true}));
+  document.querySelector('#refresh').focus(); another.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+  steps.repeated = document.querySelector('dialog[open] h3')?.textContent || '';
+  return steps;
+})()`
+
+// A constant has no window: «Добавить» makes Константа1 with the
+// prototype's values of a new one and opens its palette, the work area left
+// empty (docs/block-00/konstanta.md, «Окно редактирования», «Новая
+// константа»; snapshots konstanta/novaya-*, palitra-*): three tabs, «только
+// важные» keeping «Основные» and «Данные»; the rows of a string; the managed
+// lock and the history not used, its flags unavailable; the name typed
+// renames the palette and the synonym follows it; a length typed is written
+// and saved; the module of the value opens from its row. The expectations are
+// written out from the inventory. Defects caught: «Добавить» refused on the
+// branch of constants; a new constant without the prototype's values; a
+// window of a constant; the palette of a constant missing its rows, or the
+// rows of another kind of type; an edit of the palette not saved.
+func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, constantPaletteWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Dialog, Tree            bool
+		WorkArea, Tabs, Main    []string
+		Presentation, Important []string
+		Title, Module           string
+		Values                  struct{ Name, Length, Fixed string }
+		Data                    struct {
+			Rows          []string
+			Lock, History string
+			Flags         []bool
+		}
+		Renamed struct{ Title, Synonym string }
+		Saved   struct {
+			Unsaved, Tree bool
+			Length        string
+		}
+		Repeated string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("«Добавить»", []bool{steps.Dialog, steps.Tree}, []bool{false, true})
+	expect("the work area", steps.WorkArea, []string{})
+	expect("title", steps.Title, "Свойства: Константа1")
+	expect("tabs", steps.Tabs, []string{"Основные", "Данные", "Представление"})
+	expect("«Основные» of a string", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Тип", "Длина", "Допустимая длина", "Неограниченная длина",
+		"Модуль менеджера", "Модуль менеджера значения"})
+	expect("a new constant", steps.Values, struct{ Name, Length, Fixed string }{"Константа1", "10", "false"})
+	expect("«Данные»", steps.Data, struct {
+		Rows          []string
+		Lock, History string
+		Flags         []bool
+	}{[]string{"Режим управления блокировкой данных", "История данных", "Обновлять историю данных сразу после записи",
+		"Выполнять обработку после записи версии истории данных"}, "managed", "dont-use", []bool{true, true}})
+	expect("«Представление» of a string", steps.Presentation, []string{"Использовать стандартные команды", "Основная форма", "Расширенное представление",
+		"Пояснение", "Режим пароля", "Подсказка", "Маска", "Многострочный режим", "Расширенное редактирование", "Проверка заполнения",
+		"Быстрый выбор", "История выбора при вводе", "Связь по типу"})
+	expect("«только важные»", steps.Important, []string{"Основные", "Данные"})
+	expect("renamed", steps.Renamed, struct{ Title, Synonym string }{"Свойства: ОсновнаяВалюта", "Основная валюта"})
+	expect("saved", steps.Saved, struct {
+		Unsaved, Tree bool
+		Length        string
+	}{false, true, "25"})
+	// The name of a constant is checked against the other constants, as
+	// every name in its branch (obshchee.md, «Имя и синоним»).
+	expect("a name of another constant", steps.Repeated, "Имя не уникально!")
+	expect("the module of the value", steps.Module, "metadata/constants/ОсновнаяВалюта/МодульЗначения.bsl")
+}

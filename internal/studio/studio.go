@@ -101,7 +101,8 @@ type Node struct {
 // address each is read, written, made and deleted at. They give way to one
 // window built by the descriptor of the kind (BLOCKS 2с, «окно и свойства
 // объекта — один построитель»).
-var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress}
+var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress,
+	metadata.ConstantKind: constantEditorAddress}
 
 // registerObjectWindow serves what the window of an object writes at its
 // address, one way for every window (objectEditors): the object as edited,
@@ -321,6 +322,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerRoleRoutes(routes, workspace)
 	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
+	registerConstantEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)
@@ -1326,8 +1328,10 @@ func namedFolderNodes(directory, relative, kind string, loaded *metadata.Catalog
 			return nil, fmt.Errorf("unexpected source path %q", filepath.ToSlash(filepath.Join(relative, entry.Name())))
 		}
 		path := filepath.ToSlash(filepath.Join(relative, entry.Name(), description))
+		// An object of the configuration, as every other: its name is checked
+		// against its siblings, and its window found, by the kind of node.
 		node := Node{
-			ID: path, Kind: kind, Icon: kindIcon(kind), Title: entry.Name(), Path: path,
+			ID: path, Kind: "metadata", Icon: kindIcon(kind), Title: entry.Name(), Path: path,
 			Properties: []Property{{Name: "Путь", Value: path}},
 		}
 		head, _ := yamlSourceHead(filepath.Join(directory, entry.Name(), description), path, entry.Name())

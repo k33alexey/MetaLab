@@ -300,24 +300,24 @@ type Type struct {
 // parameters and the rest - are the same ones an attribute has and are
 // described there, not twice.
 type Constant struct {
-	Format  int           `yaml:"format"`
-	ID      uuid.UUID     `yaml:"id"`
-	Name    string        `yaml:"name"`
-	Title   LocalizedText `yaml:"title"`
-	Comment string        `yaml:"comment,omitempty"`
+	Format  int           `yaml:"format" json:"format"`
+	ID      uuid.UUID     `yaml:"id" json:"id"`
+	Name    string        `yaml:"name" json:"name"`
+	Title   LocalizedText `yaml:"title" json:"title"`
+	Comment string        `yaml:"comment,omitempty" json:"comment,omitempty"`
 	// Explanation and ExtendedPresentation are how the value is described to
 	// the user: one as a sentence beside it, one as the name of its own form.
-	Explanation          LocalizedText `yaml:"explanation,omitempty"`
-	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty"`
-	Types                []Type        `yaml:"types"`
-	Default              *Value        `yaml:"default,omitempty"`
+	Explanation          LocalizedText `yaml:"explanation,omitempty" json:"explanation,omitempty"`
+	ExtendedPresentation LocalizedText `yaml:"extended_presentation,omitempty" json:"extendedPresentation,omitempty"`
+	Types                []Type        `yaml:"types" json:"types"`
+	Default              *Value        `yaml:"default,omitempty" json:"default,omitempty"`
 	// DefaultForm names the form that opens the value. A constant keeps no
 	// forms of its own, so it is one of the configuration's common forms - a
 	// reference to another object, and therefore by identifier.
-	DefaultForm *uuid.UUID `yaml:"default_form,omitempty"`
+	DefaultForm *uuid.UUID `yaml:"default_form,omitempty" json:"defaultForm,omitempty"`
 	// UseStandardCommands decides whether the platform offers its own commands
 	// for this constant.
-	UseStandardCommands bool `yaml:"use_standard_commands,omitempty"`
+	UseStandardCommands bool `yaml:"use_standard_commands,omitempty" json:"useStandardCommands,omitempty"`
 	// Presentation, Choice and FillChecking are the settings of a value that
 	// somebody types in, and a constant is exactly that: it has a type, a form
 	// and a person entering it. The prototype gives it the format and the
@@ -329,9 +329,9 @@ type Constant struct {
 	// search, and neither do we: there is one row of one value, so there is
 	// nothing to index and nothing to search; there is nowhere for it to
 	// belong; and a value that exists once is not filled in anew.
-	Presentation FieldPresentation `yaml:"presentation,omitempty"`
-	Choice       FieldChoice       `yaml:"choice,omitempty"`
-	FillChecking FillCheck         `yaml:"fill_checking,omitempty"`
+	Presentation FieldPresentation `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	Choice       FieldChoice       `yaml:"choice,omitempty" json:"choice,omitempty"`
+	FillChecking FillCheck         `yaml:"fill_checking,omitempty" json:"fillChecking,omitempty"`
 	// DataHistorySettings is whether the value takes part in data history and
 	// the two flags that go with it - see data_history.go. A constant is one
 	// of the ten kinds that carry all three.
@@ -339,14 +339,14 @@ type Constant struct {
 	// DataLock is how the value is locked while it is written - see
 	// data_lock_settings.go. A constant has the mode and no fields: it is one
 	// value, and there is nothing in it to lock by.
-	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty"`
+	DataLock project.DataLockControlMode `yaml:"data_lock,omitempty" json:"dataLock,omitempty"`
 	// CommonAttributeFields are the fields the value gains from the common
 	// attributes that separate it «независимо и совместно»: the value is
 	// then kept per data area, and the field says which - see
 	// propagateCommonAttributes. They are not written in the constant's
 	// file, because a common attribute is described where it is and not in
 	// the objects it reaches.
-	CommonAttributeFields []Attribute `yaml:"-"`
+	CommonAttributeFields []Attribute `yaml:"-" json:"commonAttributeFields,omitempty"`
 }
 
 // SessionParameter is a server-memory-only value scoped to one session's lifetime.

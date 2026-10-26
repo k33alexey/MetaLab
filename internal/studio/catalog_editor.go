@@ -43,12 +43,18 @@ type CatalogEditorSource struct {
 }
 
 func validateCatalogEditorPath(relative string) error {
+	return validateObjectEditorPath(relative, metadata.CatalogKind)
+}
+
+// validateObjectEditorPath accepts the description of an object of a kind
+// that keeps a folder named after it: metadata/<kind>/<Имя>/object.yaml.
+func validateObjectEditorPath(relative string, kind metadata.Kind) error {
 	canonical, language, err := validateEditablePath(relative)
 	if err != nil || language != "yaml" {
 		return ErrInvalidSourcePath
 	}
 	parts := strings.Split(canonical, "/")
-	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != string(metadata.CatalogKind) || parts[3] != project.ObjectMetadataFile {
+	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != string(kind) || parts[3] != project.ObjectMetadataFile {
 		return ErrInvalidSourcePath
 	}
 	return nil
@@ -244,49 +250,68 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 	if _, err := metadata.DecodeCatalog("new catalog", bytes.NewReader(encoded.Bytes()), configuration); err != nil {
 		return CatalogEditorSource{}, err
 	}
-	relative, err := project.ObjectMetadataPath(string(metadata.CatalogKind), name)
+	relative, err := workspace.createObjectLocked(metadata.CatalogKind, id, name, encoded.Bytes())
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	directory := filepath.Join(workspace.root, "metadata", string(metadata.CatalogKind))
+	// The new catalog opens as any catalog is read: one way to its window.
+	return workspace.readCatalogEditorLocked(relative)
+}
+
+// createObjectLocked writes the description of a new object of a kind that
+// keeps a folder named after it, puts the object last among the objects of
+// its kind, and gives it to the roles that are given every new object. A
+// refusal on the way takes the object away again: no folder, no line of the
+// order and no right of a role is left of it. Answers where the description
+// lies.
+func (workspace *Workspace) createObjectLocked(kind metadata.Kind, id uuid.UUID, name string, encoded []byte) (string, error) {
+	relative, err := project.ObjectMetadataPath(string(kind), name)
+	if err != nil {
+		return "", err
+	}
+	directory := filepath.Join(workspace.root, "metadata", string(kind))
 	if err := os.Mkdir(directory, 0o755); err != nil && !os.IsExist(err) {
-		return CatalogEditorSource{}, err
+		return "", err
 	}
 	info, err := os.Lstat(directory)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return CatalogEditorSource{}, ErrInvalidSourcePath
+		return "", ErrInvalidSourcePath
 	}
 	objectDirectory := filepath.Join(directory, name)
 	if err := os.Mkdir(objectDirectory, 0o755); err != nil {
-		return CatalogEditorSource{}, err
+		return "", err
 	}
-	file, err := os.OpenFile(filepath.Join(workspace.root, filepath.FromSlash(relative)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	description := filepath.Join(workspace.root, filepath.FromSlash(relative))
+	takeAway := func() {
+		_ = os.Remove(description)
+		_ = os.Remove(objectDirectory)
+		workspace.invalidateStudioIndexesLocked()
+	}
+	file, err := os.OpenFile(description, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		_ = os.Remove(objectDirectory)
-		return CatalogEditorSource{}, err
+		return "", err
 	}
-	_, writeErr := file.Write(encoded.Bytes())
+	_, writeErr := file.Write(encoded)
 	if writeErr == nil {
 		writeErr = file.Sync()
 	}
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
-		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
-		_ = os.Remove(objectDirectory)
-		return CatalogEditorSource{}, fmt.Errorf("create catalog: write=%v, close=%v", writeErr, closeErr)
+		takeAway()
+		return "", fmt.Errorf("create %s: write=%v, close=%v", kind, writeErr, closeErr)
 	}
 	workspace.invalidateStudioIndexesLocked()
-	// The new catalog stands last among the catalogs; an order that cannot be
-	// written takes the catalog away again, as a refused grant does.
-	restoreOrder, err := workspace.placeInOrderLocked(metadata.CatalogKind, id)
+	// The new object stands last among the objects of its kind; an order
+	// that cannot be written takes the object away again, as a refused
+	// grant does.
+	restoreOrder, err := workspace.placeInOrderLocked(kind, id)
 	if err != nil {
-		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
-		_ = os.Remove(objectDirectory)
-		workspace.invalidateStudioIndexesLocked()
-		return CatalogEditorSource{}, fmt.Errorf("place new catalog in the order: %w", err)
+		takeAway()
+		return "", fmt.Errorf("place new %s in the order: %w", kind, err)
 	}
-	// A refused grant takes the new catalog away again: the roles are left as
-	// they were, the order is put back, and a catalog no role was told of is
+	// A refused grant takes the new object away again: the roles are left as
+	// they were, the order is put back, and an object no role was told of is
 	// not left behind.
 	if _, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
 		if !role.GrantNewObjectsByDefault {
@@ -295,16 +320,13 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 		return role.GrantObjectReadByDefault(id)
 	}); err != nil {
 		restoreErr := restoreOrder()
-		_ = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
-		_ = os.Remove(objectDirectory)
-		workspace.invalidateStudioIndexesLocked()
+		takeAway()
 		if restoreErr != nil {
-			return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w; restoring the order failed: %v", err, restoreErr)
+			return "", fmt.Errorf("grant default access to new %s: %w; restoring the order failed: %v", kind, err, restoreErr)
 		}
-		return CatalogEditorSource{}, fmt.Errorf("grant default access to new catalog: %w", err)
+		return "", fmt.Errorf("grant default access to new %s: %w", kind, err)
 	}
-	// The new catalog opens as any catalog is read: one way to its window.
-	return workspace.readCatalogEditorLocked(relative)
+	return relative, nil
 }
 
 // DeleteCatalog permanently removes one catalog's whole per-object folder
@@ -313,16 +335,28 @@ func (workspace *Workspace) CreateCatalog(name string) (CatalogEditorSource, err
 // pointing at this catalog) is not checked here — same as SaveCatalogEditor,
 // that is caught at the next full project Load, not at delete time.
 func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) error {
+	return workspace.deleteObjectFolder(metadata.CatalogKind, relative, expectedRevision, func() (uuid.UUID, string, error) {
+		opened, err := workspace.readCatalogEditorLocked(relative)
+		return opened.Catalog.ID, opened.Revision, err
+	})
+}
+
+// deleteObjectFolder deletes an object of a kind that keeps a folder named
+// after it - its description, modules, forms - by the one order of steps of
+// every deletion (deleteObjectLocked), while the caller holds the revision
+// read last. read reads the object as its window does: its identifier and
+// revision.
+func (workspace *Workspace) deleteObjectFolder(kind metadata.Kind, relative, expectedRevision string, read func() (uuid.UUID, string, error)) error {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	opened, err := workspace.readCatalogEditorLocked(relative)
+	id, revision, err := read()
 	if err != nil {
 		return err
 	}
-	if opened.Revision != expectedRevision {
+	if revision != expectedRevision {
 		return ErrSourceChanged
 	}
-	return workspace.deleteObjectLocked(metadata.CatalogKind, opened.Catalog.ID, relative, func() error {
+	return workspace.deleteObjectLocked(kind, id, relative, func() error {
 		return os.RemoveAll(filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative))))
 	})
 }

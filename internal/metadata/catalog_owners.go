@@ -69,9 +69,21 @@ func CatalogOwnerKinds() []Kind {
 }
 
 // KindObjects are the objects of a kind of the project, in the order of the
-// tree, as a window choosing among them lists them.
+// tree, as a window choosing among them lists them. A kind the catalog keeps
+// no list of - a common form, known only by its folder - is read off the
+// index of every object, by name before the order of the tree.
 func (catalog *Catalog) KindObjects(kind Kind) []ReferenceTypeObject {
-	return catalog.referenceTypeObjects(kind)
+	if _, listed := catalog.objectsOf(kind); listed {
+		return catalog.referenceTypeObjects(kind)
+	}
+	var result []ReferenceTypeObject
+	for id, object := range catalog.objects {
+		if object.kind == kind && object.owner == nil {
+			result = append(result, ReferenceTypeObject{ID: id, Name: object.name, Title: object.title})
+		}
+	}
+	slices.SortFunc(result, func(a, b ReferenceTypeObject) int { return strings.Compare(a.Name, b.Name) })
+	return catalog.inTreeOrder(kind, result)
 }
 
 // ownerObject finds one owner by identifier among the kinds allowed to own.

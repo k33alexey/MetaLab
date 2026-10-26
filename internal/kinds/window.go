@@ -109,18 +109,62 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/konstanta.md, «Палитра свойств»; snapshots
+	// konstanta/palitra-*: three tabs, «только важные» keeps «Основные» and
+	// «Данные»; the modules are named as the palette of a constant names
+	// them, the manager first.
+	Constant: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("константы", "о константе"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+		}, typeRows, []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: string(ManagerModule), Title: "Модуль менеджера", Field: ModuleField, Important: true,
+				Description: "Код менеджера константы: процедуры и функции, общие для константы."},
+			{Key: string(ValueModule), Title: "Модуль менеджера значения", Field: ModuleField, Important: true,
+				Description: "Код, который исполняет значение константы: обработчики его записи и проверки."},
+		})},
+		{Key: "data", Title: "Данные", Important: true, Rows: []PaletteRow{
+			{Key: "dataLock", Title: "Режим управления блокировкой данных", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"automatic", "Автоматический"}, {"managed", "Управляемый"}},
+				Description: "Как блокируется значение при записи: платформой сама или кодом."},
+			{Key: "dataHistory", Title: "История данных", Field: ChoiceField, Important: true,
+				Choices: [][2]string{{"dont-use", "Не использовать"}, {"use", "Использовать"}}, Description: "Хранятся ли версии значения константы."},
+			{Key: "updateDataHistoryImmediatelyAfterWrite", Title: "Обновлять историю данных сразу после записи", Field: FlagField, Important: true,
+				Needs: []string{"dataHistory=use"}, Description: "Версия строится сразу после записи, а не по расписанию."},
+			{Key: "executeAfterDataHistoryVersionWriteProcessing", Title: "Выполнять обработку после записи версии истории данных", Field: FlagField,
+				Important: true, Needs: []string{"dataHistory=use"}, Description: "Модуль менеджера узнаёт о каждой записанной версии."},
+		}},
+		{Key: "presentation", Title: "Представление", Rows: rows([]PaletteRow{
+			{Key: "useStandardCommands", Title: "Использовать стандартные команды", Field: FlagField,
+				Description: "Платформа сама даёт команду, открывающую константу."},
+			{Key: "defaultForm", Title: "Основная форма", Field: FormField, Description: "Общая форма, которой открывается константа."},
+		}, referenceChoice, []PaletteRow{
+			{Field: SeparatorField},
+			{Key: "extendedPresentation", Title: "Расширенное представление", Field: LocalizedField,
+				Description: "Название константы там, где для него есть место: заголовок её формы."},
+			{Key: "explanation", Title: "Пояснение", Field: LocalizedField, Lines: 3,
+				Description: "Фраза, которой константа предлагается пользователю рядом с командой, открывающей её."},
+			{Field: SeparatorField},
+		}, typePresentation, []PaletteRow{
+			{Field: SeparatorField},
+			{Key: "fillChecking", Title: "Проверка заполнения", Field: ChoiceField, Default: "dont-check", Choices: fillChecks,
+				Description: "Отказывает ли запись незаполненного значения."},
+			{Field: SeparatorField},
+			{Key: "choice.quickChoice", Title: "Быстрый выбор", Field: ChoiceField, Choices: autoUsage,
+				Description: "Выбирается ли значение из выпадающего списка вместо формы выбора."},
+			{Key: "choice.historyOnInput", Title: "История выбора при вводе", Field: ChoiceField, Choices: autoHistory,
+				Description: "Предлагаются ли первыми значения, которые пользователь уже выбирал."},
+			{Field: SeparatorField},
+			{Key: "choice.linkByType", Title: "Связь по типу", Field: FieldsField,
+				Description: "Значение, от которого зависит тип значения константы."},
+		})},
+	},
 	// docs/block-00/spravochnik.md, «Палитра свойств»: four tabs, «только
 	// важные» takes «Справочная информация» away.
 	Catalog: {
-		{Key: "main", Title: "Основные", Important: true, Rows: []PaletteRow{
-			{Key: "name", Title: "Имя", Field: NameField, Important: true,
-				Description: "Имя объекта в коде и в запросах: одно слово, начинается с буквы."},
-			{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true,
-				Description: "Название объекта для пользователя на каждом языке проекта."},
-			{Key: "comment", Title: "Комментарий", Field: TextField, Important: true,
-				Description: "Заметка разработчика об объекте; пользователю не показывается."},
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("справочника", "о справочнике"), []PaletteRow{
 			{Field: modulesRow, Important: true},
-		}},
+		})},
 		{Key: "data", Title: "Данные", Important: true, Rows: []PaletteRow{
 			{Key: "hierarchy.enabled", Title: "Иерархический", Field: FlagField, Important: true,
 				Description: "Элементы справочника складываются в дерево: у элемента может быть родитель."},
@@ -272,6 +316,74 @@ func (descriptor Descriptor) Palette() []PaletteTab {
 	return result
 }
 
+// typeRows are the type of a value and its qualifiers by the kind of the
+// type (obshchee.md, «Тип значения и квалификаторы»): the rows of the type
+// of an attribute and of a constant alike.
+var typeRows = []PaletteRow{
+	{Key: "types", Title: "Тип", Field: TypeField, Important: true, Description: "Какие значения хранит реквизит."},
+	{Key: "type.length", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=string"},
+		Description: "Сколько знаков в строке; ноль — длина не ограничена."},
+	{Key: "type.fixedLength", Title: "Допустимая длина", Field: SwitchField, Important: true, Shown: []string{"type=string"},
+		Choices: [][2]string{{"false", "Переменная"}, {"true", "Фиксированная"}}, Description: "Строка хранится как набрана или дополняется пробелами до полной длины."},
+	{Key: "type.unlimited", Title: "Неограниченная длина", Field: FlagField, Important: true, Shown: []string{"type=string"},
+		Description: "Строка любой длины; такую строку нельзя индексировать и сравнивать в запросе."},
+	{Key: "type.precision", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=number"},
+		Description: "Сколько цифр в числе, вместе с дробной частью."},
+	{Key: "type.scale", Title: "Точность", Field: NumberField, Important: true, Shown: []string{"type=number"},
+		Description: "Сколько цифр после запятой."},
+	{Key: "type.nonNegative", Title: "Неотрицательное", Field: FlagField, Important: true, Shown: []string{"type=number"},
+		Description: "Отрицательное число не записывается."},
+	{Key: "type.dateParts", Title: "Состав даты", Field: ChoiceField, Important: true, Shown: []string{"type=date"}, Choices: dateParts,
+		Description: "Что хранит дата: дату, время или дату и время."},
+}
+
+// typePresentation are the rows of the presentation of a value by the kind
+// of its type, in one order for every kind of type, so a composite one shows
+// the union of its kinds' rows once each (docs/block-00/obshchee.md,
+// «Представление по типу»): the format of a number, a date or a boolean, the
+// modes of a string, the tooltip of every type, the marks of a number.
+var typePresentation = []PaletteRow{
+	{Key: "presentation.format", Title: "Формат", Field: LocalizedField, Important: true, Shown: formatted,
+		Description: "Как значение показывается в поле."},
+	{Key: "presentation.editFormat", Title: "Формат редактирования", Field: LocalizedField, Important: true, Shown: formatted,
+		Description: "Как значение показывается, пока его правят."},
+	{Key: "presentation.password", Title: "Режим пароля", Field: FlagField, Important: true, Shown: []string{"type=string"},
+		Description: "Набранное в поле показывается звёздочками."},
+	{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true,
+		Description: "Текст, который пользователь видит, наведя указатель на поле."},
+	{Key: "presentation.mask", Title: "Маска", Field: TextField, Important: true, Shown: []string{"type=string"},
+		Description: "Шаблон набора: какие знаки и где можно набрать."},
+	{Key: "presentation.multiLine", Title: "Многострочный режим", Field: FlagField, Important: true, Shown: []string{"type=string"},
+		Description: "Поле показывает текст в несколько строк."},
+	{Key: "presentation.extendedEdit", Title: "Расширенное редактирование", Field: FlagField, Important: true, Shown: []string{"type=string"},
+		Description: "Текст правится с оформлением."},
+	{Key: "presentation.markNegatives", Title: "Выделять отрицательные", Field: FlagField, Important: true, Shown: []string{"type=number"},
+		Description: "Отрицательное число в поле выделяется цветом."},
+	{Key: "presentation.minValue", Title: "Минимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
+		Description: "Меньше этого значения в поле не набрать."},
+	{Key: "presentation.maxValue", Title: "Максимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
+		Description: "Больше этого значения в поле не набрать."},
+}
+
+// identityRows are the name, the synonym and the comment every palette
+// opens with, said of the thing it shows: of whom (genitive) and about whom.
+func identityRows(genitive, about string) []PaletteRow {
+	return []PaletteRow{
+		{Key: "name", Title: "Имя", Field: NameField, Important: true, Description: "Имя " + genitive + " в коде и в запросах: одно слово, начинается с буквы."},
+		{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true, Description: "Название " + genitive + " для пользователя на каждом языке проекта."},
+		{Key: "comment", Title: "Комментарий", Field: TextField, Important: true, Description: "Заметка разработчика " + about + "; пользователю не показывается."},
+	}
+}
+
+// rows joins groups of rows in their order.
+func rows(groups ...[]PaletteRow) []PaletteRow {
+	var result []PaletteRow
+	for _, group := range groups {
+		result = append(result, group...)
+	}
+	return result
+}
+
 // usage are the values of a setting used, not used or left to the platform,
 // with the prototype's captions.
 var (
@@ -280,6 +392,23 @@ var (
 	autoHistory  = [][2]string{{"auto", "Авто"}, {"dont-use", "Не использовать"}}
 	attributeUse = [][2]string{{"for-item", "Для элемента"}, {"for-folder", "Для группы"}, {"for-folder-and-item", "Для группы и элемента"}}
 	fillChecks   = [][2]string{{"dont-check", "Не проверять"}, {"show-error", "Выдавать ошибку"}}
+	dateParts    = [][2]string{{"date", "Дата"}, {"time", "Время"}, {"date-time", "Дата и время"}}
+	// formatted are the kinds of type a format is given to.
+	formatted = []string{"type=number", "type=date", "type=boolean"}
+	// referenceChoice are the rows of choosing a reference: what may be
+	// chosen in a hierarchy, the windows of the links and parameters of the
+	// choice and the form it is chosen in.
+	referenceChoice = []PaletteRow{
+		{Key: "choice.foldersAndItems", Title: "Выбор групп и элементов", Field: ChoiceField, Important: true, Shown: []string{"type=reference"},
+			Choices:     [][2]string{{"items", "Элементы"}, {"folders", "Группы"}, {"folders-and-items", "Группы и элементы"}},
+			Description: "Что можно выбрать в поле из иерархического справочника: группы, элементы или то и другое."},
+		{Key: "choiceParameterLinks", Title: "Связи параметров выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+			Description: "Отбор выбираемых значений по значениям других реквизитов."},
+		{Key: "choiceParameters", Title: "Параметры выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+			Description: "Постоянный отбор выбираемых значений."},
+		{Key: "choiceForm", Title: "Форма выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
+			Description: "Форма, из которой выбирается значение."},
+	}
 )
 
 // partPalettes are the palettes of the parts of an object - an attribute and
@@ -290,25 +419,9 @@ var (
 // owner=<kind> the kind of the object the part belongs to.
 var partPalettes = map[string][]PaletteTab{
 	"attribute": {
-		{Key: "main", Title: "Основные", Important: true, Rows: []PaletteRow{
-			{Key: "name", Title: "Имя", Field: NameField, Important: true, Description: "Имя реквизита в коде и в запросах."},
-			{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true, Description: "Название реквизита для пользователя на каждом языке проекта."},
-			{Key: "comment", Title: "Комментарий", Field: TextField, Important: true, Description: "Заметка разработчика о реквизите."},
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{
 			{Field: SeparatorField, Important: true},
-			{Key: "types", Title: "Тип", Field: TypeField, Important: true, Description: "Какие значения хранит реквизит."},
-			{Key: "type.length", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=string"},
-				Description: "Сколько знаков в строке; ноль — длина не ограничена."},
-			{Key: "type.fixedLength", Title: "Допустимая длина", Field: SwitchField, Important: true, Shown: []string{"type=string"},
-				Choices: [][2]string{{"false", "Переменная"}, {"true", "Фиксированная"}}, Description: "Строка хранится как набрана или дополняется пробелами до полной длины."},
-			{Key: "type.unlimited", Title: "Неограниченная длина", Field: FlagField, Important: true, Shown: []string{"type=string"},
-				Description: "Строка любой длины; такую строку нельзя индексировать и сравнивать в запросе."},
-			{Key: "type.precision", Title: "Длина", Field: NumberField, Important: true, Shown: []string{"type=number"},
-				Description: "Сколько цифр в числе, вместе с дробной частью."},
-			{Key: "type.scale", Title: "Точность", Field: NumberField, Important: true, Shown: []string{"type=number"},
-				Description: "Сколько цифр после запятой."},
-			{Key: "type.nonNegative", Title: "Неотрицательное", Field: FlagField, Important: true, Shown: []string{"type=number"},
-				Description: "Отрицательное число в реквизит не записывается."},
-		}},
+		}, typeRows)},
 		{Key: "use", Title: "Использование", Important: true, Rows: []PaletteRow{
 			{Key: "use", Title: "Использование", Field: ChoiceField, Important: true, Shown: []string{"owner=catalogs"}, Choices: attributeUse,
 				Description: "Чей это реквизит: элемента, группы или обоих."},
@@ -320,40 +433,7 @@ var partPalettes = map[string][]PaletteTab{
 			{Key: "dataHistory", Title: "История данных", Field: ChoiceField, Important: true, Choices: usage,
 				Description: "Хранятся ли изменения реквизита в истории данных."},
 		}},
-		{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
-			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=reference"},
-				Description: "Текст, который пользователь видит, наведя указатель на поле."},
-			{Key: "choice.foldersAndItems", Title: "Выбор групп и элементов", Field: ChoiceField, Important: true, Shown: []string{"type=reference"},
-				Choices:     [][2]string{{"items", "Элементы"}, {"folders", "Группы"}, {"folders-and-items", "Группы и элементы"}},
-				Description: "Что можно выбрать в поле из иерархического справочника: группы, элементы или то и другое."},
-			{Key: "choiceParameterLinks", Title: "Связи параметров выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
-				Description: "Отбор выбираемых значений по значениям других реквизитов."},
-			{Key: "choiceParameters", Title: "Параметры выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
-				Description: "Постоянный отбор выбираемых значений."},
-			{Key: "choiceForm", Title: "Форма выбора", Field: WindowField, Important: true, Shown: []string{"type=reference"},
-				Description: "Форма, из которой выбирается значение реквизита."},
-			{Key: "presentation.password", Title: "Режим пароля", Field: FlagField, Important: true, Shown: []string{"type=string"},
-				Description: "Набранное в поле показывается звёздочками."},
-			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=string"},
-				Description: "Текст, который пользователь видит, наведя указатель на поле."},
-			{Key: "presentation.mask", Title: "Маска", Field: TextField, Important: true, Shown: []string{"type=string"},
-				Description: "Шаблон набора: какие знаки и где можно набрать."},
-			{Key: "presentation.multiLine", Title: "Многострочный режим", Field: FlagField, Important: true, Shown: []string{"type=string"},
-				Description: "Поле показывает текст в несколько строк."},
-			{Key: "presentation.extendedEdit", Title: "Расширенное редактирование", Field: FlagField, Important: true, Shown: []string{"type=string"},
-				Description: "Текст правится с оформлением."},
-			{Key: "presentation.format", Title: "Формат", Field: LocalizedField, Important: true, Shown: []string{"type=number"},
-				Description: "Как число показывается в поле."},
-			{Key: "presentation.editFormat", Title: "Формат редактирования", Field: LocalizedField, Important: true, Shown: []string{"type=number"},
-				Description: "Как число показывается, пока его правят."},
-			{Key: "presentation.tooltip", Title: "Подсказка", Field: LocalizedField, Lines: 3, Important: true, Shown: []string{"type=number"},
-				Description: "Текст, который пользователь видит, наведя указатель на поле."},
-			{Key: "presentation.markNegatives", Title: "Выделять отрицательные", Field: FlagField, Important: true, Shown: []string{"type=number"},
-				Description: "Отрицательное число в поле выделяется цветом."},
-			{Key: "presentation.minValue", Title: "Минимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
-				Description: "Меньше этого значения в поле не набрать."},
-			{Key: "presentation.maxValue", Title: "Максимальное значение", Field: TextField, Important: true, Shown: []string{"type=number"},
-				Description: "Больше этого значения в поле не набрать."},
+		{Key: "presentation", Title: "Представление", Important: true, Rows: rows(typePresentation, referenceChoice, []PaletteRow{
 			{Field: SeparatorField, Important: true},
 			{Key: "filling.fromFillingValue", Title: "Заполнять из данных заполнения", Field: FlagField, Important: true,
 				Description: "Новый объект берёт значение реквизита из данных заполнения - например, из отбора списка."},
@@ -371,14 +451,10 @@ var partPalettes = map[string][]PaletteTab{
 			{Field: SeparatorField, Important: true},
 			{Key: "choice.linkByType", Title: "Связь по типу", Field: FieldsField, Important: true,
 				Description: "Реквизит, от значения которого зависит тип значения этого реквизита."},
-		}},
+		})},
 	},
 	"tablePart": {
-		{Key: "main", Title: "Основные", Important: true, Rows: []PaletteRow{
-			{Key: "name", Title: "Имя", Field: NameField, Important: true, Description: "Имя табличной части в коде и в запросах."},
-			{Key: "title", Title: "Синоним", Field: LocalizedField, Important: true, Description: "Название табличной части для пользователя на каждом языке проекта."},
-			{Key: "comment", Title: "Комментарий", Field: TextField, Important: true, Description: "Заметка разработчика о табличной части."},
-		}},
+		{Key: "main", Title: "Основные", Important: true, Rows: identityRows("табличной части", "о табличной части")},
 		{Key: "data", Title: "Данные", Important: true, Rows: []PaletteRow{
 			{Key: "standardAttributes", Title: "Стандартные реквизиты", Field: WindowField, Important: true,
 				Description: "Окно стандартного реквизита табличной части — номера строки."},

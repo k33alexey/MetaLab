@@ -440,3 +440,64 @@ func TestThePalettesOfTheParts(t *testing.T) {
 		}
 	}
 }
+
+// shownRows are the captions of a tab a value of the kinds of type given
+// shows - one kind, or several of a composite type, which shows the union of
+// theirs once each.
+func shownRows(tabs []PaletteTab, tab string, conditions ...string) []string {
+	var result []string
+	for _, item := range tabs {
+		if item.Key != tab {
+			continue
+		}
+		for _, row := range item.Rows {
+			if row.Field == SeparatorField {
+				continue
+			}
+			if len(row.Shown) == 0 || slices.ContainsFunc(row.Shown, func(condition string) bool { return slices.Contains(conditions, condition) }) {
+				result = append(result, row.Title)
+			}
+		}
+	}
+	return result
+}
+
+// The palette of a constant is the prototype's (docs/block-00/konstanta.md,
+// «Палитра свойств»; snapshots konstanta/palitra-*), and the presentation of
+// a value by the kind of its type is one rule for a constant and an
+// attribute (obshchee.md, «Представление по типу»): a date and a boolean have
+// the format and the format of editing, a value storage only the tooltip, a
+// composite type the union. Defects caught: a tab or a row missing or out of
+// place; «только важные» keeping «Представление»; the tooltip shown twice
+// for a composite type, or a row of one kind at another.
+func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
+	palette := Must(Constant).Palette()
+	var tabs, important []string
+	for _, tab := range palette {
+		tabs = append(tabs, tab.Title)
+		if tab.Important {
+			important = append(important, tab.Title)
+		}
+	}
+	presentationOfAll := []string{"Проверка заполнения", "Быстрый выбор", "История выбора при вводе", "Связь по типу"}
+	head := []string{"Использовать стандартные команды", "Основная форма"}
+	middle := []string{"Расширенное представление", "Пояснение"}
+	for name, testCase := range map[string]struct{ got, want []string }{
+		"tabs":                  {tabs, []string{"Основные", "Данные", "Представление"}},
+		"only important":        {important, []string{"Основные", "Данные"}},
+		"main, date":            {shownRows(palette, "main", "type=date"), []string{"Имя", "Синоним", "Комментарий", "Тип", "Состав даты", "Модуль менеджера", "Модуль менеджера значения"}},
+		"data":                  {shownRows(palette, "data"), []string{"Режим управления блокировкой данных", "История данных", "Обновлять историю данных сразу после записи", "Выполнять обработку после записи версии истории данных"}},
+		"presentation, string":  {shownRows(palette, "presentation", "type=string"), slices.Concat(head, middle, []string{"Режим пароля", "Подсказка", "Маска", "Многострочный режим", "Расширенное редактирование"}, presentationOfAll)},
+		"presentation, date":    {shownRows(palette, "presentation", "type=date"), slices.Concat(head, middle, []string{"Формат", "Формат редактирования", "Подсказка"}, presentationOfAll)},
+		"presentation, boolean": {shownRows(palette, "presentation", "type=boolean"), slices.Concat(head, middle, []string{"Формат", "Формат редактирования", "Подсказка"}, presentationOfAll)},
+		"presentation, storage": {shownRows(palette, "presentation", "type=value-storage"), slices.Concat(head, middle, []string{"Подсказка"}, presentationOfAll)},
+		"presentation, reference": {shownRows(palette, "presentation", "type=reference"), slices.Concat(head,
+			[]string{"Выбор групп и элементов", "Связи параметров выбора", "Параметры выбора", "Форма выбора"}, middle, []string{"Подсказка"}, presentationOfAll)},
+		"attribute, string and number": {shownRows(PartPalette("attribute"), "presentation", "type=string", "type=number")[:10], []string{"Формат", "Формат редактирования",
+			"Режим пароля", "Подсказка", "Маска", "Многострочный режим", "Расширенное редактирование", "Выделять отрицательные", "Минимальное значение", "Максимальное значение"}},
+	} {
+		if !slices.Equal(testCase.got, testCase.want) {
+			t.Errorf("%s: %q, want %q", name, testCase.got, testCase.want)
+		}
+	}
+}

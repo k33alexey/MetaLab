@@ -848,6 +848,186 @@ function objectPalette(tabs, control, visible = () => true) {
   return element;
 }
 
+/* pathValue and setPathValue read and write a property of a description by
+   its key, dotted for one inside another - code.length, presentation.mask -
+   as the palette names it. A list, a text or a set of translations left
+   empty is not written at all. */
+function pathValue(object, path) {
+  return path.split('.').reduce((value, key) => value?.[key], object);
+}
+function setPathValue(object, path, value) {
+  const keys = path.split('.'), last = keys.pop();
+  let target = object;
+  for (const key of keys) target = target[key] ||= {};
+  const empty = value === '' || (Array.isArray(value) ? !value.length : value && typeof value === 'object' && !Object.keys(value).length);
+  if (empty) delete target[last]; else target[last] = value;
+}
+
+/* objectChoiceItem finds an object of a tree of the window «Выбор объекта»
+   (objectChoiceTree) by its identifier. */
+function objectChoiceItem(branches, id) {
+  for (const branch of branches || []) {
+    const item = branch.objects?.find(object => object.id === id) || objectChoiceItem(branch.children, id);
+    if (item) return item;
+  }
+  return null;
+}
+
+/* valueSubject is what the palette edits of anything that holds a value of
+   a type - an attribute, a constant: its properties by their keys, and the
+   qualifiers of its one type (type.length, type.precision…) written by the
+   model of the window of the type (typeEditorModel), by its rules and
+   ceilings - a value beyond one is refused (false). setTypes(types) writes
+   the types; own are the subject's own: owner, setName, check. types are
+   the kinds of its types as the palette tells them apart: string, number,
+   date, boolean, reference and the rest by their kind. */
+function valueSubject(target, offer, setTypes, own) {
+  return {target, types: (target.types || []).map(type => type.reference ? 'reference' : type.kind), ...own,
+    get(path) {
+      if (!path.startsWith('type.')) return pathValue(target, path);
+      const type = target.types?.[0] || {}, field = path.slice(5);
+      return field === 'unlimited' ? !type.length : type[field];
+    },
+    set(path, value) {
+      if (!path.startsWith('type.')) { setPathValue(target, path, value); return true; }
+      const types = typeEditorModel(offer, target.types);
+      if (types.setQualifier(path.slice(5), value) === false) return false;
+      setTypes(types.result().types);
+      return true;
+    }};
+}
+
+/* paletteShown answers whether a row stands for a subject at all: one of
+   the conditions it is shown by holds - type=<kind> by any type of a value,
+   so a composite type shows the rows of each of its kinds once, owner=<kind>
+   by the object a part belongs to (kinds.PaletteRow.Shown). */
+function paletteShown(subject) {
+  return row => !row.shown?.length || row.shown.some(condition =>
+    condition === `owner=${subject.owner}` || condition.startsWith('type=') && (subject.types || []).includes(condition.slice(5)));
+}
+
+/* paletteFields answers the builder of the field of a row of a palette by
+   its kind (kinds.PaletteRow), one for every subject - an object, a part of
+   it, a constant: the name with its synonym following it, a text in every
+   language, a plain text, «Открыть» of a module or a window, a flag, a
+   list, a number, a switch, a list of objects or fields, a main form, the
+   type, a value. context: project (languages), typeOffer, choices,
+   cleanups() - where a field that follows the language of Studio leaves its
+   end, typed() - after a keystroke, changed() - after anything else,
+   openModule(role), openFile(path), form(value) - the name of a main form
+   and the path it opens at, choose(row, items) - the objects chosen for a
+   row, null for none. A subject is {target, get(path), set(path, value),
+   setName(value), check()}. */
+function paletteFields(context) {
+  let synonym = null;
+  // A row is available while every property it needs is on: not false,
+  // zero or empty, or the value named (kinds.PaletteRow.Needs).
+  const available = (subject, row) => (row.needs || []).every(need => {
+    const [path, wanted] = need.split('='), value = subject.get(path);
+    if (wanted !== undefined) return value === wanted;
+    return Array.isArray(value) ? value.length > 0 : !!value;
+  });
+  const clearing = (row, act, off) => {
+    const clear = clearButton(`Очистить: ${row.title}`, act);
+    clear.classList.add('field-button');
+    clear.disabled = off;
+    return clear;
+  };
+  // A list of objects or of fields in one line: their names by commas, «…»
+  // choosing them and the cross clearing them; the fields - of the data
+  // lock, of the input by string, the link by type - wait for their window,
+  // which the inventory does not show.
+  function listField(subject, row, value, off) {
+    const items = Array.isArray(value) ? value : value ? [value] : [];
+    const shown = node('input');
+    shown.readOnly = true; shown.disabled = off;
+    shown.value = row.field === 'objects' ? items.map(id => objectChoiceItem(context.choices?.[row.key], id)?.fullName || id).join(', ')
+      : items.map(field => field.standard || field.attribute || [].concat(field.source || []).join('.')).join(', ');
+    const pick = fieldChoiceButton(row.title, async () => {
+      const chosen = await context.choose?.(row, items);
+      if (chosen) { subject.set(row.key, chosen); context.changed(); }
+    });
+    pick.disabled = off || row.field === 'fields';
+    return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, []); context.changed(); }, off || !items.length)]);
+  }
+  // A main form: its name, «…» choosing it - its window the inventory does
+  // not show, unavailable until shot - the cross and the magnifier opening
+  // it.
+  function formField(subject, row, value, off) {
+    const form = value ? context.form(value) : {name: ''};
+    const shown = node('input');
+    shown.readOnly = true; shown.value = form.name; shown.disabled = off;
+    const pick = fieldChoiceButton(row.title, () => {});
+    pick.disabled = true;
+    const open = fieldButton('field-translations', `Открыть: ${row.title}`, () => context.openFile(form.path));
+    open.disabled = off || !form.name;
+    return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, ''); context.changed(); }, off || !form.name), open]);
+  }
+  return (subject, row) => {
+    const target = subject.target;
+    if (row.field === 'name') {
+      return nameInput(target.name, value => { const before = target.name; subject.setName(value); synonym?.follow(before, value); context.typed(); }, subject.check);
+    }
+    if (row.field === 'localized') {
+      const field = createLocalizedField(context.project, code => subject.get(row.key)?.[code],
+        (language, value) => subject.set(row.key, setTranslation({...subject.get(row.key)}, language, value)), context.typed,
+        row.lines ? {kind: 'area', rows: row.lines} : titleTextOptions);
+      context.cleanups().push(field.destroy);
+      if (row.key === 'title') synonym = field;
+      return field;
+    }
+    if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+    if (row.field === 'module' || row.field === 'window') {
+      const link = node('button', 'Открыть', 'object-palette-link');
+      link.type = 'button';
+      // The windows of the standard attributes, characteristics,
+      // predefined items, additional indexes, the help and the choice of a
+      // field are items of their own.
+      link.disabled = row.field === 'window';
+      link.addEventListener('click', () => context.openModule(row.key));
+      return link;
+    }
+    if (row.field === 'type') {
+      const shown = node('input');
+      shown.readOnly = true;
+      shown.value = typePresentation(context.typeOffer, target.types);
+      const pick = fieldChoiceButton('Редактирование типа данных', async () => {
+        const types = await showTypeEditor(context.typeOffer, target.types);
+        if (types) { subject.set('types', types); context.changed(); }
+      });
+      return fieldWithButtons(shown, [pick]);
+    }
+    const value = subject.get(row.key), off = !available(subject, row);
+    const set = next => { if (subject.set(row.key, next) === false) return false; context.changed(); };
+    let control;
+    if (row.field === 'flag') {
+      control = node('input');
+      control.type = 'checkbox'; control.checked = !!value;
+      control.addEventListener('change', () => set(control.checked));
+    } else if (row.field === 'choice') {
+      control = selectInput(row.choices, value || row.default || '', set, row.title);
+    } else if (row.field === 'switch') {
+      control = selectInput(row.choices, String(!!value), next => set(next === 'true'), row.title);
+    } else if (row.field === 'number') {
+      const options = {type: 'number', min: row.min || 0, ...(row.max ? {max: row.max} : {})};
+      control = textInput(value ?? 0, set, row.limit ? limited(row.limit, options) : options);
+    } else if (row.field === 'value') {
+      // A value of the subject's type is entered by a field of that type,
+      // which the inventory does not show yet: shown, not edited.
+      control = node('input');
+      control.readOnly = true; control.value = value?.data ?? '';
+      control.disabled = true;
+      return control;
+    } else if (row.field === 'objects' || row.field === 'fields') {
+      return listField(subject, row, value, off);
+    } else if (row.field === 'form') {
+      return formField(subject, row, value, off);
+    } else return null;
+    control.disabled = off;
+    return control;
+  };
+}
+
 /* objectWindow is the window of an object, one for every kind that has one,
    as the prototype's (docs/block-00/obshchee.md, «Окно объекта»): the title
    «<Вид> <Имя>»; the list of pages at the left, the page chosen beside it;
