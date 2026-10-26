@@ -15,6 +15,11 @@ type Page struct {
 // whose window Studio does not build by them yet has none here; a kind the
 // prototype opens no window of - a constant - never will.
 var windowPages = map[Kind][]Page{
+	// docs/block-00/http-servis.md, «Окно»; snapshots http-servis/01, 09,
+	// 17, 18.
+	HTTPService: {
+		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"templates", "Шаблоны URL"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
+	},
 	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01-04.
 	WebService: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"operations", "Операции"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
@@ -27,6 +32,18 @@ var windowPages = map[Kind][]Page{
 		{"based-on", "Ввод на основании"}, {"rights", "Права"}, {"exchange", "Обмен данными"}, {"other", "Прочее"},
 	},
 }
+
+// serviceIdentityRows and serviceSessionRows are the pages «Основные» and
+// «Управление сеансами» of the window of a web and an HTTP service, the
+// same in both (web-servis.md, http-servis.md, «Окно»): the captions end in
+// a colon, the reuse of sessions stands above its list.
+var (
+	serviceIdentityRows = []WindowRow{{Key: "name", Title: "Имя:"}, {Key: "title", Title: "Синоним:"}, {Key: "comment", Title: "Комментарий:"}}
+	serviceSessionRows  = []WindowRow{
+		{Key: "reuseSessions", Title: "Повторное использование сеансов:", Above: true},
+		{Key: "sessionMaxAge", Title: "Время жизни сеанса:"},
+	}
+)
 
 // WindowRow is a row of a page of the window of an object built of the
 // palette's row of the same property (Key): its field, values and what it
@@ -44,15 +61,20 @@ type WindowRow struct {
 // windowRows are the pages of a window built of the palette's rows, by
 // page (docs/block-00/<вид>.md, «Окно редактирования»).
 var windowRows = map[Kind]map[string][]WindowRow{
+	// docs/block-00/http-servis.md, «Окно»; snapshots http-servis/01, 17,
+	// 18: the root after the comment, the sessions as a web service's, the
+	// module alone on «Прочее».
+	HTTPService: {
+		"main":     append(slices.Clone(serviceIdentityRows), WindowRow{Key: "rootUrl", Title: "Корневой URL:"}),
+		"sessions": serviceSessionRows,
+		"other":    {{Key: string(ServiceModule), Title: "Модуль", Button: true}},
+	},
 	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01, 03, 04:
 	// the captions end in a colon, the reuse of sessions stands above its
 	// list, the module opens by a button.
 	WebService: {
-		"main": {{Key: "name", Title: "Имя:"}, {Key: "title", Title: "Синоним:"}, {Key: "comment", Title: "Комментарий:"}},
-		"sessions": {
-			{Key: "reuseSessions", Title: "Повторное использование сеансов:", Above: true},
-			{Key: "sessionMaxAge", Title: "Время жизни сеанса:"},
-		},
+		"main":     serviceIdentityRows,
+		"sessions": serviceSessionRows,
 		"other": {
 			{Key: string(ServiceModule), Title: "Модуль", Button: true},
 			{Key: "namespace", Title: "URI пространства имен:"},
@@ -217,12 +239,19 @@ var palettes = map[Kind][]PaletteTab{
 				Description: "Код сервиса: процедуры, которые исполняют его операции."},
 			{Key: "descriptorFile", Title: "Имя файла публикации", Field: TextField, Important: true,
 				Description: "Имя файла, по которому сервис публикуется на веб-сервере."},
-			{Key: "reuseSessions", Title: "Повторное использование сеансов", Field: ChoiceField, Important: true, Default: "do-not-use",
-				Choices:     [][2]string{{"do-not-use", "Не использовать"}, {"use", "Использовать"}, {"auto", "Использовать автоматически"}},
-				Description: "Отвечает ли сервис нескольким вызовам в одном сеансе."},
-			{Key: "sessionMaxAge", Title: "Время жизни сеанса", Field: NumberField, Important: true,
-				Description: "Сколько секунд сеанс может бездействовать, прежде чем завершится; действует при повторном использовании сеансов."},
-		})},
+		}, sessionPaletteRows)},
+	},
+	// docs/block-00/http-servis.md, «Палитра»; snapshot http-servis/01:
+	// one tab - the root, the module, the reuse of sessions and their
+	// lifetime after the comment.
+	HTTPService: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("HTTP-сервиса", "об HTTP-сервисе"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "rootUrl", Title: "Корневой URL", Field: TextField, Important: true,
+				Description: "Первая часть адреса, по которому отвечает сервис: буквы, цифры и знаки - ~ $ ( ) _ ."},
+			{Key: string(ServiceModule), Title: "Модуль", Field: ModuleField, Important: true,
+				Description: "Код сервиса: процедуры, которые обрабатывают его методы."},
+		}, sessionPaletteRows)},
 	},
 	// docs/block-00/ws-ssylka.md, «Палитра»; snapshot ws-ssylka/03-palitra:
 	// one tab, «URL источника» a link the import writes, «WS-ссылка:
@@ -441,6 +470,16 @@ var palettes = map[Kind][]PaletteTab{
 			{Key: "help", Title: "Справочная информация", Field: WindowField, Description: "Текст справки справочника."},
 		}},
 	},
+}
+
+// sessionPaletteRows are the rows of the sessions of a web and an HTTP
+// service, the same in both palettes.
+var sessionPaletteRows = []PaletteRow{
+	{Key: "reuseSessions", Title: "Повторное использование сеансов", Field: ChoiceField, Important: true, Default: "do-not-use",
+		Choices:     [][2]string{{"do-not-use", "Не использовать"}, {"use", "Использовать"}, {"auto", "Использовать автоматически"}},
+		Description: "Отвечает ли сервис нескольким вызовам в одном сеансе."},
+	{Key: "sessionMaxAge", Title: "Время жизни сеанса", Field: NumberField, Important: true,
+		Description: "Сколько секунд сеанс может бездействовать, прежде чем завершится; действует при повторном использовании сеансов."},
 }
 
 // templatePalette is the palette of a template, common or of an object -

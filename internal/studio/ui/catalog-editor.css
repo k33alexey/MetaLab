@@ -1,5 +1,5 @@
-#catalog-editor,#web-service-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:auto}
-#catalog-editor[hidden],#web-service-editor[hidden]{display:none}
+#catalog-editor,#web-service-editor,#http-service-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:auto}
+#catalog-editor[hidden],#web-service-editor[hidden],#http-service-editor[hidden]{display:none}
 .catalog-detail{overflow:auto;padding:12px 18px}
 .catalog-detail h3{margin:0 0 14px;font-size:15px}
 .catalog-uuid{margin-bottom:12px;color:#92959d;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}

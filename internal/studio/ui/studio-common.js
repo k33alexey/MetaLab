@@ -162,11 +162,19 @@ function textInput(value, apply, options = {}) {
    name} for the name of an object, {path, description, at} for a part of the
    open one. Answers the promise of the last check, for a test to wait on. */
 function watchName(input, check) {
+  return watchValue(input, '/api/name', check);
+}
+
+/* watchValue is watchName for any value the server checks: when the field
+   is left it posts check() to address and shows the refusal it answers -
+   {refusal} - in the prototype's words, the field to be put right after
+   «ОК». Answers the promise of the last check. */
+function watchValue(input, address, check) {
   let last = Promise.resolve();
   input.addEventListener('change', () => {
     last = (async () => {
       let answer;
-      try { answer = await postJSON('/api/name', check()); } catch { return; }
+      try { answer = await postJSON(address, check()); } catch { return; }
       if (!answer.refusal) return;
       await askChoice(answer.refusal, '', [['ok', 'ОК']]);
       if (input.isConnected) input.focus();
@@ -1052,7 +1060,13 @@ function paletteFields(context) {
       if (row.key === 'title') synonym = field;
       return field;
     }
-    if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+    if (row.field === 'text') {
+      const input = textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+      // A value the server checks when its field is left - the root of an
+      // HTTP service (context.valueChecks, by the key of the row).
+      if (context.valueChecks?.[row.key]) watchValue(input, context.valueChecks[row.key], () => ({value: input.value}));
+      return input;
+    }
     // A type named by the schema: «string (http://www.w3.org/2001/XMLSchema)»,
     // «…» choosing it and the cross unavailable until the window of the
     // types of the packages (a type of an operation is never cleared:
@@ -1192,6 +1206,81 @@ function subsystemsTree(places, marks, changed) {
   const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
   tree.append(...under(null).map(branch));
   return tree;
+}
+
+/* objectWindowEditor is the editor of the window of an object of a kind
+   whose pages are the palette's rows (source.pages, source.windowRows),
+   «Подсистемы» the tree of the subsystems, and pages of its own the kind
+   gives (own); the palette of the object, or of the part own chose, beside
+   it, each showing what the other typed. target(source) is the object;
+   own(api) answers {pages: {key: () => element}, part() - {subject, title,
+   tabs} of the part chosen or null, reset()} over api - {source(),
+   changed(), refresh(), palette()}; valueChecks are the addresses checking a
+   value of a row when its field is left (paletteFields). around holds the
+   palette, its title, the opening of a module, the actions and the closing
+   of the window. */
+function objectWindowEditor(host, onChange, around, {target, own = () => ({pages: {}}), valueChecks}) {
+  let source = null, frame = null, marks = new Set(), cleanups = [];
+  const paletteCleanups = [];
+  const object = () => target(source);
+  const title = () => `${source.kindTitle} ${object().name}`;
+  const api = {source: () => source, changed, refresh: () => frame.refresh(), palette: () => renderPalette()};
+  const kind = own(api);
+  function context(collect) {
+    return {project: source, typed, changed, packages: source.packages, windows: [], cleanups: collect, valueChecks,
+      openModule: role => around.openModule?.(role)};
+  }
+  // Typing renames the window and the palette and leaves the field typed
+  // into as it is; anything else draws both anew.
+  function typed() {
+    onChange();
+    frame.setTitle(title());
+    if (!host.contains(document.activeElement)) frame.refresh();
+    if (!around.palette?.contains(document.activeElement)) renderPalette();
+  }
+  function changed() { onChange(); frame.refresh(); renderPalette(); }
+  function renderPage(key) {
+    cleanups.forEach(destroy => destroy());
+    cleanups = [];
+    if (kind.pages?.[key]) return kind.pages[key]();
+    if (key === 'subsystems') {
+      // The caption above the tree is not shot for any kind but a catalog
+      // (series 2.584, В2): the tree stands alone.
+      const page = node('div', undefined, 'object-window-fields');
+      page.append(subsystemsTree(source.subsystems, marks, onChange));
+      return page;
+    }
+    if (!source.windowRows?.[key]) return null;
+    return rowsPage(source.windowRows[key], source.palette, paletteFields(context(() => cleanups)), ownSubject(source, object()), role => around.openModule?.(role));
+  }
+  function renderPalette() {
+    if (!source) return;
+    const part = kind.part?.();
+    showObjectPalette(around, paletteCleanups, part ? part.title : object().name, part ? part.tabs : source.palette,
+      part ? part.subject : ownSubject(source, object()), context());
+  }
+  StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
+  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; }, {
+    open(value) {
+      if (source) clearObjectPalette(around, paletteCleanups);
+      source = structuredClone(value);
+      kind.reset?.();
+      marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
+      frame = showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: 'main', page: renderPage});
+      renderPalette();
+    },
+    // The object and the subsystems marked, in one order so a mark taken
+    // back leaves the window unchanged.
+    value() { return source && {...structuredClone(object()), subsystems: [...marks].sort()}; },
+    // Shows the palette of the object itself, as a click on its node does.
+    showPalette() {
+      if (!source || !around.palette) return false;
+      kind.reset?.();
+      frame.refresh();
+      renderPalette();
+      return true;
+    },
+  });
 }
 
 /* clearObjectPalette empties the palette of around (its element and its

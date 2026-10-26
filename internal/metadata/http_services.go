@@ -95,6 +95,30 @@ func DecodeHTTPService(source string, reader io.Reader, configuration project.Pr
 	})
 }
 
+// RootURLFault is what is wrong with a root of an HTTP service, as the
+// designer tells it on input (opis of 15.10.2026, http-servis.md,
+// «Проверки»): none at all - «Корневой URL должен быть заполнен» - or one
+// it does not take - «Некорректный корневой URL».
+type RootURLFault int
+
+const (
+	RootURLFits RootURLFault = iota
+	RootURLEmpty
+	RootURLInvalid
+)
+
+// RootURLFaultOf is the fault of a root by the one rule of the model
+// (validateRootURL).
+func RootURLFaultOf(value string) RootURLFault {
+	switch {
+	case value == "":
+		return RootURLEmpty
+	case len(validateRootURL(value)) > 0:
+		return RootURLInvalid
+	}
+	return RootURLFits
+}
+
 // validateRootURL checks the first segment of every address of the service,
 // the one after "hs". The help names what it may hold: letters, digits and
 // - ~ $ ( ) _ . - and nothing else; every root of the configurations being
