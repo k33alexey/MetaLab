@@ -1,6 +1,6 @@
 # MetaLab
 
-MetaLab (ML) is an open-source platform for developing and running business applications. It takes inspiration from the development model of 1C:Enterprise while providing an independent implementation built with Go and PostgreSQL.
+MetaLab (ML) is an open-source BSL-compatible platform for developing and running business applications, an independent implementation built with Go and PostgreSQL.
 
 > MetaLab is at an early design and development stage and is not ready for production use.
 
@@ -14,7 +14,7 @@ MetaLab (ML) is an open-source platform for developing and running business appl
 - Managed forms, documents, catalogs, registers, reports and data composition.
 - Transactions, roles, data access policies and audit logs.
 - HTTP/JSON integrations and optional support for local equipment through ML Agent.
-- One-way import of supported 1C XML configuration exports.
+- One-way import of existing BSL applications from their XML exports.
 - Open project files based on YAML, BSL and Git.
 
 ## Planned components
