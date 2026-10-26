@@ -457,29 +457,20 @@ func (workspace *Workspace) DeleteRole(relative, expectedRevision string) error 
 	if err != nil {
 		return err
 	}
-	// The role leaves the order first, and comes back to it when the rest
-	// cannot follow, as its rights do.
-	restoreOrder, err := workspace.dropFromOrderLocked(metadata.RoleKind, opened.Role.ID)
-	if err != nil {
-		return fmt.Errorf("delete role %q: %w", relative, err)
-	}
 	gridPath := workspace.roleGridPath(relative)
-	err = writeRoleGrid(gridPath, nil)
-	if err == nil {
-		err = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
-	}
-	if err != nil {
-		restoreErr := writeRoleGrid(gridPath, current.grid)
-		if orderErr := restoreOrder(); restoreErr == nil {
-			restoreErr = orderErr
+	return workspace.deleteObjectLocked(metadata.RoleKind, opened.Role.ID, relative, func() error {
+		err := writeRoleGrid(gridPath, nil)
+		if err == nil {
+			err = os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
 		}
-		if restoreErr != nil {
-			return fmt.Errorf("delete role %q: %w; restoring the role failed: %v", relative, err, restoreErr)
+		if err == nil {
+			return nil
 		}
-		return fmt.Errorf("delete role %q: %w", relative, err)
-	}
-	workspace.invalidateStudioIndexesLocked()
-	return nil
+		if restoreErr := writeRoleGrid(gridPath, current.grid); restoreErr != nil {
+			return fmt.Errorf("%w; restoring the rights failed: %v", err, restoreErr)
+		}
+		return err
+	})
 }
 
 func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {

@@ -465,13 +465,13 @@
       if(loadingFile||treeFilter.subsystems)return;
       const context=currentDeleteContext();
       if(!context)return;
-      if(context.inside){
-        if(!confirm(`Удалить «${selectedNode.title}»?`))return;
-        objectEditors[currentFile.editor].editor.deleteFromTreeContext(context);
-        return;
-      }
-      if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
-      if(!confirm(`Удалить «${selectedNode.title}»? Это действие необратимо.`))return;
+      if(!context.inside&&dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
+      // One question for an object and for a part of it, the prototype's
+      // (obshchee.md, «Удаление»: «Удалить объект конфигурации?», Да / Нет;
+      // the same on an attribute, vse-ogranicheniya-dostupa.md) in ML's words
+      // (ML-STUDIO.md, «„Проект" вместо „конфигурации"»).
+      if(await askChoice('Удалить объект проекта?','',[['yes','Да'],[null,'Нет']])!=='yes')return;
+      if(context.inside){objectEditors[currentFile.editor].editor.deleteFromTreeContext(context);return;}
       loadingFile=true;treeAddButton.disabled=true;treeDeleteButton.disabled=true;status.className='';status.textContent='Удаление…';
       try{
         const response=await studioRequest(`${context.editor}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE'});

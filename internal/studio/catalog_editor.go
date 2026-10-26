@@ -315,21 +315,9 @@ func (workspace *Workspace) DeleteCatalog(relative, expectedRevision string) err
 	if opened.Revision != expectedRevision {
 		return ErrSourceChanged
 	}
-	// The catalog leaves the order first: a line left naming nothing would
-	// refuse the project. A folder that does not go puts the line back.
-	restoreOrder, err := workspace.dropFromOrderLocked(metadata.CatalogKind, opened.Catalog.ID)
-	if err != nil {
-		return fmt.Errorf("delete catalog %q: %w", relative, err)
-	}
-	objectDirectory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
-	if err := os.RemoveAll(objectDirectory); err != nil {
-		if restoreErr := restoreOrder(); restoreErr != nil {
-			return fmt.Errorf("delete catalog %q: %w; restoring the order failed: %v", relative, err, restoreErr)
-		}
-		return fmt.Errorf("delete catalog %q: %w", relative, err)
-	}
-	workspace.invalidateStudioIndexesLocked()
-	return nil
+	return workspace.deleteObjectLocked(metadata.CatalogKind, opened.Catalog.ID, relative, func() error {
+		return os.RemoveAll(filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative))))
+	})
 }
 
 // catalogEditorAddress is where the window of a catalog is read, written,

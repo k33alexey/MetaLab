@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -41,6 +42,25 @@ func (workspace *Workspace) dropFromOrderLocked(kind metadata.Kind, id uuid.UUID
 		}
 		return slices.DeleteFunc(slices.Clone(order), func(other uuid.UUID) bool { return other == id }), true
 	})
+}
+
+// deleteObjectLocked deletes an object of a kind as every window of Studio
+// does: the object leaves the order first, as a line left naming nothing
+// would refuse the project; remove takes its files away and leaves them as
+// they were when it is refused; a refused remove puts the line back.
+func (workspace *Workspace) deleteObjectLocked(kind metadata.Kind, id uuid.UUID, relative string, remove func() error) error {
+	restoreOrder, err := workspace.dropFromOrderLocked(kind, id)
+	if err != nil {
+		return fmt.Errorf("delete %q: %w", relative, err)
+	}
+	if err := remove(); err != nil {
+		if restoreErr := restoreOrder(); restoreErr != nil {
+			return fmt.Errorf("delete %q: %w; restoring the order failed: %v", relative, err, restoreErr)
+		}
+		return fmt.Errorf("delete %q: %w", relative, err)
+	}
+	workspace.invalidateStudioIndexesLocked()
+	return nil
 }
 
 // changeOrderLocked writes the order of one kind that change answers from the
