@@ -1311,3 +1311,93 @@ func TestTheOptionsPageOfACatalogIsThePrototypes(t *testing.T) {
 	expect("saved", steps.Saved, true)
 	expect("opened anew", steps.Reopened, []string{"Артикулы ✓", "Склады"})
 }
+
+// exchangePageWalk opens the page «Обмен данными» of the window of the
+// catalog Товары, which Полный registers by the application's code: reads
+// the table; marks all - Полный keeps its autoregistration, Филиалы comes
+// with «Разрешить» - unmarks all and marks all again; chooses «Разрешить»
+// for Полный and «Запретить» for Филиалы, saves and opens the window anew.
+const exchangePageWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const rows = () => [...body().querySelectorAll('.object-window-table tr')].slice(1).map(row => row.cells[0].textContent.trim() +
+    (row.querySelector('input').checked ? ' ✓' : '') + (row.querySelector('select') ? ' ' + row.querySelector('select').selectedOptions[0]?.textContent : ''));
+  const row = name => [...body().querySelectorAll('.object-window-table tr')].find(item => item.cells[0].textContent.trim() === name);
+  const button = title => [...body().querySelectorAll('.object-window-list-head button')].find(item => item.title === title);
+  await openObject('Товары');
+  await windowPage('Обмен данными');
+  steps.head = [...body().querySelectorAll('.object-window-table th')].map(cell => cell.textContent);
+  steps.buttons = [...body().querySelectorAll('.object-window-list-head button')].map(item => item.title);
+  steps.icons = body().querySelectorAll('.object-window-table td svg').length;
+  steps.shown = rows();
+  steps.current = body().querySelector('.object-window-table tr.current')?.cells[0].textContent.trim();
+  button('Отметить все элементы').click(); await settle();
+  steps.markedAll = rows();
+  button('Снять отметку со всех элементов').click(); await settle();
+  steps.unmarkedAll = rows();
+  button('Отметить все элементы').click(); await settle();
+  steps.remarked = rows();
+  const choose = (name, value) => { const select = row(name).querySelector('select'); select.value = value; select.dispatchEvent(new Event('change', {bubbles: true})); };
+  choose('Полный', 'allow'); choose('Филиалы', 'deny'); await settle();
+  steps.changed = !document.querySelector('#save').disabled;
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  await openObject('Товары');
+  await windowPage('Обмен данными');
+  steps.reopened = rows();
+  return steps;
+})()`
+
+// The page «Обмен данными» of the window of a catalog is the prototype's
+// (docs/block-00/spravochnik.md, page 14; snapshot okno-14): the two
+// buttons over a table «План обмена» - «Авторегистрация», a box and the icon
+// of a plan at each row, the first current, the autoregistration beside a
+// marked plan; «Снять отметку со всех элементов» unmarks every plan,
+// «Отметить все элементы» marks every one, a plan marked anew coming with
+// «Разрешить» (plan-obmena.md, the new object of «Состав») and one marked
+// before keeping its own; «Сохранить» writes the marks and the window opened
+// anew shows them. Defects caught: the page empty; the autoregistration not
+// shown, lost by a mark or not «Разрешить» on a plan marked anew; the
+// buttons doing nothing; a change the save does not write.
+func TestTheExchangePageOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addCatalogExchangePlans(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, exchangePageWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Head, Buttons                                     []string
+		Shown, MarkedAll, UnmarkedAll, Remarked, Reopened []string
+		Icons                                             int
+		Current                                           string
+		Changed, Saved                                    bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("the head of the table", steps.Head, []string{"План обмена", "Авторегистрация"})
+	expect("the buttons", steps.Buttons, []string{"Отметить все элементы", "Снять отметку со всех элементов"})
+	expect("icons of the plans", steps.Icons, 2)
+	expect("the table", steps.Shown, []string{"Полный ✓ Запретить", "Филиалы"})
+	expect("the current row", steps.Current, "Полный")
+	expect("marked all", steps.MarkedAll, []string{"Полный ✓ Запретить", "Филиалы ✓ Разрешить"})
+	expect("unmarked all", steps.UnmarkedAll, []string{"Полный", "Филиалы"})
+	expect("marked all anew", steps.Remarked, []string{"Полный ✓ Разрешить", "Филиалы ✓ Разрешить"})
+	expect("a change changes the window", steps.Changed, true)
+	expect("saved", steps.Saved, true)
+	expect("opened anew", steps.Reopened, []string{"Полный ✓ Разрешить", "Филиалы ✓ Запретить"})
+}

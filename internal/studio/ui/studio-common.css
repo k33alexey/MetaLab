@@ -204,5 +204,9 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-palette-row input[type=checkbox]{justify-self:start;margin:0;accent-color:#589df6}
 .object-palette-link:disabled{color:#7a7d84;cursor:default}
 .object-window-button{justify-self:start;align-self:flex-start;min-width:150px;margin:2px 0}
+.object-window-table-frame{border:1px solid var(--border,#393b40);border-radius:4px}
+.object-window-table{width:100%;border-collapse:collapse;font-size:12.5px}.object-window-table th{text-align:left;font-weight:normal;padding:2px 6px;border-bottom:1px solid var(--border,#393b40)}
+.object-window-table td{padding:1px 6px}.object-window-table-name{display:flex;align-items:center;gap:4px}.object-window-table tr.current{background:#2f4a6d}
+.object-window-table select{font-size:12px}
 .object-window-checks{flex:1;min-height:200px;overflow:auto}
 .object-window-caption{font-size:12.5px;margin:2px 0 6px}

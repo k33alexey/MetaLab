@@ -468,7 +468,48 @@ function createCatalogEditor(host, onChange, around = {}) {
     page.append(node('div', 'Функциональные опции, в которых участвует справочник:', 'object-window-caption'), list);
     return page;
   }
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+  // «Обмен данными»: the exchange plans of the project, a box and the icon
+  // of a plan at each, marked where the plan registers the changes of the
+  // catalog, with its autoregistration - «Разрешить» or «Запретить» - beside
+  // a marked one; «Отметить все элементы» and «Снять отметку со всех
+  // элементов» over them (spravochnik.md, page 14; snapshot okno-14). A plan
+  // marked anew registers automatically, as a new object of the plan's own
+  // window «Состав» does (plan-obmena.md). Written into the plans as the
+  // subsystems are.
+  let exchange = new Map(), currentPlan = null;
+  const autoRecords = [['allow', 'Разрешить'], ['deny', 'Запретить']];
+  function renderExchangePage() {
+    const page = node('div', undefined, 'object-window-fields'), places = source.exchangePlans || [];
+    const mark = (id, marked) => { if (!marked) exchange.delete(id); else if (!exchange.has(id)) exchange.set(id, 'allow'); };
+    const changed = () => { onChange(); frame.refresh(); };
+    const head = node('div', undefined, 'object-window-list-head');
+    head.append(...markAllButtons(marked => { for (const place of places) mark(place.id, marked); changed(); }));
+    const table = node('table', undefined, 'object-window-table');
+    const caption = node('tr');
+    caption.append(node('th', 'План обмена'), node('th', 'Авторегистрация'));
+    table.append(caption);
+    for (const place of places) {
+      const row = node('tr', undefined, place.id === currentPlan ? 'current' : ''), plan = node('td'), auto = node('td');
+      const box = node('input');
+      box.type = 'checkbox'; box.checked = exchange.has(place.id); box.className = 'object-choice-box';
+      box.setAttribute('aria-label', place.name);
+      box.addEventListener('change', () => { mark(place.id, box.checked); currentPlan = place.id; changed(); });
+      const name = node('div', undefined, 'object-window-table-name');
+      name.append(box, iconElement('exchange-plan'), node('span', place.name));
+      plan.append(name);
+      if (exchange.has(place.id)) {
+        auto.append(selectInput(autoRecords, exchange.get(place.id), value => { exchange.set(place.id, value); onChange(); }, 'Авторегистрация: ' + place.name));
+      }
+      row.addEventListener('click', event => { if (event.target.closest('input, select') || currentPlan === place.id) return; currentPlan = place.id; frame.refresh(); });
+      row.append(plan, auto);
+      table.append(row);
+    }
+    const frameOfTable = node('div', undefined, 'object-window-checks object-window-table-frame');
+    frameOfTable.append(table);
+    page.append(head, frameOfTable);
+    return page;
+  }
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
     numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
@@ -549,6 +590,8 @@ function createCatalogEditor(host, onChange, around = {}) {
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);
       currentOption = source.functionalOptions?.[0]?.id ?? null;
+      exchange = new Map((source.exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
+      currentPlan = source.exchangePlans?.[0]?.id ?? null;
       host.hidden = false;
       frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
@@ -557,7 +600,8 @@ function createCatalogEditor(host, onChange, around = {}) {
     },
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged.
-    value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort()}; },
+    value() { return model && {...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
+      exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.

@@ -215,3 +215,122 @@ func TestTheWindowOfACatalogWritesItsOptions(t *testing.T) {
 		t.Errorf("the options written do not load: %v", err)
 	}
 }
+
+// The exchange plans of addCatalogExchangePlans: Полный registers Товары by
+// the application's code, Филиалы registers nothing.
+const (
+	planFull     = "30000000-0000-4000-8000-000000000501"
+	planBranches = "30000000-0000-4000-8000-000000000502"
+)
+
+// addCatalogExchangePlans gives the demo project two exchange plans: Полный,
+// whose content lists Товары with autoregistration denied and Контрагенты
+// allowed, and Филиалы, whose content is empty.
+func addCatalogExchangePlans(t *testing.T, root string) {
+	t.Helper()
+	const goods, partners = "10000000-0000-4000-8000-000000000101", "10000000-0000-4000-8000-000000000102"
+	for name, body := range map[string]string{
+		"Полный": "format: 1\nid: " + planFull + "\nname: Полный\ntitle: {ru: Полный}\ncode: {type: string, length: 9}\ndescription_length: 25\n" +
+			"content:\n  - {kind: catalogs, object: " + goods + ", auto_record: deny}\n  - {kind: catalogs, object: " + partners + ", auto_record: allow}\n",
+		"Филиалы": "format: 1\nid: " + planBranches + "\nname: Филиалы\ntitle: {ru: Филиалы}\ncode: {type: string, length: 9}\ndescription_length: 25\n",
+	} {
+		directory := filepath.Join(root, "metadata", "exchange-plans", name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "object.yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A save of the window of a catalog writes the exchange plans its page
+// «Обмен данными» marks: a plan marked anew lists the catalog last with the
+// autoregistration chosen, a plan whose autoregistration changes keeps the
+// catalog where it stood, and a plan unmarked takes it out, the other
+// objects of its content left; an autoregistration other than the two is
+// refused by the write of the plan, and the plan written before it put
+// back. Defects caught: a mark not written, the
+// autoregistration lost or the catalog moved, another object of the plan
+// taken out with it, a plan written with an autoregistration the model
+// does not know.
+func TestTheWindowOfACatalogWritesItsExchangePlans(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addCatalogExchangePlans(t, root)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const goods = "metadata/catalogs/Товары/object.yaml"
+	read := func(name string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(root, "metadata", "exchange-plans", name, "object.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(content)
+	}
+	opened, err := workspace.ReadCatalogEditor(goods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown []string
+	for _, place := range opened.ExchangePlans {
+		shown = append(shown, place.Name+map[bool]string{true: " ✓ " + string(place.AutoRecord)}[place.Member])
+	}
+	if !slices.Equal(shown, []string{"Полный ✓ deny", "Филиалы"}) {
+		t.Fatalf("the exchange plans are shown as %v, want Полный ✓ deny, Филиалы", shown)
+	}
+	full, err := uuid.Parse(planFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	branches, err := uuid.Parse(planBranches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const member, partner = "object: 10000000-0000-4000-8000-000000000101", "object: 10000000-0000-4000-8000-000000000102"
+	branchesBefore := read("Филиалы")
+
+	// Полный is written first and put back - in the canonical form every
+	// write of Studio gives a description - when Филиалы is refused.
+	wrong := []MemberPlace{{ID: full, AutoRecord: "allow"}, {ID: branches, AutoRecord: "sometimes"}}
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, ExchangePlans: &wrong}, opened.Revision); err == nil {
+		t.Error("an autoregistration other than allow and deny was written")
+	}
+	if text := read("Полный"); !strings.Contains(text[strings.Index(text, member):], "auto_record: deny") {
+		t.Errorf("the refusal left the autoregistration of Товары in Полный changed:\n%s", text)
+	}
+	if read("Филиалы") != branchesBefore {
+		t.Errorf("the refusal left Филиалы changed:\n%s", read("Филиалы"))
+	}
+
+	marks := []MemberPlace{{ID: full, AutoRecord: "allow"}, {ID: branches, AutoRecord: "deny"}}
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, ExchangePlans: &marks}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := read("Полный")
+	if at, next := strings.Index(text, member), strings.Index(text, partner); at < 0 || at > next || !strings.Contains(text[at:next], "auto_record: allow") {
+		t.Errorf("Товары is not kept first in Полный with autoregistration allowed:\n%s", text)
+	}
+	if text := read("Филиалы"); !strings.Contains(text, member) || !strings.Contains(text, "auto_record: deny") {
+		t.Errorf("Товары is not put into Филиалы with autoregistration denied:\n%s", text)
+	}
+	for _, place := range saved.ExchangePlans {
+		if !place.Member || place.AutoRecord != map[string]metadata.AutoRecord{"Полный": "allow", "Филиалы": "deny"}[place.Name] {
+			t.Errorf("after the save %s is shown %v %q", place.Name, place.Member, place.AutoRecord)
+		}
+	}
+
+	none := []MemberPlace{}
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, ExchangePlans: &none}, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if text := read("Полный"); strings.Contains(text, member) || !strings.Contains(text, partner) {
+		t.Errorf("unmarked, Полный does not lose Товары alone:\n%s", text)
+	}
+	if _, err := metadata.Load(root); err != nil {
+		t.Errorf("the plans written do not load: %v", err)
+	}
+}

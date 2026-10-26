@@ -48,9 +48,12 @@ type CatalogEditorSource struct {
 	// Subsystems are the subsystems of the project, those the catalog is in
 	// marked (its page «Подсистемы»), and FunctionalOptions the options of
 	// the project, those whose content lists it marked (its page
-	// «Функциональные опции»).
+	// «Функциональные опции»), and ExchangePlans the exchange plans, those
+	// registering its changes marked with their autoregistration (its page
+	// «Обмен данными»).
 	Subsystems        []MemberPlace     `json:"subsystems"`
 	FunctionalOptions []MemberPlace     `json:"functionalOptions"`
+	ExchangePlans     []MemberPlace     `json:"exchangePlans"`
 	Forms             []NamedPath       `json:"forms"`
 	CommandModules    map[string]string `json:"commandModules"`
 }
@@ -124,8 +127,8 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	}
 	return CatalogEditorSource{
 		Forms: forms, CommandModules: commandModules, Subsystems: subsystemPlaces(loaded, value.ID),
-		FunctionalOptions: optionPlaces(loaded, metadata.CatalogKind, value.ID),
-		Path:              relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
+		FunctionalOptions: optionPlaces(loaded, metadata.CatalogKind, value.ID), ExchangePlans: exchangePlaces(loaded, value.ID),
+		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Choices: map[string][]ObjectChoiceBranch{
 			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
 		},
@@ -146,13 +149,15 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 }
 
 // CatalogWindowValue is what the window of a catalog writes: the catalog,
-// the subsystems marked on its page «Подсистемы» and the options marked on
-// «Функциональные опции» - none where a page is not given, which leaves
-// those objects as they are.
+// the subsystems marked on its page «Подсистемы», the options marked on
+// «Функциональные опции» and the exchange plans marked on «Обмен данными»
+// with their autoregistration - none where a page is not given, which
+// leaves those objects as they are.
 type CatalogWindowValue struct {
 	metadata.CatalogDefinition
-	Subsystems        *[]uuid.UUID `json:"subsystems,omitempty"`
-	FunctionalOptions *[]uuid.UUID `json:"functionalOptions,omitempty"`
+	Subsystems        *[]uuid.UUID   `json:"subsystems,omitempty"`
+	FunctionalOptions *[]uuid.UUID   `json:"functionalOptions,omitempty"`
+	ExchangePlans     *[]MemberPlace `json:"exchangePlans,omitempty"`
 }
 
 // memberships are the pages of the window given, each with the objects it
@@ -165,13 +170,16 @@ func (window CatalogWindowValue) memberships(opened CatalogEditorSource) []membe
 	if window.FunctionalOptions != nil {
 		pages = append(pages, optionMembership(metadata.CatalogKind, opened.Catalog.ID, opened.FunctionalOptions, *window.FunctionalOptions))
 	}
+	if window.ExchangePlans != nil {
+		pages = append(pages, exchangeMembership(metadata.CatalogKind, opened.Catalog.ID, opened.ExchangePlans, *window.ExchangePlans))
+	}
 	return pages
 }
 
 // SaveCatalogWindow writes the catalog and the content of the subsystems
-// and the options its window marks, one write: a refusal of any of them
-// puts back what was written before it - the roles, the subsystems and the
-// options, the folder.
+// the options and the exchange plans its window marks, one write: a refusal of any of them
+// puts back what was written before it - the roles, the subsystems, the
+// options and the plans, the folder.
 func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWindowValue, revision string) (CatalogEditorSource, error) {
 	value := window.CatalogDefinition
 	workspace.mu.Lock()
@@ -218,12 +226,12 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 	if err != nil {
 		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
 	}
-	// The subsystems and the options go after the roles and before the
-	// catalog, put back with the roles if the catalog is refused.
+	// The subsystems, the options and the plans go after the roles and
+	// before the catalog, put back with the roles if the catalog is refused.
 	pages := window.memberships(opened)
 	restoreMembership, err := workspace.writeMembershipLocked(pages)
 	if err != nil {
-		return CatalogEditorSource{}, errors.Join(fmt.Errorf("write the catalog's subsystems and options: %w", err), restoreRoles())
+		return CatalogEditorSource{}, errors.Join(fmt.Errorf("write the objects listing the catalog: %w", err), restoreRoles())
 	}
 	// The catalog keeps a folder named after it, so a new name moves the
 	// folder - its forms and modules with it - and the description is
@@ -234,7 +242,7 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 		if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err == nil {
 			opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
 			for _, page := range pages {
-				markMembers(page.places, page.marked)
+				markMembers(page)
 			}
 			return opened, nil
 		}
