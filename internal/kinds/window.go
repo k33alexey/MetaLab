@@ -495,6 +495,15 @@ var templatePalette = []PaletteTab{
 	})},
 }
 
+// httpMethods are the HTTP methods of a method of an HTTP service, in the
+// order of the prototype's list (http-servis.md, «Палитра»; snapshot
+// http-servis/14), «Любой» last.
+var httpMethods = [][2]string{
+	{"GET", "GET"}, {"HEAD", "HEAD"}, {"PUT", "PUT"}, {"POST", "POST"}, {"DELETE", "DELETE"}, {"PATCH", "PATCH"}, {"MERGE", "MERGE"},
+	{"OPTIONS", "OPTIONS"}, {"TRACE", "TRACE"}, {"CONNECT", "CONNECT"}, {"PROPFIND", "PROPFIND"}, {"PROPPATCH", "PROPPATCH"},
+	{"MOVE", "MOVE"}, {"COPY", "COPY"}, {"LOCK", "LOCK"}, {"UNLOCK", "UNLOCK"}, {"MKCOL", "MKCOL"}, {"ANY", "Любой"},
+}
+
 // templateKinds are the kinds of a template with the prototype's captions,
 // in the order the constructor of a template lists them (obshchij-maket.md,
 // «Команды»; snapshot obshchij-maket/03-konstruktor).
@@ -661,6 +670,26 @@ var partPalettes = map[string][]PaletteTab{
 				Choices:     [][2]string{{"automatic", "Автоматический"}, {"managed", "Управляемый"}},
 				Description: "Как блокируются данные, которые меняет операция: платформой сама или кодом."},
 		}},
+	},
+	// docs/block-00/http-servis.md, «Палитра»; snapshots http-servis/09, 13,
+	// 14: a template of one row beside its name, a method of the HTTP method
+	// - seventeen verbs and «Любой», in the order of the prototype's list -
+	// and the handler.
+	"httpTemplate": {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("шаблона", "о шаблоне"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "template", Title: "Шаблон", Field: TextField, Important: true,
+				Description: "Часть адреса после корневого URL сервиса: сегменты, параметры в фигурных скобках, «*» последним."},
+		})},
+	},
+	"httpMethod": {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("метода", "о методе"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "method", Title: "HTTP-метод", Field: ChoiceField, Important: true, Choices: httpMethods,
+				Description: "На какой HTTP-метод запроса к шаблону отвечает метод."},
+			{Key: "handler", Title: "Обработчик", Field: TextField, Important: true,
+				Description: "Функция модуля сервиса, которая обрабатывает запрос."},
+		})},
 	},
 	"webServiceParameter": {
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("параметра", "о параметре"), []PaletteRow{

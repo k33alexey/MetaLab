@@ -1215,7 +1215,7 @@ function subsystemsTree(places, marks, changed) {
    it, each showing what the other typed. target(source) is the object;
    own(api) answers {pages: {key: () => element}, part() - {subject, title,
    tabs} of the part chosen or null, reset()} over api - {source(),
-   changed(), refresh(), palette()}; valueChecks are the addresses checking a
+   object(), changed(), refresh(), palette()}; valueChecks are the addresses checking a
    value of a row when its field is left (paletteFields). around holds the
    palette, its title, the opening of a module, the actions and the closing
    of the window. */
@@ -1224,7 +1224,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => `${source.kindTitle} ${object().name}`;
-  const api = {source: () => source, changed, refresh: () => frame.refresh(), palette: () => renderPalette()};
+  const api = {source: () => source, object, changed, refresh: () => frame.refresh(), palette: () => renderPalette()};
   const kind = own(api);
   function context(collect) {
     return {project: source, typed, changed, packages: source.packages, windows: [], cleanups: collect, valueChecks,
@@ -1281,6 +1281,74 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       return true;
     },
   });
+}
+
+/* partsOfTwoLevels is a page of the window of an object (objectWindowEditor)
+   holding parts of two levels - the operations of a web service and their
+   parameters, the templates of an HTTP service and their methods: a panel
+   adding a part of each level - the lower one under the part chosen - and
+   the buttons parts share (partButtons), and the tree of the parts; the
+   part chosen shows in the palette (source.partPalettes by its kind), its
+   name checked by the model at its place in the object. spec is {list - the
+   key of the upper parts in the object, children - of the lower ones in an
+   upper part, upper and lower - {kind, icon, add: [icon, title], base, fields()}
+   of a part of the level as the prototype makes it}. A new part stands last,
+   named the next number of its base among its siblings, and is chosen. */
+function partsOfTwoLevels(api, page, spec) {
+  let chosen = null;
+  const object = () => api.object();
+  const uppers = () => object()[spec.list] ||= [];
+  function chosenUpper() {
+    const at = chosen ? uppers().findIndex(item => item.id === (chosen.upper ?? chosen.id)) : -1;
+    return {upper: uppers()[at], at};
+  }
+  function chosenPart() {
+    const {upper} = chosenUpper();
+    return chosen?.kind === spec.lower.kind ? upper?.[spec.children]?.find(item => item.id === chosen.id) : upper;
+  }
+  function part() {
+    const {upper, at} = chosenUpper(), chosenOne = chosenPart();
+    if (!chosenOne) return null;
+    const lowers = upper[spec.children] || [];
+    const where = chosen.kind === spec.lower.kind ? [spec.list, String(at), spec.children, String(lowers.findIndex(item => item.id === chosen.id))] : [spec.list, String(at)];
+    const source = api.source();
+    return {title: chosenOne.name, tabs: source.partPalettes?.[chosen.kind],
+      subject: {...ownSubject(source, chosenOne), check: () => ({path: source.path, description: object(), at: where})}};
+  }
+  function add(list, level, choice) {
+    const added = {id: crypto.randomUUID(), name: numberedName(level.base, new Set(list.map(item => item.name.toLocaleLowerCase()))), title: {}, ...level.fields()};
+    list.push(added);
+    chosen = {...choice, kind: level.kind, id: added.id};
+    api.changed();
+  }
+  function siblings() {
+    return chosen?.kind === spec.lower.kind ? chosenUpper().upper?.[spec.children] || [] : uppers();
+  }
+  function render() {
+    const element = node('div', undefined, 'object-window-fields'), on = !!chosenPart();
+    const bar = windowPanel([
+      panelButton(spec.upper.add[0], spec.upper.add[1], true, () => add(uppers(), spec.upper, {})),
+      panelButton(spec.lower.add[0], spec.lower.add[1], on, () => {
+        const {upper} = chosenUpper();
+        if (upper) add(upper[spec.children] ||= [], spec.lower, {upper: upper.id});
+      }),
+      ...partButtons(on, {change: () => document.querySelector('#properties input')?.focus(),
+        remove: () => { const list = siblings(), at = list.findIndex(item => item.id === chosen.id); if (at >= 0) list.splice(at, 1); chosen = null; api.changed(); },
+        move: by => { const list = siblings(), at = list.findIndex(item => item.id === chosen.id); if (at >= 0) moveInCircle(list, at, by); api.changed(); }}),
+    ]);
+    const row = (icon, caption, choice, children = []) => {
+      const {element: branch, row: line} = treeNode({icon, caption, children, open: true});
+      line.classList.toggle('selected', !!chosen && chosen.kind === choice.kind && chosen.id === choice.id);
+      line.addEventListener('click', () => { chosen = choice; api.refresh(); api.palette(); });
+      return branch;
+    };
+    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+    tree.append(...(object()[spec.list] || []).map(upper => row(spec.upper.icon, upper.name, {kind: spec.upper.kind, id: upper.id},
+      (upper[spec.children] || []).map(lower => row(spec.lower.icon, lower.name, {kind: spec.lower.kind, id: lower.id, upper: upper.id})))));
+    element.append(bar, tree);
+    return element;
+  }
+  return {pages: {[page]: render}, part, reset() { chosen = null; }};
 }
 
 /* clearObjectPalette empties the palette of around (its element and its

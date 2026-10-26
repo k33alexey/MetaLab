@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -20,6 +21,8 @@ import (
 type HTTPServiceEditorSource struct {
 	windowHead
 	Service metadata.HTTPServiceDefinition `json:"service"`
+	// PartPalettes are the palettes of its templates and their methods.
+	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 }
 
 func (source HTTPServiceEditorSource) windowOf() (metadata.HTTPServiceDefinition, windowHead) {
@@ -64,7 +67,8 @@ func (workspace *Workspace) ReadHTTPServiceEditor(relative string) (HTTPServiceE
 func (workspace *Workspace) readHTTPServiceEditorLocked(relative string) (HTTPServiceEditorSource, error) {
 	value, head, _, err := readObjectWindow(workspace, metadata.HTTPServiceKind, relative, metadata.DecodeHTTPService,
 		func(value metadata.HTTPServiceDefinition) uuid.UUID { return value.ID })
-	return HTTPServiceEditorSource{windowHead: head, Service: value}, err
+	return HTTPServiceEditorSource{windowHead: head, Service: value,
+		PartPalettes: map[string][]kinds.PaletteTab{"template": kinds.PartPalette("httpTemplate"), "method": kinds.PartPalette("httpMethod")}}, err
 }
 
 // SaveHTTPServiceWindow writes the service and the subsystems its window
