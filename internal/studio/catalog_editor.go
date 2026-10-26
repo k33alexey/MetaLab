@@ -34,9 +34,10 @@ type CatalogEditorSource struct {
 	// Palette is the tabs of the palette of the catalog and their rows, the
 	// kind's (kinds.Palette).
 	Palette []kinds.PaletteTab `json:"palette"`
-	// OwnerChoice is what the window choosing the owners of the catalog
-	// offers: the objects of the five kinds that may own it.
-	OwnerChoice []ObjectChoiceBranch `json:"ownerChoice"`
+	// Choices are what the windows «Выбор объекта» of the catalog offer, by
+	// the property they choose: owners - the objects of the five kinds that
+	// may own it, basedOn - those of the eight that may be its basis.
+	Choices map[string][]ObjectChoiceBranch `json:"choices"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -83,8 +84,10 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
 	return CatalogEditorSource{
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
-		OwnerChoice: objectChoiceTree(loaded, metadata.CatalogOwnerKinds()),
-		Languages:   editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		Choices: map[string][]ObjectChoiceBranch{
+			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
+		},
+		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
 		Palette: kinds.Must(metadata.CatalogKind).Palette(),
 	}, nil

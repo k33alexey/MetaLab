@@ -52,6 +52,19 @@ function createCatalogModel(source) {
       if (key === 'limitLevels' && value && !(hierarchy.levelCount >= 1)) hierarchy.levelCount = 2;
     },
     setOwners(owners) { if (owners.length) catalog.owners = owners; else delete catalog.owners; },
+    // A property by its key in the description, dotted for one inside
+    // another - code.length, hierarchy.enabled - as the palette names it.
+    get(path) { return path.split('.').reduce((value, key) => value?.[key], catalog); },
+    // Sets a property by its key: the settings of the hierarchy by their own
+    // rule (setHierarchy), an emptied list is not written at all.
+    set(path, value) {
+      const keys = path.split('.');
+      if (keys[0] === 'hierarchy') { this.setHierarchy(keys[1], value); return; }
+      let target = catalog;
+      for (const key of keys.slice(0, -1)) target = target[key] ||= {};
+      const last = keys.at(-1);
+      if (Array.isArray(value) && !value.length) delete target[last]; else target[last] = value;
+    },
     setSubordination(subordination) { catalog.subordination = subordination; },
     setCodeSeries(series) { catalog.code.series = series; },
     setCodeType(type) { catalog.code.type = type; },
@@ -305,12 +318,14 @@ function createCatalogEditor(host, onChange, around = {}) {
   // the server answers the prototype's refusal - predefined items, the
   // catalog itself, a ring - and nothing is written (snapshots vladelcy-otkaz-*).
   let currentOwner = null;
-  function ownerName(id) {
+  // The full name of an object the window «Выбор объекта» of the property
+  // offers, Справочник.Контрагенты.
+  function objectName(property, id) {
     const find = branches => { for (const branch of branches || []) { const item = branch.objects?.find(object => object.id === id) || find(branch.children); if (item) return item; } return null; };
-    return find(source.ownerChoice)?.fullName || id;
+    return find(source.choices?.[property])?.fullName || id;
   }
   async function chooseOwners() {
-    const owners = await chooseObjects('Выбор объекта', source.ownerChoice || [], catalog().owners || []);
+    const owners = await chooseObjects('Выбор объекта', source.choices?.owners || [], catalog().owners || []);
     if (!owners) return;
     let answer;
     try { answer = await postJSON(`${source.editor}/owners`, {path: source.path, object: {...model.value(), owners}}); } catch (error) { answer = {refusal: String(error.message || error)}; }
@@ -330,7 +345,7 @@ function createCatalogEditor(host, onChange, around = {}) {
     const list = node('div', undefined, 'object-window-list');
     list.setAttribute('role', 'listbox');
     for (const id of owners) {
-      const row = node('div', ownerName(id), 'object-window-list-row' + (id === currentOwner ? ' current' : ''));
+      const row = node('div', objectName('owners', id), 'object-window-list-row' + (id === currentOwner ? ' current' : ''));
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(id === currentOwner));
       row.addEventListener('click', () => { currentOwner = id; frame.refresh(); });
@@ -412,13 +427,63 @@ function createCatalogEditor(host, onChange, around = {}) {
       return field;
     }
     if (row.field === 'text') return textInput(target[row.key], value => { model.setComment(value); touch(); });
-    if (row.field === 'module') {
+    if (row.field === 'module' || row.field === 'window') {
       const link = node('button', 'Открыть', 'object-palette-link');
       link.type = 'button';
+      // The windows of the standard attributes, characteristics,
+      // predefined items and additional indexes are items of their own.
+      link.disabled = row.field === 'window';
       link.addEventListener('click', () => around.openModule?.(row.key));
       return link;
     }
-    return null;
+    const value = model.get(row.key), off = !available(row);
+    const set = next => { model.set(row.key, next); rerender(); };
+    let control;
+    if (row.field === 'flag') {
+      control = node('input');
+      control.type = 'checkbox'; control.checked = !!value;
+      control.addEventListener('change', () => set(control.checked));
+    } else if (row.field === 'choice') {
+      control = selectInput(row.choices, value || '', set, row.title);
+    } else if (row.field === 'switch') {
+      control = selectInput(row.choices, String(!!value), next => set(next === 'true'), row.title);
+    } else if (row.field === 'number') {
+      control = textInput(value ?? 0, set, limited(row.limit, {type: 'number', min: row.min || 0}));
+    } else if (row.field === 'objects' || row.field === 'fields') {
+      return listControl(row, value || [], off);
+    } else return null;
+    control.disabled = off;
+    return control;
+  }
+  // A row is available while every property it needs is on: not false,
+  // zero or empty, or the value named (kinds.PaletteRow.Needs).
+  function available(row) {
+    return (row.needs || []).every(need => {
+      const [path, wanted] = need.split('='), value = model.get(path);
+      if (wanted !== undefined) return value === wanted;
+      return Array.isArray(value) ? value.length > 0 : !!value;
+    });
+  }
+  // A list of objects or of fields in one line, as the palette shows it:
+  // their names by commas, «…» choosing them and the cross clearing them.
+  // The owners are chosen as on the page «Владельцы» - with the model's
+  // refusal; the bases plainly; the fields of the data lock wait for their
+  // window, which the inventory does not show.
+  function listControl(row, items, off) {
+    const shown = node('input');
+    shown.readOnly = true;
+    shown.value = row.field === 'objects' ? items.map(id => objectName(row.key, id)).join(', ') : items.map(field => field.standard || field.attribute).join(', ');
+    const pick = fieldChoiceButton(row.title, async () => {
+      if (row.key === 'owners') { await chooseOwners(); return; }
+      const chosen = await chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items);
+      if (chosen) { model.set(row.key, chosen); rerender(); }
+    });
+    pick.disabled = off || row.field === 'fields';
+    const clear = clearButton(`Очистить: ${row.title}`, () => { model.set(row.key, []); rerender(); });
+    clear.classList.add('field-button');
+    clear.disabled = off || !items.length;
+    shown.disabled = off;
+    return fieldWithButtons(shown, [pick, clear]);
   }
   let paletteSynonym = null;
   function renderPalette() {

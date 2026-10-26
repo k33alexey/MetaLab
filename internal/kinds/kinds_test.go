@@ -302,20 +302,51 @@ func TestTheWindowOfACatalogHasThePrototypesPages(t *testing.T) {
 // Defects caught: a tab left out or moved, a module row missing, a row
 // without its explanation, a row of a field the palette cannot build.
 func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
-	var tabs, important, main []string
+	var tabs, important, main, data, dataImportant []string
+	fields := []string{NameField, LocalizedField, TextField, ModuleField, FlagField, ChoiceField, NumberField, SwitchField, ObjectsField, FieldsField, WindowField}
 	for _, tab := range Must(Catalog).Palette() {
 		tabs = append(tabs, tab.Title)
 		if tab.Important {
 			important = append(important, tab.Title)
 		}
 		for _, row := range tab.Rows {
-			if row.Title == "" || row.Description == "" || !slices.Contains([]string{NameField, LocalizedField, TextField, ModuleField}, row.Field) {
+			if row.Field == SeparatorField {
+				continue
+			}
+			if row.Title == "" || row.Description == "" || !slices.Contains(fields, row.Field) {
 				t.Errorf("%s: row %+v lacks a caption, an explanation or a field Studio builds", tab.Title, row)
 			}
-			if tab.Key == "main" {
+			if (row.Field == ChoiceField || row.Field == SwitchField) != (len(row.Choices) > 0) {
+				t.Errorf("%s: row %q has choices %v for a field %s", tab.Title, row.Title, row.Choices, row.Field)
+			}
+			switch tab.Key {
+			case "main":
 				main = append(main, row.Title)
+			case "data":
+				data = append(data, row.Title)
+				if row.Important {
+					dataImportant = append(dataImportant, row.Title)
+				}
 			}
 		}
+	}
+	// docs/block-00/spravochnik.md, «Палитра свойств», «Данные»; snapshots
+	// palitra-dannye-vladelcy-kod0, vazhnye-dannye: «только важные» takes the
+	// characteristics and the fields of the data lock away.
+	wantData := []string{"Иерархический", "Вид иерархии", "Ограничивать кол-во уровней", "Количество уровней", "Размещать группы сверху",
+		"Владельцы", "Использование подчинения", "Длина кода", "Длина наименования", "Тип кода", "Допустимая длина кода", "Серии кодов",
+		"Контроль уникальности", "Автонумерация", "Стандартные реквизиты", "Характеристики", "Предопределенные",
+		"Обновление предопределенных данных", "Вводится на основании", "Поля блокировки данных", "Режим управления блокировкой данных",
+		"Полнотекстовый поиск", "История данных", "Обновлять историю данных сразу после записи",
+		"Выполнять обработку после записи версии истории данных", "Дополнительные индексы"}
+	if !slices.Equal(data, wantData) {
+		t.Errorf("«Данные» %q, want %q", data, wantData)
+	}
+	wantImportant := slices.DeleteFunc(slices.Clone(wantData), func(title string) bool {
+		return title == "Характеристики" || title == "Поля блокировки данных"
+	})
+	if !slices.Equal(dataImportant, wantImportant) {
+		t.Errorf("«Данные» kept by «только важные» %q, want %q", dataImportant, wantImportant)
 	}
 	if want := []string{"Основные", "Данные", "Представление", "Справочная информация"}; !slices.Equal(tabs, want) {
 		t.Errorf("tabs %q, want %q", tabs, want)

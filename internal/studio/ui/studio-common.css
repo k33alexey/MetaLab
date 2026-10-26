@@ -200,3 +200,6 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-palette-match{background:transparent;color:#e0605e;font-weight:600}
 .object-palette-link{justify-self:start;padding:0!important;border:0!important;background:transparent!important;color:#589df6;text-decoration:underline;cursor:pointer}
 .object-palette-explanation{min-height:44px;padding:6px 8px;border-top:1px solid var(--border,#393b40);color:#aeb1b8}
+.object-palette-separator{border:0;border-top:1px solid var(--border,#393b40);margin:6px 0}
+.object-palette-row input[type=checkbox]{justify-self:start;margin:0;accent-color:#589df6}
+.object-palette-link:disabled{color:#7a7d84;cursor:default}

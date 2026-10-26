@@ -51,34 +51,30 @@ type basisCarrier struct {
 	basedOn []uuid.UUID
 }
 
+// basisKinds are the eight kinds whose objects may be entered on the basis of
+// another and be the basis of one, in the order of the tree.
+var basisKinds = []Kind{CatalogKind, DocumentKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind,
+	BusinessProcessKind, TaskKind, ExchangePlanKind}
+
+// BasisKinds are the kinds a window choosing the bases of an object offers:
+// the eight that may be a basis (a table of an external source, the ninth,
+// stands in no branch of a tree of choice).
+func BasisKinds() []Kind {
+	return slices.Clone(basisKinds)
+}
+
 // basisCarriers walks the eight kinds that may be entered on the basis of
 // something. The order is the order of the kinds in the tree, so that a message
 // about a configuration does not change its wording between two loads.
 func (catalog *Catalog) basisCarriers() []basisCarrier {
 	var result []basisCarrier
-	for _, item := range catalog.Catalogs {
-		result = append(result, basisCarrier{CatalogKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.Documents {
-		result = append(result, basisCarrier{DocumentKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.ChartsOfCharacteristicTypes {
-		result = append(result, basisCarrier{ChartOfCharacteristicTypesKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.ChartsOfAccounts {
-		result = append(result, basisCarrier{ChartOfAccountsKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.ChartsOfCalculationTypes {
-		result = append(result, basisCarrier{ChartOfCalculationTypesKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.BusinessProcesses {
-		result = append(result, basisCarrier{BusinessProcessKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.Tasks {
-		result = append(result, basisCarrier{TaskKind, item.ID, item.Name, item.BasedOn})
-	}
-	for _, item := range catalog.ExchangePlans {
-		result = append(result, basisCarrier{ExchangePlanKind, item.ID, item.Name, item.BasedOn})
+	for _, kind := range basisKinds {
+		list, _ := catalog.objectsOf(kind)
+		for index := range list.Len() {
+			item := list.Index(index)
+			result = append(result, basisCarrier{kind, item.FieldByName("ID").Interface().(uuid.UUID), item.FieldByName("Name").String(),
+				item.FieldByName("BasedOn").Interface().([]uuid.UUID)})
+		}
 	}
 	// A table of a source is entered on the basis of other objects and may be
 	// the basis of one, the help says - but only a table of object data: a

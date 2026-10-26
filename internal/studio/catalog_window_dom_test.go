@@ -396,7 +396,8 @@ const paletteWalk = `(async () => {
   steps.found = {rows: rows(), tabs: tabs(), marked: [...palette().querySelectorAll('.object-palette-match')].map(item => item.textContent)};
   search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
   await click(button('Сортировка по алфавиту'));
-  steps.alphabet = {rows: rows(), tabs: tabs()};
+  steps.alphabet = {rows: rows().filter(caption => ['Имя', 'Синоним', 'Комментарий', 'Модуль объекта', 'Модуль менеджера', 'Длина кода'].includes(caption)), tabs: tabs(),
+    count: rows().length, sorted: rows().every((caption, at, all) => !at || all[at - 1].localeCompare(caption, 'ru') <= 0)};
   await click(button('Сортировка по категориям'));
   const name = [...palette().querySelectorAll('.object-palette-row')].find(row => row.textContent.startsWith('Имя')).querySelector('input');
   name.focus(); name.value = 'ТоварыСклада'; name.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
@@ -440,6 +441,8 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	}
 	type listed struct {
 		Rows, Tabs []string
+		Count      int
+		Sorted     bool
 	}
 	var steps struct {
 		Title, Chosen, Module          string
@@ -473,7 +476,8 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	expect("«Основные»", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Модуль объекта", "Модуль менеджера"})
 	expect("only important", steps.Important, []string{"Основные", "Данные", "Представление"})
 	expect("search", steps.Found, struct{ Rows, Tabs, Marked []string }{[]string{"Модуль объекта", "Модуль менеджера"}, []string{}, []string{"Модуль", "Модуль"}})
-	expect("alphabet", steps.Alphabet, listed{[]string{"Имя", "Комментарий", "Модуль менеджера", "Модуль объекта", "Синоним"}, []string{}})
+	// Every row of every tab, five of «Основные» and twenty-six of «Данные».
+	expect("alphabet", steps.Alphabet, listed{[]string{"Длина кода", "Имя", "Комментарий", "Модуль менеджера", "Модуль объекта", "Синоним"}, []string{}, 31, true})
 	expect("typed in the palette", steps.Typed, struct {
 		Title, Window string
 		Cancel        bool
@@ -482,4 +486,117 @@ func TestThePaletteOfACatalogIsThePrototypes(t *testing.T) {
 	expect("cancelled", steps.Cancelled, struct{ Value, Title string }{"Товары", "Справочник Товары"})
 	expect("explanation", steps.Explanation, true)
 	expect("module opened", steps.Module, "metadata/catalogs/Товары/МодульОбъекта.bsl")
+}
+
+// paletteDataWalk opens the tab «Данные» of the palette of the catalog
+// Товары and reads its rows and what is unavailable; then switches the
+// hierarchy on, makes the code of no length, chooses a basis in «Выбор
+// объекта» and clears it, turns the history on and «только важные», reading
+// the rows, the window and the values after each.
+const paletteDataWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const palette = () => document.querySelector('#properties .object-palette');
+  const rows = () => [...palette().querySelectorAll('.object-palette-row')];
+  const captions = () => rows().map(row => row.querySelector('.object-palette-caption').textContent);
+  const row = caption => rows().find(item => item.querySelector('.object-palette-caption').textContent === caption);
+  const control = caption => row(caption).querySelector('input, select, button');
+  const unavailable = () => rows().filter(item => [...item.querySelectorAll('input, select, button')].every(element => element.disabled))
+    .map(item => item.querySelector('.object-palette-caption').textContent);
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const change = async (caption, value) => {
+    const element = control(caption);
+    if (element.type === 'checkbox') element.checked = value; else element.value = value;
+    element.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+  };
+  await openObject('Товары');
+  [...palette().querySelectorAll('.studio-tab')].find(tab => tab.textContent === 'Данные').click(); await settle();
+  steps.captions = captions();
+  steps.separators = palette().querySelectorAll('.object-palette-separator').length;
+  steps.unavailable = unavailable();
+  await change('Иерархический', true);
+  steps.hierarchy = {kind: control('Вид иерархии').value, unavailable: unavailable().filter(caption => /иерарх|уровн|групп/i.test(caption))};
+  await windowPage('Иерархия');
+  steps.windowFlag = windowField('#catalog-editor', 'Иерархический справочник').querySelector('input').checked;
+  await change('Длина кода', '0');
+  steps.codeless = unavailable().filter(caption => /код|Контроль|Автонумерация|Серии/i.test(caption));
+  row('Вводится на основании').querySelector('button[title="Вводится на основании"]').click(); await settle();
+  const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
+  dialog.querySelectorAll('details').forEach(item => { item.open = true; });
+  [...dialog.querySelectorAll('.studio-tree-row')].find(item => item.textContent.trim() === 'Контрагенты').querySelector('input').click();
+  [...dialog.querySelectorAll('button')].find(button => button.textContent === 'ОК').click(); await settle();
+  steps.basis = control('Вводится на основании').value;
+  row('Вводится на основании').querySelector('button[title^="Очистить"]').click(); await settle();
+  steps.cleared = control('Вводится на основании').value;
+  await change('История данных', 'use');
+  steps.history = unavailable().filter(caption => /истори/i.test(caption));
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  steps.importantGone = steps.captions.filter(caption => !captions().includes(caption));
+  palette().querySelector('.object-palette-bar button[title="Показывать только важные"]').click(); await settle();
+  return steps;
+})()`
+
+// The tab «Данные» of the palette of a catalog is the prototype's
+// (docs/block-00/spravochnik.md, «Палитра свойств»; snapshots
+// palitra-dannye-vladelcy-kod0, vazhnye-dannye): its rows in the order of
+// the inventory with the line after the hierarchy; the settings of the
+// hierarchy unavailable without its flag, the use of subordination without
+// owners, the two flags of the history without the history, the windows of
+// the object not built yet unavailable; the flag of the hierarchy switched in
+// the palette is the window's flag too, a hierarchy switched on is of
+// folders and items; at a code of no length the type, the series, the
+// control and the numbering unavailable and the allowed length available; a
+// basis chosen in «Выбор объекта» is shown by its full name and the cross
+// clears it; «только важные» takes the characteristics and the fields of
+// the data lock away. The expectations are written out from the inventory.
+// Defects caught: a row missing or out of place; a setting available without
+// what it needs or hidden instead of unavailable; the palette and the window
+// keeping two values of one property; a hierarchy switched on with no kind.
+func TestTheDataOfThePaletteOfACatalogIsThePrototypes(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, paletteDataWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Captions, Unavailable, Codeless, History, ImportantGone []string
+		Separators                                              int
+		Hierarchy                                               struct {
+			Kind        string
+			Unavailable []string
+		}
+		WindowFlag     bool
+		Basis, Cleared string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("«Данные»", steps.Captions, []string{"Иерархический", "Вид иерархии", "Ограничивать кол-во уровней", "Количество уровней",
+		"Размещать группы сверху", "Владельцы", "Использование подчинения", "Длина кода", "Длина наименования", "Тип кода",
+		"Допустимая длина кода", "Серии кодов", "Контроль уникальности", "Автонумерация", "Стандартные реквизиты", "Характеристики",
+		"Предопределенные", "Обновление предопределенных данных", "Вводится на основании", "Поля блокировки данных",
+		"Режим управления блокировкой данных", "Полнотекстовый поиск", "История данных", "Обновлять историю данных сразу после записи",
+		"Выполнять обработку после записи версии истории данных", "Дополнительные индексы"})
+	expect("the line after the hierarchy", steps.Separators, 1)
+	expect("unavailable at first", steps.Unavailable, []string{"Вид иерархии", "Ограничивать кол-во уровней", "Количество уровней",
+		"Размещать группы сверху", "Использование подчинения", "Стандартные реквизиты", "Характеристики", "Предопределенные",
+		"Обновлять историю данных сразу после записи", "Выполнять обработку после записи версии истории данных", "Дополнительные индексы"})
+	expect("hierarchy switched on", steps.Hierarchy, struct {
+		Kind        string
+		Unavailable []string
+	}{"folders-and-items", []string{"Количество уровней"}})
+	expect("the window's flag", steps.WindowFlag, true)
+	expect("a code of no length", steps.Codeless, []string{"Тип кода", "Серии кодов", "Контроль уникальности", "Автонумерация"})
+	expect("a basis chosen", steps.Basis, "Справочник.Контрагенты")
+	expect("a basis cleared", steps.Cleared, "")
+	expect("history on", steps.History, []string{})
+	expect("«только важные» takes away", steps.ImportantGone, []string{"Характеристики", "Поля блокировки данных"})
 }

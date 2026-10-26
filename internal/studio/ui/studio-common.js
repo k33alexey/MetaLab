@@ -813,7 +813,10 @@ function objectPalette(tabs, control) {
   apply.addEventListener('click', () => { editing?.blur(); editing = null; arrange(); });
   const kept = item => !PaletteView.important || item.important;
   function line(row, text) {
+    if (row.field === 'separator') return node('hr', undefined, 'object-palette-separator');
     const label = node('div', undefined, 'object-palette-row'), caption = node('span', undefined, 'object-palette-caption');
+    // A caption cut by a narrow palette is read whole in its hint.
+    caption.title = row.title;
     const at = text ? row.title.toLocaleLowerCase().indexOf(text) : -1;
     if (at < 0) caption.textContent = row.title;
     else caption.append(row.title.slice(0, at), node('mark', row.title.slice(at, at + text.length), 'object-palette-match'), row.title.slice(at + text.length));
@@ -830,7 +833,7 @@ function objectPalette(tabs, control) {
     let list;
     if (text || PaletteView.alphabetical) {
       strip.replaceChildren();
-      list = shown.flatMap(tab => tab.rows.filter(kept)).filter(row => !text || row.title.toLocaleLowerCase().includes(text));
+      list = shown.flatMap(tab => tab.rows.filter(kept)).filter(row => row.field !== 'separator' && (!text || row.title.toLocaleLowerCase().includes(text)));
       if (PaletteView.alphabetical) list = [...list].sort((left, right) => left.title.localeCompare(right.title, 'ru'));
     } else {
       if (!shown.some(tab => tab.key === PaletteView.tab)) PaletteView.tab = shown[0]?.key || '';
