@@ -943,3 +943,86 @@ func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
 	expect("a name of another constant", steps.Repeated, "Имя не уникально!")
 	expect("the module of the value", steps.Module, "metadata/constants/ОсновнаяВалюта/МодульЗначения.bsl")
 }
+
+// rowsPagesWalk reads the pages «Поле ввода» and «Прочее» of the window of
+// the catalog Товары: captions, the frame, buttons and what is unavailable;
+// it marks «Быстрый выбор» and reads the palette, turns the history on and
+// opens the object module by its button.
+const rowsPagesWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const captions = () => [...body().querySelectorAll('.catalog-field > span:first-child, .catalog-check > span:last-child')].map(item => item.textContent);
+  await openObject('Товары');
+  await windowPage('Поле ввода');
+  steps.input = captions();
+  steps.frame = [...body().querySelectorAll('fieldset')].map(frame => ({legend: frame.querySelector('legend').textContent,
+    rows: [...frame.querySelectorAll('.catalog-field > span:first-child')].map(item => item.textContent)}));
+  windowField('#catalog-editor', 'Быстрый выбор').querySelector('input').click(); await settle();
+  [...document.querySelectorAll('#properties .studio-tab')].find(tab => tab.textContent === 'Представление').click(); await settle();
+  steps.palette = windowField('#properties', 'Быстрый выбор').querySelector('input').checked;
+  await windowPage('Прочее');
+  steps.other = captions();
+  steps.buttons = [...body().querySelectorAll('.object-window-button')].map(button => button.textContent + (button.disabled ? ' (недоступна)' : ''));
+  const flags = () => ['Обновлять историю данных сразу после записи', 'Выполнять обработку после записи версии истории данных']
+    .map(caption => windowField('#catalog-editor', caption).querySelector('input').disabled);
+  steps.withoutHistory = flags();
+  const history = windowField('#catalog-editor', 'История данных:').querySelector('select');
+  history.value = 'use'; history.dispatchEvent(new Event('change', {bubbles: true})); await settle();
+  steps.withHistory = flags();
+  [...body().querySelectorAll('.object-window-button')].find(button => button.textContent === 'Модуль объекта').click(); await settle();
+  steps.module = document.querySelector('#file-path').textContent;
+  return steps;
+})()`
+
+// The pages «Поле ввода» and «Прочее» of the window of a catalog are the
+// prototype's (docs/block-00/spravochnik.md, «Окно редактирования», pages 9
+// and 15; snapshots okno-09, okno-15), built of the palette's rows: the
+// window's captions, the frame «Ввод по строке» of four rows, the buttons of
+// the modules, the predefined items and the help - the last two unavailable
+// until their windows are built; the flags of the history unavailable
+// without it. A flag marked in the window is the palette's too, and a module
+// opens by its button. Defects caught: a row missing or out of its frame; a
+// value of the window kept apart from the palette's; the flags of the
+// history available without it; a button of a module opening nothing.
+func TestThePagesOfACatalogBuiltOfThePalette(t *testing.T) {
+	ctx, browser, page := openStudioInBrowser(t, copyDemoProjectForStudioTest(t), func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, rowsPagesWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type frame struct {
+		Legend string
+		Rows   []string
+	}
+	var steps struct {
+		Input, Other, Buttons       []string
+		Frame                       []frame
+		Palette                     bool
+		WithoutHistory, WithHistory []bool
+		Module                      string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("«Поле ввода»", steps.Input, []string{"Быстрый выбор", "Создание при вводе:", "Ввод по строке:", "Способ поиска строки:", "Полнотекстовый поиск:",
+		"Режим получения данных выбора:", "История выбора при вводе:"})
+	expect("the frame", steps.Frame, []frame{{"Ввод по строке", []string{"Ввод по строке:", "Способ поиска строки:", "Полнотекстовый поиск:", "Режим получения данных выбора:"}}})
+	expect("the palette follows the window", steps.Palette, true)
+	expect("«Прочее»", steps.Other, []string{"Обновление предопределенных данных:", "Поля блокировки данных:", "Полнотекстовый поиск:", "История данных:",
+		"Обновлять историю данных сразу после записи", "Выполнять обработку после записи версии истории данных", "Включать в содержание справки"})
+	expect("buttons", steps.Buttons, []string{"Модуль объекта", "Модуль менеджера", "Предопределенные (недоступна)", "Справочная информация (недоступна)"})
+	expect("history off", steps.WithoutHistory, []bool{true, true})
+	expect("history on", steps.WithHistory, []bool{false, false})
+	expect("the module", steps.Module, "metadata/catalogs/Товары/МодульОбъекта.bsl")
+}

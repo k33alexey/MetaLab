@@ -501,3 +501,44 @@ func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
 		}
 	}
 }
+
+// Every row of a page of a window built of the palette names a row the
+// palette of its kind has, so the field, its values and its availability
+// are the palette's and are not written twice; the pages «Поле ввода» and
+// «Прочее» of a catalog hold the inventory's rows (docs/block-00/
+// spravochnik.md, «Окно редактирования»). Defects caught: a window row
+// naming a property the palette lacks, which would stand empty; a row of
+// the inventory missing from a page.
+func TestTheRowsOfAWindowAreThePalettes(t *testing.T) {
+	for _, descriptor := range All() {
+		keys := map[string]bool{}
+		for _, tab := range descriptor.Palette() {
+			for _, row := range tab.Rows {
+				keys[row.Key] = true
+			}
+		}
+		for page, rows := range descriptor.WindowRows() {
+			for _, row := range rows {
+				if !keys[row.Key] {
+					t.Errorf("%s, page %s: %q names %q, which the palette has not", descriptor.Kind, page, row.Title, row.Key)
+				}
+			}
+		}
+	}
+	titles := func(page string) []string {
+		var result []string
+		for _, row := range Must(Catalog).WindowRows()[page] {
+			result = append(result, row.Title)
+		}
+		return result
+	}
+	if want := []string{"Быстрый выбор", "Создание при вводе:", "Ввод по строке:", "Способ поиска строки:", "Полнотекстовый поиск:",
+		"Режим получения данных выбора:", "История выбора при вводе:"}; !slices.Equal(titles("input"), want) {
+		t.Errorf("«Поле ввода» %q, want %q", titles("input"), want)
+	}
+	if want := []string{"Модуль объекта", "Модуль менеджера", "Предопределенные", "Обновление предопределенных данных:", "Поля блокировки данных:",
+		"Полнотекстовый поиск:", "История данных:", "Обновлять историю данных сразу после записи",
+		"Выполнять обработку после записи версии истории данных", "Справочная информация", "Включать в содержание справки"}; !slices.Equal(titles("other"), want) {
+		t.Errorf("«Прочее» %q, want %q", titles("other"), want)
+	}
+}

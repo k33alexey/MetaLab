@@ -24,6 +24,56 @@ var windowPages = map[Kind][]Page{
 	},
 }
 
+// WindowRow is a row of a page of the window of an object built of the
+// palette's row of the same property (Key): its field, values and what it
+// is available by are the palette's; the window gives it its own caption,
+// the frame it stands in, whether the caption stands above the field, and
+// whether a module or a window opens by a button rather than «Открыть».
+type WindowRow struct {
+	Key    string `json:"key"`
+	Title  string `json:"title"`
+	Frame  string `json:"frame,omitempty"`
+	Above  bool   `json:"above,omitempty"`
+	Button bool   `json:"button,omitempty"`
+}
+
+// windowRows are the pages of a window built of the palette's rows, by
+// page (docs/block-00/<вид>.md, «Окно редактирования»).
+var windowRows = map[Kind]map[string][]WindowRow{
+	// docs/block-00/spravochnik.md, pages 9 and 15; snapshots okno-09,
+	// okno-15.
+	Catalog: {
+		"input": {
+			{Key: "quickChoice", Title: "Быстрый выбор"},
+			{Key: "createOnInput", Title: "Создание при вводе:"},
+			{Key: "inputByString", Title: "Ввод по строке:", Frame: "Ввод по строке"},
+			{Key: "searchStringMode", Title: "Способ поиска строки:", Frame: "Ввод по строке"},
+			{Key: "fullTextSearchOnInput", Title: "Полнотекстовый поиск:", Frame: "Ввод по строке"},
+			{Key: "choiceDataGetMode", Title: "Режим получения данных выбора:", Frame: "Ввод по строке"},
+			{Key: "choiceHistoryOnInput", Title: "История выбора при вводе:"},
+		},
+		"other": {
+			{Key: string(ObjectModule), Title: "Модуль объекта", Button: true},
+			{Key: string(ManagerModule), Title: "Модуль менеджера", Button: true},
+			{Key: "predefined", Title: "Предопределенные", Button: true},
+			{Key: "predefinedDataUpdate", Title: "Обновление предопределенных данных:", Above: true},
+			{Key: "dataLockFields", Title: "Поля блокировки данных:"},
+			{Key: "fullTextSearch", Title: "Полнотекстовый поиск:"},
+			{Key: "dataHistory", Title: "История данных:"},
+			{Key: "updateDataHistoryImmediatelyAfterWrite", Title: "Обновлять историю данных сразу после записи"},
+			{Key: "executeAfterDataHistoryVersionWriteProcessing", Title: "Выполнять обработку после записи версии истории данных"},
+			{Key: "help", Title: "Справочная информация", Button: true},
+			{Key: "includeHelpInContents", Title: "Включать в содержание справки"},
+		},
+	},
+}
+
+// WindowRows are the pages of the window of an object of the kind built of
+// the palette's rows, by the key of the page.
+func (descriptor Descriptor) WindowRows() map[string][]WindowRow {
+	return windowRows[descriptor.Kind]
+}
+
 // WindowPages are the pages of the window of an object of the kind, in
 // their order; none for a kind whose window has no pages.
 func (descriptor Descriptor) WindowPages() []Page {

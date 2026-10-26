@@ -341,11 +341,48 @@ function createCatalogEditor(host, onChange, around = {}) {
         ['within-owner-subordination', 'В пределах подчинения владельцу']], code.series, value => { model.setCodeSeries(value); rerender(); }, off));
     return page;
   }
+  // A page built of the palette's rows (kinds.WindowRows): each row is the
+  // palette's field of its property under the window's caption - beside
+  // it, or above it - a flag with its box at the right, a module or a
+  // window opened by a button, the rows of one frame inside it
+  // (spravochnik.md, okno-09, okno-15).
+  function renderRowsPage(key) {
+    const page = node('div', undefined, 'object-window-fields'), fields = fieldsOfPalette(() => cleanups), subject = catalogSubject();
+    const paletteRows = (source.palette || []).flatMap(tab => tab.rows || []);
+    let frame = null;
+    for (const row of source.windowRows[key]) {
+      const base = paletteRows.find(item => item.key === row.key);
+      if (!base) continue;
+      let element;
+      if (row.button) {
+        element = node('button', row.title, 'object-window-button');
+        element.type = 'button';
+        element.disabled = base.field === 'window';
+        element.addEventListener('click', () => around.openModule?.(row.key));
+      } else {
+        const control = fields(subject, {...base, title: row.title});
+        if (base.field === 'flag') {
+          element = node('label', undefined, 'catalog-check object-window-flag');
+          element.append(control, node('span', row.title));
+        } else element = labeledField(row.title, control, row.above ? 'catalog-field catalog-field-above' : 'catalog-field');
+      }
+      if (!row.frame) { frame = null; page.append(element); continue; }
+      if (frame?.dataset.frame !== row.frame) {
+        frame = node('fieldset', undefined, 'studio-frame object-window-fields');
+        frame.dataset.frame = row.frame;
+        frame.append(node('legend', row.frame));
+        page.append(frame);
+      }
+      frame.append(element);
+    }
+    return page;
+  }
   const builtPages = {main: renderMainPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage, numbering: renderNumberingPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
     cleanups = [];
-    return builtPages[key]?.() || null;
+    if (builtPages[key]) return builtPages[key]();
+    return source.windowRows?.[key] ? renderRowsPage(key) : null;
   }
 
   function clearPalette() {
@@ -373,8 +410,8 @@ function createCatalogEditor(host, onChange, around = {}) {
   }
   // The fields of the palette of the catalog and its parts: what they open,
   // the windows of choice they offer, and how an edit is shown.
-  function fieldsOfPalette() {
-    return paletteFields({project: source, typeOffer: model.typeOffer, choices: source.choices, cleanups: () => paletteCleanups,
+  function fieldsOfPalette(collect = () => paletteCleanups) {
+    return paletteFields({project: source, typeOffer: model.typeOffer, choices: source.choices, cleanups: collect,
       typed: touch, changed: rerender, openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
       form: name => ({name, path: source.path.replace(/object\.yaml$/, `forms/${name}/form.yaml`)}),
       choose: async (row, items) => {

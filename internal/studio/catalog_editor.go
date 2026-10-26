@@ -29,8 +29,10 @@ type CatalogEditorSource struct {
 	// KindTitle names one object of the kind in the window, from the
 	// descriptor of the kind.
 	KindTitle string `json:"kindTitle"`
-	// Pages are the pages of the window, the kind's (kinds.WindowPages).
-	Pages []kinds.Page `json:"pages"`
+	// Pages are the pages of the window, the kind's (kinds.WindowPages), and
+	// WindowRows those of them built of the palette's rows.
+	Pages      []kinds.Page                 `json:"pages"`
+	WindowRows map[string][]kinds.WindowRow `json:"windowRows"`
 	// Palette is the tabs of the palette of the catalog and their rows, the
 	// kind's (kinds.Palette).
 	Palette []kinds.PaletteTab `json:"palette"`
@@ -96,7 +98,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
 		},
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(),
+		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(), WindowRows: kinds.Must(metadata.CatalogKind).WindowRows(),
 		Palette:      kinds.Must(metadata.CatalogKind).Palette(),
 		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart")},
 	}, nil

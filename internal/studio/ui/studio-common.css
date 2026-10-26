@@ -203,3 +203,4 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-palette-separator{border:0;border-top:1px solid var(--border,#393b40);margin:6px 0}
 .object-palette-row input[type=checkbox]{justify-self:start;margin:0;accent-color:#589df6}
 .object-palette-link:disabled{color:#7a7d84;cursor:default}
+.object-window-button{justify-self:start;align-self:flex-start;min-width:150px;margin:2px 0}
