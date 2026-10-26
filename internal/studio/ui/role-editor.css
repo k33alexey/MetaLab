@@ -1,8 +1,7 @@
 #role-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:auto}
 #role-editor[hidden],.role-warning[hidden]{display:none}
-.role-identity{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px 20px;padding:12px;border-bottom:1px solid var(--border,#393b40)}
-.role-identity>.role-check{align-self:center}
-.role-identity label{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
+.role-window-title{padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border,#393b40)}
+.role-flags{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-top:1px solid var(--border,#393b40)}
 #role-editor input:not([type=checkbox]){padding:6px 8px;max-width:100%;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit}
 .role-body{display:grid;grid-template-columns:minmax(180px,28%) minmax(0,1fr);min-height:0;flex:1}
 .role-sidebar{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-right:1px solid var(--border,#393b40);padding:10px}.role-sidebar>input{width:100%;margin-bottom:10px}.role-sidebar>.role-tree{flex:1;min-height:0;overflow:auto}
@@ -14,7 +13,7 @@
 .role-check{display:flex;align-items:center;gap:7px;font-size:13px}.role-check input{accent-color:#589df6;margin:0}.role-bulk{display:flex;gap:8px;margin-top:16px}.role-bulk-top{margin:0 0 10px;flex-wrap:wrap}
 .role-warning{padding:10px 12px;background:#553f26;color:#f6cf8b;font-size:12px}
 #role-editor select{padding:6px 8px;max-width:100%;border:1px solid #4a4d54;border-radius:4px;background:var(--panel-bg,#2b2d30);color:inherit;font-size:12px}
-@media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}.role-identity{flex-wrap:wrap}}
+@media(max-width:900px){.role-body{grid-template-columns:180px minmax(0,1fr)}}
 .role-body[hidden],.role-templates[hidden]{display:none}
 .role-templates{overflow:auto;padding:12px 18px;flex:1}.role-templates p{font-size:12px;line-height:1.5;white-space:normal}
 .role-restrictions{margin-top:22px;padding-top:14px;border-top:1px solid var(--border,#393b40)}.role-restrictions h4{margin:0 0 10px;font-size:13px}

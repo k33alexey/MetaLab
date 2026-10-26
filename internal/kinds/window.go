@@ -219,6 +219,16 @@ var palettes = map[Kind][]PaletteTab{
 				Description: "Значение, от которого зависит тип значения константы."},
 		})},
 	},
+	// docs/block-00/rol.md, «Палитра» (snapshot rol/02-novaya-rol): one tab,
+	// the name, the synonym, the comment and, apart, «Права: Открыть» - the
+	// window of the role's rights.
+	Role: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("роли", "о роли"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "rights", Title: "Права", Field: WindowField, Important: true,
+				Description: "Окно прав роли: права на объекты проекта и ограничения доступа к данным."},
+		})},
+	},
 	// docs/block-00/spravochnik.md, «Палитра свойств»: four tabs, «только
 	// важные» takes «Справочная информация» away.
 	Catalog: {

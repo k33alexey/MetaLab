@@ -88,7 +88,6 @@ const studioPageWalk = `(async () => {
       {select: '.role-tree-item', then: [{select: '.role-permissions .check-list-row', then: [{open: '.role-restrictions .role-list tbody tr[tabindex]'}]}]},
       {select: '.studio-tab', then: [{open: '.role-list tbody tr[tabindex]'}]},
       {press: '.role-tree-bar .role-subsystems'},
-      {press: '.role-identity .field-with-buttons button'},
     ]],
     ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
     ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.studio-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}, {press: '.overview-block .role-bulk button[data-command=filter]'}]}]],

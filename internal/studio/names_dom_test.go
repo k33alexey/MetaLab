@@ -188,7 +188,7 @@ func TestAddOpensTheNextObjectAtOnce(t *testing.T) {
 const limitsWalk = `(async () => {
   const studio = window.__studio, steps = {};
   const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
-  const input = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .role-identity label')]
+  const input = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .object-palette-row')]
     .find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
   const ceiling = element => element.type === 'number' ? Number(element.max || 0) : element.maxLength;
   node('Товары').click(); await studio.settle();
@@ -196,7 +196,7 @@ const limitsWalk = `(async () => {
   [...document.querySelectorAll('.object-window-page')].find(item => item.textContent === 'Данные').click(); await studio.settle();
   for (const caption of ['Длина кода', 'Длина наименования']) steps['catalog ' + caption] = ceiling(input('#catalog-editor', caption));
   node('Кладовщик').click(); await studio.settle();
-  for (const caption of ['Имя роли', 'Заголовок', 'Комментарий']) steps['role ' + caption] = ceiling(input('#role-editor', caption));
+  for (const caption of ['Имя', 'Синоним', 'Комментарий']) steps['role ' + caption] = ceiling(input('#properties', caption));
   node('Українська').click(); await studio.settle();
   for (const caption of ['Имя', 'Синоним', 'Комментарий']) steps['language ' + caption] = ceiling(input('#languages-editor', caption));
   document.querySelector('#tree summary').click(); await studio.settle();
@@ -226,7 +226,7 @@ func TestTheFieldsOfAWindowAreSetByTheModel(t *testing.T) {
 	}
 	for field, want := range map[string]int{
 		"catalog Имя": 255, "catalog Синоним": -1, "catalog Длина кода": 50, "catalog Длина наименования": 150,
-		"role Имя роли": 255, "role Заголовок": -1, "role Комментарий": -1,
+		"role Имя": 255, "role Синоним": -1, "role Комментарий": -1,
 		"language Имя": 255, "language Синоним": -1, "language Комментарий": -1,
 		"project Имя": 255, "project Синоним": -1,
 	} {
@@ -308,15 +308,15 @@ func TestAValueBeyondItsCeilingAsksToCancel(t *testing.T) {
 }
 
 // roleNameWalk opens the role Кладовщик and types into the name of its
-// window a name the rule refuses, then a name of two words, then a comment;
+// palette a name the rule refuses, then a name of two words, then a comment;
 // it answers the refusal, whether the field was given back, the title after
 // the second name, and whether the window was marked changed by each.
 const roleNameWalk = `(async () => {
   const studio = window.__studio, steps = {};
-  const field = caption => [...document.querySelectorAll('#role-editor .role-identity label')].find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
+  const field = caption => [...document.querySelectorAll('#properties .object-palette-row')].find(label => label.firstChild.textContent === caption).querySelector('input, textarea');
   [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === 'Кладовщик').click();
   await studio.settle();
-  const name = field('Имя роли');
+  const name = field('Имя');
   const type = async (input, text) => {
     input.focus();
     input.value = text;
@@ -332,7 +332,7 @@ const roleNameWalk = `(async () => {
   await studio.settle();
   steps.focused = document.activeElement === name;
   await type(name, 'СтаршийКладовщик');
-  steps.title = field('Заголовок').value;
+  steps.title = field('Синоним').value;
   steps.changedByName = !document.querySelector('#save').disabled;
   document.querySelector('#save').click(); await studio.settle(); await studio.settle();
   steps.saved = document.querySelector('#save').disabled;

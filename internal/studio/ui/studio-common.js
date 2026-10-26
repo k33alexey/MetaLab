@@ -962,7 +962,8 @@ function paletteShown(subject) {
    type, a value. context: project (languages), typeOffer, choices,
    cleanups() - where a field that follows the language of Studio leaves its
    end, typed() - after a keystroke, changed() - after anything else,
-   openModule(role), openFile(path), form(value) - the name of a main form
+   openModule(role), windows - the windows the subject opens and
+   openWindow(key), openFile(path), form(value) - the name of a main form
    and the path it opens at, choose(row, items) - the objects chosen for a
    row, null for none. A subject is {target, get(path), set(path, value),
    setName(value), check()}. */
@@ -1028,11 +1029,11 @@ function paletteFields(context) {
     if (row.field === 'module' || row.field === 'window') {
       const link = node('button', 'Открыть', 'object-palette-link');
       link.type = 'button';
-      // The windows of the standard attributes, characteristics,
-      // predefined items, additional indexes, the help and the choice of a
-      // field are items of their own.
-      link.disabled = row.field === 'window';
-      link.addEventListener('click', () => context.openModule(row.key));
+      // A window the subject opens is among context.windows; those of the
+      // standard attributes, characteristics, predefined items, additional
+      // indexes, the help and the choice of a field are items of their own.
+      link.disabled = row.field === 'window' && !context.windows?.includes(row.key);
+      link.addEventListener('click', () => row.field === 'window' ? context.openWindow(row.key) : context.openModule(row.key));
       return link;
     }
     if (row.field === 'type') {

@@ -49,7 +49,7 @@ const localizedFieldWalk = `(async () => {
   const dialog = () => document.querySelector('dialog[open]');
   const node = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.textContent.trim() === text);
   const open = async text => { node(text).click(); await studio.settle(); };
-  const field = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .role-identity label')]
+  const field = (host, caption) => [...document.querySelectorAll(host + ' .catalog-field, ' + host + ' .object-palette-row')]
     .find(label => label.firstChild.textContent === caption);
   const drawn = (host, caption) => {
     const label = field(host, caption), inputs = label.querySelectorAll('input, textarea');
@@ -103,7 +103,7 @@ const localizedFieldWalk = `(async () => {
   await open('Товары');
   steps.catalog = drawn('#catalog-editor', 'Синоним');
   await open('Кладовщик');
-  steps.role = drawn('#role-editor', 'Заголовок');
+  steps.role = drawn('#properties', 'Синоним');
   await open('Українська');
   steps.language = drawn('#languages-editor', 'Синоним');
   await open('English');

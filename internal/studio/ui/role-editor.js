@@ -267,6 +267,9 @@ function createRoleModel(source) {
     // The name and the title as they are edited, which the window's fields
     // read: the title follows the name typed last (field.follow).
     name() { return value.role.name; },
+    // The role itself, whose name, synonym and comment the palette edits in
+    // place.
+    identity() { return value.role; },
     title(language) { return value.role.title?.[language]; },
     setName(name) { value.role.name = name; },
     setTitle(language, title) { value.role.title = setTranslation(value.role.title, language, title); },
@@ -1035,8 +1038,13 @@ async function editRoleRestriction({model,object,right,index,caption,title}){
   return true;
 }
 
-function createRoleEditor(host, onChange) {
-  let source, model, selected, panel, tree, warning, description, titleFieldCleanup = null;
+/* The window of a role, «Роль <Имя>: Права» (docs/block-00/rol.md, «Окно»;
+   snapshots rol/02-novaya-rol, rol/07-flagi): the tabs «Права» and «Шаблоны
+   ограничений», the tree, the rights and the restrictions, and the three
+   flags at the bottom. Its name, synonym and comment are in its palette
+   («Палитра»), which around holds with its title. */
+function createRoleEditor(host, onChange, around = {}) {
+  let source, model, selected, panel, tree, warning, description, windowTitle, paletteCleanups = [];
   // The tab shown - the rights or the templates of restrictions - and the
   // right current in the list of rights, described under the tree and with
   // its restrictions listed, with the row chosen in each list.
@@ -1046,7 +1054,28 @@ function createRoleEditor(host, onChange) {
   const treeFilter = {subsystems: null};
   // The nodes of the tree left open, by key, so a redraw keeps them open.
   const expanded = new Set();
-  function clearTitleField() { titleFieldCleanup?.(); titleFieldCleanup = null; }
+  function clearPalette() {
+    paletteCleanups.forEach(destroy => destroy());
+    paletteCleanups = [];
+    around.palette?.replaceChildren();
+    around.paletteTitle?.('Свойства');
+  }
+  // The palette of the role: «Основные» - the name, the synonym following
+  // it, the comment - and «Права: Открыть», which shows the window's tab of
+  // the rights. Typing renames the window and the palette and leaves the
+  // palette's fields as they are.
+  function renderPalette() {
+    if (!source || !around.palette) return;
+    clearPalette();
+    around.paletteTitle?.(`Свойства: ${model.name()}`);
+    const identity = model.identity();
+    const fields = paletteFields({project: source, cleanups: () => paletteCleanups, changed: renderPalette,
+      typed: () => { windowTitle.textContent = `Роль ${model.name()}: Права`; around.paletteTitle?.(`Свойства: ${model.name()}`); changed(); },
+      windows: ['rights'], openWindow: () => { showView('rights'); viewTabs.querySelector('[aria-selected=true]')?.focus(); }});
+    const subject = {target: identity, get: path => pathValue(identity, path), set: (path, value) => setPathValue(identity, path, value),
+      setName: value => model.setName(value), check: () => ({path: source.path, name: model.name()})};
+    around.palette.append(objectPalette(source.palette || [], row => fields(subject, row)));
+  }
   /* Подписи прав, видов и стандартных полей приходят с сервера, из
      единственных перечней: свой словарь здесь разошёлся бы с ними при первой
      правке одного из двух. */
@@ -1144,15 +1173,14 @@ function createRoleEditor(host, onChange) {
     changed();renderPanel();
   }
   function showView(next){view=next;rightsBody.hidden=view!=='rights';templatesBody.hidden=view!=='templates';viewTabs.choose(view);if(view==='templates')renderTemplates();}
-  return hostedEditor(host, ()=>{clearTitleField();source=null;model=null;}, {
+  return hostedEditor(host, ()=>{if(source)clearPalette();source=null;model=null;}, {
     open(value, preserveSelection=false) {
-      clearTitleField();
+      if(source)clearPalette();
       const previous=preserveSelection?selected:null;source=structuredClone(value);model=createRoleModel(source);selected=preserveSelection?null:openRoleTree(source.schema,expanded);if(previous?.group)selected={group:previous.group};else if(previous?.object){const object=source.schema.objects.find(item=>item.id===previous.object.id);const part=previous.part&&object?.fields.find(item=>item.key===previous.part.key);if(object)selected=part?{object,part}:{object};}host.hidden=false;host.replaceChildren();
-      const identity=node('div',undefined,'role-identity'),label=node('label','Имя роли'),name=nameInput(source.role.name,value=>{const before=model.name();model.setName(value);titleField.follow(before,value);changed();},()=>({path:source.path,name:name.value}));label.append(name);identity.append(label);
-      const titleLabel=node('label','Заголовок'),titleField=createLocalizedField(source,code=>model.title(code),(code,value)=>model.setTitle(code,value),changed,titleTextOptions);
-      titleFieldCleanup=titleField.destroy;titleLabel.append(titleField);identity.append(titleLabel);
-      const commentLabel=node('label','Комментарий'),comment=textInput(source.role.comment,value=>{model.setComment(value);changed();},{kind:'area',rows:2});commentLabel.append(comment);identity.append(commentLabel);
-      identity.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
+      windowTitle=node('div',`Роль ${source.role.name}: Права`,'role-window-title');host.append(windowTitle);
+      // The three flags stand at the bottom of the window, under both tabs.
+      const flags=node('div',undefined,'role-flags');
+      flags.append(checkbox('Устанавливать права для новых объектов',!!source.role.grantNewObjectsByDefault,enabled=>model.setGrantNewObjectsByDefault(enabled)));
       // The prototype asks before the flag for attributes changes whether to
       // set or clear the rights on every attribute and table part.
       const fieldsFlag=checkboxField('Устанавливать права для реквизитов и табличных частей по умолчанию',!!source.role.grantNewFieldsByDefault,async enabled=>{
@@ -1161,9 +1189,8 @@ function createRoleEditor(host, onChange) {
         if(answer===null){fieldsFlag.querySelector('input').checked=!enabled;return;}
         model.setGrantNewFieldsByDefault(enabled,answer==='yes');changed();renderPanel();
       },'role-check');
-      identity.append(fieldsFlag);
-      identity.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
-      host.append(identity);
+      flags.append(fieldsFlag);
+      flags.append(checkbox('Независимые права подчиненных объектов',!!source.role.independentChildRights,enabled=>model.setIndependentChildRights(enabled)));
       warning=node('div',undefined,'role-warning');warning.append(node('span','В роли есть права на удалённые или изменённые объекты или права, которых в ML нет. '));const repair=node('button','Убрать недоступные права');repair.type='button';repair.addEventListener('click',()=>{model.removeUnavailable();changed();renderPanel();});warning.append(repair);warning.hidden=!model.hasUnavailable();host.append(warning);
       // The prototype's role window has two tabs: the rights and the
       // templates of restrictions.
@@ -1173,10 +1200,12 @@ function createRoleEditor(host, onChange) {
       if(!preserveSelection)treeFilter.subsystems=null;
       const bar=node('div',undefined,'role-tree-bar'),actions=menuButton('Действия',()=>[['Установить все права',()=>{model.setEverything(true);changed();renderPanel();}],['Снять все права',()=>{model.setEverything(false);changed();renderPanel();}],['Установить по подсистемам...',()=>rightsBySubsystems(true)],['Снять по подсистемам...',()=>rightsBySubsystems(false)]]);
       bar.append(actions,subsystemFilterButton({schema:()=>source.schema,root:()=>configurationName(source.schema),holder:treeFilter,applied:()=>{tree.render(search.value);renderPanel();}}));
-      description=node('div',undefined,'role-description');sidebar.append(bar,search,tree.element,description);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody);
+      description=node('div',undefined,'role-description');sidebar.append(bar,search,tree.element,description);panel=node('section',undefined,'role-permissions');body.append(sidebar,panel);rightsBody=body;templatesBody=node('section',undefined,'role-templates');host.append(body,templatesBody,flags);
       if(!preserveSelection){view='rights';restriction.right=null;restriction.row=-1;templateRow=-1;}
-      tree.render();renderPanel();showView(view);
+      tree.render();renderPanel();showView(view);renderPalette();
     },
+    // The palette of the role: a click on its node shows it.
+    showPalette(){if(!source||!around.palette)return false;renderPalette();return true;},
     // Переход из окна «Все роли» происходит по конкретному объекту, а не по
     // роли вообще: открывать роль на пустом месте значило бы заставить искать
     // в дереве то, что только что было на экране.

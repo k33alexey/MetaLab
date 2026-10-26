@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/atomicfile"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -23,12 +24,16 @@ import (
 )
 
 type RoleSource struct {
-	Path            string                    `json:"path"`
-	Revision        string                    `json:"revision"`
-	Role            metadata.RoleDefinition   `json:"role"`
-	Schema          metadata.PermissionSchema `json:"schema"`
-	Languages       []project.Language        `json:"languages"`
-	DefaultLanguage string                    `json:"defaultLanguage"`
+	Path     string                    `json:"path"`
+	Revision string                    `json:"revision"`
+	Role     metadata.RoleDefinition   `json:"role"`
+	Schema   metadata.PermissionSchema `json:"schema"`
+	// Palette is the tabs of the palette of a role and their rows, the
+	// kind's (kinds.Palette): its name, synonym and comment are there, not
+	// in the window of its rights.
+	Palette         []kinds.PaletteTab `json:"palette"`
+	Languages       []project.Language `json:"languages"`
+	DefaultLanguage string             `json:"defaultLanguage"`
 	roleTreeSource
 }
 
@@ -91,7 +96,7 @@ func (workspace *Workspace) readRoleLocked(relative string) (RoleSource, error) 
 	if err != nil {
 		return RoleSource{}, err
 	}
-	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
+	return RoleSource{Path: relative, Revision: revision, Role: role, Schema: schema, Palette: kinds.Must(metadata.RoleKind).Palette(), Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 
 // roleFiles is a role as it lies on disk: its description, and the grid of
@@ -553,7 +558,7 @@ func (workspace *Workspace) CreateRole(name string) (RoleSource, error) {
 		return RoleSource{}, fmt.Errorf("place new role in the order: %w", err)
 	}
 	written := roleFiles{description: sourceFile(relative, "yaml", description), grid: grid}
-	return RoleSource{Path: relative, Revision: written.revision(), Role: role, Schema: schema, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
+	return RoleSource{Path: relative, Revision: written.revision(), Role: role, Schema: schema, Palette: kinds.Must(metadata.RoleKind).Palette(), Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, roleTreeSource: roleTree}, nil
 }
 
 // applyRoleAutoGrantsLocked visits every role file and lets mutate decide

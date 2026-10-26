@@ -548,3 +548,25 @@ func TestTheRowsOfAWindowAreThePalettes(t *testing.T) {
 		t.Errorf("«Прочее» %q, want %q", titles("other"), want)
 	}
 }
+
+// The palette of a role is the prototype's (docs/block-00/rol.md, «Палитра»;
+// snapshot rol/02-novaya-rol): one tab «Основные» - the name, the synonym,
+// the comment and, apart, «Права» opening the window of the rights - every
+// row important. Defects caught: the palette of a role empty, the name and
+// the synonym left to its window; «Права» missing or not a window.
+func TestThePaletteOfARoleIsThePrototypes(t *testing.T) {
+	palette := Must(Role).Palette()
+	if len(palette) != 1 || palette[0].Title != "Основные" || !palette[0].Important {
+		t.Fatalf("the palette of a role is %+v, want the one tab «Основные»", palette)
+	}
+	var rows []string
+	for _, row := range palette[0].Rows {
+		rows = append(rows, row.Title+" "+row.Field)
+		if !row.Important {
+			t.Errorf("the row %q of a role is not important", row.Title)
+		}
+	}
+	if want := []string{"Имя name", "Синоним localized", "Комментарий text", " separator", "Права window"}; !slices.Equal(rows, want) {
+		t.Errorf("the rows of the palette of a role are %q, want %q", rows, want)
+	}
+}
