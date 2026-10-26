@@ -463,7 +463,10 @@ function createCatalogEditor(host, onChange, around = {}) {
   // window «Состав» does (plan-obmena.md). Written into the plans as the
   // subsystems are.
   let exchange = new Map(), currentPlan = null;
-  const autoRecords = [['allow', 'Разрешить'], ['deny', 'Запретить']];
+  // The autoregistration in the prototype's order, each with its picture
+  // (snapshot configurator-2026-10-26/series-2.578/03; «Запретить» red - the
+  // owner's decision of 26.10.2026).
+  const autoRecords = [['deny', 'Запретить', 'auto-record-deny'], ['allow', 'Разрешить', 'auto-record-allow']];
   function renderExchangePage() {
     const page = node('div', undefined, 'object-window-fields'), places = source.exchangePlans || [];
     const mark = (id, marked) => { if (!marked) exchange.delete(id); else if (!exchange.has(id)) exchange.set(id, 'allow'); };
@@ -484,9 +487,16 @@ function createCatalogEditor(host, onChange, around = {}) {
       name.append(box, iconElement('exchange-plan'), node('span', place.name));
       plan.append(name);
       if (exchange.has(place.id)) {
-        auto.append(selectInput(autoRecords, exchange.get(place.id), value => { exchange.set(place.id, value); onChange(); }, 'Авторегистрация: ' + place.name));
+        auto.append(listCell(autoRecords, exchange.get(place.id), value => { exchange.set(place.id, value); onChange(); frame.refresh(); },
+          'Авторегистрация: ' + place.name));
       }
-      row.addEventListener('click', event => { if (event.target.closest('input, select') || currentPlan === place.id) return; currentPlan = place.id; frame.refresh(); });
+      // A click makes the row current in place: a double click on its cell
+      // opens the list of the cell, which a redraw would take away.
+      row.addEventListener('click', event => {
+        if (event.target.closest('input')) return;
+        currentPlan = place.id;
+        for (const other of table.querySelectorAll('tr')) other.classList.toggle('current', other === row);
+      });
       row.append(plan, auto);
       table.append(row);
     }

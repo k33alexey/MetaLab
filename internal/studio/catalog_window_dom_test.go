@@ -1319,25 +1319,36 @@ const exchangePageWalk = `(async () => {
   const host = document.querySelector('#catalog-editor');
   const body = () => host.querySelector('.object-window-body');
   const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const picture = element => element?.querySelector('use')?.getAttribute('href')?.replace('#icon-', '') || '';
   const rows = () => [...body().querySelectorAll('.object-window-table tr')].slice(1).map(row => row.cells[0].textContent.trim() +
-    (row.querySelector('input').checked ? ' ✓' : '') + (row.querySelector('select') ? ' ' + row.querySelector('select').selectedOptions[0]?.textContent : ''));
+    (row.querySelector('input').checked ? ' ✓' : '') + (row.querySelector('.choice-cell') ? ' ' + row.querySelector('.choice-cell span').textContent + ' ' + picture(row.querySelector('.choice-cell')) : ''));
   const row = name => [...body().querySelectorAll('.object-window-table tr')].find(item => item.cells[0].textContent.trim() === name);
   const button = title => [...body().querySelectorAll('.object-window-list-head button')].find(item => item.title === title);
   await openObject('Товары');
   await windowPage('Обмен данными');
   steps.head = [...body().querySelectorAll('.object-window-table th')].map(cell => cell.textContent);
   steps.buttons = [...body().querySelectorAll('.object-window-list-head button')].map(item => item.title);
-  steps.icons = body().querySelectorAll('.object-window-table td svg').length;
+  steps.icons = [...body().querySelectorAll('.object-window-table td:first-child svg')].map(picture);
+  const cell = name => row(name).querySelector('.choice-cell');
+  cell('Полный').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+  steps.list = [...document.querySelectorAll('.context-menu-item')].map(item => item.textContent + ' ' + picture(item));
+  document.querySelector('.context-menu-item')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
   steps.shown = rows();
   steps.current = body().querySelector('.object-window-table tr.current')?.cells[0].textContent.trim();
   button('Отметить все элементы').click(); await settle();
   steps.markedAll = rows();
+  // Both plans marked, Полный current.
+  steps.cellButtons = [...body().querySelectorAll('.choice-cell-button')].filter(button => getComputedStyle(button).visibility === 'visible').map(button => button.title + ' ' + picture(button));
   button('Снять отметку со всех элементов').click(); await settle();
   steps.unmarkedAll = rows();
   button('Отметить все элементы').click(); await settle();
   steps.remarked = rows();
-  const choose = (name, value) => { const select = row(name).querySelector('select'); select.value = value; select.dispatchEvent(new Event('change', {bubbles: true})); };
-  choose('Полный', 'allow'); choose('Филиалы', 'deny'); await settle();
+  const choose = async (name, caption) => {
+    cell(name).dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+    [...document.querySelectorAll('.context-menu-item')].find(item => item.textContent === caption).click();
+    await settle();
+  };
+  await choose('Полный', 'Разрешить'); await choose('Филиалы', 'Запретить');
   steps.changed = !document.querySelector('#save').disabled;
   document.querySelector('#save').click(); await settle();
   steps.saved = document.querySelector('#save').disabled;
@@ -1370,7 +1381,7 @@ func TestTheExchangePageOfACatalogIsThePrototypes(t *testing.T) {
 	var steps struct {
 		Head, Buttons                                     []string
 		Shown, MarkedAll, UnmarkedAll, Remarked, Reopened []string
-		Icons                                             int
+		Icons, List, CellButtons                          []string
 		Current                                           string
 		Changed, Saved                                    bool
 	}
@@ -1387,15 +1398,17 @@ func TestTheExchangePageOfACatalogIsThePrototypes(t *testing.T) {
 	}
 	expect("the head of the table", steps.Head, []string{"План обмена", "Авторегистрация"})
 	expect("the buttons", steps.Buttons, []string{"Отметить все элементы", "Снять отметку со всех элементов"})
-	expect("icons of the plans", steps.Icons, 2)
-	expect("the table", steps.Shown, []string{"Полный ✓ Запретить", "Филиалы"})
+	expect("icons of the plans", steps.Icons, []string{"exchange-plan", "exchange-plan"})
+	expect("the table", steps.Shown, []string{"Полный ✓ Запретить auto-record-deny", "Филиалы"})
+	expect("the list of the cell", steps.List, []string{"Запретить auto-record-deny", "Разрешить auto-record-allow"})
+	expect("«Выбрать из списка» in the current row alone", steps.CellButtons, []string{"Выбрать из списка (Cmd+Down) input-field-list"})
 	expect("the current row", steps.Current, "Полный")
-	expect("marked all", steps.MarkedAll, []string{"Полный ✓ Запретить", "Филиалы ✓ Разрешить"})
+	expect("marked all", steps.MarkedAll, []string{"Полный ✓ Запретить auto-record-deny", "Филиалы ✓ Разрешить auto-record-allow"})
 	expect("unmarked all", steps.UnmarkedAll, []string{"Полный", "Филиалы"})
-	expect("marked all anew", steps.Remarked, []string{"Полный ✓ Разрешить", "Филиалы ✓ Разрешить"})
+	expect("marked all anew", steps.Remarked, []string{"Полный ✓ Разрешить auto-record-allow", "Филиалы ✓ Разрешить auto-record-allow"})
 	expect("a change changes the window", steps.Changed, true)
 	expect("saved", steps.Saved, true)
-	expect("opened anew", steps.Reopened, []string{"Полный ✓ Разрешить", "Филиалы ✓ Запретить"})
+	expect("opened anew", steps.Reopened, []string{"Полный ✓ Разрешить auto-record-allow", "Филиалы ✓ Запретить auto-record-deny"})
 }
 
 // basedOnPageWalk opens the page «Ввод на основании» of the window of the

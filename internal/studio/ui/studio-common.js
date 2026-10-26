@@ -200,6 +200,33 @@ function selectInput(choices, value, apply, label) {
   return select;
 }
 
+/* listCell is the prototype's cell of a table chosen from a list with
+   pictures (docs/block-00/obshchee.md, «Ячейка-перечень таблицы страницы»;
+   snapshot configurator-2026-10-26/series-2.578/03): the value's picture
+   and caption; a double click, Cmd+Down or Alt+Down, or the button «Выбрать
+   из списка» - a table shows it in its current row - opens the list of
+   choices - [value, caption, icon] in their order - under the cell, and
+   the one chosen is apply(value). */
+function listCell(choices, value, apply, label) {
+  const cell = node('div', undefined, 'choice-cell');
+  cell.tabIndex = 0;
+  cell.setAttribute('aria-label', label);
+  const chosen = choices.find(([key]) => key === value);
+  cell.append(iconElement(chosen?.[2]), node('span', chosen?.[1] || ''));
+  const open = event => showContextMenu(event, choices.map(([key, caption, icon]) => [caption, () => apply(key), true, undefined, icon]));
+  // The list opens under the cell, whatever opened it.
+  const under = event => ({preventDefault: () => event.preventDefault(), currentTarget: cell, type: 'click'});
+  cell.addEventListener('dblclick', event => open(under(event)));
+  cell.addEventListener('keydown', event => { if (event.key === 'ArrowDown' && (event.metaKey || event.altKey)) open(under(event)); });
+  // The one button of a drop-down list of every field and cell, in a cell of
+  // its own parted by a line, as a field of a form of the prototype's
+  // application (the owner's decision of 26.10.2026).
+  const pick = fieldButton('input-field-list', 'Выбрать из списка (Cmd+Down)', event => open(under(event)));
+  pick.classList.add('choice-cell-button');
+  cell.append(pick);
+  return cell;
+}
+
 /* clearableSelect is a drop-down list with a button that clears it, as the
    prototype's field of a choice from a list: the clearing chooses the empty
    value '', which selectInput's own change applies. */

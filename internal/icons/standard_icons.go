@@ -245,6 +245,15 @@ var standardIcons = []Icon{
 	{ID: "input-field-select", Color: gray, Accent: gray, Parts: []Part{
 		circle(Accent, 3, 11, 1), circle(Accent, 8, 11, 1), circle(Accent, 13, 11, 1),
 	}},
+	// «Выбрать из списка» - the one button of a drop-down list of every field
+	// and cell of Studio and the application (the owner's decision of
+	// 26.10.2026): a solid triangle pointing down, dark on a light page and
+	// light on a dark one, as the prototype draws it at the right of a field
+	// (snapshot configurator-2026-10-26/series-2.578/03). The library has no
+	// picture of it.
+	{ID: "input-field-list", Color: black, Parts: []Part{
+		path(InkSpot, "M4 6H12L8 10Z"),
+	}},
 	{ID: "input-field-clear", Color: gray, Accent: gray, Parts: []Part{
 		path(Mark, "M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5"),
 	}},

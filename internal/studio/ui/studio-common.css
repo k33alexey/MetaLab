@@ -211,5 +211,7 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .object-window-based-on{height:100%}.object-window-based-on .object-window-list{min-height:120px}
 .object-window-designer{align-self:flex-end}
 .object-window-rights .object-window-list{flex:0 0 auto;height:96px;min-height:96px}.object-window-rights .check-list{max-height:120px;overflow:auto;margin-bottom:8px}
+.choice-cell{display:flex;align-items:center;gap:4px;min-height:18px;outline:none;border:1px solid transparent;border-radius:3px;padding-left:3px}.choice-cell:focus-visible{outline:1px solid #589df6}
+.choice-cell>span{flex:1}.choice-cell>button.field-button{align-self:stretch;width:22px;padding:0!important;border:0!important;border-left:1px solid var(--border,#4a4d54)!important;border-radius:0;background:transparent!important}.object-window-table tr:not(.current) .choice-cell-button{visibility:hidden}.object-window-table tr.current .choice-cell{border-color:var(--border,#4a4d54)}
 .object-window-checks{flex:1;min-height:200px;overflow:auto}
 .object-window-caption{font-size:12.5px;margin:2px 0 6px}

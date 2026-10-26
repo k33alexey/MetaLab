@@ -566,6 +566,21 @@ var commandIcons = []Icon{
 		circle(Accent, 11.5, 11.5, 3.5),
 		path(OnAccent, "M10.25 10.5Q10.25 9.25 11.5 9.25Q12.75 9.25 12.75 10.25Q12.75 11 11.5 11.5V12M11.5 13.5V13.6"),
 	}},
+	// Авторегистрация элемента состава плана обмена - в ячейке страницы
+	// «Обмен данными» окна объекта и в её списке (docs/block-00/spravochnik.md,
+	// «Досъёмка страниц 12–14»; снимки spravochnik/okno-14,
+	// configurator-2026-10-26/series-2.578/03): «Разрешить» - галочка в
+	// квадрате, синяя, как у прототипа; «Запретить» - красное кольцо с косой
+	// чертой (выбор владельца 26.10.2026 из двух вариантов; у прототипа -
+	// оранжевый сплошной круг со светлой чертой).
+	{ID: "auto-record-allow", Color: blue, Accent: blue, Parts: []Part{
+		rect(Body, 2.5, 2.5, 11, 11),
+		path(Mark, "M5 8L7.25 10.25L11 6"),
+	}},
+	{ID: "auto-record-deny", Color: red, Accent: red, Parts: []Part{
+		circle(Mark, 8, 8, 5.5),
+		path(Mark, "M4.25 11.75L11.75 4.25"),
+	}},
 }
 
 // flag is the chequered flag of bookmarks; what is done to them stands at its

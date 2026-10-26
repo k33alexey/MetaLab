@@ -366,3 +366,44 @@ func (part Part) straightEdges() []gridEdge {
 }
 
 var pathTokens = regexp.MustCompile(`[A-Za-z]|-?\d*\.?\d+`)
+
+// The pictures of the autoregistration of an exchange plan are the
+// prototype's metaphors (snapshot configurator-2026-10-26/series-2.578/03):
+// «Разрешить» a check in a box, blue; «Запретить» a red ring crossed by a
+// bar, the owner's choice of 26.10.2026 of two drawings (the prototype's is
+// an orange solid disc with a light bar).
+// Defects caught: a picture missing from the set, the two swapped, or
+// «Запретить» drawn in another colour.
+func TestTheAutoRecordPicturesAreThePrototypes(t *testing.T) {
+	want := map[string]struct {
+		color  string
+		shapes []string
+	}{
+		"auto-record-allow": {"#3d7bc4", []string{"rect", "path"}},
+		"auto-record-deny":  {"#d64b3f", []string{"circle", "path"}},
+	}
+	for _, icon := range All() {
+		expected, ok := want[icon.ID]
+		if !ok {
+			continue
+		}
+		delete(want, icon.ID)
+		var shapes []string
+		for _, part := range icon.Parts {
+			switch {
+			case part.Rect != nil:
+				shapes = append(shapes, "rect")
+			case part.Circle != nil:
+				shapes = append(shapes, "circle")
+			default:
+				shapes = append(shapes, "path")
+			}
+		}
+		if icon.Color != expected.color || icon.Accent != expected.color || strings.Join(shapes, " ") != strings.Join(expected.shapes, " ") {
+			t.Errorf("%s is %s/%s %v, want %s %v", icon.ID, icon.Color, icon.Accent, shapes, expected.color, expected.shapes)
+		}
+	}
+	for id := range want {
+		t.Errorf("the set has no %s", id)
+	}
+}
