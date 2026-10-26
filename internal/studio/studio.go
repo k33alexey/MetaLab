@@ -107,7 +107,19 @@ type Node struct {
 var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress,
 	metadata.ConstantKind: constantEditorAddress, metadata.CommonPictureKind: pictureEditorAddress,
 	metadata.CommonTemplateKind: templateEditorAddress, metadata.WSReferenceKind: wsReferenceEditorAddress,
-	metadata.WebServiceKind: webServiceEditorAddress, metadata.HTTPServiceKind: httpServiceEditorAddress}
+	metadata.WebServiceKind: webServiceEditorAddress, metadata.HTTPServiceKind: httpServiceEditorAddress,
+	metadata.WebSocketClientKind: webSocketClientEditorAddress}
+
+// registerObjectEditor serves the window or palette of an object at its
+// address: the object read by its description (GET), and what
+// registerObjectWindow serves.
+func registerObjectEditor[Object, Window any](routes *http.ServeMux, address string, read func(string) (Window, error),
+	save func(string, Object, string) (Window, error), create func(string) (Window, error), remove func(string, string) error) {
+	routes.HandleFunc("GET "+address, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
+		return read(request.URL.Query().Get("path"))
+	}))
+	registerObjectWindow(routes, address, save, create, remove)
+}
 
 // registerObjectWindow serves what the window of an object writes at its
 // address, one way for every window (objectEditors): the object as edited,
@@ -335,6 +347,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerWSReferenceEditorRoutes(routes, workspace)
 	registerWebServiceEditorRoutes(routes, workspace)
 	registerHTTPServiceEditorRoutes(routes, workspace)
+	registerWebSocketClientEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)

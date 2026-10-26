@@ -123,6 +123,7 @@
   <script src="/ui/ws-reference-editor.js"></script>
   <script src="/ui/web-service-editor.js"></script>
   <script src="/ui/http-service-editor.js"></script>
+  <script src="/ui/websocket-client-editor.js"></script>
   <script src="/ui/project-editor.js"></script>
   <script src="/ui/languages-editor.js"></script>
   <dialog id="save-data-dialog" aria-labelledby="save-data-title"><form id="save-data-form" method="dialog"><h3 id="save-data-title">Изменения затрагивают существующие данные</h3><p class="muted">Ниже — только то, что касается уже сохранённых данных. Остальные изменения применяются без подтверждения.</p><div id="save-data-changes"></div><label id="save-data-object-loss" hidden><input type="checkbox" id="save-data-object-loss-input"> Подтверждаю удаление объектов и данных, которые в них хранятся</label><label id="save-data-value-rewrite" hidden><input type="checkbox" id="save-data-value-rewrite-input"> Подтверждаю изменение значений в существующих строках</label><div class="role-bulk"><button id="save-data-submit" class="primary" type="submit" disabled>Сохранить данные</button><button id="save-data-cancel" type="button">Отмена</button></div></form></dialog>
@@ -173,9 +174,12 @@
     async function reimportWSDL(node,element){if(!await openFile(node.path))return;const value=await importWSDL(currentFile);if(!value)return;showObject('/api/ws-reference',value);currentFile=value;dirty=false;saveButton.disabled=true;await loadTree(false);status.className='';status.textContent='Готово'}
     const webServiceEditor=createWebServiceEditor(document.querySelector('#web-service-editor'),()=>objectChanged(webServiceEditor),catalogAround);
     const httpServiceEditor=createHTTPServiceEditor(document.querySelector('#http-service-editor'),()=>objectChanged(httpServiceEditor),catalogAround);
+    const webSocketClientEditor=createWebSocketClientEditor(document.createElement('div'),()=>objectChanged(webSocketClientEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle,openModule:catalogAround.openModule});
     const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture'},'/api/template':{editor:templateEditor,field:'template',construct:constructCommonTemplate},
       // «Просмотр», bold, opens the window viewing the description - an item of its own, unavailable until then.
       '/api/web-service':{editor:webServiceEditor,field:'service'},'/api/http-service':{editor:httpServiceEditor,field:'service'},
+      // «Добавить» of a WebSocket client opens its empty module at once (websocket-klient.md, «Новый клиент»).
+      '/api/websocket-client':{editor:webSocketClientEditor,field:'client',afterCreate:value=>{const module=nodeAt(value.path)?.modules?.find(item=>item.path.endsWith('/МодульКлиента.bsl'));if(module)openModule(module)}},
       '/api/ws-reference':{editor:wsReferenceEditor,field:'reference',construct:()=>importWSDL(null),commands:(node,element)=>[['Просмотр',()=>{},false,undefined,'',true],['Импорт WSDL…',()=>reimportWSDL(node,element)]]}};
     function objectChanged(editor){if(objectEditors[currentFile?.editor]?.editor!==editor)return;dirty=JSON.stringify(editor.value())!==currentFile.initial;saveButton.disabled=!dirty;status.className='';status.textContent=dirty?'Изменён':'Готово'}
     const projectHost=document.querySelector('#project-editor');
@@ -206,7 +210,7 @@
     // Редакторы файлов стоят на одном месте: открывается один, остальные
     // закрываются, а пока Studio открывает, сохраняет или создаёт, ни один не
     // правится. Перечень редакторов — здесь, один.
-    const fileEditors=[roleOverview,roleEditor,catalogEditor,constantEditor,pictureEditor,templateEditor,wsReferenceEditor,webServiceEditor,httpServiceEditor,projectEditor,languagesEditor];
+    const fileEditors=[roleOverview,roleEditor,catalogEditor,constantEditor,pictureEditor,templateEditor,wsReferenceEditor,webServiceEditor,httpServiceEditor,webSocketClientEditor,projectEditor,languagesEditor];
     function closeEditors(kept){for(const item of fileEditors)if(item!==kept)item.close()}
     function setEditorsBusy(busy){for(const item of fileEditors)item.setDisabled(busy);formHost.inert=busy;editorHost.inert=busy}
     function showSourceEditor(file){closeEditors();formDesigner.close(true);formHost.hidden=true;editorHost.hidden=false;editor.value=file.content;editor.disabled=false;bslEditor.open(file);bslEditor.setBreakpoints(Array.from(debugBreakpoints.get(file.path)||[]))}
@@ -453,7 +457,7 @@
       loadingFile=true;setEditorsBusy(true);
       try{
         const value=objectEditors[address].construct?await objectEditors[address].construct():await postJSON(address,{});if(!value)return;showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
-        selectedNode={id:value[objectEditors[address].field].id,path:value.path,kind:'metadata',editor:address,adds:true};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';
+        selectedNode={id:value[objectEditors[address].field].id,path:value.path,kind:'metadata',editor:address,adds:true};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';const after=objectEditors[address].afterCreate;if(after){loadingFile=false;await after(value)}
       }catch(error){showToolError(error);}
       finally{loadingFile=false;setEditorsBusy(false);updateTreeToolbar();}
     }

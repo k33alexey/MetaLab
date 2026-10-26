@@ -1,8 +1,6 @@
 package studio
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -88,6 +86,13 @@ const (
 	templateConstructorAddress = "/api/template/new"
 )
 
+func (source TemplateEditorSource) paletteOf() (metadata.CommonTemplateDefinition, objectHead) {
+	return source.Template, source.objectHead
+}
+func (TemplateEditorSource) named(value metadata.CommonTemplateDefinition) (uuid.UUID, string) {
+	return value.ID, value.Name
+}
+
 func (workspace *Workspace) ReadTemplateEditor(relative string) (TemplateEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
@@ -103,38 +108,12 @@ func (workspace *Workspace) readTemplateEditorLocked(relative string) (TemplateE
 // template; its kind stays as it was made, and a new name moves its folder
 // with its content (followNameLocked).
 func (workspace *Workspace) SaveTemplateEditor(relative string, value metadata.CommonTemplateDefinition, revision string) (TemplateEditorSource, error) {
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	opened, err := workspace.readTemplateEditorLocked(relative)
-	if err != nil {
-		return TemplateEditorSource{}, err
-	}
-	if opened.Revision != revision {
-		return TemplateEditorSource{}, ErrSourceChanged
-	}
-	if value.ID != opened.Template.ID {
-		return TemplateEditorSource{}, fmt.Errorf("template UUID cannot be changed")
-	}
-	if value.Kind != opened.Template.Kind {
-		return TemplateEditorSource{}, fmt.Errorf("the kind of a template is not changed once it is made")
-	}
-	if value.Name != opened.Template.Name {
-		if err := workspace.objectNameErrorLocked(relative, "", value.Name); err != nil {
-			return TemplateEditorSource{}, err
+	return savePaletteObject(workspace, relative, revision, value, workspace.readTemplateEditorLocked, func(opened metadata.CommonTemplateDefinition, value *metadata.CommonTemplateDefinition) error {
+		if value.Kind != opened.Kind {
+			return fmt.Errorf("the kind of a template is not changed once it is made")
 		}
-	}
-	var encoded bytes.Buffer
-	if err := metadata.Encode(&encoded, value); err != nil {
-		return TemplateEditorSource{}, err
-	}
-	written, moveBack, err := workspace.followNameLocked(relative, opened.Template.Name, value.Name)
-	if err != nil {
-		return TemplateEditorSource{}, err
-	}
-	if _, err := workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
-		return TemplateEditorSource{}, errors.Join(err, moveBack())
-	}
-	return workspace.readTemplateEditorLocked(written)
+		return nil
+	})
 }
 
 // CreateTemplate makes the template the constructor describes by the one
@@ -202,9 +181,6 @@ func (workspace *Workspace) DeleteTemplate(relative, expectedRevision string) er
 }
 
 func registerTemplateEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+templateEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadTemplateEditor(request.URL.Query().Get("path"))
-	}))
 	// What the constructor offers before any template is there to read it
 	// off: the name of a new template and the kinds.
 	routes.HandleFunc("GET "+templateConstructorAddress, answerQuery(writeSourceError, func(*http.Request) (any, error) {
@@ -219,7 +195,7 @@ func registerTemplateEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 	}))
 	// «Добавить» of the tree opens the constructor, which writes at its
 	// own address; a template named alone is made spreadsheet.
-	registerObjectWindow(routes, templateEditorAddress, workspace.SaveTemplateEditor, func(name string) (TemplateEditorSource, error) {
+	registerObjectEditor(routes, templateEditorAddress, workspace.ReadTemplateEditor, workspace.SaveTemplateEditor, func(name string) (TemplateEditorSource, error) {
 		return createObjectAs(workspace, metadata.CommonTemplateKind, name, nil, workspace.readTemplateEditorLocked)
 	}, workspace.DeleteTemplate)
 }

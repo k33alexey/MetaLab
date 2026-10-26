@@ -199,6 +199,12 @@ const (
 	FieldsField    = "fields"
 	WindowField    = "window"
 	SeparatorField = "separator"
+	// PasswordField is a password kept apart from the project - shown by dots
+	// when there is one - and HeadersField the headers of a WebSocket
+	// client - «Имя(значение)» by commas, «…» opening «Настройка заголовков»,
+	// the cross clearing them (websocket-klient.md).
+	PasswordField = "password"
+	HeadersField  = "headers"
 	// XMLTypeField is a type named by the schema - the type of an operation
 	// of a web service and of its parameter: its name and namespace shown,
 	// «…» choosing it in the window of the types of the packages.
@@ -225,6 +231,33 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/websocket-klient.md, «Палитра»; snapshots
+	// websocket-klient/09, 11: one tab - two flags, the module, the address,
+	// the user, the password by dots, the headers, two flags of the system,
+	// the timeout in seconds.
+	WebSocketClient: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("клиента", "о клиенте"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "predefined", Title: "Предопределенный", Field: FlagField, Important: true,
+				Description: "Платформа сама создаёт клиент по этому объекту."},
+			{Key: "autoConnect", Title: "Подключать автоматически", Field: FlagField, Important: true,
+				Description: "Клиент подключается при запуске приложения и снова — когда соединение обрывается."},
+			{Key: string(ClientModule), Title: "Модуль", Field: ModuleField, Important: true,
+				Description: "Код клиента: обработчики событий соединения."},
+			{Key: "serverUrl", Title: "URL сервера", Field: TextField, Important: true, Description: "Адрес сервера, к которому подключается клиент."},
+			{Key: "user", Title: "Пользователь", Field: TextField, Important: true, Description: "Имя, с которым клиент входит на сервер."},
+			{Key: "passwordSet", Title: "Пароль", Field: PasswordField, Important: true,
+				Description: "Пароль входа на сервер; хранится в защищённом хранилище системы, а не в файлах проекта."},
+			{Key: "headers", Title: "Заголовки", Field: HeadersField, Important: true,
+				Description: "Заголовки запроса, которым открывается соединение."},
+			{Key: "useOsProxy", Title: "Использовать прокси ОС", Field: FlagField, Important: true,
+				Description: "Соединение идёт через прокси, настроенный в системе."},
+			{Key: "useOsAuthentication", Title: "Использовать аутентификацию ОС", Field: FlagField, Important: true,
+				Description: "Клиент входит на сервер учётной записью системы."},
+			{Key: "timeout", Title: "Таймаут (секунд)", Field: NumberField, Important: true,
+				Description: "Сколько секунд ждать подключения."},
+		})},
+	},
 	// docs/block-00/web-servis.md, «Палитра»: one tab - the packages after
 	// the comment, then the namespace, the module, the file of publication,
 	// the reuse of sessions and their lifetime.

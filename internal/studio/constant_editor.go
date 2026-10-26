@@ -1,13 +1,10 @@
 package studio
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
-	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // A constant has no window: its double click, «Изменить» and «Свойства»
@@ -22,6 +19,13 @@ type ConstantEditorSource struct {
 	// Choices are what the windows «Выбор объекта» of the constant offer:
 	// defaultForm - the common forms, one of which opens the value.
 	Choices map[string][]ObjectChoiceBranch `json:"choices"`
+}
+
+func (source ConstantEditorSource) paletteOf() (metadata.Constant, objectHead) {
+	return source.Constant, source.objectHead
+}
+func (ConstantEditorSource) named(value metadata.Constant) (uuid.UUID, string) {
+	return value.ID, value.Name
 }
 
 func (workspace *Workspace) ReadConstantEditor(relative string) (ConstantEditorSource, error) {
@@ -48,52 +52,7 @@ func (workspace *Workspace) readConstantEditorLocked(relative string) (ConstantE
 // SaveConstantEditor validates and writes an edited constant; a new name
 // moves its folder with its modules (followNameLocked).
 func (workspace *Workspace) SaveConstantEditor(relative string, value metadata.Constant, revision string) (ConstantEditorSource, error) {
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	opened, err := workspace.readConstantEditorLocked(relative)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	if opened.Revision != revision {
-		return ConstantEditorSource{}, ErrSourceChanged
-	}
-	if value.ID != opened.Constant.ID {
-		return ConstantEditorSource{}, fmt.Errorf("constant UUID cannot be changed")
-	}
-	if value.Name != opened.Constant.Name {
-		if err := workspace.objectNameErrorLocked(relative, "", value.Name); err != nil {
-			return ConstantEditorSource{}, err
-		}
-	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	encoded, err := encodeConstant(value, configuration)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	written, moveBack, err := workspace.followNameLocked(relative, opened.Constant.Name, value.Name)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	if _, err := workspace.saveSourceLocked(written, encoded, revision); err != nil {
-		return ConstantEditorSource{}, errors.Join(err, moveBack())
-	}
-	return workspace.readConstantEditorLocked(written)
-}
-
-// encodeConstant is the description of a constant as its file keeps it,
-// refused where the model refuses it.
-func encodeConstant(value metadata.Constant, configuration project.Project) (string, error) {
-	var encoded bytes.Buffer
-	if err := metadata.Encode(&encoded, value); err != nil {
-		return "", err
-	}
-	if _, err := metadata.DecodeConstant("constant", bytes.NewReader(encoded.Bytes()), configuration); err != nil {
-		return "", err
-	}
-	return encoded.String(), nil
+	return savePaletteObject(workspace, relative, revision, value, workspace.readConstantEditorLocked, nil)
 }
 
 // CreateConstant makes the next constant, «Константа1» and on, by the one
@@ -113,8 +72,5 @@ func (workspace *Workspace) DeleteConstant(relative, expectedRevision string) er
 const constantEditorAddress = "/api/constant"
 
 func registerConstantEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+constantEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadConstantEditor(request.URL.Query().Get("path"))
-	}))
-	registerObjectWindow(routes, constantEditorAddress, workspace.SaveConstantEditor, workspace.CreateConstant, workspace.DeleteConstant)
+	registerObjectEditor(routes, constantEditorAddress, workspace.ReadConstantEditor, workspace.SaveConstantEditor, workspace.CreateConstant, workspace.DeleteConstant)
 }

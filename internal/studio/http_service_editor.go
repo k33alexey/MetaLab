@@ -84,9 +84,6 @@ func (workspace *Workspace) DeleteHTTPService(relative, expectedRevision string)
 }
 
 func registerHTTPServiceEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+httpServiceEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadHTTPServiceEditor(request.URL.Query().Get("path"))
-	}))
 	// The root typed is checked when its field is left, as a name is: the
 	// refusal is the prototype's, none when it fits.
 	routes.HandleFunc("POST "+httpRootAddress, answerStudio(studioMutationCeiling, writeSourceError, func(input struct {
@@ -94,7 +91,7 @@ func registerHTTPServiceEditorRoutes(routes *http.ServeMux, workspace *Workspace
 	}) (any, error) {
 		return NameAnswer{Refusal: rootURLRefusals[metadata.RootURLFaultOf(input.Value)]}, nil
 	}))
-	registerObjectWindow(routes, httpServiceEditorAddress, workspace.SaveHTTPServiceWindow, func(string) (HTTPServiceEditorSource, error) {
+	registerObjectEditor(routes, httpServiceEditorAddress, workspace.ReadHTTPServiceEditor, workspace.SaveHTTPServiceWindow, func(string) (HTTPServiceEditorSource, error) {
 		return HTTPServiceEditorSource{}, fmt.Errorf("%w: %s", ErrNoNewObject, metadata.HTTPServiceKind)
 	}, workspace.DeleteHTTPService)
 }

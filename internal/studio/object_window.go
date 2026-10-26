@@ -2,6 +2,7 @@ package studio
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -32,6 +33,62 @@ func readObjectWindow[T any](workspace *Workspace, kind metadata.Kind, relative 
 		return value, windowHead{}, nil, err
 	}
 	return value, windowHead{objectHead: head, Subsystems: subsystemPlaces(loaded, id(value))}, loaded, nil
+}
+
+// paletteSource is what the reading of the palette of an object of a kind
+// without a window answers: the object with the head of its palette, and
+// how an object of its kind is named.
+type paletteSource[T any] interface {
+	paletteOf() (T, objectHead)
+	named(T) (uuid.UUID, string)
+}
+
+// savePaletteObject writes an object its palette edited: the object read
+// last at revision (read) must be the same object, a new name is checked in
+// its branch and moves its folder (followNameLocked); keep, when given,
+// puts back what the palette does not change - the address of a reference,
+// the password of a client - or refuses the edit. Answers the object as
+// the palette reads it after.
+func savePaletteObject[S paletteSource[T], T any](workspace *Workspace, relative, revision string, value T,
+	read func(string) (S, error), keep func(opened T, value *T) error) (S, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	var none S
+	opened, err := read(relative)
+	if err != nil {
+		return none, err
+	}
+	object, head := opened.paletteOf()
+	if head.Revision != revision {
+		return none, ErrSourceChanged
+	}
+	id, name := opened.named(value)
+	openedID, openedName := opened.named(object)
+	if id != openedID {
+		return none, fmt.Errorf("the identifier of an object cannot be changed")
+	}
+	if name != openedName {
+		if err := workspace.objectNameErrorLocked(relative, "", name); err != nil {
+			return none, err
+		}
+	}
+	if keep != nil {
+		if err := keep(object, &value); err != nil {
+			return none, err
+		}
+	}
+	var encoded bytes.Buffer
+	if err := metadata.Encode(&encoded, value); err != nil {
+		return none, err
+	}
+	written, moveBack, err := workspace.followNameLocked(relative, openedName, name)
+	if err != nil {
+		return none, err
+	}
+	if _, err := workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
+		return none, errors.Join(err, moveBack())
+	}
+	return read(written)
 }
 
 // objectWindowSource is what the reading of the window of an object answers: the

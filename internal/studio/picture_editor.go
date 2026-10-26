@@ -293,9 +293,6 @@ func (workspace *Workspace) DeletePicture(relative, expectedRevision string) err
 }
 
 func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+pictureEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadPictureEditor(request.URL.Query().Get("path"))
-	}))
 	routes.HandleFunc("GET "+pictureImageAddress, func(response http.ResponseWriter, request *http.Request) {
 		content, media, err := workspace.ReadPictureImage(request.URL.Query().Get("path"), request.URL.Query().Get("name"))
 		if err != nil {
@@ -308,5 +305,5 @@ func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		response.Header().Set("Cache-Control", "no-store")
 		_, _ = response.Write(content)
 	})
-	registerObjectWindow(routes, pictureEditorAddress, workspace.SavePictureEditor, workspace.CreatePicture, workspace.DeletePicture)
+	registerObjectEditor(routes, pictureEditorAddress, workspace.ReadPictureEditor, workspace.SavePictureEditor, workspace.CreatePicture, workspace.DeletePicture)
 }

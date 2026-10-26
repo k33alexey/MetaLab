@@ -224,3 +224,11 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 /* Адрес в палитре — ссылкой в одну строку, длинный обрезается многоточием
    (URL источника WS-ссылки, ws-ssylka/03). */
 .object-palette-address{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* «Настройка заголовков» WebSocket-клиента (websocket-klient/06): панель над
+   таблицей «Заголовок — Значение», строка — два поля, текущая выделена. */
+.headers-window{display:flex;flex-direction:column;gap:6px;min-width:420px}
+.headers-table{width:100%;border-collapse:collapse;font-size:12px}
+.headers-table th{text-align:left;font-weight:normal;color:#aeb1b8;padding:3px 6px;border-bottom:1px solid #4a4d54}
+.headers-table td{padding:2px 4px}
+.headers-table td input{width:100%;box-sizing:border-box}
+.headers-table tr.selected td{background:rgba(88,157,246,.18)}

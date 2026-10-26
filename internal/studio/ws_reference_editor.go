@@ -36,6 +36,13 @@ type WSReferenceEditorSource struct {
 	Reference metadata.WSReferenceDefinition `json:"reference"`
 }
 
+func (source WSReferenceEditorSource) paletteOf() (metadata.WSReferenceDefinition, objectHead) {
+	return source.Reference, source.objectHead
+}
+func (WSReferenceEditorSource) named(value metadata.WSReferenceDefinition) (uuid.UUID, string) {
+	return value.ID, value.Name
+}
+
 func (source WSReferenceEditorSource) identity() (uuid.UUID, string) {
 	return source.Reference.ID, source.Revision
 }
@@ -89,36 +96,10 @@ func (workspace *Workspace) readWSReferenceEditorLocked(relative string) (WSRefe
 // reference; the address stays as the import wrote it, and a new name moves
 // the folder with the description (followNameLocked).
 func (workspace *Workspace) SaveWSReferenceEditor(relative string, value metadata.WSReferenceDefinition, revision string) (WSReferenceEditorSource, error) {
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	opened, err := workspace.readWSReferenceEditorLocked(relative)
-	if err != nil {
-		return WSReferenceEditorSource{}, err
-	}
-	if opened.Revision != revision {
-		return WSReferenceEditorSource{}, ErrSourceChanged
-	}
-	if value.ID != opened.Reference.ID {
-		return WSReferenceEditorSource{}, fmt.Errorf("WS reference UUID cannot be changed")
-	}
-	if value.Name != opened.Reference.Name {
-		if err := workspace.objectNameErrorLocked(relative, "", value.Name); err != nil {
-			return WSReferenceEditorSource{}, err
-		}
-	}
-	value.LocationURL = opened.Reference.LocationURL
-	var encoded bytes.Buffer
-	if err := metadata.Encode(&encoded, value); err != nil {
-		return WSReferenceEditorSource{}, err
-	}
-	written, moveBack, err := workspace.followNameLocked(relative, opened.Reference.Name, value.Name)
-	if err != nil {
-		return WSReferenceEditorSource{}, err
-	}
-	if _, err := workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
-		return WSReferenceEditorSource{}, errors.Join(err, moveBack())
-	}
-	return workspace.readWSReferenceEditorLocked(written)
+	return savePaletteObject(workspace, relative, revision, value, workspace.readWSReferenceEditorLocked, func(opened metadata.WSReferenceDefinition, value *metadata.WSReferenceDefinition) error {
+		value.LocationURL = opened.LocationURL
+		return nil
+	})
 }
 
 // ImportWSReference takes the description at the address, checks it as the
@@ -233,9 +214,6 @@ func (workspace *Workspace) DeleteWSReference(relative, expectedRevision string)
 }
 
 func registerWSReferenceEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+wsReferenceEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadWSReferenceEditor(request.URL.Query().Get("path"))
-	}))
 	routes.HandleFunc("POST "+wsImportAddress, func(response http.ResponseWriter, request *http.Request) {
 		answerStudio(0, writeSourceError, func(input WSImport) (any, error) {
 			return workspace.ImportWSReference(request.Context(), input)
@@ -244,7 +222,7 @@ func registerWSReferenceEditorRoutes(routes *http.ServeMux, workspace *Workspace
 	// A reference is made by importing a description: «Добавить» of the
 	// tree imports at its own address, and a reference named alone is not
 	// made.
-	registerObjectWindow(routes, wsReferenceEditorAddress, workspace.SaveWSReferenceEditor, func(string) (WSReferenceEditorSource, error) {
+	registerObjectEditor(routes, wsReferenceEditorAddress, workspace.ReadWSReferenceEditor, workspace.SaveWSReferenceEditor, func(string) (WSReferenceEditorSource, error) {
 		return WSReferenceEditorSource{}, fmt.Errorf("a WS reference is made by importing a description of a service")
 	}, workspace.DeleteWSReference)
 }

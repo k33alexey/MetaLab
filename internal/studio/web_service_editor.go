@@ -85,10 +85,7 @@ func (workspace *Workspace) DeleteWebService(relative, expectedRevision string) 
 }
 
 func registerWebServiceEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+webServiceEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadWebServiceEditor(request.URL.Query().Get("path"))
-	}))
-	registerObjectWindow(routes, webServiceEditorAddress, workspace.SaveWebServiceWindow, func(string) (WebServiceEditorSource, error) {
+	registerObjectEditor(routes, webServiceEditorAddress, workspace.ReadWebServiceEditor, workspace.SaveWebServiceWindow, func(string) (WebServiceEditorSource, error) {
 		return WebServiceEditorSource{}, fmt.Errorf("%w: %s", ErrNoNewObject, metadata.WebServiceKind)
 	}, workspace.DeleteWebService)
 }

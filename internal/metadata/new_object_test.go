@@ -21,6 +21,8 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 	id := uuid.MustNew()
 	module := uuid.Derive(id, "module")
 	moduleText, _ := project.ModulePath(module)
+	clientModule, _ := project.ObjectModulePath(string(WebSocketClientKind), "Новый", "МодульКлиента.bsl")
+	thirty := 30
 	cases := []struct {
 		kind  Kind
 		want  any
@@ -44,6 +46,9 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 		{CommandGroupKind, CommandGroupDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Category: "navigation-panel", Representation: "auto"}, nil},
 		// obshchaya-kartinka.md and the help: no image, neither availability.
 		{CommonPictureKind, CommonPictureDefinition{Format: CurrentFormat, ID: id, Name: "Новый"}, nil},
+		// websocket-klient.md, «Новый клиент»: the flags off, a timeout of 30
+		// and the empty module.
+		{WebSocketClientKind, WebSocketClientDefinition{Format: CurrentFormat, ID: id, Name: "Новый", Timeout: &thirty}, []FreshFile{{Path: clientModule}}},
 		{EnumerationKind, Enumeration{
 			Format: CurrentFormat, ID: id, Name: "Новый",
 			ChoiceMode: "both-ways", QuickChoice: true, ChoiceHistoryOnInput: "auto", UseStandardCommands: false,

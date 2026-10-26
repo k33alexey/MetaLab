@@ -1067,6 +1067,28 @@ function paletteFields(context) {
       if (context.valueChecks?.[row.key]) watchValue(input, context.valueChecks[row.key], () => ({value: input.value}));
       return input;
     }
+    // A password kept apart from the project: dots when there is one; Studio
+    // does not write the protected store yet (series 2.584, В4).
+    if (row.field === 'password') {
+      const shown = node('input');
+      shown.type = 'password'; shown.readOnly = true; shown.disabled = true;
+      shown.value = subject.get(row.key) ? '••••••••' : '';
+      return shown;
+    }
+    // The headers of a WebSocket client, «Имя(значение)» by commas - a
+    // secret one by dots -, «…» opening «Настройка заголовков»
+    // (context.editHeaders), the cross clearing those that are not secret.
+    if (row.field === 'headers') {
+      const items = subject.get(row.key) || [], shown = node('input');
+      shown.readOnly = true;
+      shown.value = items.map(item => `${item.name}(${item.secret ? '•••' : item.value || ''})`).join(', ');
+      const pick = fieldChoiceButton(row.title, async () => {
+        const edited = await context.editHeaders?.(items);
+        if (edited) { subject.set(row.key, edited); context.changed(); }
+      });
+      return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, items.filter(item => item.secret)); context.changed(); },
+        !items.some(item => !item.secret))]);
+    }
     // A type named by the schema: «string (http://www.w3.org/2001/XMLSchema)»,
     // «…» choosing it and the cross unavailable until the window of the
     // types of the packages (a type of an operation is never cleared:

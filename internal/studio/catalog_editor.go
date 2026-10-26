@@ -474,10 +474,7 @@ func (workspace *Workspace) CatalogOwnersRefusal(relative string, catalog metada
 const catalogEditorAddress = "/api/catalog"
 
 func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+catalogEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
-		return workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
-	}))
-	registerObjectWindow(routes, catalogEditorAddress, workspace.SaveCatalogWindow, workspace.CreateCatalog, workspace.DeleteCatalog)
+	registerObjectEditor(routes, catalogEditorAddress, workspace.ReadCatalogEditor, workspace.SaveCatalogWindow, workspace.CreateCatalog, workspace.DeleteCatalog)
 	routes.HandleFunc("POST "+catalogEditorAddress+"/owners", answerStudio(0, writeSourceError, func(input struct {
 		Path   string                     `json:"path"`
 		Object metadata.CatalogDefinition `json:"object"`

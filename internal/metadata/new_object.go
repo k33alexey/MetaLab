@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -103,6 +104,14 @@ var kindNewObjectOf = map[Kind]newObject{
 	// from (the files of the new object); by itself it has neither.
 	WSReferenceKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
 		return Fresh{Value: WSReferenceDefinition{Format: CurrentFormat, ID: id, Name: name}}
+	},
+	// websocket-klient.md, «Новый клиент»: the flags off, a timeout of 30
+	// written as the prototype writes it, and the empty module, which opens
+	// at once.
+	WebSocketClientKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		timeout := defaultWebSocketTimeout
+		module, _ := project.ObjectModulePath(string(WebSocketClientKind), name, string(kinds.ClientModule)+".bsl")
+		return Fresh{Value: WebSocketClientDefinition{Format: CurrentFormat, ID: id, Name: name, Timeout: &timeout}, Files: []FreshFile{{Path: module}}}
 	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».
