@@ -377,7 +377,59 @@ function createCatalogEditor(host, onChange, around = {}) {
     }
     return page;
   }
-  const builtPages = {main: renderMainPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage, numbering: renderNumberingPage};
+  // «Формы», «Команды», «Макеты»: a tree of the parts with its panel - the
+  // forms of the object below the frame of the main forms, the commands
+  // above the flag of the standard commands, the templates above the menu
+  // «Конструкторы» (spravochnik.md, okno-08, okno-10, okno-11). A form opens
+  // by «Изменить», a command - its module, as its own action is; commands
+  // and templates move round the ends. Adding and deleting are the items of
+  // the constructors of a form, of a command and of a template; a template
+  // opens in its editor - each unavailable until its item.
+  function partsTree(icon, caption, kind, items, open, move) {
+    const inside = chosen?.kind === kind ? chosen : null, on = !!inside;
+    const bar = panel([
+      panelButton('add', 'Добавить', false, () => {}),
+      panelButton('change', 'Изменить', on && !!open, () => open(inside.id)),
+      panelButton('delete', 'Удалить', false, () => {}),
+      panelButton('move-up', 'Переместить вверх', on && !!move, () => { move(inside.id, -1); rerender(); }),
+      panelButton('move-down', 'Переместить вниз', on && !!move, () => { move(inside.id, 1); rerender(); }),
+      panelButton('sort', 'Сортировать', false, () => {}),
+    ]);
+    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+    tree.append(treeRow(icon, caption, {kind: `${kind}s`}, items.map(name => {
+      const element = treeRow(icon, name, {kind, id: name});
+      if (open) element.addEventListener('dblclick', () => open(name));
+      return element;
+    })));
+    return [bar, tree];
+  }
+  function moveNamed(list) {
+    return (name, by) => { const at = list.findIndex(item => item.name === name); if (at >= 0) moveInCircle(list, at, by); };
+  }
+  function renderFormsPage() {
+    const page = renderRowsPage('forms');
+    page.append(...partsTree('form', 'Формы', 'form', (source.forms || []).map(form => form.name),
+      name => around.openFile?.(source.forms.find(form => form.name === name).path)));
+    return page;
+  }
+  function renderCommandsPage() {
+    const page = node('div', undefined, 'object-window-fields'), rows = renderRowsPage('commands');
+    const commands = catalog().commands || [];
+    page.append(...partsTree('command', 'Команды', 'command', commands.map(command => command.name),
+      name => source.commandModules?.[name] && around.openFile?.(source.commandModules[name]), moveNamed(commands)), ...rows.childNodes);
+    return page;
+  }
+  function renderTemplatesPage() {
+    const page = node('div', undefined, 'object-window-fields');
+    const templates = catalog().templates || [];
+    const designers = menuButton('Конструкторы', () => []);
+    designers.disabled = true;
+    designers.classList.add('object-window-button');
+    page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates)), designers);
+    return page;
+  }
+  const builtPages = {main: renderMainPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage, numbering: renderNumberingPage,
+    forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
     cleanups = [];
@@ -413,7 +465,7 @@ function createCatalogEditor(host, onChange, around = {}) {
   function fieldsOfPalette(collect = () => paletteCleanups) {
     return paletteFields({project: source, typeOffer: model.typeOffer, choices: source.choices, cleanups: collect,
       typed: touch, changed: rerender, openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
-      form: name => ({name, path: source.path.replace(/object\.yaml$/, `forms/${name}/form.yaml`)}),
+      form: name => ({name, path: source.forms?.find(form => form.name === name)?.path}),
       choose: async (row, items) => {
         if (row.key === 'owners') { await chooseOwners(); return null; }
         return await chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items);

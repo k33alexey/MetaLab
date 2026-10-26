@@ -33,8 +33,8 @@ function createConstantEditor(host, onChange, around = {}) {
       // The main form of a constant is a common form, named by its
       // identifier.
       form: id => {
-        const name = objectChoiceItem(source.choices?.defaultForm, id)?.name || id;
-        return {name, path: `metadata/common-forms/${name}/form.yaml`};
+        const form = objectChoiceItem(source.choices?.defaultForm, id);
+        return {name: form?.name || id, path: form?.path};
       },
       choose: (row, items) => chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items)});
     const shown = subject();

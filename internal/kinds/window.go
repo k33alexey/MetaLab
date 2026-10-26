@@ -40,9 +40,19 @@ type WindowRow struct {
 // windowRows are the pages of a window built of the palette's rows, by
 // page (docs/block-00/<вид>.md, «Окно редактирования»).
 var windowRows = map[Kind]map[string][]WindowRow{
-	// docs/block-00/spravochnik.md, pages 9 and 15; snapshots okno-09,
-	// okno-15.
+	// docs/block-00/spravochnik.md, pages 8, 9, 10 and 15; snapshots
+	// okno-08, okno-09, okno-10, okno-15.
 	Catalog: {
+		"forms": {
+			{Key: "forms.object", Title: "Элемента:", Frame: "Формы"},
+			{Key: "forms.folder", Title: "Группы:", Frame: "Формы"},
+			{Key: "forms.list", Title: "Списка:", Frame: "Формы"},
+			{Key: "forms.choice", Title: "Выбора:", Frame: "Формы"},
+			{Key: "forms.folderChoice", Title: "Выбора группы:", Frame: "Формы"},
+		},
+		"commands": {
+			{Key: "useStandardCommands", Title: "Использовать стандартные команды"},
+		},
 		"input": {
 			{Key: "quickChoice", Title: "Быстрый выбор"},
 			{Key: "createOnInput", Title: "Создание при вводе:"},

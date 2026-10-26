@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -1025,4 +1026,132 @@ func TestThePagesOfACatalogBuiltOfThePalette(t *testing.T) {
 	expect("history off", steps.WithoutHistory, []bool{true, true})
 	expect("history on", steps.WithHistory, []bool{false, false})
 	expect("the module", steps.Module, "metadata/catalogs/Товары/МодульОбъекта.bsl")
+}
+
+// partsPagesWalk reads the pages «Формы», «Команды» and «Макеты» of the
+// window of the catalog Товары, which has a form, two commands and two
+// templates: the frame of the main forms, the trees, the panels; it opens
+// the form, moves a command round the top, saves, and opens the command's
+// module.
+const partsPagesWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const rows = () => [...body().querySelectorAll('.studio-tree-row')].map(item => item.textContent.trim());
+  const buttons = () => [...body().querySelectorAll('.object-window-panel button')].map(button => button.title + (button.disabled ? ' (недоступна)' : ''));
+  await openObject('Товары');
+  await windowPage('Формы');
+  steps.frame = {legend: body().querySelector('fieldset legend').textContent,
+    rows: [...body().querySelectorAll('fieldset .catalog-field > span:first-child')].map(item => item.textContent),
+    unavailable: [...body().querySelectorAll('fieldset .catalog-field')].filter(label => label.querySelector('input').disabled).map(label => label.querySelector('span').textContent),
+    object: windowField('#catalog-editor', 'Элемента:').querySelector('input').value};
+  steps.forms = rows();
+  await windowRow('ФормаЭлемента');
+  steps.formPanel = buttons();
+  await windowPage('Команды');
+  steps.commands = rows();
+  steps.flag = !!windowField('#catalog-editor', 'Использовать стандартные команды');
+  await windowRow('Печать');
+  steps.commandPanel = buttons();
+  body().querySelector('.object-window-panel button[title="Переместить вверх"]').click(); await settle();
+  steps.movedUp = rows();
+  await windowPage('Макеты');
+  steps.templates = rows();
+  steps.designers = [...body().querySelectorAll('.menu-button')].map(button => button.textContent + (button.disabled ? ' (недоступна)' : ''));
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await windowPage('Команды');
+  await windowRow('Подбор');
+  body().querySelector('.object-window-panel button[title=Изменить]').click(); await settle();
+  steps.module = document.querySelector('#file-path').textContent;
+  await openObject('Товары');
+  await windowPage('Формы');
+  await windowRow('ФормаЭлемента');
+  body().querySelector('.object-window-panel button[title=Изменить]').click(); await settle();
+  steps.form = document.querySelector('#file-path').textContent;
+  return steps;
+})()`
+
+// The pages «Формы», «Команды» and «Макеты» of the window of a catalog are
+// the prototype's (docs/block-00/spravochnik.md, «Окно редактирования»,
+// pages 8, 10 and 11; snapshots okno-08, okno-10, okno-11): the frame of
+// five main forms - those of a group unavailable at a catalog without
+// groups - and the tree of the forms; the tree of the commands and the flag
+// of the standard commands; the tree of the templates and «Конструкторы».
+// A form opens by «Изменить», a command its module; a command moves round
+// the top and the order is saved. Defects caught: a page left empty; a form
+// of a group available without groups; a part of another object in a tree;
+// «Изменить» opening nothing; a move not kept by the save.
+func TestTheFormsCommandsAndTemplatesOfACatalogAreThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	writeProjectFile(t, root, "metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml",
+		"format: 1\nid: 10000000-0000-4000-8000-00000000f101\nname: ФормаЭлемента\ntitle: {ru: Форма элемента}\nkind: object\n")
+	writeProjectFile(t, root, "metadata/catalogs/Товары/commands/Подбор/МодульКоманды.bsl", "\n")
+	writeProjectFile(t, root, "metadata/catalogs/Товары/commands/Печать/МодульКоманды.bsl", "\n")
+	description := filepath.Join(root, "metadata", "catalogs", "Товары", "object.yaml")
+	content, err := os.ReadFile(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content = append(content, []byte("forms: {object: ФормаЭлемента}\n"+
+		"commands:\n  - {id: "+uuid.MustNew().String()+", name: Подбор, title: {ru: Подбор}, group: form-command-bar-important}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Печать, title: {ru: Печать}, group: form-command-bar-important}\n"+
+		"templates:\n  - {id: "+uuid.MustNew().String()+", name: Этикетка, title: {ru: Этикетка}, kind: spreadsheet}\n"+
+		"  - {id: "+uuid.MustNew().String()+", name: Ценник, title: {ru: Ценник}, kind: spreadsheet}\n")...)
+	if err := os.WriteFile(description, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, partsPagesWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type frame struct {
+		Legend      string
+		Rows        []string
+		Unavailable []string
+		Object      string
+	}
+	var steps struct {
+		Frame                                    frame
+		Forms, FormPanel, Commands, CommandPanel []string
+		MovedUp, Templates, Designers            []string
+		Flag, Saved                              bool
+		Module, Form                             string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("the frame of the forms", steps.Frame, frame{"Формы", []string{"Элемента:", "Группы:", "Списка:", "Выбора:", "Выбора группы:"},
+		[]string{"Группы:", "Выбора группы:"}, "ФормаЭлемента"})
+	expect("the tree of the forms", steps.Forms, []string{"Формы", "ФормаЭлемента"})
+	expect("the panel of a form", steps.FormPanel, []string{"Добавить (недоступна)", "Изменить", "Удалить (недоступна)",
+		"Переместить вверх (недоступна)", "Переместить вниз (недоступна)", "Сортировать (недоступна)"})
+	expect("the tree of the commands", steps.Commands, []string{"Команды", "Подбор", "Печать"})
+	expect("the flag of the standard commands", steps.Flag, true)
+	expect("the panel of a command", steps.CommandPanel, []string{"Добавить (недоступна)", "Изменить", "Удалить (недоступна)",
+		"Переместить вверх", "Переместить вниз", "Сортировать (недоступна)"})
+	expect("a command moved up", steps.MovedUp, []string{"Команды", "Печать", "Подбор"})
+	expect("the tree of the templates", steps.Templates, []string{"Макеты", "Этикетка", "Ценник"})
+	expect("«Конструкторы»", steps.Designers, []string{"Конструкторы (недоступна)"})
+	expect("saved", steps.Saved, true)
+	expect("the module of a command", steps.Module, "metadata/catalogs/Товары/commands/Подбор/МодульКоманды.bsl")
+	expect("the form", steps.Form, "metadata/catalogs/Товары/forms/ФормаЭлемента/form.yaml")
+	saved, err := os.ReadFile(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(saved); !strings.Contains(text, "name: Печать") || strings.Index(text, "name: Печать") > strings.Index(text, "name: Подбор") {
+		t.Errorf("the order of the commands is not saved:\n%s", text)
+	}
 }

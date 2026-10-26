@@ -1,10 +1,12 @@
 package studio
 
 import (
+	"path"
 	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
+	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -26,6 +28,9 @@ type ObjectChoiceItem struct {
 	Name     string    `json:"name"`
 	FullName string    `json:"fullName"`
 	Icon     string    `json:"icon"`
+	// Path is where the object is described, for a window that opens it -
+	// the magnifier of a main form; none for an object of no folder.
+	Path string `json:"path,omitempty"`
 }
 
 // objectChoiceTree is the tree of the window «Выбор объекта» offering the
@@ -41,8 +46,11 @@ func objectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind) []Objec
 		}
 		branch := ObjectChoiceBranch{Title: descriptor.Titles, Icon: descriptor.Icon}
 		for _, object := range loaded.KindObjects(descriptor.Kind) {
-			branch.Objects = append(branch.Objects, ObjectChoiceItem{ID: object.ID, Name: object.Name,
-				FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon})
+			item := ObjectChoiceItem{ID: object.ID, Name: object.Name, FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon}
+			if directory, err := project.ObjectDirectory(string(descriptor.Kind), object.Name); err == nil && descriptor.Layout().KeepsFolder() {
+				item.Path = path.Join(directory, project.DescriptionFile(string(descriptor.Kind)))
+			}
+			branch.Objects = append(branch.Objects, item)
 		}
 		if branchPlaces[string(descriptor.Kind)] == commonPlace {
 			common.Children = append(common.Children, branch)

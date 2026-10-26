@@ -42,6 +42,18 @@ type CatalogEditorSource struct {
 	// the property they choose: owners - the objects of the five kinds that
 	// may own it, basedOn - those of the eight that may be its basis.
 	Choices map[string][]ObjectChoiceBranch `json:"choices"`
+	// Forms are the forms the catalog keeps, with where each is described,
+	// and CommandModules where the module of each command lies, by its
+	// name: the window opens them.
+	Forms          []NamedPath       `json:"forms"`
+	CommandModules map[string]string `json:"commandModules"`
+}
+
+// NamedPath is a part of an object kept in a file of its own: its name and
+// where the file lies.
+type NamedPath struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 func validateCatalogEditorPath(relative string) error {
@@ -92,7 +104,20 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		return CatalogEditorSource{}, err
 	}
 	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
+	var forms []NamedPath
+	for _, name := range loaded.ObjectFormNames(metadata.CatalogKind, value.Name) {
+		if form, err := project.ObjectFormPath(string(metadata.CatalogKind), value.Name, name); err == nil {
+			forms = append(forms, NamedPath{Name: name, Path: form})
+		}
+	}
+	commandModules := map[string]string{}
+	for _, command := range value.Commands {
+		if module, err := project.ObjectCommandModulePath(string(metadata.CatalogKind), value.Name, command.Name); err == nil {
+			commandModules[command.Name] = module
+		}
+	}
 	return CatalogEditorSource{
+		Forms: forms, CommandModules: commandModules,
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Choices: map[string][]ObjectChoiceBranch{
 			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),

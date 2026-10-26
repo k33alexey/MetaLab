@@ -532,6 +532,12 @@ func TestTheRowsOfAWindowAreThePalettes(t *testing.T) {
 		}
 		return result
 	}
+	if want := []string{"Элемента:", "Группы:", "Списка:", "Выбора:", "Выбора группы:"}; !slices.Equal(titles("forms"), want) {
+		t.Errorf("«Формы» %q, want %q", titles("forms"), want)
+	}
+	if want := []string{"Использовать стандартные команды"}; !slices.Equal(titles("commands"), want) {
+		t.Errorf("«Команды» %q, want %q", titles("commands"), want)
+	}
 	if want := []string{"Быстрый выбор", "Создание при вводе:", "Ввод по строке:", "Способ поиска строки:", "Полнотекстовый поиск:",
 		"Режим получения данных выбора:", "История выбора при вводе:"}; !slices.Equal(titles("input"), want) {
 		t.Errorf("«Поле ввода» %q, want %q", titles("input"), want)
