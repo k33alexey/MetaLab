@@ -8,13 +8,7 @@
    of content are built (the item «редакторы макетов — как у прототипа»).
    around holds the palette and its title. */
 function createTemplateEditor(host, onChange, around = {}) {
-  return paletteEditor(host, onChange, around, {
-    target: source => source.template,
-    subject: source => ({target: source.template, get: key => source.template[key],
-      set: (key, value) => { if (value) source.template[key] = value; else delete source.template[key]; },
-      setName: value => { source.template.name = value; }, check: () => ({path: source.path, name: source.template.name})}),
-    context: () => ({windows: []}),
-  });
+  return paletteEditor(host, onChange, around, {target: source => source.template});
 }
 
 /* showTemplateConstructor is the prototype's «Конструктор макета», which

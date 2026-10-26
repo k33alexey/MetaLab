@@ -130,24 +130,44 @@ func (catalog *Catalog) validateWSReferenceFiles(root string) error {
 	return nil
 }
 
-// checkWSDefinition reads a service description through to its end: it has to
-// be well-formed XML whose root is the "definitions" of WSDL 1.1.
-//
-// The description is not taken apart. What it describes - services, endpoints,
-// operations - is not an object of the configuration, and a reading that
-// understood half of WSDL would refuse descriptions the prototype takes. The
-// whole file is read, and not only its root, because a file cut off in the
-// middle has a perfectly good root.
+// checkWSDefinition reads the service description in the file at path
+// through to its end (WSDefinitionFaultOf).
 func checkWSDefinition(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	_, err = WSDefinitionFaultOf(file)
+	return err
+}
+
+// WSDefinitionFault is what is wrong with a service description, as the
+// designer tells it apart on import (opis of 15.10.2026, ws-ssylka.md):
+// not XML at all - «Ошибка разбора WSDL» - or XML whose root is not the
+// definitions of WSDL 1.1 - «WSDL должен содержать элемент definitions».
+type WSDefinitionFault int
+
+const (
+	WSDefinitionFits WSDefinitionFault = iota
+	WSDefinitionNotXML
+	WSDefinitionNotDefinitions
+)
+
+// WSDefinitionFaultOf reads a service description through to its end: it
+// has to be well-formed XML whose root is the "definitions" of WSDL 1.1, and
+// the error says what it is not.
+//
+// The description is not taken apart. What it describes - services, endpoints,
+// operations - is not an object of the configuration, and a reading that
+// understood half of WSDL would refuse descriptions the prototype takes. The
+// whole file is read, and not only its root, because a file cut off in the
+// middle has a perfectly good root.
+func WSDefinitionFaultOf(reader io.Reader) (WSDefinitionFault, error) {
 	// No ceiling on the size of the description: a description carries the
 	// whole data model of the service, the prototype limits none, and it is
 	// read token by token, never whole (owner, 03.10.2026).
-	decoder := xml.NewDecoder(file)
+	decoder := xml.NewDecoder(reader)
 	rooted := false
 	for {
 		token, err := decoder.Token()
@@ -155,7 +175,7 @@ func checkWSDefinition(path string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("the description is not well-formed XML: %w", err)
+			return WSDefinitionNotXML, fmt.Errorf("the description is not well-formed XML: %w", err)
 		}
 		element, ok := token.(xml.StartElement)
 		if !ok || rooted {
@@ -163,12 +183,12 @@ func checkWSDefinition(path string) error {
 		}
 		rooted = true
 		if element.Name.Space != wsdl11Namespace || element.Name.Local != "definitions" {
-			return fmt.Errorf("the root element is {%s}%s, and a service description is the definitions of WSDL 1.1 {%s}: the designer imports no other",
+			return WSDefinitionNotDefinitions, fmt.Errorf("the root element is {%s}%s, and a service description is the definitions of WSDL 1.1 {%s}: the designer imports no other",
 				element.Name.Space, element.Name.Local, wsdl11Namespace)
 		}
 	}
 	if !rooted {
-		return errors.New("the description holds no document")
+		return WSDefinitionNotXML, errors.New("the description holds no document")
 	}
-	return nil
+	return WSDefinitionFits, nil
 }

@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 )
@@ -18,23 +16,12 @@ import (
 
 // ConstantEditorSource is a constant as its palette reads and writes it.
 type ConstantEditorSource struct {
-	Path            string             `json:"path"`
-	Revision        string             `json:"revision"`
-	Constant        metadata.Constant  `json:"constant"`
-	TypeOffer       metadata.TypeOffer `json:"typeOffer"`
-	Languages       []project.Language `json:"languages"`
-	DefaultLanguage string             `json:"defaultLanguage"`
-	KindTitle       string             `json:"kindTitle"`
-	// Palette is the tabs of the palette of a constant and their rows, the
-	// kind's (kinds.Palette).
-	Palette []kinds.PaletteTab `json:"palette"`
+	objectHead
+	Constant  metadata.Constant  `json:"constant"`
+	TypeOffer metadata.TypeOffer `json:"typeOffer"`
 	// Choices are what the windows «Выбор объекта» of the constant offer:
 	// defaultForm - the common forms, one of which opens the value.
 	Choices map[string][]ObjectChoiceBranch `json:"choices"`
-}
-
-func validateConstantEditorPath(relative string) error {
-	return validateObjectEditorPath(relative, metadata.ConstantKind)
 }
 
 func (workspace *Workspace) ReadConstantEditor(relative string) (ConstantEditorSource, error) {
@@ -44,18 +31,7 @@ func (workspace *Workspace) ReadConstantEditor(relative string) (ConstantEditorS
 }
 
 func (workspace *Workspace) readConstantEditorLocked(relative string) (ConstantEditorSource, error) {
-	if err := validateConstantEditorPath(relative); err != nil {
-		return ConstantEditorSource{}, err
-	}
-	file, err := workspace.readSource(relative)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return ConstantEditorSource{}, err
-	}
-	value, err := metadata.DecodeConstant(relative, strings.NewReader(file.Content), configuration)
+	value, head, err := readObjectDescription(workspace, metadata.ConstantKind, relative, metadata.DecodeConstant)
 	if err != nil {
 		return ConstantEditorSource{}, err
 	}
@@ -64,10 +40,7 @@ func (workspace *Workspace) readConstantEditorLocked(relative string) (ConstantE
 		return ConstantEditorSource{}, err
 	}
 	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
-	return ConstantEditorSource{
-		Path: relative, Revision: file.Revision, Constant: value, TypeOffer: offer,
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(metadata.ConstantKind).Title, Palette: kinds.Must(metadata.ConstantKind).Palette(),
+	return ConstantEditorSource{objectHead: head, Constant: value, TypeOffer: offer,
 		Choices: map[string][]ObjectChoiceBranch{"defaultForm": objectChoiceTree(loaded, []metadata.Kind{metadata.CommonFormKind})},
 	}, nil
 }

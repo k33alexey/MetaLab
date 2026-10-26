@@ -106,7 +106,7 @@ type Node struct {
 // объекта — один построитель»).
 var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress,
 	metadata.ConstantKind: constantEditorAddress, metadata.CommonPictureKind: pictureEditorAddress,
-	metadata.CommonTemplateKind: templateEditorAddress}
+	metadata.CommonTemplateKind: templateEditorAddress, metadata.WSReferenceKind: wsReferenceEditorAddress}
 
 // registerObjectWindow serves what the window of an object writes at its
 // address, one way for every window (objectEditors): the object as edited,
@@ -331,6 +331,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerConstantEditorRoutes(routes, workspace)
 	registerPictureEditorRoutes(routes, workspace)
 	registerTemplateEditorRoutes(routes, workspace)
+	registerWSReferenceEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)

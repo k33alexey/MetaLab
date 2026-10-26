@@ -98,6 +98,12 @@ var kindNewObjectOf = map[Kind]newObject{
 	CommonTemplateKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
 		return Fresh{Value: CommonTemplateDefinition{Format: CurrentFormat, ObjectTemplate: ObjectTemplate{ID: id, Name: name, Kind: SpreadsheetTemplate}}}
 	},
+	// ws-ssylka.md, «Добавление»: a reference is made by importing a
+	// description, which the importer gives it with the address it came
+	// from (the files of the new object); by itself it has neither.
+	WSReferenceKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: WSReferenceDefinition{Format: CurrentFormat, ID: id, Name: name}}
+	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».
 	EnumerationKind: func(id uuid.UUID, name string, _ project.Project) Fresh {

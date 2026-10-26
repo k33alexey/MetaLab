@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -21,18 +22,48 @@ import (
 // load its content from a file; the kind is not changed after.
 
 // TemplateEditorSource is a common template as its palette reads and
-// writes it.
+// writes it; the palette's row «Тип макета» lists the kinds the constructor
+// offers.
 type TemplateEditorSource struct {
-	Path            string                            `json:"path"`
-	Revision        string                            `json:"revision"`
-	Template        metadata.CommonTemplateDefinition `json:"template"`
-	Languages       []project.Language                `json:"languages"`
-	DefaultLanguage string                            `json:"defaultLanguage"`
-	KindTitle       string                            `json:"kindTitle"`
-	// Palette is the tabs of the palette of a template and their rows, the
-	// kind's (kinds.Palette); its row «Тип макета» lists the kinds the
-	// constructor offers.
-	Palette []kinds.PaletteTab `json:"palette"`
+	objectHead
+	Template metadata.CommonTemplateDefinition `json:"template"`
+}
+
+// objectHead is what every palette of an object reads beside the object:
+// where its description lies and at what revision, the languages of the
+// project, what one object of the kind is called, and the kind's palette.
+type objectHead struct {
+	Path            string             `json:"path"`
+	Revision        string             `json:"revision"`
+	Languages       []project.Language `json:"languages"`
+	DefaultLanguage string             `json:"defaultLanguage"`
+	KindTitle       string             `json:"kindTitle"`
+	Palette         []kinds.PaletteTab `json:"palette"`
+}
+
+// readObjectDescription reads the description of an object of a kind that
+// keeps a folder named after it, as the load reads it (decode), with the
+// head of its palette.
+func readObjectDescription[T any](workspace *Workspace, kind metadata.Kind, relative string,
+	decode func(string, io.Reader, project.Project) (T, error)) (T, objectHead, error) {
+	var none T
+	if err := validateObjectEditorPath(relative, kind); err != nil {
+		return none, objectHead{}, err
+	}
+	file, err := workspace.readSource(relative)
+	if err != nil {
+		return none, objectHead{}, err
+	}
+	configuration, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return none, objectHead{}, err
+	}
+	value, err := decode(relative, strings.NewReader(file.Content), configuration)
+	if err != nil {
+		return none, objectHead{}, err
+	}
+	return value, objectHead{Path: relative, Revision: file.Revision, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		KindTitle: kinds.Must(kind).Title, Palette: kinds.Must(kind).Palette()}, nil
 }
 
 // TemplateDraft is what the constructor of a template makes: the name, the
@@ -60,26 +91,8 @@ func (workspace *Workspace) ReadTemplateEditor(relative string) (TemplateEditorS
 }
 
 func (workspace *Workspace) readTemplateEditorLocked(relative string) (TemplateEditorSource, error) {
-	if err := validateObjectEditorPath(relative, metadata.CommonTemplateKind); err != nil {
-		return TemplateEditorSource{}, err
-	}
-	file, err := workspace.readSource(relative)
-	if err != nil {
-		return TemplateEditorSource{}, err
-	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return TemplateEditorSource{}, err
-	}
-	value, err := metadata.DecodeCommonTemplate(relative, strings.NewReader(file.Content), configuration)
-	if err != nil {
-		return TemplateEditorSource{}, err
-	}
-	return TemplateEditorSource{
-		Path: relative, Revision: file.Revision, Template: value,
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(metadata.CommonTemplateKind).Title, Palette: kinds.Must(metadata.CommonTemplateKind).Palette(),
-	}, nil
+	value, head, err := readObjectDescription(workspace, metadata.CommonTemplateKind, relative, metadata.DecodeCommonTemplate)
+	return TemplateEditorSource{objectHead: head, Template: value}, err
 }
 
 // SaveTemplateEditor writes the name, the synonym and the comment of a

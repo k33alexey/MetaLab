@@ -160,6 +160,9 @@ const (
 	// FormField is a main form of the object, chosen among its forms,
 	// cleared, and opened by the magnifier.
 	FormField = "form"
+	// LinkField is an address shown as a link and not edited: the source of
+	// a WS reference, which its import alone writes (ws-ssylka.md).
+	LinkField = "link"
 	// TypeField is the type of a part with «…» of the window «Редактирование
 	// типа данных»; ValueField a value of the part's type.
 	TypeField  = "type"
@@ -173,6 +176,17 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/ws-ssylka.md, «Палитра»; snapshot ws-ssylka/03-palitra:
+	// one tab, «URL источника» a link the import writes, «WS-ссылка:
+	// Открыть» the window viewing the description.
+	WSReference: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("WS-ссылки", "о WS-ссылке"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "locationUrl", Title: "URL источника", Field: LinkField, Important: true,
+				Description: "Откуда импортировано описание сервиса: адрес или файл; меняется «Импорт WSDL…»."},
+			{Key: "definition", Title: "WS-ссылка", Field: WindowField, Important: true, Description: "Описание сервиса: открывается окном просмотра."},
+		})},
+	},
 	// docs/block-00/obshchij-maket.md, «Палитра»; snapshot
 	// obshchij-maket/07-novyj-maket-palitra: one tab, «Тип макета»
 	// unavailable once the template is made, «Макет: Открыть» opening the

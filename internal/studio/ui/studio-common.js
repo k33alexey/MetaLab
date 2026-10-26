@@ -1053,6 +1053,15 @@ function paletteFields(context) {
       return field;
     }
     if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+    // An address shown and not typed into: a page of the network opens in
+    // the browser, a file is only shown.
+    if (row.field === 'link') {
+      const address = subject.get(row.key) || '', web = /^https?:\/\//i.test(address);
+      const link = node(web ? 'a' : 'span', address, 'object-palette-link object-palette-address');
+      link.title = address;
+      if (web) { link.href = address; link.target = '_blank'; link.rel = 'noopener'; }
+      return link;
+    }
     if (row.field === 'module' || row.field === 'window') {
       const link = node('button', 'Открыть', 'object-palette-link');
       link.type = 'button';
@@ -1131,8 +1140,10 @@ function showObjectPalette(around, cleanups, title, tabs, subject, context) {
    (source) is the object in what the server read, subject(source) what the
    palette edits, context(source) what its fields open and offer beyond the
    project, typing and redrawing. Typing renames the palette and leaves its
-   fields as they are; anything else draws it anew. */
-function paletteEditor(host, onChange, around, {target, subject, context = () => ({})}) {
+   fields as they are; anything else draws it anew. Without subject the
+   palette edits the object's own properties by their keys - an empty value
+   is not written - and opens none of its windows. */
+function paletteEditor(host, onChange, around, {target, subject = source => ownSubject(source, target(source)), context = () => ({windows: []})}) {
   let source = null;
   const cleanups = [];
   function typed() { onChange(); around.paletteTitle?.(`Свойства: ${target(source).name}`); }
@@ -1156,6 +1167,14 @@ function paletteEditor(host, onChange, around, {target, subject, context = () =>
       return true;
     },
   });
+}
+
+/* ownSubject is what a palette edits of an object whose rows are its own
+   properties by their keys: an empty value is not written, the name is
+   checked in its branch (watchName). */
+function ownSubject(source, object) {
+  return {target: object, get: key => object[key], set: (key, value) => { if (value) object[key] = value; else delete object[key]; },
+    setName: value => { object.name = value; }, check: () => ({path: source.path, name: object.name})};
 }
 
 /* chooseFileContent asks the browser for a file, of the extensions in

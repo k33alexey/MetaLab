@@ -220,3 +220,7 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .choice-cell>span{flex:1}.choice-cell>button.field-button{align-self:stretch;width:22px;padding:0!important;border:0!important;border-left:1px solid var(--border,#4a4d54)!important;border-radius:0;background:transparent!important}.object-window-table tr:not(.current) .choice-cell-button{visibility:hidden}.object-window-table tr.current .choice-cell{border-color:var(--border,#4a4d54)}
 .object-window-checks{flex:1;min-height:200px;overflow:auto}
 .object-window-caption{font-size:12.5px;margin:2px 0 6px}
+
+/* Адрес в палитре — ссылкой в одну строку, длинный обрезается многоточием
+   (URL источника WS-ссылки, ws-ssylka/03). */
+.object-palette-address{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
