@@ -56,7 +56,9 @@ const catalogWindowWalk = `(async () => {
   steps.places = ['Имя', 'Синоним', 'Комментарий', 'Представление объекта', 'Пояснение'].map(place);
   steps.explanationArea = !!windowField('#catalog-editor', 'Пояснение').querySelector('textarea');
   button('Далее>').click(); await studio.settle();
-  steps.afterNext = {page: current(), empty: !host.querySelector('.object-window-body').children.length, bar: bar()};
+  steps.afterNext = {page: current(), bar: bar()};
+  await windowPage('Права');
+  steps.unbuilt = !host.querySelector('.object-window-body').children.length;
   await windowPage('Прочее');
   steps.lastBar = bar();
   await windowPage('Данные');
@@ -132,10 +134,10 @@ func TestTheWindowOfACatalogIsThePrototypes(t *testing.T) {
 		ExplanationArea, Closed    bool
 		FirstBar, LastBar          bar
 		AfterNext                  struct {
-			Page  string
-			Empty bool
-			Bar   bar
+			Page string
+			Bar  bar
 		}
+		Unbuilt                  bool
 		Frames                   []frame
 		Rows, Windows, Numbering []string
 		Panels                   [][]string
@@ -166,10 +168,10 @@ func TestTheWindowOfACatalogIsThePrototypes(t *testing.T) {
 	expect("bottom on the first page", steps.FirstBar, bar{Back: true})
 	expect("bottom on the last page", steps.LastBar, bar{Next: true})
 	expect("after «Далее>»", steps.AfterNext, struct {
-		Page  string
-		Empty bool
-		Bar   bar
-	}{"Подсистемы", true, bar{}})
+		Page string
+		Bar  bar
+	}{"Подсистемы", bar{}})
+	expect("a page not built yet is empty", steps.Unbuilt, true)
 	expect("«Основные»", steps.Main, []string{"Имя", "Синоним", "Комментарий", "Представление объекта", "Расширенное представление объекта",
 		"Представление списка", "Расширенное представление списка", "Пояснение"})
 	expect("captions beside or above", steps.Places, []string{"beside", "beside", "beside", "above", "above"})
@@ -1154,4 +1156,78 @@ func TestTheFormsCommandsAndTemplatesOfACatalogAreThePrototypes(t *testing.T) {
 	if text := string(saved); !strings.Contains(text, "name: Печать") || strings.Index(text, "name: Печать") > strings.Index(text, "name: Подбор") {
 		t.Errorf("the order of the commands is not saved:\n%s", text)
 	}
+}
+
+// subsystemsPageWalk opens the page «Подсистемы» of the window of the
+// catalog Товары, which lies in Склад under Продажи: reads the tree and its
+// marks; marks Продажи and unmarks it - the window stays unchanged - then
+// marks Продажи, unmarks Склад, saves and opens the window anew.
+const subsystemsPageWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  const body = () => host.querySelector('.object-window-body');
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50)).then(() => studio.settle());
+  const rows = () => [...body().querySelectorAll('.studio-tree-row')].filter(row => row.offsetParent !== null)
+    .map(row => row.textContent.trim() + (row.querySelector('input').checked ? ' ✓' : ''));
+  const box = name => [...body().querySelectorAll('.studio-tree-row')].find(row => row.textContent.trim() === name).querySelector('input');
+  await openObject('Товары');
+  await windowPage('Подсистемы');
+  steps.caption = body().querySelector('.object-window-caption').textContent;
+  steps.shown = rows();
+  box('Продажи').click(); await settle();
+  steps.marked = !document.querySelector('#save').disabled;
+  box('Продажи').click(); await settle();
+  steps.unmarked = !document.querySelector('#save').disabled;
+  box('Продажи').click(); box('Склад').click(); await settle();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  await openObject('Товары');
+  await windowPage('Подсистемы');
+  body().querySelectorAll('details').forEach(item => { item.open = true; });
+  steps.reopened = rows();
+  return steps;
+})()`
+
+// The page «Подсистемы» of the window of a catalog is the prototype's
+// (docs/block-00/spravochnik.md, page 2; snapshot okno-02): the caption, the
+// subsystems by their parents, a box at each, marked where the catalog is,
+// the one holding a marked subsystem open; a mark changes the window and
+// the mark taken back leaves it as it was; «Сохранить» writes the marks
+// into the subsystems and the window opened anew shows them. Defects
+// caught: the page empty; a subsystem out of its parent; a mark of a
+// subsystem the catalog is not in; a mark that leaves the window unchanged
+// or a mark taken back that leaves it changed; a mark the save does not
+// write.
+func TestTheSubsystemsPageOfACatalogIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	addTreeSubsystems(t, root)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, subsystemsPageWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Caption                 string
+		Shown, Reopened         []string
+		Marked, Unmarked, Saved bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("caption", steps.Caption, "Подсистемы, в которых участвует справочник:")
+	expect("the tree", steps.Shown, []string{"Продажи", "Склад ✓"})
+	expect("a mark changes the window", steps.Marked, true)
+	expect("a mark taken back", steps.Unmarked, false)
+	expect("saved", steps.Saved, true)
+	expect("opened anew", steps.Reopened, []string{"Продажи ✓", "Склад"})
 }

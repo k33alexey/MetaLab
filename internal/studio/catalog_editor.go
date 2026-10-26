@@ -45,6 +45,9 @@ type CatalogEditorSource struct {
 	// Forms are the forms the catalog keeps, with where each is described,
 	// and CommandModules where the module of each command lies, by its
 	// name: the window opens them.
+	// Subsystems are the subsystems of the project, those the catalog is in
+	// marked (its page «Подсистемы»).
+	Subsystems     []SubsystemPlace  `json:"subsystems"`
 	Forms          []NamedPath       `json:"forms"`
 	CommandModules map[string]string `json:"commandModules"`
 }
@@ -117,7 +120,7 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 		}
 	}
 	return CatalogEditorSource{
-		Forms: forms, CommandModules: commandModules,
+		Forms: forms, CommandModules: commandModules, Subsystems: subsystemPlaces(loaded, value.ID),
 		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
 		Choices: map[string][]ObjectChoiceBranch{
 			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
@@ -135,6 +138,22 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 // full project Load, not here — so this is not a regression versus the
 // plain text editor it replaces.
 func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.CatalogDefinition, revision string) (CatalogEditorSource, error) {
+	return workspace.SaveCatalogWindow(relative, CatalogWindowValue{CatalogDefinition: value}, revision)
+}
+
+// CatalogWindowValue is what the window of a catalog writes: the catalog,
+// and the subsystems marked on its page «Подсистемы» - none where the page
+// is not given, which leaves the subsystems as they are.
+type CatalogWindowValue struct {
+	metadata.CatalogDefinition
+	Subsystems *[]uuid.UUID `json:"subsystems,omitempty"`
+}
+
+// SaveCatalogWindow writes the catalog and the content of the subsystems
+// its window marks, one write: a refusal of any of them puts back what was
+// written before it - the roles, the subsystems, the folder.
+func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWindowValue, revision string) (CatalogEditorSource, error) {
+	value := window.CatalogDefinition
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	opened, err := workspace.readCatalogEditorLocked(relative)
@@ -179,6 +198,14 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 	if err != nil {
 		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
 	}
+	// The subsystems go after the roles and before the catalog, put back
+	// with the roles if the catalog is refused.
+	restoreSubsystems := func() error { return nil }
+	if window.Subsystems != nil {
+		if restoreSubsystems, err = workspace.writeMembershipLocked(value.ID, *window.Subsystems, opened.Subsystems); err != nil {
+			return CatalogEditorSource{}, errors.Join(fmt.Errorf("write the catalog's subsystems: %w", err), restoreRoles())
+		}
+	}
 	// The catalog keeps a folder named after it, so a new name moves the
 	// folder - its forms and modules with it - and the description is
 	// written there; a refusal puts the folder back.
@@ -187,11 +214,16 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 		var saved SourceFile
 		if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err == nil {
 			opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
+			if window.Subsystems != nil {
+				for index := range opened.Subsystems {
+					opened.Subsystems[index].Member = slices.Contains(*window.Subsystems, opened.Subsystems[index].ID)
+				}
+			}
 			return opened, nil
 		}
 		err = errors.Join(err, moveBack())
 	}
-	return CatalogEditorSource{}, errors.Join(err, restoreRoles())
+	return CatalogEditorSource{}, errors.Join(err, restoreSubsystems(), restoreRoles())
 }
 
 // followNameLocked moves the folder of the object described at relative from
@@ -429,7 +461,7 @@ func registerCatalogEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("GET "+catalogEditorAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
 		return workspace.ReadCatalogEditor(request.URL.Query().Get("path"))
 	}))
-	registerObjectWindow(routes, catalogEditorAddress, workspace.SaveCatalogEditor, workspace.CreateCatalog, workspace.DeleteCatalog)
+	registerObjectWindow(routes, catalogEditorAddress, workspace.SaveCatalogWindow, workspace.CreateCatalog, workspace.DeleteCatalog)
 	routes.HandleFunc("POST "+catalogEditorAddress+"/owners", answerStudio(0, writeSourceError, func(input struct {
 		Path   string                     `json:"path"`
 		Object metadata.CatalogDefinition `json:"object"`

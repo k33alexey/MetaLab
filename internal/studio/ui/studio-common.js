@@ -717,6 +717,17 @@ function searchField(className, changed) {
   return [line, search];
 }
 
+/* markBox is the box of a row of a tree of marks, standing before its icon
+   (treeNode's mark): checked while marked holds key, which it adds or takes
+   away; changed() is told of each mark. */
+function markBox(caption, marked, key, changed = () => {}) {
+  const box = node('input');
+  box.type = 'checkbox'; box.checked = marked.has(key); box.className = 'object-choice-box';
+  box.setAttribute('aria-label', caption);
+  box.addEventListener('change', () => { if (box.checked) marked.add(key); else marked.delete(key); changed(); });
+  return box;
+}
+
 /* chooseObjects is the platform's window «Выбор объекта» of objects of the
    project marked by boxes (docs/block-00/spravochnik.md, the window of the
    owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
@@ -737,11 +748,7 @@ async function chooseObjects(title, tree, chosen) {
     const text = search.value.trim().toLocaleLowerCase();
     const branch = group => {
       const objects = (group.objects || []).filter(item => !text || item.name.toLocaleLowerCase().includes(text)).map(item => {
-        const box = node('input');
-        box.type = 'checkbox'; box.checked = marked.has(item.id); box.className = 'object-choice-box';
-        box.setAttribute('aria-label', item.name);
-        box.addEventListener('change', () => { if (box.checked) marked.add(item.id); else marked.delete(item.id); });
-        return treeNode({icon: item.icon, caption: item.name, mark: box}).element;
+        return treeNode({icon: item.icon, caption: item.name, mark: markBox(item.name, marked, item.id)}).element;
       });
       const children = [...(group.children || []).map(branch).filter(Boolean), ...objects];
       if (text && !children.length) return null;

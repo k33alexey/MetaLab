@@ -428,8 +428,28 @@ function createCatalogEditor(host, onChange, around = {}) {
     page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates)), designers);
     return page;
   }
-  const builtPages = {main: renderMainPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage, numbering: renderNumberingPage,
-    forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
+  // «Подсистемы»: the subsystems of the project by their parents, a box at
+  // each, marked where the catalog is in its content (spravochnik.md, page
+  // 2; snapshot okno-02). The marks are written into the subsystems by
+  // «Сохранить» with the catalog (SaveCatalogWindow); a subsystem holding a
+  // marked one beneath stands open.
+  let membership = new Set();
+  function renderSubsystemsPage() {
+    const page = node('div', undefined, 'object-window-fields');
+    const places = source.subsystems || [], under = parent => places.filter(place => (place.parent || null) === parent);
+    const holds = place => membership.has(place.id) || under(place.id).some(holds);
+    const branch = place => {
+      const children = under(place.id).map(branch);
+      return treeNode({icon: 'subsystem', caption: place.name, mark: markBox(place.name, membership, place.id, onChange), children,
+        open: children.length > 0 && under(place.id).some(holds)}).element;
+    };
+    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+    tree.append(...under(null).map(branch));
+    page.append(node('div', 'Подсистемы, в которых участвует справочник:', 'object-window-caption'), tree);
+    return page;
+  }
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+    numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
     cleanups = [];
@@ -505,13 +525,16 @@ function createCatalogEditor(host, onChange, around = {}) {
       if (!keep) chosen = null;
       source = structuredClone(value);
       model = createCatalogModel(source);
+      membership = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
       host.hidden = false;
       frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
         actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
       host.replaceChildren(frame.element);
       renderPalette();
     },
-    value() { return model?.value(); },
+    // The catalog and the subsystems marked on its page, in one order so a
+    // mark taken back leaves the window unchanged.
+    value() { return model && {...model.value(), subsystems: [...membership].sort()}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.
