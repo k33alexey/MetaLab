@@ -345,35 +345,7 @@ function createCatalogEditor(host, onChange, around = {}) {
   // window opened by a button, the rows of one frame inside it
   // (spravochnik.md, okno-09, okno-15).
   function renderRowsPage(key) {
-    const page = node('div', undefined, 'object-window-fields'), fields = fieldsOfPalette(() => cleanups), subject = catalogSubject();
-    const paletteRows = (source.palette || []).flatMap(tab => tab.rows || []);
-    let frame = null;
-    for (const row of source.windowRows[key]) {
-      const base = paletteRows.find(item => item.key === row.key);
-      if (!base) continue;
-      let element;
-      if (row.button) {
-        element = node('button', row.title, 'object-window-button');
-        element.type = 'button';
-        element.disabled = base.field === 'window';
-        element.addEventListener('click', () => around.openModule?.(row.key));
-      } else {
-        const control = fields(subject, {...base, title: row.title});
-        if (base.field === 'flag') {
-          element = node('label', undefined, 'catalog-check object-window-flag');
-          element.append(control, node('span', row.title));
-        } else element = labeledField(row.title, control, row.above ? 'catalog-field catalog-field-above' : 'catalog-field');
-      }
-      if (!row.frame) { frame = null; page.append(element); continue; }
-      if (frame?.dataset.frame !== row.frame) {
-        frame = node('fieldset', undefined, 'studio-frame object-window-fields');
-        frame.dataset.frame = row.frame;
-        frame.append(node('legend', row.frame));
-        page.append(frame);
-      }
-      frame.append(element);
-    }
-    return page;
+    return rowsPage(source.windowRows[key], source.palette, fieldsOfPalette(() => cleanups), catalogSubject(), role => around.openModule?.(role));
   }
   // «Формы», «Команды», «Макеты»: a tree of the parts with its panel - the
   // forms of the object below the frame of the main forms, the commands
@@ -452,16 +424,7 @@ function createCatalogEditor(host, onChange, around = {}) {
   let membership = new Set();
   function renderSubsystemsPage() {
     const page = node('div', undefined, 'object-window-fields');
-    const places = source.subsystems || [], under = parent => places.filter(place => (place.parent || null) === parent);
-    const holds = place => membership.has(place.id) || under(place.id).some(holds);
-    const branch = place => {
-      const children = under(place.id).map(branch);
-      return treeNode({icon: 'subsystem', caption: place.name, mark: markBox(place.name, membership, place.id, onChange), children,
-        open: children.length > 0 && under(place.id).some(holds)}).element;
-    };
-    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
-    tree.append(...under(null).map(branch));
-    page.append(node('div', 'Подсистемы, в которых участвует справочник:', 'object-window-caption'), tree);
+    page.append(node('div', 'Подсистемы, в которых участвует справочник:', 'object-window-caption'), subsystemsTree(source.subsystems, membership, onChange));
     return page;
   }
   // «Функциональные опции»: the options of the project in a list of boxes
@@ -702,10 +665,7 @@ function createCatalogEditor(host, onChange, around = {}) {
       currentBasis = {own: null, other: null};
       roleModels = new Map((source.roles || []).map(entry => [entry.role.id, createRoleModel({role: entry.role, schema: source.rightsSchema})]));
       if (!roleModels.has(currentRole)) currentRole = source.roles?.[0]?.role.id ?? null;
-      host.hidden = false;
-      frame = objectWindow({title: windowTitle(), pages: source.pages || [], chosen: page, page: renderPage,
-        actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
-      host.replaceChildren(frame.element);
+      frame = showObjectWindow(host, around, {title: windowTitle(), pages: source.pages, chosen: page, page: renderPage});
       renderPalette();
     },
     // The catalog and the subsystems and options marked on its pages, in one

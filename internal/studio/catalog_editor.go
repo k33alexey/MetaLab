@@ -274,53 +274,66 @@ func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWin
 		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
 	}
 	// The subsystems, the options and the plans go after the roles and
-	// before the catalog, put back with the roles if the catalog is refused.
+	// before the catalog, the contents of new templates after them, all put
+	// back with the roles if the catalog is refused.
 	pages := window.memberships(opened)
-	restoreMembership, err := workspace.writeMembershipLocked(pages)
-	if err != nil {
-		return CatalogEditorSource{}, errors.Join(fmt.Errorf("write the objects listing the catalog: %w", err), restoreRoles())
-	}
-	// The catalog keeps a folder named after it, so a new name moves the
-	// folder - its forms and modules with it - and the description is
-	// written there; a refusal puts the folder back.
 	contents, err := templateContentFiles(metadata.CatalogKind, value.Name, opened.Catalog.Templates, value.Templates, window.TemplateContents)
 	if err != nil {
-		return CatalogEditorSource{}, errors.Join(err, restoreMembership(), restoreRoles())
+		return CatalogEditorSource{}, errors.Join(err, restoreRoles())
 	}
-	written, moveBack, err := workspace.followNameLocked(relative, opened.Catalog.Name, value.Name)
-	if err == nil {
-		// The contents of new templates go into the folder before the
-		// description declares them, and away again if it is refused.
-		var takeContents func()
-		takeContents, err = workspace.writeNewFilesLocked(contents)
-		var saved SourceFile
-		if err == nil {
-			if saved, err = workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
-				takeContents()
-			}
-		}
-		if err == nil {
-			opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
-			for _, page := range pages {
-				markMembers(page)
-			}
-			opened.BasisFor = members(opened.basisPlaces)
-			// The roles are read anew: the page and the fields change them,
-			// and each has a revision of its own. A role that does not read
-			// now stays as the window had it, and its next change is refused
-			// as one of a role changed on disk.
-			var order []uuid.UUID
-			for _, place := range opened.Roles {
-				order = append(order, place.Role.ID)
-			}
-			if roles, err := workspace.rolePlacesLocked(order, value.ID, configuration); err == nil {
-				opened.Roles = roles
-			}
-			return opened, nil
-		}
-		err = errors.Join(err, moveBack())
+	written, saved, err := workspace.writeObjectWindowLocked(relative, opened.Catalog.Name, value.Name, encoded.String(), revision, pages, contents)
+	if err != nil {
+		return CatalogEditorSource{}, errors.Join(err, restoreRoles())
 	}
-	return CatalogEditorSource{}, errors.Join(err, restoreMembership(), restoreRoles())
+	opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
+	for _, page := range pages {
+		markMembers(page)
+	}
+	opened.BasisFor = members(opened.basisPlaces)
+	// The roles are read anew: the page and the fields change them, and
+	// each has a revision of its own. A role that does not read now stays
+	// as the window had it, and its next change is refused as one of a role
+	// changed on disk.
+	var order []uuid.UUID
+	for _, place := range opened.Roles {
+		order = append(order, place.Role.ID)
+	}
+	if roles, err := workspace.rolePlacesLocked(order, value.ID, configuration); err == nil {
+		opened.Roles = roles
+	}
+	return opened, nil
+}
+
+// writeObjectWindowLocked writes what the window of an object marks on its
+// pages - the subsystems, the options, the plans that list it - then the
+// files it adds to its folder, then the object itself, its folder following
+// a new name (before, after), as one save: a refusal of any step puts back
+// what was written before it. Answers where the description lies and as
+// what it was written.
+func (workspace *Workspace) writeObjectWindowLocked(relative, before, after, encoded, revision string, pages []membership, files []newFile) (string, SourceFile, error) {
+	restoreMembership, err := workspace.writeMembershipLocked(pages)
+	if err != nil {
+		return "", SourceFile{}, fmt.Errorf("write the objects listing the object: %w", err)
+	}
+	// The object keeps a folder named after it, so a new name moves the
+	// folder - its forms and modules with it - and the description is
+	// written there; a refusal puts the folder back.
+	written, moveBack, err := workspace.followNameLocked(relative, before, after)
+	if err != nil {
+		return "", SourceFile{}, errors.Join(err, restoreMembership())
+	}
+	// The files go into the folder before the description declares them,
+	// and away again if it is refused.
+	takeFiles, err := workspace.writeNewFilesLocked(files)
+	if err != nil {
+		return "", SourceFile{}, errors.Join(err, moveBack(), restoreMembership())
+	}
+	saved, err := workspace.saveSourceLocked(written, encoded, revision)
+	if err != nil {
+		takeFiles()
+		return "", SourceFile{}, errors.Join(err, moveBack(), restoreMembership())
+	}
+	return written, saved, nil
 }
 
 // followNameLocked moves the folder of the object described at relative from

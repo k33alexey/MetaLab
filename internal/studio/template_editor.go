@@ -39,6 +39,10 @@ type objectHead struct {
 	DefaultLanguage string             `json:"defaultLanguage"`
 	KindTitle       string             `json:"kindTitle"`
 	Palette         []kinds.PaletteTab `json:"palette"`
+	// Pages are the pages of the window of an object of a kind that has one,
+	// and WindowRows those of them built of the palette's rows.
+	Pages      []kinds.Page                 `json:"pages,omitempty"`
+	WindowRows map[string][]kinds.WindowRow `json:"windowRows,omitempty"`
 }
 
 // readObjectDescription reads the description of an object of a kind that
@@ -63,7 +67,7 @@ func readObjectDescription[T any](workspace *Workspace, kind metadata.Kind, rela
 		return none, objectHead{}, err
 	}
 	return value, objectHead{Path: relative, Revision: file.Revision, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(kind).Title, Palette: kinds.Must(kind).Palette()}, nil
+		KindTitle: kinds.Must(kind).Title, Palette: kinds.Must(kind).Palette(), Pages: kinds.Must(kind).WindowPages(), WindowRows: kinds.Must(kind).WindowRows()}, nil
 }
 
 // TemplateDraft is what the constructor of a template makes: the name, the

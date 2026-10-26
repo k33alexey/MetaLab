@@ -1053,6 +1053,17 @@ function paletteFields(context) {
       return field;
     }
     if (row.field === 'text') return textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+    // The XDTO packages of a web service: their namespaces - a package of
+    // the project named by its own (context.packages) - «…» choosing them
+    // unavailable until the window of the choice, the cross clearing them.
+    if (row.field === 'packages') {
+      const items = subject.get(row.key) || [], shown = node('input'), off = !available(subject, row);
+      shown.readOnly = true; shown.disabled = off;
+      shown.value = items.map(item => item.package ? context.packages?.[item.package] || item.package : item.namespace).join(',');
+      const pick = fieldChoiceButton(row.title, () => {});
+      pick.disabled = true;
+      return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, []); context.changed(); }, off || !items.length)]);
+    }
     // An address shown and not typed into: a page of the network opens in
     // the browser, a file is only shown.
     if (row.field === 'link') {
@@ -1111,6 +1122,64 @@ function paletteFields(context) {
     control.disabled = off;
     return control;
   };
+}
+
+/* rowsPage is a page of the window of an object built of the palette's
+   rows (kinds.WindowRows): each row of the page takes its field from the
+   palette's row of the same key (palette, fields of paletteFields for
+   subject) with the window's caption; a flag stands with its caption after
+   it, a row of a module is a button opening it (openModule), a row in a
+   frame stands in a frame of its caption, a caption above stands above its
+   field. */
+function rowsPage(windowRows, palette, fields, subject, openModule) {
+  const page = node('div', undefined, 'object-window-fields');
+  const paletteRows = (palette || []).flatMap(tab => tab.rows || []);
+  let frame = null;
+  for (const row of windowRows || []) {
+    const base = paletteRows.find(item => item.key === row.key);
+    if (!base) continue;
+    let element;
+    if (row.button) {
+      element = node('button', row.title, 'object-window-button');
+      element.type = 'button';
+      element.disabled = base.field === 'window';
+      element.addEventListener('click', () => openModule(row.key));
+    } else {
+      const control = fields(subject, {...base, title: row.title});
+      if (base.field === 'flag') {
+        element = node('label', undefined, 'catalog-check object-window-flag');
+        element.append(control, node('span', row.title));
+      } else element = labeledField(row.title, control, row.above ? 'catalog-field catalog-field-above' : 'catalog-field');
+    }
+    if (!row.frame) { frame = null; page.append(element); continue; }
+    if (frame?.dataset.frame !== row.frame) {
+      frame = node('fieldset', undefined, 'studio-frame object-window-fields');
+      frame.dataset.frame = row.frame;
+      frame.append(node('legend', row.frame));
+      page.append(frame);
+    }
+    frame.append(element);
+  }
+  return page;
+}
+
+/* subsystemsTree is the tree of the page «Подсистемы» of the window of an
+   object (spravochnik.md, page 2; snapshot okno-02): the subsystems of the
+   project by their parents (places, MemberPlace), a box at each marked
+   where the object is in its content (marks, a Set the boxes change);
+   a subsystem holding a marked one beneath stands open. changed() is
+   called on every mark. */
+function subsystemsTree(places, marks, changed) {
+  const under = parent => (places || []).filter(place => (place.parent || null) === parent);
+  const holds = place => marks.has(place.id) || under(place.id).some(holds);
+  const branch = place => {
+    const children = under(place.id).map(branch);
+    return treeNode({icon: 'subsystem', caption: place.name, mark: markBox(place.name, marks, place.id, changed), children,
+      open: children.length > 0 && under(place.id).some(holds)}).element;
+  };
+  const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+  tree.append(...under(null).map(branch));
+  return tree;
 }
 
 /* clearObjectPalette empties the palette of around (its element and its
@@ -1248,6 +1317,18 @@ function objectWindow({title, pages, chosen, page, actions, close, help}) {
   function show(key) { current = key; refresh(); }
   refresh();
   return {element, show, refresh, current: () => current, setTitle(text) { heading.textContent = text; }};
+}
+
+/* showObjectWindow puts the window of an object (objectWindow) into host
+   and shows it: «Действия» offers around.actions(), «Закрыть» is
+   around.close(), «Справка» the page of the window of an object. Answers the
+   window. */
+function showObjectWindow(host, around, {title, pages, chosen, page}) {
+  host.hidden = false;
+  const frame = objectWindow({title, pages: pages || [], chosen, page,
+    actions: () => around.actions?.() || [], close: () => around.close?.(), help: 'object-window'});
+  host.replaceChildren(frame.element);
+  return frame;
 }
 
 /* queryTextField edits a text in the query language - the condition of a

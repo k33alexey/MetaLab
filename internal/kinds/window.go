@@ -15,6 +15,10 @@ type Page struct {
 // whose window Studio does not build by them yet has none here; a kind the
 // prototype opens no window of - a constant - never will.
 var windowPages = map[Kind][]Page{
+	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01-04.
+	WebService: {
+		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"operations", "Операции"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
+	},
 	// docs/block-00/spravochnik.md, «Окно редактирования», fifteen pages.
 	Catalog: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"functional-options", "Функциональные опции"},
@@ -40,6 +44,22 @@ type WindowRow struct {
 // windowRows are the pages of a window built of the palette's rows, by
 // page (docs/block-00/<вид>.md, «Окно редактирования»).
 var windowRows = map[Kind]map[string][]WindowRow{
+	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01, 03, 04:
+	// the captions end in a colon, the reuse of sessions stands above its
+	// list, the module opens by a button.
+	WebService: {
+		"main": {{Key: "name", Title: "Имя:"}, {Key: "title", Title: "Синоним:"}, {Key: "comment", Title: "Комментарий:"}},
+		"sessions": {
+			{Key: "reuseSessions", Title: "Повторное использование сеансов:", Above: true},
+			{Key: "sessionMaxAge", Title: "Время жизни сеанса:"},
+		},
+		"other": {
+			{Key: string(ServiceModule), Title: "Модуль", Button: true},
+			{Key: "namespace", Title: "URI пространства имен:"},
+			{Key: "packages", Title: "Пакеты XDTO:"},
+			{Key: "descriptorFile", Title: "Имя файла публикации:"},
+		},
+	},
 	// docs/block-00/spravochnik.md, pages 8, 9, 10 and 15; snapshots
 	// okno-08, okno-09, okno-10, okno-15.
 	Catalog: {
@@ -157,6 +177,9 @@ const (
 	FieldsField    = "fields"
 	WindowField    = "window"
 	SeparatorField = "separator"
+	// PackagesField is the XDTO packages a web service uses: the namespaces
+	// shown, «…» choosing them, the cross clearing them (web-servis.md).
+	PackagesField = "packages"
 	// FormField is a main form of the object, chosen among its forms,
 	// cleared, and opened by the magnifier.
 	FormField = "form"
@@ -176,6 +199,27 @@ const (
 // rows, in the prototype's order (docs/block-00/<вид>.md, «Палитра
 // свойств»). A tab whose rows are not built yet stands empty.
 var palettes = map[Kind][]PaletteTab{
+	// docs/block-00/web-servis.md, «Палитра»: one tab - the packages after
+	// the comment, then the namespace, the module, the file of publication,
+	// the reuse of sessions and their lifetime.
+	WebService: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("web-сервиса", "о web-сервисе"), []PaletteRow{
+			{Key: "packages", Title: "Пакеты XDTO", Field: PackagesField, Important: true,
+				Description: "Пакеты XDTO, типы которых сервис принимает и возвращает."},
+			{Field: SeparatorField, Important: true},
+			{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
+				Description: "Пространство имён сервиса в его описании WSDL."},
+			{Key: string(ServiceModule), Title: "Модуль", Field: ModuleField, Important: true,
+				Description: "Код сервиса: процедуры, которые исполняют его операции."},
+			{Key: "descriptorFile", Title: "Имя файла публикации", Field: TextField, Important: true,
+				Description: "Имя файла, по которому сервис публикуется на веб-сервере."},
+			{Key: "reuseSessions", Title: "Повторное использование сеансов", Field: ChoiceField, Important: true, Default: "do-not-use",
+				Choices:     [][2]string{{"do-not-use", "Не использовать"}, {"use", "Использовать"}, {"auto", "Использовать автоматически"}},
+				Description: "Отвечает ли сервис нескольким вызовам в одном сеансе."},
+			{Key: "sessionMaxAge", Title: "Время жизни сеанса", Field: NumberField, Important: true,
+				Description: "Сколько секунд сеанс может бездействовать, прежде чем завершится; действует при повторном использовании сеансов."},
+		})},
+	},
 	// docs/block-00/ws-ssylka.md, «Палитра»; snapshot ws-ssylka/03-palitra:
 	// one tab, «URL источника» a link the import writes, «WS-ссылка:
 	// Открыть» the window viewing the description.
