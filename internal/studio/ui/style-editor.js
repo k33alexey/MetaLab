@@ -56,7 +56,7 @@ function styleValueRows(source, className, choose) {
   const list = node('div', undefined, 'style-values ' + className);
   for (const item of source.items) {
     const caption = node('span', undefined, 'style-value-caption');
-    caption.append(iconElement('style-item'), node('span', styleItemTitle(source, item)));
+    caption.append(iconElement('style-item-' + item.type), node('span', styleItemTitle(source, item)));
     const shown = styleValueText(source, item), field = node('div', undefined, 'style-value-field');
     field.title = shown.text;
     if (item.type === 'color') {

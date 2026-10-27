@@ -697,6 +697,22 @@ var treeIcons = []Icon{
 		colored(path(Accent, "M8 8L12.33 10.5A5 5 0 0 1 3.67 10.5Z"), "#efc23a"),
 		colored(path(Accent, "M8 8L3.67 10.5A5 5 0 0 1 8 3Z"), blue),
 	}},
+	// The signs of the rows of the window of a style, by the kind of the
+	// item (docs/block-00/stil.md, «Окно»; snapshots stil/06,
+	// series-2.584/055): a colour - three discs, green above, orange and blue
+	// below, laid over one another; a font - a slanted T with serifs; a
+	// border - a frame of rounded corners.
+	{ID: "style-item-color", Color: gray, Parts: []Part{
+		colored(circle(Accent, 8, 5.5, 4), brightGreen),
+		colored(circle(Accent, 5, 10.5, 4), orange),
+		colored(circle(Accent, 11, 10.5, 4), blue),
+	}},
+	{ID: "style-item-font", Color: blue, Parts: []Part{
+		path(Accent, "M5 2H15L14.4 5H13.4L13.2 4H10.5L8.5 12H10L9.6 14H4L4.4 12H6L8 4H5.6L5 5H4.4Z"),
+	}},
+	{ID: "style-item-border", Color: gray, Parts: []Part{
+		rect(Body, 2.5, 2.5, 11, 11),
+	}},
 	{ID: "style", Color: slate, Parts: []Part{
 		rect(Body, 1.5, 1.5, 13, 13),
 		path(Detail, "M9.5 3.5H13.5M11.5 3.5V8"),
