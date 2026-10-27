@@ -87,3 +87,56 @@ func TestTheCompositionOfASubsystemOffersThePrototypesKinds(t *testing.T) {
 		t.Errorf("the kinds of the composition: %v, want %v", got, want)
 	}
 }
+
+// A document is written in JSON under the names every other kind has - the
+// YAML name in camel case (the owner, 27.10.2026, question В11 of series
+// 2.595) - and read back whole; a snapshot written before under the Go
+// names reads the same, the names differing in the case of the first letter
+// alone. The expected names are written from the YAML of a document.
+// Defects caught: a field of a document written under its Go name
+// («TableParts», «Number») - which the window of a document reads by the
+// JSON name and would not find - or lost on the way back.
+func TestADocumentHasTheJSONNamesOfEveryKind(t *testing.T) {
+	id := uuid.MustNew()
+	document := DocumentDefinition{Format: CurrentFormat, ID: id, Name: "Заказ", Title: LocalizedText{"ru": "Заказ"},
+		Number:    DocumentNumber{Type: StringType, Length: 9, Auto: true, Unique: true, FixedLength: true, Periodicity: "year"},
+		Numerator: &id, Movements: []uuid.UUID{id}, Attributes: []Attribute{{ID: id, Name: "Сумма"}},
+		TableParts: []TablePart{{ID: id, Name: "Товары"}}, Commands: []ObjectCommand{{ID: id, Name: "Печать"}},
+		Templates: []ObjectTemplate{{ID: id, Name: "Макет"}}}
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"format", "id", "name", "title", "number", "numerator", "movements", "attributes", "tableParts", "commands", "templates", "posting"} {
+		if _, ok := fields[name]; !ok {
+			t.Errorf("a document has no JSON name %q: %s", name, encoded)
+		}
+	}
+	var number map[string]any
+	_ = json.Unmarshal(fields["number"], &number)
+	if got := strings.Join(sortedKeys(number), ","); got != "auto,fixedLength,length,periodicity,type,unique" {
+		t.Errorf("the number of a document: %s", got)
+	}
+	var back DocumentDefinition
+	if err := json.Unmarshal(encoded, &back); err != nil || !reflect.DeepEqual(back, document) {
+		t.Errorf("a document read back otherwise: %v", err)
+	}
+	old := strings.NewReplacer(`"tableParts"`, `"TableParts"`, `"number"`, `"Number"`, `"fixedLength"`, `"FixedLength"`).Replace(string(encoded))
+	var before DocumentDefinition
+	if err := json.Unmarshal([]byte(old), &before); err != nil || !reflect.DeepEqual(before, document) {
+		t.Errorf("a snapshot under the Go names read otherwise: %v", err)
+	}
+}
+
+func sortedKeys(fields map[string]any) []string {
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}

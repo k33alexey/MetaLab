@@ -22,25 +22,25 @@ const (
 )
 
 type DocumentNumber struct {
-	Type   TypeKind `yaml:"type"`
-	Length int      `yaml:"length"`
-	Auto   bool     `yaml:"auto"`
-	Unique bool     `yaml:"unique"`
+	Type   TypeKind `yaml:"type" json:"type"`
+	Length int      `yaml:"length" json:"length"`
+	Auto   bool     `yaml:"auto" json:"auto"`
+	Unique bool     `yaml:"unique" json:"unique"`
 	// FixedLength is the allowed length of a string number, the same setting a
 	// code carries - see CatalogCode.FixedLength. It lives here rather than on
 	// each kind because a document, a business process, a task and a numerator
 	// all describe their number through this one shape, and the prototype gives
 	// the property to exactly those four.
-	FixedLength bool              `yaml:"fixed_length,omitempty"`
-	Periodicity NumberPeriodicity `yaml:"periodicity"`
+	FixedLength bool              `yaml:"fixed_length,omitempty" json:"fixedLength,omitempty"`
+	Periodicity NumberPeriodicity `yaml:"periodicity" json:"periodicity"`
 }
 
 // DocumentDefinition describes one ML document and its persistent record shape.
 type DocumentDefinition struct {
-	Format int           `yaml:"format"`
-	ID     uuid.UUID     `yaml:"id"`
-	Name   string        `yaml:"name"`
-	Title  LocalizedText `yaml:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
 	// Presentations is how this object is named to the person using it -
 	// see object_presentation.go.
 	Presentations `yaml:",inline" json:",inline"` // A document is picked but not edited in a list, and stands for nothing in
@@ -64,14 +64,14 @@ type DocumentDefinition struct {
 	// beside the ones the platform builds - see additional_indexes.go.
 	AdditionalIndexes []AdditionalIndex `yaml:"additional_indexes,omitempty" json:"additionalIndexes,omitempty"`
 
-	Number DocumentNumber `yaml:"number"`
+	Number DocumentNumber `yaml:"number" json:"number"`
 	// Numerator names a numbering shared with other kinds of document. When it
 	// is named the document declares no number of its own: two sources for one
 	// number is one too many, and the shared one wins by definition.
-	Numerator *uuid.UUID `yaml:"numerator,omitempty"`
+	Numerator *uuid.UUID `yaml:"numerator,omitempty" json:"numerator,omitempty"`
 	// Posting is the six settings that describe being posted, not one flag -
 	// see document_posting.go.
-	Posting DocumentPosting `yaml:"posting,omitempty"`
+	Posting DocumentPosting `yaml:"posting,omitempty" json:"posting,omitempty"`
 	// Movements are the registers this document writes records into. The link
 	// is described from the document's side, and only from there: in the
 	// prototype not one of the four kinds of register has a property listing
@@ -79,14 +79,14 @@ type DocumentDefinition struct {
 	// other way round, a register had to be reopened every time a document
 	// started writing into it, and the document - the thing that does the
 	// writing - said nothing about it.
-	Movements          []uuid.UUID            `yaml:"movements,omitempty"`
-	Attributes         []Attribute            `yaml:"attributes,omitempty"`
-	TableParts         []TablePart            `yaml:"table_parts,omitempty"`
-	Characteristics    []ObjectCharacteristic `yaml:"characteristics,omitempty"`
-	StandardAttributes []StandardAttribute    `yaml:"standard_attributes,omitempty"`
-	Forms              ObjectForms            `yaml:"forms,omitempty"`
-	Commands           []ObjectCommand        `yaml:"commands,omitempty"`
-	Templates          []ObjectTemplate       `yaml:"templates,omitempty"`
+	Movements          []uuid.UUID            `yaml:"movements,omitempty" json:"movements,omitempty"`
+	Attributes         []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts         []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics    []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms              ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands           []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates          []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
