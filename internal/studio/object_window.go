@@ -95,6 +95,50 @@ type windowMarks struct {
 	Kind                          metadata.Kind
 }
 
+// pageMarks are what the common pages of a window write with the object -
+// the subsystems, the options, the exchange plans, the objects entered on
+// its basis, the roles - none of a page not given, and the contents loaded
+// from files into templates the window added, by their identifiers.
+type pageMarks struct {
+	TemplateContents  []TemplateContent `json:"templateContents,omitempty"`
+	Subsystems        *[]uuid.UUID      `json:"subsystems,omitempty"`
+	FunctionalOptions *[]uuid.UUID      `json:"functionalOptions,omitempty"`
+	ExchangePlans     *[]MemberPlace    `json:"exchangePlans,omitempty"`
+	BasisFor          *[]uuid.UUID      `json:"basisFor,omitempty"`
+	Roles             *[]RoleMark       `json:"roles,omitempty"`
+}
+
+// of answers the marks of an object of kind.
+func (marks pageMarks) of(kind metadata.Kind) windowMarks {
+	return windowMarks{Subsystems: marks.Subsystems, FunctionalOptions: marks.FunctionalOptions, ExchangePlans: marks.ExchangePlans,
+		BasisFor: marks.BasisFor, Roles: marks.Roles, TemplateContents: marks.TemplateContents, Kind: kind}
+}
+
+// referenceParts is what the window of an object stored as a reference
+// with parts - a catalog, an exchange plan, a document - reads beside the
+// head: what the window «Редактирование типа данных» offers for an
+// attribute - a field the database stores - the palettes of its parts,
+// and what its windows «Выбор объекта» offer, by the property they choose.
+type referenceParts struct {
+	TypeOffer    metadata.TypeOffer              `json:"typeOffer"`
+	PartPalettes map[string][]kinds.PaletteTab   `json:"partPalettes"`
+	Choices      map[string][]ObjectChoiceBranch `json:"choices"`
+}
+
+// referencePartsOf reads the parts of the window of such an object in the
+// project loaded; choices are the kinds each window «Выбор объекта» offers,
+// by the property.
+func referencePartsOf(loaded *metadata.Catalog, choices map[string][]metadata.Kind) referenceParts {
+	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
+	parts := referenceParts{TypeOffer: offer, Choices: map[string][]ObjectChoiceBranch{},
+		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart"),
+			"template": kinds.PartPalette("template")}}
+	for property, offered := range choices {
+		parts.Choices[property] = objectChoiceTree(loaded, offered)
+	}
+	return parts
+}
+
 // memberships are the pages of the window given, each with the objects it
 // marks, for the object id whose window read head.
 func (marks windowMarks) memberships(id uuid.UUID, head windowHead) []membership {

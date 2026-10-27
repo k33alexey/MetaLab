@@ -21,14 +21,8 @@ import (
 // what the window of a catalog offers beside them.
 type CatalogEditorSource struct {
 	windowHead
-	Catalog   metadata.CatalogDefinition `json:"catalog"`
-	TypeOffer metadata.TypeOffer         `json:"typeOffer"`
-	// PartPalettes are the palettes of its parts: an attribute, a table part.
-	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
-	// Choices are what the windows «Выбор объекта» of the catalog offer, by
-	// the property they choose: owners - the objects of the five kinds that
-	// may own it, basedOn - those of the eight that may be its basis.
-	Choices map[string][]ObjectChoiceBranch `json:"choices"`
+	referenceParts
+	Catalog metadata.CatalogDefinition `json:"catalog"`
 }
 
 func (source CatalogEditorSource) windowOf() (metadata.CatalogDefinition, windowHead) {
@@ -89,16 +83,10 @@ func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEdi
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	// What the window «Редактирование типа данных» offers for an attribute
-	// is a field the database stores.
-	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
-	return CatalogEditorSource{windowHead: head, Catalog: value, TypeOffer: offer,
-		Choices: map[string][]ObjectChoiceBranch{
-			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
-		},
-		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart"),
-			"template": kinds.PartPalette("template")},
-	}, nil
+	// The windows «Выбор объекта» of the owners - the five kinds that may
+	// own a catalog - and of the bases - the eight that may be one.
+	return CatalogEditorSource{windowHead: head, Catalog: value,
+		referenceParts: referencePartsOf(loaded, map[string][]metadata.Kind{"owners": metadata.CatalogOwnerKinds(), "basedOn": metadata.BasisKinds()})}, nil
 }
 
 // SaveCatalogEditor validates and writes an edited catalog. Reference
@@ -118,14 +106,7 @@ func (workspace *Workspace) SaveCatalogEditor(relative string, value metadata.Ca
 // none where a page is not given, which leaves those objects as they are.
 type CatalogWindowValue struct {
 	metadata.CatalogDefinition
-	// TemplateContents are the contents loaded from files into templates
-	// the constructor added in this window, by their identifiers.
-	TemplateContents  []TemplateContent `json:"templateContents,omitempty"`
-	Subsystems        *[]uuid.UUID      `json:"subsystems,omitempty"`
-	FunctionalOptions *[]uuid.UUID      `json:"functionalOptions,omitempty"`
-	ExchangePlans     *[]MemberPlace    `json:"exchangePlans,omitempty"`
-	BasisFor          *[]uuid.UUID      `json:"basisFor,omitempty"`
-	Roles             *[]RoleMark       `json:"roles,omitempty"`
+	pageMarks
 }
 
 // SaveCatalogWindow writes the catalog and what the pages of its window
@@ -133,10 +114,7 @@ type CatalogWindowValue struct {
 // objects entered on its basis, the contents of new templates - as one
 // save (saveObjectWindow).
 func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWindowValue, revision string) (CatalogEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.CatalogDefinition, windowMarks{
-		Subsystems: window.Subsystems, FunctionalOptions: window.FunctionalOptions, ExchangePlans: window.ExchangePlans,
-		BasisFor: window.BasisFor, Roles: window.Roles, TemplateContents: window.TemplateContents, Kind: metadata.CatalogKind,
-	}, workspace.readCatalogEditorLocked, catalogShape)
+	return saveObjectWindowAs(workspace, relative, revision, window.CatalogDefinition, window.of(metadata.CatalogKind), workspace.readCatalogEditorLocked, catalogShape)
 }
 
 // writeObjectWindowLocked writes what the window of an object marks on its

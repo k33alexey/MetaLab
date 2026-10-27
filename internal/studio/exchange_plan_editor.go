@@ -3,7 +3,6 @@ package studio
 import (
 	"net/http"
 
-	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -18,25 +17,15 @@ import (
 // read and write it.
 type ExchangePlanEditorSource struct {
 	windowHead
+	referenceParts
 	ExchangePlan metadata.ExchangePlanDefinition `json:"exchangePlan"`
-	TypeOffer    metadata.TypeOffer              `json:"typeOffer"`
-	// PartPalettes are the palettes of its parts: an attribute, a table
-	// part, a template.
-	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
-	// Choices are what the window «Выбор объекта» of «Вводится на
-	// основании» offers.
-	Choices map[string][]ObjectChoiceBranch `json:"choices"`
 }
 
 // ExchangePlanWindowValue is what the window of an exchange plan writes:
 // the plan and what its pages mark - none of a page not given.
 type ExchangePlanWindowValue struct {
 	metadata.ExchangePlanDefinition
-	TemplateContents  []TemplateContent `json:"templateContents,omitempty"`
-	Subsystems        *[]uuid.UUID      `json:"subsystems,omitempty"`
-	FunctionalOptions *[]uuid.UUID      `json:"functionalOptions,omitempty"`
-	BasisFor          *[]uuid.UUID      `json:"basisFor,omitempty"`
-	Roles             *[]RoleMark       `json:"roles,omitempty"`
+	pageMarks
 }
 
 func (source ExchangePlanEditorSource) windowOf() (metadata.ExchangePlanDefinition, windowHead) {
@@ -72,23 +61,15 @@ func (workspace *Workspace) readExchangePlanEditorLocked(relative string) (Excha
 	if err != nil {
 		return ExchangePlanEditorSource{}, err
 	}
-	// What the window «Редактирование типа данных» offers for an attribute
-	// is a field the database stores.
-	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
-	return ExchangePlanEditorSource{windowHead: head, ExchangePlan: value, TypeOffer: offer,
-		Choices: map[string][]ObjectChoiceBranch{"basedOn": objectChoiceTree(loaded, metadata.BasisKinds())},
-		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart"),
-			"template": kinds.PartPalette("template")},
-	}, nil
+	return ExchangePlanEditorSource{windowHead: head, ExchangePlan: value,
+		referenceParts: referencePartsOf(loaded, map[string][]metadata.Kind{"basedOn": metadata.BasisKinds()})}, nil
 }
 
 // SaveExchangePlanWindow writes the plan and what the pages of its window
 // mark as one save (saveObjectWindow).
 func (workspace *Workspace) SaveExchangePlanWindow(relative string, window ExchangePlanWindowValue, revision string) (ExchangePlanEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.ExchangePlanDefinition, windowMarks{
-		Subsystems: window.Subsystems, FunctionalOptions: window.FunctionalOptions, BasisFor: window.BasisFor, Roles: window.Roles,
-		TemplateContents: window.TemplateContents, Kind: metadata.ExchangePlanKind,
-	}, workspace.readExchangePlanEditorLocked, exchangePlanShape)
+	return saveObjectWindowAs(workspace, relative, revision, window.ExchangePlanDefinition, window.of(metadata.ExchangePlanKind),
+		workspace.readExchangePlanEditorLocked, exchangePlanShape)
 }
 
 // CreateExchangePlan makes the next exchange plan with the prototype's

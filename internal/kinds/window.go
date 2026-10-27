@@ -34,6 +34,15 @@ var windowPages = map[Kind][]Page{
 		{"forms", "Формы"}, {"input", "Поле ввода"}, {"commands", "Команды"}, {"templates", "Макеты"},
 		{"based-on", "Ввод на основании"}, {"rights", "Права"}, {"other", "Прочее"},
 	},
+	// docs/block-00/dokument.md, «Окно»: sixteen pages, a catalog's without
+	// «Иерархия» and «Владельцы» with «Нумерация», «Движения»,
+	// «Последовательности» and «Журналы».
+	Document: {
+		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"functional-options", "Функциональные опции"}, {"data", "Данные"},
+		{"numbering", "Нумерация"}, {"movements", "Движения"}, {"sequences", "Последовательности"}, {"journals", "Журналы"},
+		{"forms", "Формы"}, {"input", "Поле ввода"}, {"commands", "Команды"}, {"templates", "Макеты"},
+		{"based-on", "Ввод на основании"}, {"rights", "Права"}, {"exchange", "Обмен данными"}, {"other", "Прочее"},
+	},
 	// docs/block-00/spravochnik.md, «Окно редактирования», fifteen pages.
 	Catalog: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"functional-options", "Функциональные опции"},
@@ -66,6 +75,9 @@ type WindowRow struct {
 	Frame  string `json:"frame,omitempty"`
 	Above  bool   `json:"above,omitempty"`
 	Button bool   `json:"button,omitempty"`
+	// Radio draws a list of values as the frame of radio buttons of its
+	// title (snapshot dokument/03, «Тип номера»).
+	Radio bool `json:"radio,omitempty"`
 }
 
 // windowRows are the pages of a window built of the palette's rows, by
@@ -105,6 +117,13 @@ var windowRows = map[Kind]map[string][]WindowRow{
 	// docs/block-00/spravochnik.md, pages 8, 9, 10 and 15; snapshots
 	// okno-08, okno-09, okno-10, okno-15.
 	Catalog: {
+		// spravochnik.md, okno-07; snapshot novyy-numeraciya: the two flags
+		// and «Серии кодов» as radio buttons.
+		"numbering": {
+			{Key: "code.auto", Title: "Автонумерация"},
+			{Key: "code.unique", Title: "Контроль уникальности"},
+			{Key: "code.series", Title: "Серии кодов", Radio: true},
+		},
 		"forms": {
 			{Key: "forms.object", Title: "Элемента:", Frame: "Формы"},
 			{Key: "forms.folder", Title: "Группы:", Frame: "Формы"},
@@ -118,6 +137,29 @@ var windowRows = map[Kind]map[string][]WindowRow{
 			{Key: "predefined", Title: "Предопределенные", Button: true},
 			{Key: "predefinedDataUpdate", Title: "Обновление предопределенных данных:", Above: true},
 		}, referenceStorageRows),
+	},
+	// docs/block-00/dokument.md, «Окно»; snapshots dokument/03, 09-11:
+	// «Нумерация» - the flags, the numerator, the length, «Тип номера» as
+	// radio buttons, the periodicity; the forms of a document, a list and a
+	// choice; «Прочее» as an exchange plan's.
+	Document: {
+		"numbering": {
+			{Key: "number.auto", Title: "Автонумерация"},
+			{Key: "numerator", Title: "Нумератор:"},
+			{Key: "number.length", Title: "Длина номера:"},
+			{Key: "number.unique", Title: "Контроль уникальности"},
+			{Key: "number.type", Title: "Тип номера", Radio: true},
+			{Key: "number.periodicity", Title: "Периодичность:"},
+		},
+		"forms": {
+			{Key: "forms.object", Title: "Документа:", Frame: "Формы"},
+			{Key: "forms.list", Title: "Списка:", Frame: "Формы"},
+			{Key: "forms.choice", Title: "Выбора:", Frame: "Формы"},
+		},
+		"commands": referenceCommandRows,
+		// A document has no quick choice (snapshot dokument/13).
+		"input": referenceInputRows[1:],
+		"other": slices.Concat(referenceModuleRows, referenceStorageRows),
 	},
 	// docs/block-00/plan-obmena.md, «Окно»; snapshots plan-obmena/01, 10,
 	// 12, 13: the flag of a distributed base and the button «Состав» after
@@ -251,6 +293,9 @@ const (
 	NumberField    = "number"
 	SwitchField    = "switch"
 	ObjectsField   = "objects"
+	// ObjectField is one object of the project chosen by its identifier -
+	// a document's numerator.
+	ObjectField    = "object"
 	FieldsField    = "fields"
 	WindowField    = "window"
 	SeparatorField = "separator"
@@ -505,6 +550,65 @@ var palettes = map[Kind][]PaletteTab{
 	},
 	// docs/block-00/spravochnik.md, «Палитра свойств»: four tabs, «только
 	// важные» takes «Справочная информация» away.
+	// docs/block-00/dokument.md, «Палитра»; snapshots dokument/01, 12, 13:
+	// «Основные» as a catalog's; «Данные» - the number, the posting and the
+	// storage in the prototype's order; no quick choice, way of choice or
+	// main presentation on «Представление».
+	Document: append([]PaletteTab{
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("документа", "о документе"), []PaletteRow{
+			{Field: modulesRow, Important: true},
+		})},
+		{Key: "data", Title: "Данные", Important: true, Rows: append([]PaletteRow{
+			{Key: "numerator", Title: "Нумератор", Field: ObjectField, Important: true,
+				Description: "Нумератор, от которого документ получает номер вместо своего."},
+			{Key: "number.type", Title: "Тип номера", Field: ChoiceField, Important: true,
+				Choices: [][2]string{{"number", "Число"}, {"string", "Строка"}}, Description: "Номер — число или строка."},
+			{Key: "number.length", Title: "Длина номера", Field: NumberField, Limit: "code", Important: true,
+				Description: "Сколько знаков в номере; ноль — у документа нет номера."},
+			{Key: "number.fixedLength", Title: "Допустимая длина номера", Field: SwitchField, Important: true,
+				Choices:     [][2]string{{"false", "Переменная"}, {"true", "Фиксированная"}},
+				Description: "Строковый номер хранится как набран или дополняется пробелами до полной длины."},
+			{Key: "number.periodicity", Title: "Периодичность", Field: ChoiceField, Important: true,
+				Choices: [][2]string{{"none", "Непериодический"}, {"year", "В пределах года"}, {"quarter", "В пределах квартала"},
+					{"month", "В пределах месяца"}, {"day", "В пределах дня"}},
+				Description: "В каком периоде номер уникален и с какого момента нумерация начинается заново."},
+			{Key: "number.unique", Title: "Контроль уникальности", Field: FlagField, Important: true, Needs: []string{"number.length"},
+				Description: "Запись документа с повторным номером в том же периоде отказывается."},
+			{Key: "number.auto", Title: "Автонумерация", Field: FlagField, Important: true, Needs: []string{"number.length"},
+				Description: "Новый документ получает следующий номер сам."},
+			{Key: "standardAttributes", Title: "Стандартные реквизиты", Field: WindowField, Important: true,
+				Description: "Окно стандартных реквизитов: номер, дата, проведён и другие поля, которые платформа даёт документу."},
+			{Key: "characteristics", Title: "Характеристики", Field: WindowField,
+				Description: "Окно характеристик: дополнительные свойства документов, которые хранятся в другом объекте."},
+		}, storageRows("документ", "документа", "документов",
+			PaletteRow{Key: "posting.allowed", Title: "Проведение", Field: SwitchField, Important: true,
+				Choices: [][2]string{{"true", "Разрешить"}, {"false", "Запретить"}}, Description: "Проводится ли документ: пишет ли он движения регистров."},
+			PaletteRow{Key: "posting.realTime", Title: "Оперативное проведение", Field: ChoiceField, Important: true,
+				Choices: [][2]string{{"allow", "Разрешить"}, {"deny", "Запретить"}}, Description: "Можно ли провести документ текущим моментом, с контролем остатков."},
+			PaletteRow{Key: "posting.recordsDeletion", Title: "Удаление движений", Field: ChoiceField, Important: true,
+				Choices: [][2]string{{"on-unpost", "Удалять автоматически при отмене проведения"}, {"auto", "Удалять автоматически"},
+					{"off", "Не удалять автоматически"}},
+				Description: "Когда платформа сама удаляет движения документа: при отмене проведения, при любой перезаписи или никогда."},
+			PaletteRow{Key: "posting.recordsWriting", Title: "Запись движений при проведении", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"selected", "Записывать выбранные"}, {"modified", "Записывать модифицированные"}},
+				Description: "Какие наборы движений записываются при проведении: отмеченные для записи или изменённые."},
+			PaletteRow{Key: "posting.sequenceFilling", Title: "Заполнение последовательностей", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"auto", "Заполнять автоматически"}, {"off", "Не заполнять автоматически"}},
+				Description: "Записывает ли платформа сама границы последовательностей, в которые входит документ."},
+			PaletteRow{Key: "movements", Title: "Движения", Field: ObjectsField, Important: true,
+				Description: "Регистры, в которые документ пишет движения."},
+			PaletteRow{Key: "posting.privileged", Title: "Прив. режим при проведении", Field: FlagField, Important: true,
+				Description: "Проведение исполняется без проверки прав пользователя."},
+			PaletteRow{Key: "posting.unpostPrivileged", Title: "Прив. режим при отмене проведения", Field: FlagField, Important: true,
+				Description: "Отмена проведения исполняется без проверки прав пользователя."},
+		)...)},
+	}, referenceTabs(referenceWords{item: "документ", Item: "Документ", items: "документы", of: "документа", kind: "документ"},
+		[]string{"useStandardCommands", "inputByString", "createOnInput", "searchStringMode", "fullTextSearchOnInput", "choiceDataGetMode", "choiceHistoryOnInput"},
+		[]PaletteRow{
+			{Key: "forms.object", Title: "Основная форма объекта", Field: FormField, Description: "Форма, которой открывается документ."},
+			{Key: "forms.list", Title: "Основная форма списка", Field: FormField, Description: "Форма, которой открывается список документов."},
+			{Key: "forms.choice", Title: "Основная форма выбора", Field: FormField, Description: "Форма, из которой выбирается документ."},
+		})...),
 	// docs/block-00/plan-obmena.md, «Палитра»; snapshot plan-obmena/14: a
 	// catalog's, «Состав: Открыть», the modules and the flag of a distributed
 	// base on «Основные» (that of extensions not carried), no type of the
@@ -530,7 +634,7 @@ var palettes = map[Kind][]PaletteTab{
 			{Key: "characteristics", Title: "Характеристики", Field: WindowField,
 				Description: "Окно характеристик: дополнительные свойства узлов, которые хранятся в другом объекте."},
 		}, storageRows("узел плана обмена", "плана обмена", "узлов плана обмена")...)},
-	}, referenceTabs(referenceWords{item: "узел", Item: "Узел", items: "узлы", of: "плана обмена", kind: "план обмена"}, []PaletteRow{
+	}, referenceTabs(referenceWords{item: "узел", Item: "Узел", items: "узлы", of: "плана обмена", kind: "план обмена"}, referenceInput, []PaletteRow{
 		{Key: "forms.object", Title: "Основная форма объекта", Field: FormField, Description: "Форма, которой открывается узел."},
 		{Key: "forms.list", Title: "Основная форма списка", Field: FormField, Description: "Форма, которой открывается список узлов."},
 		{Key: "forms.choice", Title: "Основная форма выбора", Field: FormField, Description: "Форма, из которой выбирается узел."},
@@ -584,7 +688,7 @@ var palettes = map[Kind][]PaletteTab{
 				Choices:     [][2]string{{"auto", "Авто"}, {"auto-update", "Обновлять автоматически"}, {"dont-auto-update", "Не обновлять автоматически"}},
 				Description: "Что делать с предопределёнными элементами в базе при обновлении проекта."},
 		}, storageRows("элемент справочника", "справочника", "элементов справочника")...)},
-	}, referenceTabs(referenceWords{item: "элемент", items: "элементы", of: "справочника", kind: "справочник", Item: "Элемент"}, []PaletteRow{
+	}, referenceTabs(referenceWords{item: "элемент", items: "элементы", of: "справочника", kind: "справочник", Item: "Элемент"}, referenceInput, []PaletteRow{
 		{Key: "forms.object", Title: "Основная форма объекта", Field: FormField, Description: "Форма, которой открывается элемент."},
 		{Key: "forms.folder", Title: "Основная форма группы", Field: FormField, Needs: []string{"hierarchy.enabled", "hierarchy.kind=folders-and-items"},
 			Description: "Форма, которой открывается группа."},
@@ -729,6 +833,10 @@ func identityRows(genitive, about string) []PaletteRow {
 	}
 }
 
+// referenceInput is the order of the rows of the input on «Представление»
+// of a catalog and an exchange plan (snapshot vazhnye-predstavlenie).
+var referenceInput = []string{"useStandardCommands", "defaultPresentation", "quickChoice", "choiceMode", "inputByString", "searchStringMode", "fullTextSearchOnInput", "choiceDataGetMode", "createOnInput", "choiceHistoryOnInput"}
+
 // referenceWords name an object of a kind stored as a reference in the
 // descriptions of the rows of its palette: item - one, «элемент»; Item -
 // the same from a capital; items - many; of - the kind, genitive; kind -
@@ -736,8 +844,10 @@ func identityRows(genitive, about string) []PaletteRow {
 type referenceWords struct{ item, Item, items, of, kind string }
 
 // referenceTabs are the tabs «Представление» and «Справка» of the palette of
-// an object stored as a reference - a catalog, an exchange plan - the same
-// in each but its main forms (spravochnik.md, plan-obmena.md, «Палитра»):
+// an object stored as a reference - a catalog, an exchange plan, a document -
+// the same in each but the rows of the input it has, in its order (input,
+// by key), and its main forms (spravochnik.md, plan-obmena.md, dokument.md,
+// «Палитра»; snapshot dokument/13):
 // the standard commands, the presentation, the choice and the input by
 // string; forms; the presentations of the object and the list. «только
 // важные» keeps three rows of the input by string (snapshot
@@ -745,8 +855,9 @@ type referenceWords struct{ item, Item, items, of, kind string }
 // the prototype's «Справочная информация» (the owner's decision of
 // 26.10.2026, ML-STUDIO.md, «закладка „Справка" палитры»); the property on
 // it keeps its name.
-func referenceTabs(w referenceWords, forms []PaletteRow) []PaletteTab {
-	presentation := []PaletteRow{
+func referenceTabs(w referenceWords, input []string, forms []PaletteRow) []PaletteTab {
+	byKey := map[string]PaletteRow{}
+	for _, row := range []PaletteRow{
 		{Key: "useStandardCommands", Title: "Использовать стандартные команды", Field: FlagField,
 			Description: "Платформа сама даёт команды " + w.of + ": открыть список, создать " + w.item + " и другие."},
 		{Key: "defaultPresentation", Title: "Основное представление", Field: ChoiceField,
@@ -759,8 +870,6 @@ func referenceTabs(w referenceWords, forms []PaletteRow) []PaletteTab {
 			Description: "Как выбирается " + w.item + " в поле: из формы, быстрым выбором или обоими способами."},
 		{Key: "inputByString", Title: "Ввод по строке", Field: FieldsField,
 			Description: "Поля, по которым " + w.item + " находится по набранному в поле тексту, в порядке поиска."},
-	}
-	presentation = append(presentation, []PaletteRow{
 		{Key: "searchStringMode", Title: "Способ поиска строки при вводе по строке", Field: ChoiceField, Important: true,
 			Choices:     [][2]string{{"begin", "Начало"}, {"any-part", "Любая часть"}},
 			Description: "Где в поле ищется набранный текст: в начале или в любой части."},
@@ -776,7 +885,13 @@ func referenceTabs(w referenceWords, forms []PaletteRow) []PaletteTab {
 		{Key: "choiceHistoryOnInput", Title: "История выбора при вводе", Field: ChoiceField,
 			Choices:     [][2]string{{"auto", "Авто"}, {"dont-use", "Не использовать"}},
 			Description: "Предлагаются ли первыми " + w.items + ", которые пользователь уже выбирал."},
-	}...)
+	} {
+		byKey[row.Key] = row
+	}
+	presentation := []PaletteRow{}
+	for _, key := range input {
+		presentation = append(presentation, byKey[key])
+	}
 	presentation = append(presentation, PaletteRow{Field: SeparatorField})
 	presentation = append(presentation, forms...)
 	presentation = append(presentation, PaletteRow{Field: SeparatorField})
@@ -806,11 +921,14 @@ func referenceTabs(w referenceWords, forms []PaletteRow) []PaletteTab {
 // основании» to «Дополнительные индексы», in the prototype's order
 // (spravochnik.md, plan-obmena.md, «Палитра»; snapshot plan-obmena/14). item
 // names one object of the kind, accusative, «элемент справочника»; of names
-// the kind, genitive, «справочника»; items the objects, genitive plural.
-func storageRows(item, of, items string) []PaletteRow {
-	return []PaletteRow{
+// the kind, genitive, «справочника»; items the objects, genitive plural;
+// after are the rows a kind puts after «Вводится на основании» - a
+// document's posting.
+func storageRows(item, of, items string, after ...PaletteRow) []PaletteRow {
+	return append(append([]PaletteRow{
 		{Key: "basedOn", Title: "Вводится на основании", Field: ObjectsField, Important: true,
 			Description: "Объекты, на основании которых можно создать " + item + "."},
+	}, after...), []PaletteRow{
 		{Key: "dataLockFields", Title: "Поля блокировки данных", Field: FieldsField,
 			Description: "Поля, по которым блокируется " + item + ", пока его записывают."},
 		{Key: "dataLock", Title: "Режим управления блокировкой данных", Field: ChoiceField, Important: true,
@@ -826,7 +944,7 @@ func storageRows(item, of, items string) []PaletteRow {
 			Important: true, Needs: []string{"dataHistory=use"}, Description: "Модуль менеджера узнаёт о каждой записанной версии."},
 		{Key: "additionalIndexes", Title: "Дополнительные индексы", Field: WindowField, Important: true,
 			Description: "Окно дополнительных индексов: индексы базы сверх тех, что платформа строит сама."},
-	}
+	}...)
 }
 
 // rows joins groups of rows in their order.

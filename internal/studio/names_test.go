@@ -400,7 +400,8 @@ func TestTheTreeGivesTheWindowOfAnObject(t *testing.T) {
 	place := map[string]string{
 		"metadata/catalogs": "/api/catalog", goods: "/api/catalog", "metadata/catalogs/Контрагенты/object.yaml": "/api/catalog",
 		"metadata/roles": "/api/role", role.Path: "/api/role",
-		"metadata/documents": "", "metadata/documents/ПродажаТоваров/object.yaml": "",
+		"metadata/documents": "/api/document", "metadata/documents/ПродажаТоваров/object.yaml": "/api/document",
+		"metadata/accumulation-registers": "", "metadata/accumulation-registers/ОстаткиТоваров/object.yaml": "",
 	}
 	groups := 0
 	for id := range found {

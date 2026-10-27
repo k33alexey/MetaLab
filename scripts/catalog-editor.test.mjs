@@ -91,7 +91,7 @@ test('removing a table part removes its attributes with it',()=>{
 test('object-level name, title and code settings round-trip',()=>{
   const model=create(fixture());
   model.setName('Номенклатура');model.setTitle('en','Items');model.setTitle('ru','');
-  model.setCodeType('number');model.setCodeLength(11);model.setCodeAuto(false);model.setCodeUnique(false);model.setDescriptionLength(500);
+  model.setCodeType('number');model.setCodeLength(11);model.set('code.auto',false);model.set('code.unique',false);model.setDescriptionLength(500);
   const saved=model.value();
   assert.equal(saved.name,'Номенклатура');assert.deepEqual(saved.title,{en:'Items'});
   assert.deepEqual(saved.code,{type:'number',length:11,auto:false,unique:false});

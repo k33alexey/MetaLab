@@ -62,7 +62,7 @@ func TestTheWindowOfACatalogWritesItsSubsystems(t *testing.T) {
 	if err := os.Chmod(folder, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	_, refused := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Subsystems: &only}, opened.Revision)
+	_, refused := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Subsystems: &only}}, opened.Revision)
 	if err := os.Chmod(folder, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestTheWindowOfACatalogWritesItsSubsystems(t *testing.T) {
 		t.Errorf("the refusal left the subsystems changed:\n%s\n%s", read(sales), read(warehouse))
 	}
 
-	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Subsystems: &only}, opened.Revision)
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Subsystems: &only}}, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestTheWindowOfACatalogWritesItsOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	subsystems, options := []uuid.UUID{sales}, []uuid.UUID{articles}
-	window := CatalogWindowValue{CatalogDefinition: opened.Catalog, Subsystems: &subsystems, FunctionalOptions: &options}
+	window := CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Subsystems: &subsystems, FunctionalOptions: &options}}
 	salesFile := filepath.Join(root, "metadata", "subsystems", treeSalesSubsystem+".yaml")
 	articlesFile := filepath.Join(root, "metadata", "functional-options", optionArticles+".yaml")
 	warehousesFile := filepath.Join(root, "metadata", "functional-options", optionWarehouses+".yaml")
@@ -297,7 +297,7 @@ func TestTheWindowOfACatalogWritesItsExchangePlans(t *testing.T) {
 	// Полный is written first and put back - in the canonical form every
 	// write of Studio gives a description - when Филиалы is refused.
 	wrong := []MemberPlace{{ID: full, AutoRecord: "allow"}, {ID: branches, AutoRecord: "sometimes"}}
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, ExchangePlans: &wrong}, opened.Revision); err == nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{ExchangePlans: &wrong}}, opened.Revision); err == nil {
 		t.Error("an autoregistration other than allow and deny was written")
 	}
 	if text := read("Полный"); !strings.Contains(text[strings.Index(text, member):], "auto_record: deny") {
@@ -308,7 +308,7 @@ func TestTheWindowOfACatalogWritesItsExchangePlans(t *testing.T) {
 	}
 
 	marks := []MemberPlace{{ID: full, AutoRecord: "allow"}, {ID: branches, AutoRecord: "deny"}}
-	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, ExchangePlans: &marks}, opened.Revision)
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{ExchangePlans: &marks}}, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestTheWindowOfACatalogWritesItsExchangePlans(t *testing.T) {
 	}
 
 	none := []MemberPlace{}
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, ExchangePlans: &none}, saved.Revision); err != nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, pageMarks: pageMarks{ExchangePlans: &none}}, saved.Revision); err != nil {
 		t.Fatal(err)
 	}
 	if text := read("Полный"); strings.Contains(text, member) || !strings.Contains(text, partner) {
@@ -412,7 +412,7 @@ func TestTheWindowOfACatalogWritesWhatItIsTheBasisFor(t *testing.T) {
 	marked := []uuid.UUID{partners, opened.Catalog.ID}
 	value := opened.Catalog
 	value.BasedOn = []uuid.UUID{opened.Catalog.ID}
-	window := CatalogWindowValue{CatalogDefinition: value, BasisFor: &marked}
+	window := CatalogWindowValue{CatalogDefinition: value, pageMarks: pageMarks{BasisFor: &marked}}
 	const member = "10000000-0000-4000-8000-000000000101"
 	salesBefore := read(sales)
 
@@ -537,7 +537,7 @@ func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
 	view := []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionView}
 	marks := []RoleMark{{ID: keeper.Role.ID, Revision: keeper.Revision},
 		{ID: manager.Role.ID, Revision: manager.Revision, Permission: &metadata.ObjectPermission{Object: opened.Catalog.ID, Operations: view}}}
-	window := CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &marks}
+	window := CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Roles: &marks}}
 	roleOf := func(name string) metadata.RoleDefinition {
 		t.Helper()
 		loaded, err := metadata.Load(root)
@@ -564,7 +564,7 @@ func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
 			Restrictions: []metadata.RightRestriction{{Right: metadata.PermissionUpdate, Condition: "Истина"}}},
 	} {
 		wrong := []RoleMark{{ID: manager.Role.ID, Revision: manager.Revision, Permission: &entry}}
-		if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &wrong}, opened.Revision); err == nil {
+		if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Roles: &wrong}}, opened.Revision); err == nil {
 			t.Errorf("%s was written", what)
 		}
 		if got := says(roleOf("Менеджер"), opened.Catalog.ID); got != "nothing" {
@@ -616,7 +616,7 @@ func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
 		t.Fatal(err)
 	}
 	marks[0].Revision, marks[1].Revision = opened.Roles[0].Revision, opened.Roles[1].Revision
-	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, Roles: &marks}, opened.Revision)
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: opened.Catalog, pageMarks: pageMarks{Roles: &marks}}, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +638,7 @@ func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
 	// other object kept.
 	insert := []metadata.PermissionOperation{metadata.PermissionRead, metadata.PermissionInsert}
 	again := []RoleMark{{ID: manager.Role.ID, Revision: saved.Roles[1].Revision, Permission: &metadata.ObjectPermission{Object: opened.Catalog.ID, Operations: insert}}}
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, Roles: &again}, saved.Revision); err != nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, pageMarks: pageMarks{Roles: &again}}, saved.Revision); err != nil {
 		t.Fatal(err)
 	}
 	managerRole := roleOf("Менеджер")

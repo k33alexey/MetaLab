@@ -1187,6 +1187,19 @@ function paletteFields(context) {
       if (web) { link.href = address; link.target = '_blank'; link.rel = 'noopener'; }
       return link;
     }
+    // One object of the project by its identifier - a document's numerator
+    // (dokument.md, «Палитра»): its name among what the window «Выбор
+    // объекта» of the row offers (context.choices), the cross taking it
+    // away; which window «…» opens the inventory does not show (series
+    // 2.618, question): it stands unavailable.
+    if (row.field === 'object') {
+      const id = subject.get(row.key), shown = node('input'), off = !available(subject, row);
+      shown.readOnly = true; shown.disabled = off;
+      shown.value = id ? objectChoiceItem(context.choices?.[row.key], id)?.name || id : '';
+      const pick = fieldChoiceButton(row.title, () => {});
+      pick.disabled = true;
+      return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, off || !id)]);
+    }
     // A picture: of the platform by its Russian name, of the project by
     // its own (metadata.PictureReference, PictureChoice); «…» chooses it in
     // «Выбор картинки», the cross takes it away. A picture of a file of the
@@ -1234,6 +1247,8 @@ function paletteFields(context) {
       control.addEventListener('change', () => set(control.checked));
     } else if (row.field === 'choice') {
       control = selectInput(row.choices, value || row.default || '', set, row.title);
+    } else if (row.field === 'radio') {
+      return radioFrame(row.title, row.choices, value || row.default || '', set, off);
     } else if (row.field === 'switch') {
       control = selectInput(row.choices, String(!!value), next => set(next === 'true'), row.title);
     } else if (row.field === 'number') {
@@ -1307,6 +1322,10 @@ function rowsPage(windowRows, palette, fields, subject, openModule) {
       element.type = 'button';
       element.disabled = base.field === 'window';
       element.addEventListener('click', () => openModule(row.key));
+    } else if (row.radio) {
+      // A list of values drawn as the frame of radio buttons of its title
+      // (snapshot dokument/03, «Тип номера»).
+      element = fields(subject, {...base, title: row.title, field: 'radio'});
     } else {
       const control = fields(subject, {...base, title: row.title});
       if (base.field === 'flag') {

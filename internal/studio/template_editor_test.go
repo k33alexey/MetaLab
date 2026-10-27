@@ -141,16 +141,16 @@ func TestTheWindowOfACatalogWritesItsNewTemplates(t *testing.T) {
 	// goes away with it.
 	refused := added
 	refused.DescriptionLength = -1
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: refused, TemplateContents: []TemplateContent{{ID: data, Content: binary}}}, opened.Revision); err == nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: refused, pageMarks: pageMarks{TemplateContents: []TemplateContent{{ID: data, Content: binary}}}}, opened.Revision); err == nil {
 		t.Fatal("a catalog of a negative description length was saved")
 	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
 		t.Fatalf("the refused save left the folder of templates: %v", err)
 	}
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, TemplateContents: []TemplateContent{{ID: text, Content: binary}}}, opened.Revision); err == nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, pageMarks: pageMarks{TemplateContents: []TemplateContent{{ID: text, Content: binary}}}}, opened.Revision); err == nil {
 		t.Fatal("a file was loaded into a text")
 	}
-	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, TemplateContents: []TemplateContent{{ID: data, Content: binary}}}, opened.Revision)
+	saved, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: added, pageMarks: pageMarks{TemplateContents: []TemplateContent{{ID: data, Content: binary}}}}, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestTheWindowOfACatalogWritesItsNewTemplates(t *testing.T) {
 	}
 	// The constructor loads a file into a template it makes, not into one
 	// the catalog has - even one of binary data with no content yet.
-	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, TemplateContents: []TemplateContent{{ID: empty, Content: []byte{1}}}}, saved.Revision); err == nil {
+	if _, err := workspace.SaveCatalogWindow(goods, CatalogWindowValue{CatalogDefinition: saved.Catalog, pageMarks: pageMarks{TemplateContents: []TemplateContent{{ID: empty, Content: []byte{1}}}}}, saved.Revision); err == nil {
 		t.Fatal("content was loaded into a template the catalog had")
 	}
 	loaded, err := metadata.Load(workspace.root)
