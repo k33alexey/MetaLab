@@ -214,6 +214,31 @@ func TestTheTypesOfTheNamespacesAreTheWindows(t *testing.T) {
 	if len(core) != 46 || core[0] != "AllowedLength" || core[45] != "ValueTreeRow" {
 		t.Errorf("data/core: %d %q", len(core), core)
 	}
+	// The other namespaces of the platform (series-2.603/xdto-types.txt): the
+	// envelope of SOAP and 64 of v8.1c.ru, 1720 names besides data/core's;
+	// current-config gives none until its rule is shot.
+	platform, names := 0, 0
+	for space, list := range types {
+		if strings.HasPrefix(space, "http://v8.1c.ru/") || strings.HasPrefix(space, "http://schemas.xmlsoap.org/") {
+			platform++
+			names += len(list)
+		}
+	}
+	if platform != 66 || names != 1766 {
+		t.Errorf("the platform's namespaces: %d of %d types, want 66 of 1766", platform, names)
+	}
+	if got := strings.Join(types["http://schemas.xmlsoap.org/soap/envelope/"], ","); got != "Body,detail,encodingStyle,Envelope,Fault,Header" {
+		t.Errorf("the envelope of SOAP: %s", got)
+	}
+	if got := strings.Join(types["http://v8.1c.ru/8.1/xdto"], ","); got != "Form,Import,MemberTypes,Model,ObjectType,Package,Property,Type,ValueType,Variety,Whitespace" {
+		t.Errorf("8.1/xdto: %s", got)
+	}
+	if got := types["http://v8.1c.ru/8.2/data/geo"]; len(got) != 31 || got[0] != "dp" || got[30] != "vi" {
+		t.Errorf("8.2/data/geo, small letters among capitals: %d %q", len(got), got)
+	}
+	if got, ok := types["http://v8.1c.ru/8.1/data/enterprise/current-config"]; ok {
+		t.Errorf("current-config gives types by no rule shot: %q", got)
+	}
 	if got := strings.Join(types["http://example.org/goods"], ","); got != "Адрес,Вид,Товар,цена" {
 		t.Errorf("the package: %s", got)
 	}

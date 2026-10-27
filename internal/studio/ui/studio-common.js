@@ -1151,15 +1151,17 @@ function paletteFields(context) {
     if (row.field === 'xml-type' || row.field === 'xml-types') {
       const types = row.field === 'xml-types' ? subject.get(row.key) || [] : [subject.get(row.key)].filter(Boolean), shown = node('input');
       shown.readOnly = true; shown.disabled = !available(subject, row);
-      shown.value = types.filter(type => type.name).map(xmlTypeText).join(', ');
+      shown.value = row.field === 'xml-types' ? types.map(xmlTypeName).join('; ') : types.filter(type => type.name).map(xmlTypeText).join(', ');
       // «…» chooses a type by chooseXMLType where the place gives the types
       // (context.xmlTypes) and the namespaces it offers (context.typeNamespaces);
-      // a list of types - the members of a union - waits for its window.
+      // a list of types - the members of a union - by editValueList, a row
+      // by the same window; the cross clears a list.
       const pick = fieldChoiceButton(row.title, async () => {
-        const chosen = await chooseXMLType(types[0], context.typeNamespaces(), context.xmlTypes());
+        const chosen = row.field === 'xml-types' ? await chooseXMLTypes(types) : await chooseXMLType(types[0], context.typeNamespaces(), context.xmlTypes());
         if (chosen) { subject.set(row.key, chosen); context.changed(); }
-      }), clear = clearButton(`Очистить: ${row.title}`, () => {});
-      pick.disabled = shown.disabled || row.field === 'xml-types' || !context.xmlTypes; clear.disabled = true; clear.classList.add('field-button');
+      }), clear = clearButton(`Очистить: ${row.title}`, () => { subject.set(row.key, []); context.changed(); });
+      pick.disabled = shown.disabled || !context.xmlTypes; clear.disabled = row.field !== 'xml-types' || shown.disabled || !types.length;
+      clear.classList.add('field-button');
       return fieldWithButtons(shown, [pick, clear]);
     }
     // The XDTO packages of a web service: their namespaces - a package of
@@ -1252,6 +1254,10 @@ function paletteFields(context) {
     control.disabled = off;
     return control;
   };
+  // The members of a union: «Редактирование списка значений», a row chosen
+  // by the window of a type (paket-xdto.md, «Проверить пакет, экспорт
+  // схемы, окно типа»).
+  const chooseXMLTypes = types => editValueList(types, xmlTypeName, value => chooseXMLType(value, context.typeNamespaces(), context.xmlTypes()));
   // A value a node may leave not said (row.optional; paket-xdto.md,
   // «Палитра узла»): not said, the field shows the default greyed and ✓
   // says it - the default, or for a type the window choosing one, which is
@@ -1264,8 +1270,8 @@ function paletteFields(context) {
       shown.value = (row.choices || []).find(([key]) => key === row.default)?.[1] ?? row.default ?? '';
       // ✓ of a type opens the window choosing it.
       const say = fieldButton('apply', `Задать значение: ${row.title}`, async () => {
-        if (row.field === 'xml-type') {
-          const chosen = await chooseXMLType(null, context.typeNamespaces(), context.xmlTypes());
+        if (row.field === 'xml-type' || row.field === 'xml-types') {
+          const chosen = row.field === 'xml-types' ? await chooseXMLTypes([]) : await chooseXMLType(null, context.typeNamespaces(), context.xmlTypes());
           if (chosen) { subject.set(row.key, chosen); context.changed(); }
           return;
         }
@@ -1273,7 +1279,7 @@ function paletteFields(context) {
         subject.set(row.key, given ?? '');
         context.changed();
       });
-      say.disabled = row.field === 'xml-types' || row.field === 'xml-type' && !context.xmlTypes;
+      say.disabled = (row.field === 'xml-type' || row.field === 'xml-types') && !context.xmlTypes;
       return fieldWithButtons(shown, [say]);
     }
     return fieldWithButtons(field(subject, row), [clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, false)]);
@@ -2033,6 +2039,65 @@ function readOnlyPalette(tabs, get) {
     list.append(line);
   }
   return list;
+}
+
+/* editValueList is the platform's window «Редактирование списка
+   значений» (paket-xdto.md, «Проверить пакет, экспорт схемы, окно типа»;
+   snapshots series-2.603/19-21): «Список значений:» with «Добавить»,
+   «Скопировать», «Изменить», «Удалить» and «Сохранить в файл» over the
+   rows; OK, «Отмена», «Справка». «Добавить» puts an empty row after the
+   current and makes it current, «Скопировать» a copy of the current;
+   «…» of a row and «Изменить» choose its value by choose(value), which
+   answers the value or null; «Удалить» takes the current away. What
+   «Сохранить в файл» writes the inventory does not show (series 2.618,
+   question): it stands unavailable. items are the values, text(value)
+   writes one in its row. Answers the values on OK - rows left empty
+   dropped - or null on «Отмена». */
+async function editValueList(items, text, choose) {
+  const rows = items.map(value => ({value}));
+  let current = rows.length ? 0 : -1;
+  const content = node('div', undefined, 'value-list-edit');
+  const list = node('div', undefined, 'object-window-list value-list-edit-rows');
+  list.setAttribute('role', 'listbox');
+  const pick = async index => {
+    const chosen = await choose(rows[index].value);
+    if (chosen) rows[index].value = chosen;
+    render();
+  };
+  const buttons = [
+    panelButton('add', 'Добавить', true, () => { rows.splice(current + 1, 0, {value: null}); current += 1; render(); }),
+    panelButton('copy', 'Скопировать', true, () => { rows.splice(current + 1, 0, {value: structuredClone(rows[current].value)}); current += 1; render(); }),
+    panelButton('change', 'Изменить', true, () => pick(current)),
+    panelButton('delete', 'Удалить', true, () => { rows.splice(current, 1); current = Math.min(current, rows.length - 1); render(); }),
+    panelButton('save', 'Сохранить в файл', false, () => {}),
+  ];
+  const head = node('div', undefined, 'object-window-list-head');
+  head.append(node('span', 'Список значений:'), ...buttons);
+  function render() {
+    for (const button of buttons.slice(1, 4)) button.disabled = current < 0;
+    list.replaceChildren(...rows.map((row, index) => {
+      const shown = node('input');
+      shown.readOnly = true;
+      shown.value = row.value ? text(row.value) : '';
+      const line = node('div', undefined, 'object-window-list-row value-list-edit-row' + (index === current ? ' current' : ''));
+      line.setAttribute('role', 'option');
+      line.setAttribute('aria-selected', String(index === current));
+      line.addEventListener('click', () => { if (current !== index) { current = index; render(); } });
+      line.append(fieldWithButtons(shown, [fieldChoiceButton('Выбрать значение', () => pick(index))]));
+      return line;
+    }));
+  }
+  render();
+  content.append(head, list);
+  const answer = await showDialog({title: 'Редактирование списка значений', content, className: 'value-list-edit-dialog', help: 'value-list-edit',
+    answers: [['ok', 'OK'], [null, 'Отмена']]});
+  return answer === 'ok' ? rows.map(row => row.value).filter(Boolean) : null;
+}
+
+/* xmlTypeName writes a type named by the schema as the prototype writes a
+   member of a union: «{namespace}name» (snapshot series-2.603/21). */
+function xmlTypeName(type) {
+  return `{${type.namespace}}${type.name}`;
 }
 
 /* chooseXMLType is the window choosing a type named by the schema - of an

@@ -239,6 +239,12 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .border-choice-sample{min-height:110px;display:flex;align-items:center;justify-content:center}
 .border-choice-box{width:150px;height:70px;box-sizing:border-box}
 .border-choice-none{font-size:11px;opacity:.75}
+.localized-title-dialog.value-list-edit-dialog{width:min(420px,calc(100% - 40px))}
+.value-list-edit .object-window-list-head{display:flex;align-items:center;gap:4px}
+.value-list-edit .object-window-list-head>span{flex:1}
+.value-list-edit-rows{height:360px;overflow:auto}
+.value-list-edit-row{padding:1px 2px}
+.value-list-edit-row .field-with-buttons{width:100%}
 .localized-title-dialog.picture-choice-dialog{width:min(760px,calc(100% - 40px))}
 .picture-choice-body{display:grid;grid-template-columns:300px auto 1fr;gap:8px;margin-top:8px}
 .picture-choice-left{display:flex;flex-direction:column;gap:6px}
