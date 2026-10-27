@@ -53,7 +53,8 @@ operations:
 
 // TestTheWindowOfAWebServiceWritesItsSubsystems catches the window of a web
 // service losing what it writes: the pages and the rows of its window, the
-// kind's; the namespaces of its packages; a save of the namespace, the
+// kind's; the packages of the project in the order of the tree and the 66
+// namespaces of the platform; a save of the namespace, the
 // sessions and the subsystems marked - written into the subsystem - and a new
 // name moving the folder with the module; a revision read before refused.
 func TestTheWindowOfAWebServiceWritesItsSubsystems(t *testing.T) {
@@ -77,7 +78,7 @@ func TestTheWindowOfAWebServiceWritesItsSubsystems(t *testing.T) {
 	if !slices.Equal(pages, []string{"Основные", "Подсистемы", "Операции", "Управление сеансами", "Прочее"}) || opened.KindTitle != "Web-сервис" {
 		t.Fatalf("the window of a web service has %v (%s)", pages, opened.KindTitle)
 	}
-	if opened.Packages[mustUUID(t, xdtoGoods)] != "http://example.org/goods" {
+	if !slices.Equal(opened.Packages, []XDTOPackageChoice{{ID: mustUUID(t, xdtoGoods), Namespace: "http://example.org/goods"}}) || len(opened.PlatformNamespaces) != 66 {
 		t.Errorf("the packages are %v", opened.Packages)
 	}
 	warehouse := mustUUID(t, treeWarehouseSubsystem)

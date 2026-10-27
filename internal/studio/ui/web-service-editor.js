@@ -7,8 +7,8 @@
    (partsOfTwoLevels). A new operation is «Операция1», returning a string of
    XMLSchema, the lock managed, its procedure to be named; a new parameter
    «Параметр1», a string, «Входной» («Новый сервис»). «…» of «Пакеты XDTO»
-   and of the types is unavailable until the windows choosing packages and
-   types. */
+   opens «Выбор пакетов XDTO» (chooseXDTOPackages); «…» of a type is
+   unavailable until the window choosing a type. */
 function createWebServiceEditor(host, onChange, around = {}) {
   const xmlString = () => ({namespace: 'http://www.w3.org/2001/XMLSchema', name: 'string'});
   return objectWindowEditor(host, onChange, around, {target: source => source.service, own: api => partsOfTwoLevels(api, 'operations', {

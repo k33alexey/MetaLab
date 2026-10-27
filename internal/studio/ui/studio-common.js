@@ -1103,13 +1103,16 @@ function paletteFields(context) {
     }
     // The XDTO packages of a web service: their namespaces - a package of
     // the project named by its own (context.packages) - «…» choosing them
-    // unavailable until the window of the choice, the cross clearing them.
+    // in «Выбор пакетов XDTO», the cross clearing them.
     if (row.field === 'packages') {
       const items = subject.get(row.key) || [], shown = node('input'), off = !available(subject, row);
       shown.readOnly = true; shown.disabled = off;
-      shown.value = items.map(item => item.package ? context.packages?.[item.package] || item.package : item.namespace).join(',');
-      const pick = fieldChoiceButton(row.title, () => {});
-      pick.disabled = true;
+      shown.value = items.map(item => item.package ? context.packages?.find(own => own.id === item.package)?.namespace || item.package : item.namespace).join(',');
+      const pick = fieldChoiceButton(row.title, async () => {
+        const chosen = await chooseXDTOPackages(items, context.platformNamespaces, context.packages);
+        if (chosen) { subject.set(row.key, chosen); context.changed(); }
+      });
+      pick.disabled = off || !context.platformNamespaces;
       return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, []); context.changed(); }, off || !items.length)]);
     }
     // An address shown and not typed into: a page of the network opens in
@@ -1277,7 +1280,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), palette: () => renderPalette(), cleanups: () => cleanups};
   const kind = own(api);
   function context(collect) {
-    return {project: source, typed, changed, packages: source.packages, windows: [], cleanups: collect, valueChecks,
+    return {project: source, typed, changed, packages: source.packages, platformNamespaces: source.platformNamespaces, windows: [], cleanups: collect, valueChecks,
       openModule: role => around.openModule?.(role), ...kind.context?.()};
   }
   // Typing renames the window and the palette and leaves the field typed
@@ -1819,6 +1822,36 @@ function askCancelInput() {
   return showDialog({title: 'В поле введены некорректные данные. Отменить ввод?',
     explanation: 'Нажмите «Да» для отмены ввода или «Нет» для продолжения редактирования.',
     answers: [['yes', 'Да'], ['no', 'Нет']]}).then(answer => answer !== 'no');
+}
+
+/* chooseXDTOPackages is the window «Выбор пакетов XDTO» of a web service
+   (docs/block-00/web-servis.md, «Окно», «Пространства платформы»; snapshots
+   series-2.584/131-136): a box at each namespace of the platform
+   (platform), then, indented, at each package of the project in the order
+   of the tree by its namespace (packages, [{id, namespace}]); a marked one
+   keeps its place. items are the packages chosen before (metadata.
+   WebServicePackage); answers them on OK - those kept in their order, the
+   ones marked anew after them in the order of the window - or null on
+   «Отмена». */
+async function chooseXDTOPackages(items, platform, packages) {
+  const key = item => item.package ? 'package:' + item.package : 'namespace:' + item.namespace;
+  const rows = [...platform.map(namespace => ({item: {namespace}, caption: namespace})),
+    ...packages.map(own => ({item: {package: own.id}, caption: own.namespace, own: true}))];
+  const marked = new Set(items.map(key));
+  const content = node('div', undefined, 'xdto-packages-choice');
+  for (const row of rows) {
+    const line = node('label', undefined, 'xdto-packages-row' + (row.own ? ' xdto-packages-own' : '')), box = node('input');
+    box.type = 'checkbox';
+    box.checked = marked.has(key(row.item));
+    box.addEventListener('change', () => { if (box.checked) marked.add(key(row.item)); else marked.delete(key(row.item)); });
+    line.append(box, node('span', row.caption));
+    content.append(line);
+  }
+  const answer = await showDialog({title: 'Выбор пакетов XDTO', content, className: 'xdto-packages-dialog', answers: [['ok', 'OK'], [null, 'Отмена']]});
+  if (answer !== 'ok') return null;
+  const kept = items.filter(item => marked.has(key(item)));
+  const known = new Set(kept.map(key));
+  return [...kept, ...rows.map(row => row.item).filter(item => marked.has(key(item)) && !known.has(key(item)))];
 }
 
 /* chooseBorder is the window «Выбор рамки», one for every place a border is

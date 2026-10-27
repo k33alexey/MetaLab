@@ -11,8 +11,9 @@ import (
 
 // The window of a web service (docs/block-00/web-servis.md, «Окно»): the
 // pages «Основные», «Подсистемы», «Операции», «Управление сеансами»,
-// «Прочее», the kind's (kinds.WindowPages); its palette beside it. The
-// windows choosing XDTO packages and types are an item of their own.
+// «Прочее», the kind's (kinds.WindowPages); its palette beside it; the
+// window «Выбор пакетов XDTO» chooses its packages. The window choosing a
+// type is an item of its own.
 // «Добавить» waits for the answer on a new service of no namespace (series
 // 2.584, В1).
 
@@ -21,10 +22,12 @@ import (
 type WebServiceEditorSource struct {
 	windowHead
 	Service metadata.WebServiceDefinition `json:"service"`
-	// Packages are the namespaces of the XDTO packages of the project by
-	// their identifiers: the field «Пакеты XDTO» names a package by its
-	// namespace.
-	Packages map[uuid.UUID]string `json:"packages"`
+	// Packages are the XDTO packages of the project in the order of the
+	// tree: the field «Пакеты XDTO» names a package by its namespace, and
+	// the window «Выбор пакетов XDTO» lists them after PlatformNamespaces,
+	// the namespaces of the platform's own.
+	Packages           []XDTOPackageChoice `json:"packages"`
+	PlatformNamespaces []string            `json:"platformNamespaces"`
 	// PartPalettes are the palettes of its operations and their parameters.
 	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 }
@@ -39,6 +42,13 @@ func (WebServiceEditorSource) named(value metadata.WebServiceDefinition) (uuid.U
 
 func (source WebServiceEditorSource) identity() (uuid.UUID, string) {
 	return source.Service.ID, source.Revision
+}
+
+// XDTOPackageChoice is an XDTO package of the project as the choice of the
+// packages of a web service names it: by its identifier and namespace.
+type XDTOPackageChoice struct {
+	ID        uuid.UUID `json:"id"`
+	Namespace string    `json:"namespace"`
 }
 
 // WebServiceWindowValue is what the window of a web service writes: the
@@ -64,11 +74,12 @@ func (workspace *Workspace) readWebServiceEditorLocked(relative string) (WebServ
 	if err != nil {
 		return WebServiceEditorSource{}, err
 	}
-	packages := map[uuid.UUID]string{}
-	for _, item := range loaded.XDTOPackages {
-		packages[item.ID] = item.Namespace
+	packages := []XDTOPackageChoice{}
+	for _, object := range loaded.KindObjects(metadata.XDTOPackageKind) {
+		item, _ := loaded.XDTOPackageByID(object.ID)
+		packages = append(packages, XDTOPackageChoice{ID: item.ID, Namespace: item.Namespace})
 	}
-	return WebServiceEditorSource{windowHead: head, Service: value, Packages: packages,
+	return WebServiceEditorSource{windowHead: head, Service: value, Packages: packages, PlatformNamespaces: metadata.PlatformXDTONamespaces(),
 		PartPalettes: map[string][]kinds.PaletteTab{"operation": kinds.PartPalette("webServiceOperation"), "parameter": kinds.PartPalette("webServiceParameter")}}, nil
 }
 

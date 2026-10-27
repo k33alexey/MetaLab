@@ -38,6 +38,22 @@ const webServiceWindowWalk = `(async () => {
     packages: windowField('#web-service-editor', 'Пакеты XDTO:').querySelector('input').value,
     choose: windowField('#web-service-editor', 'Пакеты XDTO:').querySelector('button').disabled,
     file: windowField('#web-service-editor', 'Имя файла публикации:').querySelector('input').value};
+  const packagesField = () => windowField('#web-service-editor', 'Пакеты XDTO:');
+  const choice = () => document.querySelector('dialog.xdto-packages-dialog');
+  const rows = () => [...choice().querySelectorAll('.xdto-packages-row')];
+  const answer = text => [...choice().querySelectorAll('button')].find(item => item.textContent === text).click();
+  packagesField().querySelector('button').click(); await settle();
+  steps.choice = {title: choice().querySelector('h3').textContent, count: rows().length,
+    first: rows()[0].textContent, last: rows().at(-2).textContent, own: rows().at(-1).textContent, indented: rows().at(-1).classList.contains('xdto-packages-own'),
+    marked: rows().filter(row => row.querySelector('input').checked).map(row => row.textContent)};
+  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/xdto').querySelector('input').click();
+  answer('Отмена'); await settle();
+  steps.cancelled = packagesField().querySelector('input').value;
+  packagesField().querySelector('button').click(); await settle();
+  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/xdto').querySelector('input').click();
+  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/data/core').querySelector('input').click();
+  answer('OK'); await settle();
+  steps.chosen = packagesField().querySelector('input').value;
   steps.palette = {title: document.querySelector('#inspector-title').textContent,
     rows: [...document.querySelectorAll('#properties .object-palette-row .object-palette-caption')].map(item => item.textContent),
     age: windowField('#properties', 'Время жизни сеанса').querySelector('input').value};
@@ -52,11 +68,17 @@ const webServiceWindowWalk = `(async () => {
 // «Подсистемы» - the tree of the subsystems with boxes; «Управление
 // сеансами» - the reuse of sessions above its list and the lifetime;
 // «Прочее» - the button «Модуль», the namespace, the packages by their
-// namespaces with «…» unavailable, the file of publication; «Операции»
+// namespaces with «…» opening «Выбор пакетов XDTO» (series-2.584/131-136)
+// - the 66 namespaces of the platform from the first to the last, then,
+// indented, the packages of the project, those chosen marked; «Отмена»
+// changes nothing, OK keeps the chosen in their order and puts the new
+// after them - the file of publication; «Операции»
 // the tree of its operations. The palette shows what the window typed; «Сохранить»
 // writes the service and the subsystem marked. Defects caught: a page, a
 // caption or its place not the prototype's; a package shown by its
-// identifier; the window and the palette apart; a mark not written.
+// identifier; a namespace of the platform missing or out of order; the
+// choice written on «Отмена»; the window and the palette apart; a mark
+// not written.
 func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	addTreeSubsystems(t, root)
@@ -86,7 +108,14 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 			Choose            bool
 			File              string
 		}
-		Palette struct {
+		Choice struct {
+			Title, First, Last, Own string
+			Count                   int
+			Indented                bool
+			Marked                  []string
+		}
+		Cancelled, Chosen string
+		Palette           struct {
 			Title string
 			Rows  []string
 			Age   string
@@ -123,7 +152,16 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 		Choose            bool
 		File              string
 	}{
-		[]string{"URI пространства имен:", "Пакеты XDTO:", "Имя файла публикации:"}, []string{"Модуль"}, "http://example.org/goods,http://v8.1c.ru/8.1/data/core", true, "stock.1cws"})
+		[]string{"URI пространства имен:", "Пакеты XDTO:", "Имя файла публикации:"}, []string{"Модуль"}, "http://example.org/goods,http://v8.1c.ru/8.1/data/core", false, "stock.1cws"})
+	expect("«Выбор пакетов XDTO»", steps.Choice, struct {
+		Title, First, Last, Own string
+		Count                   int
+		Indented                bool
+		Marked                  []string
+	}{"Выбор пакетов XDTO", "http://v8.1c.ru/8.1/data-composition-system/appearance-template", "http://v8.1c.ru/8.3/xcf/enums",
+		"http://example.org/goods", 67, true, []string{"http://v8.1c.ru/8.1/data/core", "http://example.org/goods"}})
+	expect("«Отмена» changes nothing", steps.Cancelled, "http://example.org/goods,http://v8.1c.ru/8.1/data/core")
+	expect("chosen: the kept in their order, the new after", steps.Chosen, "http://example.org/goods,http://v8.1c.ru/8.1/xdto")
 	expect("the palette", steps.Palette, struct {
 		Title string
 		Rows  []string
@@ -133,7 +171,8 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 	expect("saved", steps.Saved, false)
 	service, _ := os.ReadFile(filepath.Join(root, "metadata", "web-services", "СкладСервис", "object.yaml"))
 	subsystem, _ := os.ReadFile(filepath.Join(root, "metadata", "subsystems", treeWarehouseSubsystem+".yaml"))
-	if !strings.Contains(string(service), "session_max_age: 45") || !strings.Contains(string(subsystem), webServiceGoods) {
+	if !strings.Contains(string(service), "session_max_age: 45") || !strings.Contains(string(service), "namespace: http://v8.1c.ru/8.1/xdto") ||
+		strings.Contains(string(service), "8.1/data/core") || !strings.Contains(string(subsystem), webServiceGoods) {
 		t.Errorf("on disk: the service %q, the subsystem %q", service, subsystem)
 	}
 }

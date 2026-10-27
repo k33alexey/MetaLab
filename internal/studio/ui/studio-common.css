@@ -244,3 +244,9 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .border-choice-dialog .catalog-field{display:flex;align-items:center;justify-content:space-between;color:inherit}
 .border-choice-dialog .catalog-field input{width:60px}
 .border-choice-caption{font-size:12px}
+/* «Выбор пакетов XDTO» (series-2.584/131-136): пространства платформы, затем
+   пакеты проекта с отступом, флажками, одним прокручиваемым списком. */
+.localized-title-dialog.xdto-packages-dialog{width:min(720px,calc(100% - 40px))}
+.xdto-packages-choice{max-height:60vh;overflow:auto;border:1px solid #4a4d54;background:#1e1f22;padding:2px 0}
+.localized-title-dialog .xdto-packages-row{display:flex;align-items:center;gap:6px;padding:1px 6px;color:#dfe1e5;font-size:12.5px;white-space:nowrap}
+.localized-title-dialog .xdto-packages-own{padding-left:34px}
