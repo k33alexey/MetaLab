@@ -35,11 +35,18 @@ type ObjectChoiceItem struct {
 
 // objectChoiceTree is the tree of the window «Выбор объекта» offering the
 // objects of the kinds offered: their branches in the order of the project
-// tree, those of «Общие» inside it (branchPlaces), each with its objects in
-// the tree's order.
+// tree, those of «Общие» inside it and those standing in the branch of
+// another kind - numerators in «Документы» - inside that branch before its
+// objects (branchPlaces), each with its objects in the tree's order.
 func objectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind) []ObjectChoiceBranch {
 	var result []ObjectChoiceBranch
 	common := ObjectChoiceBranch{Title: commonBranch.Title, Icon: commonBranch.Icon}
+	at := map[string]int{}
+	type within struct {
+		place  string
+		branch ObjectChoiceBranch
+	}
+	var inside []within
 	for _, descriptor := range kinds.Branches() {
 		if !slices.Contains(offered, descriptor.Kind) {
 			continue
@@ -52,10 +59,21 @@ func objectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind) []Objec
 			}
 			branch.Objects = append(branch.Objects, item)
 		}
-		if branchPlaces[string(descriptor.Kind)] == commonPlace {
+		switch place := branchPlaces[string(descriptor.Kind)]; place {
+		case commonPlace:
 			common.Children = append(common.Children, branch)
-		} else {
+		case "":
+			at[string(descriptor.Kind)] = len(result)
 			result = append(result, branch)
+		default:
+			inside = append(inside, within{place, branch})
+		}
+	}
+	for _, item := range inside {
+		if owner, ok := at[item.place]; ok {
+			result[owner].Children = append(result[owner].Children, item.branch)
+		} else {
+			result = append(result, item.branch)
 		}
 	}
 	if len(common.Children) > 0 {

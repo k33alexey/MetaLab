@@ -321,3 +321,6 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .read-only-palette-row{display:grid;grid-template-columns:200px 1fr;gap:8px;padding:2px 0;font-size:12.5px}
 .read-only-palette-caption{color:#aeb1b8}
 .read-only-palette-value{display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subsystem-composition{flex:1;min-height:220px}
+.subsystem-composition-held{min-height:120px;max-height:200px;overflow:auto}
+.subsystem-composition-caption{display:flex;align-items:center;justify-content:space-between}

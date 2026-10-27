@@ -66,3 +66,24 @@ func sortedList(list string) string {
 	sort.Strings(names)
 	return strings.Join(names, ",")
 }
+
+// The page «Состав» of the window of a subsystem offers 38 kinds and the
+// numerators inside «Документы» (docs/block-00/podsistema.md, «Окно»), the
+// list written out here: none of the subsystems, the WS references, the
+// WebSocket clients, the languages, the external sources of data and the
+// sequences.
+// Defects caught: a kind the window does not offer, or one it does left out.
+func TestTheCompositionOfASubsystemOffersThePrototypesKinds(t *testing.T) {
+	want := []Kind{RoleKind, ConstantKind, SessionParameterKind, CommonAttributeKind, CommonModuleKind, EventSubscriptionKind, EnumerationKind,
+		ScheduledJobKind, CommandGroupKind, CommonCommandKind, CommonFormKind, CommonTemplateKind, XDTOPackageKind, WebServiceKind, HTTPServiceKind,
+		CommonPictureKind, StyleItemKind, StyleKind, FunctionalOptionKind, FunctionalOptionParameterKind, SettingsStorageKind, FilterCriterionKind,
+		DefinedTypeKind, CatalogKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind, ChartOfCalculationTypesKind, TaskKind,
+		AccountingRegisterKind, CalculationRegisterKind, ReportKind, DataProcessorKind, NumeratorKind, DocumentJournalKind, ExchangePlanKind,
+		BusinessProcessKind, DocumentKind, InformationRegisterKind, AccumulationRegisterKind}
+	got := SubsystemCompositionKinds()
+	sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
+	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("the kinds of the composition: %v, want %v", got, want)
+	}
+}

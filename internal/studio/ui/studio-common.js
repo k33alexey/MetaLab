@@ -1356,7 +1356,8 @@ function windowHeadFields(source, object, typed, cleanups) {
    palette of the object edits, its own properties by default, context() -
    what its fields open beyond the window's (windows, openWindow), value
    (object) - what the window writes of the object} over api - {source(),
-   object(), changed(), typed(), refresh(), palette(), cleanups()};
+   object(), changed(), typed(), refresh(), show(page), palette(),
+   cleanups()};
    valueChecks are the addresses checking a value of a row when its field
    is left (paletteFields). around holds the palette, its title, the opening
    of a module, the actions and the closing of the window. */
@@ -1365,7 +1366,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
-  const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), palette: () => renderPalette(), cleanups: () => cleanups};
+  const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), show: key => frame.show?.(key), palette: () => renderPalette(), cleanups: () => cleanups};
   const kind = own(api);
   function context(collect) {
     return {project: source, typed, changed, packages: source.packages, platformNamespaces: source.platformNamespaces, windows: [], cleanups: collect, valueChecks,

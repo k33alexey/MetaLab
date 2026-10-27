@@ -12,7 +12,8 @@ import (
 // two flags, «Командный интерфейс», the explanation, the picture -
 // «Функциональные опции» - the options of the project, marked where the
 // subsystem is in their content - and «Прочее» - the help and «Включать в
-// содержание справки»; its palette of three tabs. «Состав», the window
+// содержание справки»; its palette of three tabs. «Состав» - the tree of
+// the objects with a box at each and the objects held below. The window
 // «Командный интерфейс», «Все подсистемы» and the menu of a subsystem are
 // items of their own.
 
@@ -21,6 +22,9 @@ import (
 type SubsystemEditorSource struct {
 	windowHead
 	Subsystem metadata.SubsystemDefinition `json:"subsystem"`
+	// Composition is the tree of the page «Состав»: the objects of the kinds
+	// a subsystem's window offers (metadata.SubsystemCompositionKinds).
+	Composition []ObjectChoiceBranch `json:"composition"`
 }
 
 // SubsystemWindowValue is what the window of a subsystem writes: the
@@ -60,7 +64,7 @@ func (workspace *Workspace) readSubsystemEditorLocked(relative string) (Subsyste
 		return SubsystemEditorSource{}, err
 	}
 	head.FunctionalOptions = optionPlaces(loaded, metadata.SubsystemKind, value.ID)
-	return SubsystemEditorSource{windowHead: head, Subsystem: value}, nil
+	return SubsystemEditorSource{windowHead: head, Subsystem: value, Composition: objectChoiceTree(loaded, metadata.SubsystemCompositionKinds())}, nil
 }
 
 // SaveSubsystemWindow writes the subsystem and the options its window marks

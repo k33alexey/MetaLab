@@ -231,3 +231,23 @@ func (catalog *Catalog) subsystemMembers() map[uuid.UUID][]uuid.UUID {
 	}
 	return result
 }
+
+// subsystemCompositionLeftOut are the kinds a subsystem may hold that the
+// page «Состав» of its window does not offer (docs/block-00/podsistema.md,
+// «Окно»: no subsystems, WS references, external sources of data - with
+// their tables, cubes and tables of dimensions - and sequences).
+var subsystemCompositionLeftOut = []Kind{SubsystemKind, WSReferenceKind, ExternalDataSourceKind, ExternalDataSourceTableKind,
+	ExternalCubeKind, ExternalDimensionTableKind, SequenceKind}
+
+// SubsystemCompositionKinds are the kinds the page «Состав» of the window
+// of a subsystem offers: those a subsystem may hold, less those its window
+// leaves out - 38 of the inventory and the numerators inside «Документы».
+func SubsystemCompositionKinds() []Kind {
+	var offered []Kind
+	for _, info := range kindInfos {
+		if info.uses.subsystem == present && !slices.Contains(subsystemCompositionLeftOut, info.kind) {
+			offered = append(offered, info.kind)
+		}
+	}
+	return offered
+}

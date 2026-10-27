@@ -20,9 +20,8 @@ var windowPages = map[Kind][]Page{
 	HTTPService: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"templates", "Шаблоны URL"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
 	},
-	// docs/block-00/podsistema.md, «Окно»; snapshots podsistema/04-07. «Состав»
-	// comes with its item.
-	Subsystem: {{"main", "Основные"}, {"functional-options", "Функциональные опции"}, {"other", "Прочее"}},
+	// docs/block-00/podsistema.md, «Окно»; snapshots podsistema/04-07.
+	Subsystem: {{"main", "Основные"}, {"functional-options", "Функциональные опции"}, {"composition", "Состав"}, {"other", "Прочее"}},
 	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01-04.
 	WebService: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"operations", "Операции"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
