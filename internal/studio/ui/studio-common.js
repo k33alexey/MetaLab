@@ -154,6 +154,16 @@ function textInput(value, apply, options = {}) {
   return input;
 }
 
+/* wholeNumberInput is a field of a whole number from options.min to
+   options.max: what is not one, or beyond them, is asked «Отменить ввод?»
+   (textInput); a number taken is given to apply. */
+function wholeNumberInput(value, apply, options = {}) {
+  return textInput(String(value), number => {
+    if (!Number.isInteger(number)) return false;
+    apply(number);
+  }, {...options, type: 'number'});
+}
+
 /* watchName checks a name once its field is left or Enter is pressed, as the
    prototype checks it (docs/block-00/obshchee.md, «Имя и синоним»): a name
    the server refuses is answered at once with the prototype's words, and the
@@ -796,6 +806,7 @@ function objectRows(items, current, choose, open = () => {}) {
   list.setAttribute('role', 'listbox');
   for (const [key, text] of items) {
     const row = node('div', text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    row.title = text;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
     row.addEventListener('click', () => choose(key));
@@ -1894,8 +1905,8 @@ async function chooseBorder(value, styles, lines) {
     else sample.append(borderSample(drawn));
     const types = objectRows(lines.map(item => [item.name, item.title]), drawn.line,
       picked => { if (chosen.fromStyle) return; chosen.line = picked; render(); });
-    const thickness = textInput(String(drawn.width), number => { if (!Number.isInteger(number)) return false; chosen.width = number; render(); },
-      {type: 'number', min: 1, max: StudioLimits.borderWidth, disabled: chosen.fromStyle || drawn.line === 'none'});
+    const thickness = wholeNumberInput(drawn.width, number => { chosen.width = number; render(); },
+      {min: 1, max: StudioLimits.borderWidth, disabled: chosen.fromStyle || drawn.line === 'none'});
     const left = node('div', undefined, 'border-choice-left'), right = node('div', undefined, 'border-choice-right');
     left.append(mark, list, sample);
     right.append(node('div', 'Тип рамки', 'border-choice-caption'), types, labeledField('Толщина', thickness));
@@ -1918,6 +1929,16 @@ function borderSample({line, width}) {
   const side = {underline: 'Bottom', 'double-underline': 'Bottom', overline: 'Top'}[line] || '';
   box.style['border' + side] = `${styles[line] === 'double' ? Math.max(3, width) : width}px ${styles[line]} currentColor`;
   return box;
+}
+
+/* valueChoiceDialog shows a window choosing a value of a style - «Выбор
+   цвета», «Выбор шрифта» - with OK and «Отмена», «Справка» only in its
+   full kind (the simple kind of the palette of a style item has none,
+   element-stilya.md); key names its class and its page of help. Answers
+   whether OK was pressed. */
+async function valueChoiceDialog(title, content, key, simple) {
+  const answer = await showDialog({title, content, className: key + '-dialog', help: simple ? undefined : key, answers: [['ok', 'OK'], [null, 'Отмена']]});
+  return answer === 'ok';
 }
 
 /* colorSwatches are the 40 samples under the palette of «Выбор цвета», four
@@ -2017,12 +2038,11 @@ async function chooseColor(value, styles, web, options = {}) {
     const frame = node('div', undefined, 'color-choice-numbers');
     const parts = colorNumbers(chosen.rgb);
     for (const [index, caption] of ['Красный', 'Зеленый', 'Синий'].entries()) {
-      frame.append(labeledField(caption + (options.simple ? ':' : ''), textInput(String(parts[index]), number => {
-        if (!Number.isInteger(number)) return false;
+      frame.append(labeledField(caption + (options.simple ? ':' : ''), wholeNumberInput(parts[index], number => {
         const next = [...parts];
         next[index] = number;
         take(colorHex(next));
-      }, {type: 'number', min: 0, max: 255})));
+      }, {min: 0, max: 255})));
     }
     return frame;
   }
@@ -2111,10 +2131,227 @@ async function chooseColor(value, styles, web, options = {}) {
     content.replaceChildren(left, middle, right);
   }
   render();
-  const answer = await showDialog({title: 'Выбор цвета', content, className: 'color-choice-dialog', help: options.simple ? undefined : 'color-choice',
-    answers: [['ok', 'OK'], [null, 'Отмена']]});
-  if (answer !== 'ok') return null;
+  if (!await valueChoiceDialog('Выбор цвета', content, 'color-choice', options.simple)) return null;
   return chosen.row ? structuredClone(chosen.row.value) : {source: 'absolute', rgb: chosen.rgb};
+}
+
+/* fontSizes are the sizes the lists of «Выбор шрифта» offer (stil.md,
+   «Второй заход 27.10.2026»). */
+const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+
+/* fontFlags are the four switches of a font, in the order the windows and
+   the text of a value name them (obshchee.md, «Значения цвета, шрифта и
+   рамки»): [field of metadata.FontValue, caption, word of the text]. */
+const fontFlags = [['bold', 'Полужирный', 'полужирный'], ['italic', 'Наклонный', 'наклонный'],
+  ['underline', 'Подчеркнутый', 'подчеркнутый'], ['strikeout', 'Зачеркнутый', 'зачеркнутый']];
+
+/* fontPresentation is how a field shows a font (metadata.FontValue) - the
+   platform's rule, obshchee.md, «Значения цвета, шрифта и рамки»: what it
+   is based on - «стиль: <элемент>» (base(value) names the item), the
+   font of the system by its caption - or its face, then the size, the
+   switches said on in the order of fontFlags, the scale where it is not a
+   hundred: «стиль: Обычный шрифт текста, 12, полужирный, 150%», «Al Bayan,
+   8, наклонный». base answers the caption of what value is based on, or
+   '' where it is not known. */
+function fontPresentation(value, base) {
+  if (!value) return '';
+  const parts = [];
+  if (value.source === 'style' || value.source === 'system') {
+    const caption = base(value);
+    if (!caption) return '';
+    parts.push(value.source === 'style' ? `стиль: ${caption}` : caption);
+    if (value.face) parts.push(value.face);
+  } else if (value.source === 'absolute') parts.push(value.face || '');
+  else return '';
+  if (value.size) parts.push(String(value.size));
+  for (const [field, , word] of fontFlags) if (value[field]) parts.push(word);
+  if (value.scale && value.scale !== 100) parts.push(`${value.scale}%`);
+  return parts.join(', ');
+}
+
+/* chooseFont is the window «Выбор шрифта», one for every place a font is
+   chosen (stil.md, «Окно», «Второй заход 27.10.2026»; ML-STUDIO.md, «Окно
+   стиля»; snapshots stil/08, series-2.595/58). Full, as the window of a
+   style opens it: «Шрифт стиля» with the fonts of the style (styles: the
+   platform's five, then the project's, as {caption, value, drawn} - drawn
+   the face and switches it is known to have), «Системный шрифт» with the
+   fonts of the system (systems, {name, title}) - the two take each other
+   away - the face, the size and the switches each with «Из стиля»,
+   «Масштаб», the sample, OK, «Отмена», «Справка». A font of the style
+   chosen marks the three «Из стиля» again and drops what was changed;
+   the scale stays as it is (it has no «Из стиля»);
+   with neither base the font is its own - Arial, 13 - and «Из стиля»
+   stands unmarked and unavailable; unmarked, the face is empty with the
+   faces of the system (faces) below, the size 13 with fontSizes, the
+   switches unmarked. Simple (options.simple), as the palette of a style
+   item opens it (element-stilya.md; snapshot series-2.595/02): one list -
+   the fonts of the style in angle brackets, then the faces - the size
+   with «<>» first, «Масштаб», the switches, the sample, OK and «Отмена»;
+   a font of the style drops the switches and keeps the size and the
+   scale, a face after it sets the size 8. value is the font chosen before
+   (metadata.FontValue) or none. Answers the font chosen on OK, null on
+   «Отмена». */
+async function chooseFont(value, styles, systems, faces, options = {}) {
+  const same = (one, other) => JSON.stringify(one) === JSON.stringify(other);
+  const flagsOf = font => Object.fromEntries(fontFlags.map(([field]) => [field, !!font?.[field]]));
+  const said = value && fontFlags.some(([field]) => value[field] !== undefined);
+  const chosen = {
+    style: value?.source === 'style' ? styles.find(row => same(row.value.from, value.from)) || null : null,
+    system: value?.source === 'system' ? systems.find(row => row.name.toLowerCase() === value.system.toLowerCase()) || null : null,
+    face: value?.face || '', size: value?.size || 0, flags: flagsOf(value), scale: value?.scale || 100,
+  };
+  chosen.base = chosen.style ? 'style' : chosen.system ? 'system' : value && value.source !== 'absolute' ? 'style' : 'own';
+  if (chosen.base === 'style' && !chosen.style) chosen.style = styles[0];
+  if (chosen.base === 'own') { chosen.face = chosen.face || 'Arial'; chosen.size = chosen.size || 13; }
+  chosen.fromStyle = chosen.base === 'own' ? {face: false, size: false, flags: false}
+    : {face: !value?.face, size: !value?.size, flags: !said};
+  // The simple window has no «Из стиля»: its size «<>» is the size left out.
+  if (options.simple) chosen.fromStyle = {face: !chosen.face, size: false, flags: false};
+  const content = node('div', undefined, 'font-choice' + (options.simple ? ' font-choice-simple' : ''));
+  const baseRow = () => chosen.base === 'style' ? chosen.style : chosen.base === 'system' ? chosen.system : null;
+  // What the font is drawn with: what is chosen, else what its base is
+  // known to have.
+  function drawn() {
+    const known = chosen.base === 'style' ? chosen.style?.drawn || {} : {};
+    const face = chosen.fromStyle.face ? known.face || '' : chosen.face;
+    const size = chosen.fromStyle.size ? known.size || 0 : chosen.size;
+    const flags = chosen.fromStyle.flags ? flagsOf(known) : chosen.flags;
+    return {face, size, flags, caption: face || baseRow()?.caption || baseRow()?.title || ''};
+  }
+  function rows(list, current, choose) {
+    const element = objectRows(list.map((caption, index) => [String(index), caption]), String(current), key => { choose(Number(key)); render(); });
+    element.classList.add('font-choice-list');
+    return element;
+  }
+  function pickStyle(row) {
+    chosen.base = 'style';
+    chosen.style = row;
+    if (options.simple) { chosen.flags = flagsOf(null); chosen.face = ''; chosen.fromStyle.face = true; return; }
+    chosen.fromStyle = {face: true, size: true, flags: true};
+    chosen.face = '';
+    chosen.size = 0;
+    chosen.flags = flagsOf(null);
+  }
+  function becomeOwn() {
+    chosen.base = 'own';
+    chosen.style = chosen.system = null;
+    chosen.fromStyle = {face: false, size: false, flags: false};
+    chosen.face = 'Arial';
+    chosen.size = 13;
+    chosen.flags = flagsOf(null);
+  }
+  function sizeField(disabled) {
+    return textInput(disabled ? '' : String(chosen.size || (options.simple ? '' : 0)), number => {
+      if (!(number > 0)) return false;
+      chosen.size = number;
+      chosen.fromStyle.size = false;
+      render();
+    }, {type: 'number', min: 1, disabled});
+  }
+  function sample() {
+    const font = drawn(), frame = node('div', undefined, 'studio-frame font-choice-sample'), text = node('span', font.face ? font.face : font.caption);
+    if (font.face) text.style.fontFamily = `"${font.face}"`;
+    if (font.size) text.style.fontSize = `${Math.min(font.size, 48) * chosen.scale / 100}px`;
+    if (font.flags.bold) text.style.fontWeight = 'bold';
+    if (font.flags.italic) text.style.fontStyle = 'italic';
+    text.style.textDecoration = [font.flags.underline && 'underline', font.flags.strikeout && 'line-through'].filter(Boolean).join(' ') || 'none';
+    frame.append(text);
+    return frame;
+  }
+  function flagsFrame() {
+    const frame = node('fieldset', undefined, 'studio-frame font-choice-flags');
+    frame.append(node('legend', 'Начертание'));
+    const own = !chosen.fromStyle.flags, shown = own ? chosen.flags : drawn().flags;
+    if (!options.simple) frame.append(checkboxField('Из стиля', chosen.fromStyle.flags, on => {
+      chosen.fromStyle.flags = on;
+      chosen.flags = flagsOf(null);
+      render();
+    }, 'catalog-check', chosen.base === 'own'));
+    const grid = node('div', undefined, 'font-choice-flag-grid');
+    for (const [field, caption] of fontFlags) grid.append(checkboxField(caption, shown[field], on => { chosen.flags[field] = on; render(); }, 'catalog-check', !own));
+    frame.append(grid);
+    return frame;
+  }
+  function scaleField() {
+    const field = labeledField('Масштаб', wholeNumberInput(chosen.scale, number => { chosen.scale = number; render(); },
+      {min: 0, max: StudioLimits.fontScale}), 'catalog-field font-choice-scale');
+    field.append(node('span', '%'));
+    return field;
+  }
+  function renderSimple() {
+    const list = [...styles.map(row => `<${row.caption}>`), ...faces];
+    const current = chosen.base === 'style' ? styles.indexOf(chosen.style) : faces.indexOf(chosen.face) >= 0 ? styles.length + faces.indexOf(chosen.face) : -1;
+    const fonts = rows(list, current, index => {
+      if (index < styles.length) { pickStyle(styles[index]); return; }
+      if (chosen.base === 'style') chosen.size = 8;
+      chosen.base = 'own';
+      chosen.style = null;
+      chosen.face = faces[index - styles.length];
+      chosen.fromStyle.face = false;
+    });
+    const sizes = rows(['<>', ...fontSizes.map(String)], chosen.size ? fontSizes.indexOf(chosen.size) + 1 : 0, index => {
+      chosen.size = index ? fontSizes[index - 1] : 0;
+    });
+    const left = node('div', undefined, 'font-choice-left'), right = node('div', undefined, 'font-choice-right');
+    left.append(labeledField('Шрифт', fonts, 'catalog-field font-choice-column'), sample());
+    right.append(labeledField('Размер', sizes, 'catalog-field font-choice-column'), scaleField(), flagsFrame());
+    content.replaceChildren(left, right);
+  }
+  function render() {
+    if (options.simple) { renderSimple(); return; }
+    const own = chosen.base === 'own', font = drawn();
+    const styleMark = checkboxField('Шрифт стиля', chosen.base === 'style', on => {
+      if (on) pickStyle(chosen.style || styles[0]); else becomeOwn();
+      render();
+    });
+    const styleList = rows(styles.map(row => row.caption), chosen.base === 'style' ? styles.indexOf(chosen.style) : -1, index => pickStyle(styles[index]));
+    const systemMark = checkboxField('Системный шрифт', chosen.base === 'system', on => {
+      if (on) { if (chosen.base === 'own') chosen.fromStyle = {face: true, size: true, flags: true}; chosen.base = 'system'; chosen.system = chosen.system || systems[0]; chosen.style = null; }
+      else becomeOwn();
+      render();
+    });
+    const systemList = rows(systems.map(row => row.title), chosen.base === 'system' ? systems.indexOf(chosen.system) : -1, index => {
+      if (chosen.base === 'own') chosen.fromStyle = {face: true, size: true, flags: true};
+      chosen.base = 'system';
+      chosen.system = systems[index];
+      chosen.style = null;
+    });
+    const faceMark = checkboxField('Из стиля', chosen.fromStyle.face, on => { chosen.fromStyle.face = on; chosen.face = ''; render(); }, 'catalog-check', own);
+    const sizeMark = checkboxField('Из стиля', chosen.fromStyle.size, on => { chosen.fromStyle.size = on; chosen.size = on ? 0 : 13; render(); }, 'catalog-check', own);
+    const faceInput = textInput(chosen.fromStyle.face ? font.face : chosen.face, text => { chosen.face = text; }, {disabled: chosen.fromStyle.face});
+    faceInput.addEventListener('change', render);
+    const faceList = rows(faces, chosen.fromStyle.face ? -1 : faces.indexOf(chosen.face), index => { chosen.face = faces[index]; });
+    const sizeList = rows(fontSizes.map(String), chosen.fromStyle.size ? -1 : fontSizes.indexOf(chosen.size), index => { chosen.size = fontSizes[index]; });
+    const left = node('div', undefined, 'font-choice-left');
+    left.append(styleMark, styleList, systemMark, systemList, sample());
+    const faceColumn = node('div', undefined, 'font-choice-face'), sizeColumn = node('div', undefined, 'font-choice-size');
+    faceColumn.append(faceMark, faceInput, faceList);
+    sizeColumn.append(sizeMark, sizeField(chosen.fromStyle.size), sizeList);
+    const top = node('div', undefined, 'font-choice-top');
+    top.append(faceColumn, sizeColumn);
+    const right = node('div', undefined, 'font-choice-right');
+    right.append(top, flagsFrame(), scaleField());
+    content.replaceChildren(left, right);
+  }
+  render();
+  if (!await valueChoiceDialog('Выбор шрифта', content, 'font-choice', options.simple)) return null;
+  const result = chosen.base === 'style' ? {source: 'style', from: structuredClone(chosen.style.value.from)}
+    : chosen.base === 'system' ? {source: 'system', system: chosen.system.name} : {source: 'absolute'};
+  if (!chosen.fromStyle.face && chosen.face) result.face = chosen.face;
+  if (!chosen.fromStyle.size && chosen.size) result.size = chosen.size;
+  const based = chosen.base !== 'own' && !options.simple;
+  if (!chosen.fromStyle.flags) for (const [field] of fontFlags) if (chosen.flags[field] || based) result[field] = chosen.flags[field];
+  if (chosen.scale !== 100) result.scale = chosen.scale;
+  return result;
+}
+
+/* systemFaces is the faces of the fonts of the system, as the server of
+   Studio reads them once (/api/fonts; ML-STUDIO.md, «Окно стиля»): one
+   list for every window choosing a font, fetched once. */
+let systemFacesRead = null;
+function systemFaces() {
+  systemFacesRead ||= fetch('/api/fonts').then(response => response.ok ? response.json() : []).catch(() => []);
+  return systemFacesRead;
 }
 
 /* typeEditorModel is the window «Редактирование типа данных» without its

@@ -8,9 +8,8 @@
    five, then the project's in the order of the tree), each with its value
    in this style and «…». The palette beside it opens the same values in a
    window of their own with OK and «Отмена» («Стиль: Открыть»). «…» of a
-   colour opens «Выбор цвета», of a border «Выбор рамки»; of a font it
-   stands unavailable until the window choosing a font, an item of its own.
-   around holds the palette and its title. */
+   value opens «Выбор цвета», «Выбор шрифта» or «Выбор рамки». around holds
+   the palette and its title. */
 function createStyleEditor(host, onChange, around = {}) {
   let source = null, changed = () => {};
   function draw(body, api) {
@@ -23,24 +22,28 @@ function createStyleEditor(host, onChange, around = {}) {
     body.append(left, styleValueRows(source, 'style-window-items', item => chooseValue(source.style, item, api.changed)));
   }
   // «…» of a value: the window choosing a value of the item's kind, its
-  // answer the value this style gives the item. «Выбор шрифта» is an item
-  // of its own. A colour taken from the item itself is what the window
-  // shows of an item the style gives nothing - «стиль: <элемент>» - and
-  // the style is left giving it nothing.
+  // answer the value this style gives the item. A colour or a font taken
+  // from the item itself, unchanged, is what the window shows of an item
+  // the style gives nothing - «стиль: <элемент>» - and the style is left
+  // giving it nothing; such an item opens on its own row (snapshot
+  // series-2.584/024).
   async function chooseValue(style, item, done) {
     const given = styleSetting({...source, style}, item);
+    const itself = {source: 'style', from: item.item ? {item: item.item} : {standard: stylePlatformItem(source, item.standard)?.name || item.standard}};
+    const give = (kind, chosen) => styleGive(style, item, JSON.stringify(chosen) === JSON.stringify(itself) ? null : {[kind]: chosen});
     if (item.type === 'border') {
       const chosen = await chooseBorder(given?.border, styleBorders(source), source.borderLines);
       if (!chosen) return;
       styleGive(style, item, {border: chosen});
     } else if (item.type === 'color') {
-      // An item the style gives nothing opens on its own row (snapshot
-      // series-2.584/024).
-      const itself = {source: 'style', from: item.item ? {item: item.item} : {standard: stylePlatformItem(source, item.standard)?.name || item.standard}};
       const chosen = await chooseColor(styleColorValue(source, given?.color) || itself, styleColors({...source, style}), styleWebColors(source));
       if (!chosen) return;
-      styleGive(style, item, JSON.stringify(chosen) === JSON.stringify(itself) ? null : {color: chosen});
-    } else return;
+      give('color', chosen);
+    } else {
+      const chosen = await chooseFont(styleFontValue(source, given?.font) || itself, styleFonts(source), source.systemFonts, await systemFaces());
+      if (!chosen) return;
+      give('font', chosen);
+    }
     done();
   }
   // «Стиль: Открыть»: the values in a window of their own, chosen on a
@@ -61,7 +64,7 @@ function createStyleEditor(host, onChange, around = {}) {
 /* styleValueRows are the rows of the values of a style (source, as
    createStyleEditor reads it): the caption of each item listed and a field
    of its value - a sample of a colour and the text of styleValueText - with
-   «…», unavailable at a font until the window choosing it. */
+   «…». */
 function styleValueRows(source, className, choose) {
   const list = node('div', undefined, 'style-values ' + className);
   for (const item of source.items) {
@@ -76,7 +79,6 @@ function styleValueRows(source, className, choose) {
     }
     field.append(node('span', shown.text));
     const pick = fieldChoiceButton(styleItemTitle(source, item), () => choose(item));
-    pick.disabled = item.type === 'font';
     list.append(caption, fieldWithButtons(field, [pick]));
   }
   return list;
@@ -124,12 +126,13 @@ function styleReferenced(source, reference) {
    sample of a colour. A value the style does not give shows «стиль:
    <элемент>» with the sample of the item's own value; one of a border,
    nothing. A colour of its own shows its numbers «250, 195, 113»; a colour
-   of the web palette its name «Мятный крем (MintCream)»; a value taken from
-   a style item «стиль: <элемент>», a font struck out «, зачеркнутый» after
-   it. What the inventory does not show - a colour of the system, an
-   automatic one, a font of its own or of the system, a font changed in
-   other ways, a border of its own - shows nothing (series 2.595,
-   question). */
+   of the web palette its name «Мятный крем (MintCream)»; a colour or a
+   border taken from a style item «стиль: <элемент>»; a font as the
+   platform writes one (fontPresentation): «стиль: Шрифт текста,
+   зачеркнутый», «Шрифт диалогов и меню, 10, полужирный», «Arial, 12,
+   наклонный». What the inventory does not show - a colour of the system,
+   an automatic one - shows nothing; a border of its own too, until its
+   own item. */
 function styleValueText(source, item) {
   const given = styleSetting(source, item);
   if (!given) {
@@ -147,15 +150,49 @@ function styleValueText(source, item) {
     if (from) return {text: `стиль: ${styleItemTitle(source, from)}`, color: styleColorOf(source, from, 0)};
     return {text: ''};
   }
-  if (!from) return {text: ''};
-  if (item.type === 'border') return {text: `стиль: ${styleItemTitle(source, from)}`};
-  // A font taken from a style item and changed: the words of what is
-  // changed after its name. Only «зачеркнутый» is shot (series-2.584/014);
-  // a font changed otherwise waits for the question.
-  const words = {strikeout: 'зачеркнутый'};
-  const changed = ['bold', 'italic', 'underline', 'strikeout'].filter(flag => value[flag]);
-  if (value.face || value.size || value.scale || changed.some(flag => !words[flag])) return {text: ''};
-  return {text: [`стиль: ${styleItemTitle(source, from)}`, ...changed.map(flag => words[flag])].join(', ')};
+  if (item.type === 'border') return {text: from ? `стиль: ${styleItemTitle(source, from)}` : ''};
+  return {text: fontPresentation(value, font => styleFontBase(source, font))};
+}
+
+/* styleFontBase is the caption of what a font is based on (metadata.
+   FontValue): a style item by styleItemTitle, a font of the system by its
+   caption in «Выбор шрифта» - or '' where it names nothing known. */
+function styleFontBase(source, font) {
+  if (font.source === 'system') {
+    const folded = font.system.toLowerCase();
+    return source.systemFonts.find(system => system.name.toLowerCase() === folded || system.russian.toLowerCase() === folded)?.title || '';
+  }
+  const from = styleReferenced(source, font.from);
+  return from ? styleItemTitle(source, from) : '';
+}
+
+/* styleFonts are the rows of «Шрифт стиля» of «Выбор шрифта»
+   (chooseFont): the platform's five fonts, then the project's in the order
+   of the tree, each with what it is known to be drawn by - a font of the
+   project its face, size and switches followed through the items it is
+   taken from; the platform's are not known (Studio does not draw them).
+   styleFontValue is a font as those rows name it - a platform's font by
+   its English name, a font of the system by its English name. */
+function styleFonts(source) {
+  const drawn = (item, depth) => {
+    const own = item?.value?.font;
+    if (!own || depth > 40) return {};
+    const base = own.source === 'style' ? drawn(styleReferenced(source, own.from), depth + 1) : {};
+    const known = {...base};
+    for (const field of ['face', 'size', ...fontFlags.map(([flag]) => flag)]) if (own[field] !== undefined && own[field] !== '') known[field] = own[field];
+    return known;
+  };
+  return [...source.platform.filter(item => item.type === 'font').map(item => ({caption: item.title, value: {source: 'style', from: {standard: item.name}}, drawn: {}})),
+    ...source.items.filter(item => item.item && item.type === 'font').map(item => ({caption: styleItemTitle(source, item), value: {source: 'style', from: {item: item.item}}, drawn: drawn(item, 0)}))];
+}
+
+function styleFontValue(source, value) {
+  if (value?.source === 'style' && value.from?.standard) return {...value, from: {standard: stylePlatformItem(source, value.from.standard)?.name || value.from.standard}};
+  if (value?.source === 'system') {
+    const folded = value.system.toLowerCase();
+    return {...value, system: source.systemFonts.find(system => system.name.toLowerCase() === folded || system.russian.toLowerCase() === folded)?.name || value.system};
+  }
+  return value;
 }
 
 /* styleColorOf is the colour an item of a colour has in a style, for its

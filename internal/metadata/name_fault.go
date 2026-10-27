@@ -42,11 +42,13 @@ type EditorLimits struct {
 	Levels int `json:"levels"`
 	// BorderWidth is the thickest border (maxBorderWidth).
 	BorderWidth int `json:"borderWidth"`
+	// FontScale is the largest scale of a font (maxFontScale).
+	FontScale int `json:"fontScale"`
 }
 
 // Limits is the description of the ceilings.
 func Limits() EditorLimits {
-	return EditorLimits{Name: maxNameLength, Code: maxCodeLength, Description: maxDescriptionLength, Levels: maxHierarchyLevelCount, BorderWidth: maxBorderWidth}
+	return EditorLimits{Name: maxNameLength, Code: maxCodeLength, Description: maxDescriptionLength, Levels: maxHierarchyLevelCount, BorderWidth: maxBorderWidth, FontScale: maxFontScale}
 }
 
 // NameRuleFault is what the rule of a name alone says of it, whatever stands

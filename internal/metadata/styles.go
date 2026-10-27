@@ -304,6 +304,26 @@ var PlatformStyleItems = []PlatformStyleItem{
 	{Name: "ControlBorder", Russian: "РамкаЭлементаУправления", Title: "Рамка элементов управления", Type: BorderStyleItem},
 }
 
+// SystemFontName is one font of the operating system a font may be based
+// on: its name in the language, in English (what a value writes after
+// "sys:") and in Russian, and its caption in «Выбор шрифта».
+type SystemFontName struct {
+	Name    string `json:"name"`
+	Russian string `json:"russian"`
+	Title   string `json:"title"`
+}
+
+// SystemFonts are the fonts of the operating system (help, WindowsFonts),
+// in the order and under the captions of the list «Системный шрифт» of
+// «Выбор шрифта» (stil.md, «Второй заход 27.10.2026»).
+var SystemFonts = []SystemFontName{
+	{Name: "DefaultGUIFont", Russian: "ШрифтДиалоговИМеню", Title: "Шрифт диалогов и меню"},
+	{Name: "OEMFixedFont", Russian: "OEMШрифтМоноширинный", Title: "OEM моноширинный шрифт"},
+	{Name: "ANSIFixedFont", Russian: "ANSIШрифтМоноширинный", Title: "ANSI моноширинный шрифт"},
+	{Name: "ANSIVariableFont", Russian: "ANSIШрифтПропорциональный", Title: "ANSI пропорциональный шрифт"},
+	{Name: "SystemFont", Russian: "СистемныйШрифт", Title: "Системный шрифт"},
+}
+
 // platformStyleItemByName is PlatformStyleItems by name in either language,
 // folded.
 var platformStyleItemByName = func() map[string]PlatformStyleItem {

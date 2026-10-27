@@ -231,3 +231,19 @@ test('the text follows its name until it is put right by hand, in the language t
   StudioLanguage.set('ru');
   field.destroy();
 });
+
+// fontPresentation writes a font as the platform's field does (obshchee.md,
+// «Значения цвета, шрифта и рамки»; snapshots series-2.595/03, 04, 59, 60).
+// Defects caught: a part out of the prototype's order, a switch said off
+// written, a scale of a hundred written, a base not named.
+test('fontPresentation: the base or the face, the size, the switches on in order, a scale not of a hundred',()=>{
+  const {fontPresentation}=context;
+  const base=value=>({style:'Обычный шрифт текста',system:'Шрифт диалогов и меню'}[value.source]);
+  assert.equal(fontPresentation({source:'style',from:{standard:'NormalTextFont'}},base),'стиль: Обычный шрифт текста');
+  assert.equal(fontPresentation({source:'style',from:{standard:'NormalTextFont'},size:12,bold:true,italic:false,scale:150},base),
+    'стиль: Обычный шрифт текста, 12, полужирный, 150%');
+  assert.equal(fontPresentation({source:'absolute',face:'Al Bayan',size:8,strikeout:true,underline:true,italic:true,bold:true,scale:150},base),
+    'Al Bayan, 8, полужирный, наклонный, подчеркнутый, зачеркнутый, 150%');
+  assert.equal(fontPresentation({source:'system',system:'DefaultGUIFont',size:10,bold:true,scale:100},base),'Шрифт диалогов и меню, 10, полужирный');
+  assert.equal(fontPresentation({source:'style',from:{item:'x'}},()=>''),'');
+});

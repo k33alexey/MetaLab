@@ -349,6 +349,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerHTTPServiceEditorRoutes(routes, workspace)
 	registerWebSocketClientEditorRoutes(routes, workspace)
 	registerStyleEditorRoutes(routes, workspace)
+	registerFontRoutes(routes)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)

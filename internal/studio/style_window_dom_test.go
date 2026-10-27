@@ -111,8 +111,7 @@ func openStyleProject(t *testing.T) (context.Context, *devtools, string, string)
 // project keeps no order of its own), each «стиль:
 // <элемент>» but a border, which shows nothing, a platform's colour with
 // the sample of the platform's own numbers (stil.md, «Второй заход»); «…»
-// of a font unavailable until the window choosing it, of a colour and a
-// border available. The palette is one tab with «Стиль: Открыть»,
+// of every value available. The palette is one tab with «Стиль: Открыть»,
 // which opens the same values with OK and «Отмена» and changes nothing. A
 // style giving values shows a colour by its numbers, a web colour by its
 // name, a font struck out and a border taken from a style item by the
@@ -167,7 +166,7 @@ func TestTheWindowOfAStyleIsThePrototypes(t *testing.T) {
 		{"РамкаПоля", "", "", false},
 		{"РамкаТонкая", "", "", false},
 		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", false},
-		{"ШрифтЗаголовка", "стиль: ШрифтЗаголовка", "", true},
+		{"ШрифтЗаголовка", "стиль: ШрифтЗаголовка", "", false},
 	}})
 	expect("the palette", []any{steps.PaletteTitle, steps.Palette}, []any{"Свойства: Стиль1", []string{"Имя", "Синоним", "Комментарий", "Стиль"}})
 	expect("«Стиль: Открыть»", steps.Dialog, struct {
@@ -185,7 +184,7 @@ func TestTheWindowOfAStyleIsThePrototypes(t *testing.T) {
 		{"РамкаПоля", "стиль: Рамка элементов управления", "", false},
 		{"РамкаТонкая", "", "", false},
 		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", false},
-		{"ШрифтЗаголовка", "стиль: Шрифт текста, зачеркнутый", "", true},
+		{"ШрифтЗаголовка", "стиль: Шрифт текста, зачеркнутый", "", false},
 	})
 	expect("the preview drawn by it", steps.Paint, struct{ Heading, Field string }{"rgb(245, 255, 250)", "rgb(250, 195, 113)"})
 }
@@ -530,4 +529,254 @@ func TestTheColourOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
 	if bytes.Contains(written, []byte("NavigationColor")) || !bytes.Contains(written, []byte("ActivityColor")) {
 		t.Errorf("the item's own row is written as a value of the style:\n%s", written)
 	}
+}
+
+// styleFontWalk opens Основной and chooses fonts by «Выбор шрифта» as the
+// inventory reads it: on a font of the style struck out, another font of
+// the style, the face, the size and the switches unmarked from the style
+// and set, the scale refused and taken, OK; again, «Системный шрифт» and
+// without it, OK; the item's own row, OK; «Отмена»; then the simple window
+// as the palette of a style item opens it.
+const styleFontWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
+  const dialog = () => [...document.querySelectorAll('dialog.font-choice-dialog')].pop();
+  const button = (within, text) => [...within.querySelectorAll('button')].find(item => item.textContent === text);
+  const mark = selector => dialog().querySelector(selector + ' input[type=checkbox]');
+  const marks = {style: '.font-choice-left > .catalog-check:nth-of-type(1)', system: '.font-choice-left > .catalog-check:nth-of-type(2)',
+    face: '.font-choice-face > .catalog-check', size: '.font-choice-size > .catalog-check', flags: '.font-choice-flags > .catalog-check'};
+  const state = input => input ? (input.checked ? 'x' : '-') + (input.disabled ? ' (недоступен)' : '') : '';
+  const field = input => input.value + (input.disabled ? ' (недоступно)' : '');
+  const read = () => {
+    const window = dialog(), lists = [...window.querySelectorAll('.font-choice-list')];
+    const current = list => list.querySelector('.current')?.textContent || '';
+    return {style: state(mark(marks.style)), system: state(mark(marks.system)), styles: current(lists[0]), systems: current(lists[1]),
+      faceFrom: state(mark(marks.face)), face: field(window.querySelector('.font-choice-face > input')),
+      sizeFrom: state(mark(marks.size)), size: field(window.querySelector('.font-choice-size > input')),
+      flagsFrom: state(mark(marks.flags)),
+      flags: [...window.querySelectorAll('.font-choice-flag-grid .catalog-check')].map(item => item.querySelector('span').textContent + ' ' + state(item.querySelector('input'))),
+      scale: window.querySelector('.font-choice-scale input').value, sample: window.querySelector('.font-choice-sample').textContent};
+  };
+  const row = caption => [...document.querySelectorAll('#style-editor .style-value-caption')].find(item => item.textContent === caption).nextElementSibling;
+  const shown = caption => row(caption).querySelector('.style-value-field').textContent;
+  const open = async caption => { button(row(caption), '…').click(); await settle(); };
+  const pick = async (list, text) => { [...dialog().querySelectorAll('.font-choice-list')][list].querySelectorAll('.object-window-list-row').forEach(item => { if (item.textContent === text) item.click(); }); await settle(); };
+  const click = async selector => { mark(selector).click(); await settle(); };
+  const type = async (input, value) => { input.value = value; input.dispatchEvent(new Event('change')); await settle(); };
+  const faces = await (await fetch('/api/fonts')).json();
+  steps.faces = faces.length;
+  const styleRead = async () => {
+    const path = [...document.querySelectorAll('*')].find(item => item.children.length === 0 && /^metadata\/styles\/.*\.yaml$/.test(item.textContent)).textContent;
+    return (await fetch('/api/style?path=' + encodeURIComponent(path))).json();
+  };
+  const fontsGiven = async () => (await styleRead()).style.items.filter(setting => setting.value.font).map(setting => setting.value.font);
+  await openObject('Основной');
+  await open('ШрифтЗаголовка');
+  steps.opened = read();
+  steps.lists = [...dialog().querySelectorAll('.font-choice-list')].map(list => [...list.children].map(item => item.textContent));
+  steps.buttons = [...dialog().querySelectorAll('.localized-title-actions button')].map(item => item.textContent);
+  await pick(0, 'Обычный шрифт текста');
+  steps.another = read();
+  await click(marks.face);
+  steps.faceUnmarked = read().face;
+  await pick(2, faces[0]);
+  await click(marks.size);
+  steps.sizeUnmarked = read().size;
+  await pick(3, '12');
+  await click(marks.flags);
+  steps.flagsUnmarked = read().flags;
+  dialog().querySelectorAll('.font-choice-flag-grid .catalog-check input')[0].click(); await settle();
+  await type(dialog().querySelector('.font-choice-scale input'), '1000');
+  const question = [...document.querySelectorAll('dialog')].pop();
+  steps.question = question.querySelector('h3').textContent;
+  button(question, 'Да').click(); await settle();
+  steps.after1000 = read().scale;
+  await type(dialog().querySelector('.font-choice-scale input'), '150');
+  steps.changed = read();
+  button(dialog(), 'OK').click(); await settle();
+  steps.chosen = shown('ШрифтЗаголовка');
+  document.querySelector('#save').click(); await settle();
+  steps.saved = await fontsGiven();
+  await open('ШрифтЗаголовка');
+  steps.reopened = read();
+  await click(marks.system);
+  steps.systemMarked = read();
+  await click(marks.system);
+  steps.own = read();
+  button(dialog(), 'OK').click(); await settle();
+  steps.ownShown = shown('ШрифтЗаголовка');
+  await open('ШрифтЗаголовка');
+  await click(marks.style);
+  await type(dialog().querySelector('.font-choice-scale input'), '100');
+  await pick(0, 'ШрифтЗаголовка');
+  button(dialog(), 'OK').click(); await settle();
+  steps.itself = shown('ШрифтЗаголовка');
+  document.querySelector('#save').click(); await settle();
+  steps.itselfSaved = await fontsGiven();
+  await open('ШрифтЗаголовка');
+  await click(marks.style);
+  steps.ownFromStyle = read();
+  await pick(1, 'OEM моноширинный шрифт');
+  button(dialog(), 'Отмена').click(); await settle();
+  steps.cancelled = shown('ШрифтЗаголовка');
+  const source = await styleRead();
+  const fonts = styleFonts(source).filter(font => font.value.from.standard);
+  const simple = chooseFont({source: 'style', from: {standard: 'TextFont'}}, fonts, [], faces, {simple: true});
+  await settle();
+  const simpleWindow = dialog(), simpleLists = [...simpleWindow.querySelectorAll('.font-choice-list')];
+  steps.simple = {lists: simpleLists.map(list => [...list.children].slice(0, 7).map(item => item.textContent)),
+    rows: simpleLists[0].children.length, marks: simpleWindow.querySelectorAll('.font-choice-left > .catalog-check, .font-choice-face, .font-choice-flags > .catalog-check').length,
+    flags: simpleWindow.querySelectorAll('.font-choice-flag-grid input:not([disabled])').length,
+    current: simpleLists.map(list => list.querySelector('.current')?.textContent || ''),
+    buttons: [...simpleWindow.querySelectorAll('.localized-title-actions button')].map(item => item.textContent)};
+  await pick(1, '12');
+  simpleWindow.querySelectorAll('.font-choice-flag-grid input')[0].click(); await settle();
+  await pick(0, '<Обычный шрифт текста>');
+  steps.simpleStyle = [...dialog().querySelectorAll('.font-choice-flag-grid input')].map(input => input.checked).join(), steps.simpleSize = dialog().querySelectorAll('.font-choice-list')[1].querySelector('.current').textContent;
+  dialog().querySelectorAll('.font-choice-flag-grid input')[1].click(); await settle();
+  button(dialog(), 'OK').click();
+  steps.simpleChosen = await simple;
+  const face = chooseFont({source: 'style', from: {standard: 'TextFont'}, size: 12}, fonts, [], faces, {simple: true});
+  await settle();
+  await pick(0, faces[0]);
+  button(dialog(), 'OK').click();
+  steps.simpleFace = await face;
+  return steps;
+})()`
+
+// «Выбор шрифта» is the prototype's (stil.md, «Окно», «Второй заход
+// 27.10.2026»; element-stilya.md, «Палитра»; obshchee.md, «Значения цвета,
+// шрифта и рамки»; snapshots stil/08, series-2.595/02, 58): opened on a
+// font of the style struck out it marks «Шрифт стиля» at «Шрифт текста»,
+// the face and the size from the style, the switches its own; the lists
+// are the platform's five fonts, then the project's, the five fonts of the
+// system, the faces of the system and the sizes 8-72. Another font of the
+// style marks the three «Из стиля» again and drops the switch; unmarked,
+// the face is empty, the size 13, the switches unmarked; 1000 of the scale
+// is asked «Отменить ввод?»; OK writes «стиль: Обычный шрифт текста,
+// <гарнитура>, 12, полужирный, 150%» and «Сохранить» the values. Reopened,
+// it shows them; «Системный шрифт» takes «Шрифт стиля» away and keeps the
+// marks; without either, the font is Arial, 13, every «Из стиля» unmarked
+// and unavailable, written «Arial, 13». The item's own row leaves the
+// style giving it nothing; «Отмена» changes nothing. The simple window
+// lists the five fonts in angle brackets, then the faces; the sizes with
+// «<>» first; no «Из стиля», no «Системный шрифт», no help; a font of the
+// style drops the switches and keeps the size; a face after it sets 8.
+// Defects caught: a list, a caption or an order not the prototype's; a
+// mark not taken, not given back or available where the prototype keeps
+// it; a font of the style keeping what was changed; a scale beyond 999
+// taken; a font written in words not the platform's or not written; the
+// item's own row written as a reference to itself; «Отмена» applied; the
+// simple window drawn as the full one or not dropping and setting what the
+// prototype's does.
+func TestTheFontOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
+	ctx, browser, page, _ := openStyleProject(t)
+	result, err := browser.evaluate(ctx, page, styleFontWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type window struct {
+		Style, System, Styles, Systems, FaceFrom, Face, SizeFrom, Size, FlagsFrom string
+		Flags                                                                     []string
+		Scale, Sample                                                             string
+	}
+	var steps struct {
+		Faces                                                               int
+		Opened, Another, Changed, Reopened, SystemMarked, Own, OwnFromStyle window
+		Saved, ItselfSaved                                                  []metadata.FontValue
+		Lists                                                               [][]string
+		Buttons                                                             []string
+		FaceUnmarked, SizeUnmarked                                          string
+		FlagsUnmarked                                                       []string
+		Question, After1000, Chosen, OwnShown, Itself, Cancelled            string
+		Simple                                                              struct {
+			Lists       [][]string
+			Rows, Marks int
+			Flags       int
+			Current     []string
+			Buttons     []string
+		}
+		SimpleStyle, SimpleSize  string
+		SimpleChosen, SimpleFace metadata.FontValue
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if steps.Faces == 0 {
+		t.Fatal("the server read no font of the system")
+	}
+	var faces []string
+	if err := json.Unmarshal(mustJSON(t, systemFaces()), &faces); err != nil {
+		t.Fatal(err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	flags := func(states ...string) []string {
+		names := []string{"Полужирный", "Наклонный", "Подчеркнутый", "Зачеркнутый"}
+		for index := range states {
+			states[index] = names[index] + " " + states[index]
+		}
+		return states
+	}
+	off := "- (недоступен)"
+	expect("opened on a font of the style struck out", steps.Opened, window{Style: "x", System: "-", Styles: "Шрифт текста", FaceFrom: "x", Face: " (недоступно)",
+		SizeFrom: "x", Size: " (недоступно)", FlagsFrom: "-", Flags: flags("-", "-", "-", "x"), Scale: "100", Sample: "Шрифт текста"})
+	sizes := []string{"8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "26", "28", "36", "48", "72"}
+	expect("the lists", steps.Lists, [][]string{
+		{"Шрифт текста", "Мелкий шрифт текста", "Обычный шрифт текста", "Крупный шрифт текста", "Очень крупный шрифт текста", "ШрифтЗаголовка"},
+		{"Шрифт диалогов и меню", "OEM моноширинный шрифт", "ANSI моноширинный шрифт", "ANSI пропорциональный шрифт", "Системный шрифт"},
+		faces, sizes})
+	expect("the buttons", steps.Buttons, []string{"OK", "Отмена", "Справка"})
+	expect("another font of the style", steps.Another, window{Style: "x", System: "-", Styles: "Обычный шрифт текста", FaceFrom: "x", Face: " (недоступно)",
+		SizeFrom: "x", Size: " (недоступно)", FlagsFrom: "x", Flags: flags(off, off, off, off), Scale: "100", Sample: "Обычный шрифт текста"})
+	expect("unmarked", []any{steps.FaceUnmarked, steps.SizeUnmarked, steps.FlagsUnmarked}, []any{"", "13", flags("-", "-", "-", "-")})
+	expect("1000 asked", []string{steps.Question, steps.After1000}, []string{"В поле введены некорректные данные. Отменить ввод?", "100"})
+	changed := window{Style: "x", System: "-", Styles: "Обычный шрифт текста", FaceFrom: "-", Face: faces[0], SizeFrom: "-", Size: "12",
+		FlagsFrom: "-", Flags: flags("x", "-", "-", "-"), Scale: "150", Sample: faces[0]}
+	expect("changed", steps.Changed, changed)
+	expect("written", steps.Chosen, "стиль: Обычный шрифт текста, "+faces[0]+", 12, полужирный, 150%")
+	expect("reopened", steps.Reopened, changed)
+	systemMarked := changed
+	systemMarked.Style, systemMarked.System, systemMarked.Styles, systemMarked.Systems = "-", "x", "", "Шрифт диалогов и меню"
+	expect("«Системный шрифт»", steps.SystemMarked, systemMarked)
+	expect("a font of its own", steps.Own, window{Style: "-", System: "-", FaceFrom: off, Face: "Arial", SizeFrom: off, Size: "13", FlagsFrom: off,
+		Flags: flags("-", "-", "-", "-"), Scale: "150", Sample: "Arial"})
+	expect("written as its own", steps.OwnShown, "Arial, 13, 150%")
+	expect("the item's own row", steps.Itself, "стиль: ШрифтЗаголовка")
+	expect("«Отмена»", steps.Cancelled, "стиль: ШрифтЗаголовка")
+	simpleFaces := append([]string{"<Шрифт текста>", "<Мелкий шрифт текста>", "<Обычный шрифт текста>", "<Крупный шрифт текста>", "<Очень крупный шрифт текста>"}, faces...)
+	expect("the simple window", steps.Simple, struct {
+		Lists       [][]string
+		Rows, Marks int
+		Flags       int
+		Current     []string
+		Buttons     []string
+	}{[][]string{simpleFaces[:7], append([]string{"<>"}, sizes[:6]...)}, len(simpleFaces), 0, 4, []string{"<Шрифт текста>", "<>"}, []string{"OK", "Отмена"}})
+	expect("a font of the style in the simple window", []string{steps.SimpleStyle, steps.SimpleSize}, []string{"false,false,false,false", "12"})
+	yes := true
+	expect("the simple window's answer", steps.SimpleChosen, metadata.FontValue{Source: metadata.StyleFont, From: &metadata.StyleItemReference{Standard: "NormalTextFont"},
+		Size: 12, Italic: &yes})
+	expect("a face after a font of the style", steps.SimpleFace, metadata.FontValue{Source: metadata.AbsoluteFont, Face: faces[0], Size: 8})
+	no := false
+	expect("saved", steps.Saved, []metadata.FontValue{{Source: metadata.StyleFont, From: &metadata.StyleItemReference{Standard: "NormalTextFont"},
+		Face: faces[0], Size: 12, Scale: 150, Bold: &yes, Italic: &no, Underline: &no, Strikeout: &no}})
+	expect("the item's own row saved", steps.ItselfSaved, []metadata.FontValue{})
+	expect("a font of the style unmarked", steps.OwnFromStyle, window{Style: "-", System: "-", FaceFrom: off, Face: "Arial", SizeFrom: off, Size: "13", FlagsFrom: off,
+		Flags: flags("-", "-", "-", "-"), Scale: "100", Sample: "Arial"})
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }

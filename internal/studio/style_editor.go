@@ -11,9 +11,8 @@ import (
 // стиля»): at the left the name, the synonym, the comment, the subsystems
 // and the preview drawn by the style; at the right every style item the
 // window lists with its value in this style. Its palette opens the same
-// values in a window of their own («Стиль: Открыть»). The windows choosing
-// a colour, a font and a border are items of their own; «…» of a value
-// stands unavailable until them.
+// values in a window of their own («Стиль: Открыть»). A value is chosen
+// by the windows «Выбор цвета», «Выбор шрифта» and «Выбор рамки».
 
 // StyleEditorSource is a style as its window and palette read and write it.
 type StyleEditorSource struct {
@@ -29,6 +28,9 @@ type StyleEditorSource struct {
 	// BorderLines are the ways a border is drawn, as «Выбор рамки» lists
 	// them.
 	BorderLines []metadata.BorderLineName `json:"borderLines"`
+	// SystemFonts are the fonts of the system a font may be based on, as
+	// «Выбор шрифта» lists them.
+	SystemFonts []metadata.SystemFontName `json:"systemFonts"`
 }
 
 // StyleWindowItem is a style item as the window of a style lists it: one of
@@ -90,7 +92,7 @@ func (workspace *Workspace) readStyleEditorLocked(relative string) (StyleEditorS
 		items = append(items, StyleWindowItem{Item: &item.ID, Name: item.Name, Title: item.Title, Type: item.Type, Value: &own})
 	}
 	return StyleEditorSource{windowHead: head, Style: value, Items: items, Platform: metadata.PlatformStyleItems, WebColors: metadata.WebColors,
-		BorderLines: metadata.BorderLines}, nil
+		BorderLines: metadata.BorderLines, SystemFonts: metadata.SystemFonts}, nil
 }
 
 // SaveStyleWindow writes the style and the subsystems its window marks as
