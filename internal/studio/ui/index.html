@@ -192,7 +192,7 @@
     const webSocketClientEditor=createWebSocketClientEditor(document.createElement('div'),()=>objectChanged(webSocketClientEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle,openModule:catalogAround.openModule});
     const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture',commands:()=>[['Все картинки',openPictureLibrary]]},'/api/style':{editor:styleEditor,field:'style'},'/api/template':{editor:templateEditor,field:'template',construct:constructCommonTemplate},
       // «Просмотр», bold, opens the window viewing the description (showWSReferenceView).
-      '/api/web-service':{editor:webServiceEditor,field:'service'},'/api/http-service':{editor:httpServiceEditor,field:'service'},'/api/subsystem':{editor:subsystemEditor,field:'subsystem'},'/api/xdto-package':{editor:xdtoPackageEditor,field:'package',open:'Открыть пакет',openMain:true,commands:()=>[['Проверить пакет',()=>{},false],['Экспорт XML-схемы…',()=>{},false]]},
+      '/api/web-service':{editor:webServiceEditor,field:'service'},'/api/http-service':{editor:httpServiceEditor,field:'service'},'/api/subsystem':{editor:subsystemEditor,field:'subsystem',commands:node=>subsystemCommands(node,{create:make=>createObject('/api/subsystem',make),moved:()=>loadTree(false),projectName:()=>configuration?.name||''})},'/api/xdto-package':{editor:xdtoPackageEditor,field:'package',open:'Открыть пакет',openMain:true,commands:()=>[['Проверить пакет',()=>{},false],['Экспорт XML-схемы…',()=>{},false]]},
       // «Добавить» of a WebSocket client opens its empty module at once (websocket-klient.md, «Новый клиент»).
       '/api/websocket-client':{editor:webSocketClientEditor,field:'client',afterCreate:value=>{const module=nodeAt(value.path)?.modules?.find(item=>item.path.endsWith('/МодульКлиента.bsl'));if(module)openModule(module)}},
       '/api/ws-reference':{editor:wsReferenceEditor,field:'reference',construct:()=>importWSDL(null),commands:(node,element)=>[['Просмотр',()=>showWSReferenceView(node.path),true,undefined,'',true],['Импорт WSDL…',()=>reimportWSDL(node,element)]]}};
@@ -469,11 +469,11 @@
     // «Добавить» makes the object at once, named the kind's next number by the
     // server, and opens its window (docs/block-00/obshchee.md, «Добавить» без
     // диалога имени); the name is put right in the window.
-    async function createObject(address){
+    async function createObject(address,make){
       if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return;}
       loadingFile=true;setEditorsBusy(true);
       try{
-        const value=objectEditors[address].construct?await objectEditors[address].construct():await postJSON(address,{});if(!value)return;showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
+        const value=make?await make():objectEditors[address].construct?await objectEditors[address].construct():await postJSON(address,{});if(!value)return;showObject(address,value);currentFile=value;filePath.textContent=value.path;dirty=false;saveButton.disabled=true;
         selectedNode={id:value[objectEditors[address].field].id,path:value.path,kind:'metadata',editor:address,adds:true};updateTreeToolbar();await loadTree(false);status.className='';status.textContent='Готово';const after=objectEditors[address].afterCreate;if(after){loadingFile=false;await after(value)}
       }catch(error){showToolError(error);}
       finally{loadingFile=false;setEditorsBusy(false);updateTreeToolbar();}

@@ -162,14 +162,16 @@ func numberedName(base string, taken []string) string {
 	}
 }
 
-// newObjectNameLocked is the name of a new object of a kind: the kind's word
-// for one object, numbered among the objects at the top of its branch, or
-// the name the kind gives by itself (kinds.Descriptor.NewName).
-func (workspace *Workspace) newObjectNameLocked(kind string) (string, error) {
+// newObjectNameInLocked is the name of a new object of a kind: the kind's word
+// for one object, numbered among the objects under the node group of the
+// tree - the branch of its kind, or a subsystem by its identifier for the
+// subsystems under it - or the name the kind gives by itself
+// (kinds.Descriptor.NewName).
+func (workspace *Workspace) newObjectNameInLocked(kind, group string) (string, error) {
 	if name, ok := kinds.Must(kinds.Kind(kind)).NewName(); ok {
 		return name, nil
 	}
-	siblings, err := workspace.branchLocked("", branchOf(kind))
+	siblings, err := workspace.branchLocked("", group)
 	if err != nil {
 		return "", err
 	}

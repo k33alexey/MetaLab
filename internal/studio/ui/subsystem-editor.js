@@ -65,3 +65,54 @@ function subsystemComposition(api, opened, chosen, choose) {
   page.append(offered, caption, below);
   return page;
 }
+
+/* subsystemCommands are the commands of the menu of a subsystem of its own
+   (podsistema.md, «Команды»; snapshot podsistema/15): «Открыть командный
+   интерфейс» and «Справочная информация», unavailable until their windows;
+   «Объекты подсистемы», unavailable until its question (series 2.603,
+   В9); «Добавить ▸» - «Подчиненная подсистема», «Подсистема»; «Переместить
+   подсистему». node is the subsystem in the tree; actions are {create(make)
+   - makes a subsystem by make() and opens it, moved() - draws the tree
+   anew}. */
+function subsystemCommands(node, actions) {
+  return [['Открыть командный интерфейс', () => {}, false], ['Объекты подсистемы', () => {}, false], null,
+    ['Добавить', [['Подчиненная подсистема', () => actions.create(() => postJSON('/api/subsystem/child', {parent: node.id}))],
+      ['Подсистема', () => actions.create(() => postJSON('/api/subsystem', {}))]]], null,
+    ['Переместить подсистему', async () => { if (await moveSubsystem(node.path, actions.projectName())) actions.moved(); }], null,
+    ['Справочная информация', () => {}, false]];
+}
+
+/* moveSubsystem is «Переместить подсистему» (snapshot podsistema/16): the
+   window «Выбор объекта» - the root of the project and the subsystems
+   beneath it, by their parents - OK and «Отмена»; OK puts the subsystem
+   described at path under the one chosen, or the root. A refusal - a name
+   taken there, a subsystem of its own - is shown and moves nothing.
+   Answers whether it moved. */
+async function moveSubsystem(path, projectName) {
+  const source = await (await fetch('/api/subsystem?path=' + encodeURIComponent(path))).json();
+  const own = source.subsystem.id;
+  let chosen = source.subsystem.parent || '';
+  const content = node('div', undefined, 'object-window-tree object-choice-tree subsystem-move');
+  const draw = () => {
+    const under = parent => (source.subsystems || []).filter(place => (place.parent || '') === parent && place.id !== own);
+    const branch = place => {
+      const {element, row} = treeNode({icon: 'subsystem', caption: place.name, children: under(place.id).map(branch), open: true});
+      row.classList.toggle('selected', place.id === chosen);
+      row.addEventListener('click', () => { chosen = place.id; draw(); });
+      return element;
+    };
+    const {element, row} = treeNode({icon: 'configuration', caption: projectName, children: under('').map(branch), open: true});
+    row.classList.toggle('selected', chosen === '');
+    row.addEventListener('click', () => { chosen = ''; draw(); });
+    content.replaceChildren(element);
+  };
+  draw();
+  if (await showDialog({title: 'Выбор объекта', content, className: 'subsystem-move-dialog', side: true, answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
+  try {
+    await postJSON('/api/subsystem/move', {path, revision: source.revision, ...(chosen ? {parent: chosen} : {})});
+    return true;
+  } catch (error) {
+    await askChoice(String(error.message || error).trim(), '', [['ok', 'ОК']]);
+    return false;
+  }
+}

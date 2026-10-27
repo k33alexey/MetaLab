@@ -48,6 +48,13 @@ func createObjectAs[Window any](workspace *Workspace, kind metadata.Kind, name s
 // it. shape, when given, makes of the kind's new object what a constructor
 // asked for - another kind of template, its content - before it is checked.
 func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string, shape func(*metadata.Fresh) error) (string, error) {
+	return workspace.createObjectInLocked(kind, branchOf(string(kind)), name, shape)
+}
+
+// createObjectInLocked is createObjectLocked of an object standing under the
+// node group of the tree - a subsystem under its parent: its name is
+// numbered and checked among its siblings there.
+func (workspace *Workspace) createObjectInLocked(kind metadata.Kind, group, name string, shape func(*metadata.Fresh) error) (string, error) {
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return "", err
@@ -58,11 +65,11 @@ func (workspace *Workspace) createObjectLocked(kind metadata.Kind, name string, 
 	}
 	// «Добавить» names nothing: the object is the kind's next number.
 	if name == "" {
-		if name, err = workspace.newObjectNameLocked(string(kind)); err != nil {
+		if name, err = workspace.newObjectNameInLocked(string(kind), group); err != nil {
 			return "", err
 		}
 	}
-	if err := workspace.objectNameErrorLocked("", branchOf(string(kind)), name); err != nil {
+	if err := workspace.objectNameErrorLocked("", group, name); err != nil {
 		return "", err
 	}
 	fresh, ok := metadata.NewObject(kind, id, name, configuration)

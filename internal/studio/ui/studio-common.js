@@ -664,6 +664,31 @@ function showContextMenu(event, items) {
     if (key) button.append(node('span', key, 'context-menu-key'));
     button.disabled = !enabled;
     button.setAttribute('role', 'menuitem');
+    // A submenu - «Добавить ▸» of a subsystem (podsistema/15): its items,
+    // [text, act, enabled], open beside the item.
+    if (Array.isArray(act)) {
+      button.classList.add('context-menu-parent');
+      button.append(node('span', '▸', 'context-menu-key'));
+      button.addEventListener('click', () => {
+        menu.querySelector('.context-submenu')?.remove();
+        const submenu = node('div', undefined, 'context-menu context-submenu');
+        submenu.setAttribute('role', 'menu');
+        for (const [text, inner, on = true] of act) {
+          const entry = node('button', text, 'context-menu-item');
+          entry.type = 'button';
+          entry.disabled = !on;
+          entry.setAttribute('role', 'menuitem');
+          entry.addEventListener('click', () => { closeContextMenu(); inner(); });
+          submenu.append(entry);
+        }
+        submenu.style.top = `${button.offsetTop}px`;
+        submenu.style.left = `${button.offsetWidth}px`;
+        menu.append(submenu);
+        submenu.querySelector('button:not(:disabled)')?.focus();
+      });
+      menu.append(button);
+      continue;
+    }
     button.addEventListener('click', () => { closeContextMenu(); act(); });
     menu.append(button);
   }

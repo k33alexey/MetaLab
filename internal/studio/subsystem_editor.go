@@ -1,6 +1,8 @@
 package studio
 
 import (
+	"bytes"
+	"errors"
 	"net/http"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -98,7 +100,122 @@ func (workspace *Workspace) DeleteSubsystem(relative, expectedRevision string) e
 	return deleteObjectFolder(workspace, metadata.SubsystemKind, relative, expectedRevision, workspace.readSubsystemEditorLocked)
 }
 
+// subsystemChildAddress and subsystemMoveAddress are where a subsystem is
+// made under another and moved.
+const (
+	subsystemChildAddress = "/api/subsystem/child"
+	subsystemMoveAddress  = "/api/subsystem/move"
+)
+
 func registerSubsystemEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("POST "+subsystemChildAddress, answerStudio(0, writeSourceError, func(input SubsystemChild) (any, error) {
+		return workspace.CreateSubsystemChild(input)
+	}))
+	routes.HandleFunc("POST "+subsystemMoveAddress, answerStudio(0, writeSourceError, func(input SubsystemMove) (any, error) {
+		return workspace.MoveSubsystem(input)
+	}))
 	registerObjectEditor(routes, subsystemEditorAddress, workspace.ReadSubsystemEditor, workspace.SaveSubsystemWindow, workspace.CreateSubsystem,
 		workspace.DeleteSubsystem)
+}
+
+// SubsystemChild asks for a subsystem under Parent - «Добавить ▸
+// Подчиненная подсистема» of the menu of a subsystem.
+type SubsystemChild struct {
+	Parent uuid.UUID `json:"parent"`
+}
+
+// SubsystemMove moves the subsystem described at Path, read at Revision,
+// under Parent - none, the root of the project («Переместить подсистему»).
+type SubsystemMove struct {
+	Path     string     `json:"path"`
+	Revision string     `json:"revision"`
+	Parent   *uuid.UUID `json:"parent,omitempty"`
+}
+
+// CreateSubsystemChild makes a subsystem under parent, named the next number
+// of «Подсистема» among its siblings - a child of «Подсистема1» is
+// «Подсистема1» again (podsistema.md, «Новая подсистема») - with the values
+// of every new subsystem, and opens its window.
+func (workspace *Workspace) CreateSubsystemChild(child SubsystemChild) (SubsystemEditorSource, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	parent, err := newObjectPath(metadata.SubsystemKind, child.Parent, "")
+	if err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	if _, err := workspace.readSubsystemEditorLocked(parent); err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	// The node of a subsystem in the tree is named by its identifier.
+	relative, err := workspace.createObjectInLocked(metadata.SubsystemKind, child.Parent.String(), "", func(fresh *metadata.Fresh) error {
+		subsystem, _ := fresh.Value.(metadata.SubsystemDefinition)
+		above := child.Parent
+		subsystem.Parent = &above
+		fresh.Value = subsystem
+		return nil
+	})
+	if err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	return workspace.readSubsystemEditorLocked(relative)
+}
+
+// errSubsystemInsideItself refuses a subsystem moved under itself or under
+// a subsystem of its own.
+var errSubsystemInsideItself = errors.New("Подсистему нельзя переместить в неё саму или в подчиненную ей")
+
+// MoveSubsystem puts a subsystem under another parent or the root: a name
+// taken among the new siblings - «Имя не уникально!» - and a parent inside
+// the subsystem itself are refused, and the subsystem stays where it was.
+func (workspace *Workspace) MoveSubsystem(move SubsystemMove) (SubsystemEditorSource, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	opened, err := workspace.readSubsystemEditorLocked(move.Path)
+	if err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	if opened.Revision != move.Revision {
+		return SubsystemEditorSource{}, ErrSourceChanged
+	}
+	// The new parent must not lie inside the subsystem, and the name must be
+	// free among its new siblings - both checked before anything is written.
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	for above := move.Parent; above != nil; {
+		if *above == opened.Subsystem.ID {
+			return SubsystemEditorSource{}, errSubsystemInsideItself
+		}
+		parent, ok := loaded.SubsystemByID(*above)
+		if !ok {
+			return SubsystemEditorSource{}, errSubsystemInsideItself
+		}
+		above = parent.Parent
+	}
+	group := branchOf(string(metadata.SubsystemKind))
+	if move.Parent != nil {
+		group = move.Parent.String()
+	}
+	if !sameParent(opened.Subsystem.Parent, move.Parent) {
+		if err := workspace.objectNameErrorLocked("", group, opened.Subsystem.Name); err != nil {
+			return SubsystemEditorSource{}, err
+		}
+	}
+	moved := opened.Subsystem
+	moved.Parent = move.Parent
+	var encoded bytes.Buffer
+	if err := metadata.Encode(&encoded, moved); err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	if _, err := workspace.saveSourceLocked(move.Path, encoded.String(), opened.Revision); err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	return workspace.readSubsystemEditorLocked(move.Path)
+}
+
+// sameParent says two parents of a subsystem are one - the root or the same
+// subsystem.
+func sameParent(one, other *uuid.UUID) bool {
+	return one == nil && other == nil || one != nil && other != nil && *one == *other
 }
