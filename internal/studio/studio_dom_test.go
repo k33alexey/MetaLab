@@ -73,7 +73,9 @@ const studioPageWalk = `(async () => {
   const describe = item => (item.textContent || item.title || item.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
   const settle = () => { steps++; return studio.settle(); };
   async function cancelDialog() {
-    const dialog = document.querySelector('dialog[open]');
+    // The last window of answers: a window standing over Studio - the
+    // library of pictures «Все картинки» opened - is not the one asked.
+    const dialog = [...document.querySelectorAll('dialog[open]')].filter(item => item.querySelector('.localized-title-actions')).pop();
     if (!dialog) { problems.push(studio.step + ': no window opened'); return; }
     // «Отмена» by its caption: «Справка» stands after it.
     const buttons = [...dialog.querySelectorAll('.localized-title-actions button')];

@@ -197,7 +197,9 @@ test('the Studio page loads the overview and opens it from the menu of the roles
   assert.match(html,/endpoint='\/api\/roles';payload=\{roles:roleOverview\.value\(\)\}/);
   assert.ok(html.indexOf('/ui/role-editor.js')<html.indexOf('/ui/role-overview.js'));
   // Окна над ролями — команды корня и ветви, которую дерево отдаёт окну роли.
-  assert.match(html,/node\.id==='project'\|\|node\.kind==='metadata-group'&&objectEditors\[node\.editor\]\?\.editor===roleEditor\?Object\.entries\(overviewWindows\)/);
+  assert.match(html,/const overviews=Object\.entries\(overviewWindows\)/);
+  assert.match(html,/if\(node\.id==='project'\)return\[[^;]*\.\.\.overviews/);
+  assert.match(html,/node\.kind==='metadata-group'&&objectEditors\[node\.editor\]\?\.editor===roleEditor\?overviews/);
 });
 
 test('the overview is the two windows of the prototype, the second with two tabs',()=>{

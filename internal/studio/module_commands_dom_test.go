@@ -42,7 +42,15 @@ const moduleCommandsWalk = `(async () => {
   await studio.settle(); await studio.settle();
   answer.opened = {path: document.querySelector('#file-path').textContent, text: document.querySelector('#editor').value};
   const root = document.querySelector('#tree summary');
-  answer.rootMenu = menu(root).slice(0, 6);
+  answer.rootMenu = menu(root);
+  answer.rootAvailable = [...document.querySelectorAll('.context-menu .context-menu-item')].filter(item => !item.disabled).map(item => item.textContent.trim());
+  closeContextMenu();
+  root.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.trim() === 'Все картинки').click();
+  await studio.settle();
+  answer.library = document.querySelector('dialog.picture-library .picture-library-title')?.textContent || '';
+  document.querySelector('dialog.picture-library')?.close();
+  root.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent === 'Открыть модуль внешнего соединения').click();
   await studio.settle();
   answer.external = {path: document.querySelector('#file-path').textContent, text: document.querySelector('#editor').value};
@@ -111,12 +119,13 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	}
 	type file struct{ Path, Text string }
 	var got struct {
-		CommonRow                         string
-		CommonMenu, ModuleRows, RootMenu  []string
-		Opened, External, Manager, Object file
-		Table                             []string
-		CatalogMenu                       []string `json:"Открыть модуль менеджера"`
-		DocumentMenu                      []string `json:"Открыть модуль объекта"`
+		CommonRow                                       string
+		CommonMenu, ModuleRows, RootMenu, RootAvailable []string
+		Library                                         string
+		Opened, External, Manager, Object               file
+		Table                                           []string
+		CatalogMenu                                     []string `json:"Открыть модуль менеджера"`
+		DocumentMenu                                    []string `json:"Открыть модуль объекта"`
 	}
 	if err := json.Unmarshal(result, &got); err != nil {
 		t.Fatalf("%v: %s", err, result)
@@ -130,10 +139,23 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	if got.Opened.Path != modulePath || !strings.Contains(got.Opened.Text, "ОбщаяПроцедура") {
 		t.Errorf("a double click on the common module opened %q (%q), want its module %s", got.Opened.Path, got.Opened.Text, modulePath)
 	}
+	// The root's own part of the menu (konfiguraciya.md, «Команды»;
+	// snapshot konfiguraciya/15-menyu), in the prototype's order and
+	// groups, «конфигурации» said as «проекта»; the mobile client's
+	// composition is not carried, «Добавить ▸» waits for its list.
 	wantRoot := []string{"#icon-open-module Открыть модуль приложения 400", "#icon-open-module Открыть модуль сеанса 400",
-		"#icon-open-module Открыть модуль внешнего соединения 400", "|"}
-	if len(got.RootMenu) < 5 || !slices.Equal(got.RootMenu[:4], wantRoot) || !strings.Contains(got.RootMenu[4], "Все роли") {
-		t.Errorf("the root's menu begins %v, want %v, then «Все роли»", got.RootMenu, wantRoot)
+		"#icon-open-module Открыть модуль внешнего соединения 400", "|",
+		" Открыть командный интерфейс проекта 400", " Открыть рабочую область начальной страницы 400",
+		" Открыть командный интерфейс основного раздела 400", " Открыть интерфейс клиентского приложения 400", "|",
+		" Справочная информация 400", "|", " Все подсистемы 400", " Все роли 400", " Все ограничения доступа 400", " Все картинки 400"}
+	if !slices.Equal(got.RootMenu, wantRoot) {
+		t.Errorf("the root's menu is %v, want %v", got.RootMenu, wantRoot)
+	}
+	// Available: the modules and the windows Studio has; the rest wait
+	// for their windows.
+	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Все роли",
+		"Все ограничения доступа", "Все картинки"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
+		t.Errorf("the root's menu offers %v and «Все картинки» opens %q, want %v and the library", got.RootAvailable, got.Library, want)
 	}
 	if got.External.Path != project.ExternalConnectionModuleFile || !strings.Contains(got.External.Text, "ПриНачалеРаботыСистемы") {
 		t.Errorf("«Открыть модуль внешнего соединения» opened %q (%q), want %s with its routines", got.External.Path, got.External.Text, project.ExternalConnectionModuleFile)
