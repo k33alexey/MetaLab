@@ -417,131 +417,11 @@ function createCatalogEditor(host, onChange, around = {}) {
   function renderOptionsPage() {
     return optionsPage(source.functionalOptions, options, onChange, 'справочник');
   }
-  // «Обмен данными»: the exchange plans of the project, a box and the icon
-  // of a plan at each, marked where the plan registers the changes of the
-  // catalog, with its autoregistration - «Разрешить» or «Запретить» - beside
-  // a marked one; «Отметить все элементы» and «Снять отметку со всех
-  // элементов» over them (spravochnik.md, page 14; snapshot okno-14). A plan
-  // marked anew registers automatically, as a new object of the plan's own
-  // window «Состав» does (plan-obmena.md). Written into the plans as the
-  // subsystems are.
-  let exchange = new Map(), currentPlan = null;
-  // The autoregistration in the prototype's order, each with its picture
-  // (snapshot configurator-2026-10-26/series-2.578/03; «Запретить» red - the
-  // owner's decision of 26.10.2026).
-  const autoRecords = [['deny', 'Запретить', 'auto-record-deny'], ['allow', 'Разрешить', 'auto-record-allow']];
-  function renderExchangePage() {
-    const page = node('div', undefined, 'object-window-fields'), places = source.exchangePlans || [];
-    const mark = (id, marked) => { if (!marked) exchange.delete(id); else if (!exchange.has(id)) exchange.set(id, 'allow'); };
-    const changed = () => { onChange(); frame.refresh(); };
-    const head = node('div', undefined, 'object-window-list-head');
-    head.append(...markAllButtons(marked => { for (const place of places) mark(place.id, marked); changed(); }));
-    const table = node('table', undefined, 'object-window-table');
-    const caption = node('tr');
-    caption.append(node('th', 'План обмена'), node('th', 'Авторегистрация'));
-    table.append(caption);
-    for (const place of places) {
-      const row = node('tr', undefined, place.id === currentPlan ? 'current' : ''), plan = node('td'), auto = node('td');
-      const box = node('input');
-      box.type = 'checkbox'; box.checked = exchange.has(place.id); box.className = 'object-choice-box';
-      box.setAttribute('aria-label', place.name);
-      box.addEventListener('change', () => { mark(place.id, box.checked); currentPlan = place.id; changed(); });
-      const name = node('div', undefined, 'object-window-table-name');
-      name.append(box, iconElement('exchange-plan'), node('span', place.name));
-      plan.append(name);
-      if (exchange.has(place.id)) {
-        auto.append(listCell(autoRecords, exchange.get(place.id), value => { exchange.set(place.id, value); onChange(); frame.refresh(); },
-          'Авторегистрация: ' + place.name));
-      }
-      // A click makes the row current in place: a double click on its cell
-      // opens the list of the cell, which a redraw would take away.
-      row.addEventListener('click', event => {
-        if (event.target.closest('input')) return;
-        currentPlan = place.id;
-        for (const other of table.querySelectorAll('tr')) other.classList.toggle('current', other === row);
-      });
-      row.append(plan, auto);
-      table.append(row);
-    }
-    const frameOfTable = node('div', undefined, 'object-window-checks object-window-table-frame');
-    frameOfTable.append(table);
-    page.append(head, frameOfTable);
-    return page;
-  }
-  // «Ввод на основании»: «Вводится на основании» - the catalog's own list of
-  // bases - and «Является основанием для» - the objects whose lists name
-  // it, written into them as the subsystems are - each with «Изменить»,
-  // the window «Выбор объекта» of the eight kinds, and «Удалить»; below,
-  // «Конструктор ввода на основании», unavailable (spravochnik.md, page 12;
-  // snapshot okno-12). The catalog in one list is in the other too: it is
-  // the basis of itself.
-  let basisFor = [], currentBasis = {own: null, other: null};
-  function basisName(id) {
-    return objectChoiceItem(source.choices?.basedOn, id)?.fullName || (source.basisFor || []).find(place => place.id === id)?.name || id;
-  }
-  // The objects a list «Является основанием для» names stand in the order of
-  // the tree, those it does not offer - the tables of external sources -
-  // after them, as the server reads them.
-  function inTreeOrder(ids) {
-    const order = choiceOrder(source.choices?.basedOn || []), rank = id => order.includes(id) ? order.indexOf(id) : order.length;
-    return [...ids].sort((a, b) => rank(a) - rank(b));
-  }
-  function setBasedOn(own, other) {
-    model.set('basedOn', own);
-    basisFor = inTreeOrder(other);
-    rerender();
-  }
-  // The catalog itself follows from one list into the other.
-  function withSelf(list, holds) {
-    const self = catalog().id, rest = list.filter(id => id !== self);
-    return holds ? [...rest, self] : rest;
-  }
-  function renderBasedOnPage() {
-    const page = node('div', undefined, 'object-window-fields object-window-based-on'), own = catalog().basedOn || [], self = catalog().id;
-    const block = (key, caption, list, set) => {
-      if (!list.includes(currentBasis[key])) currentBasis[key] = list[0] ?? null;
-      return objectList(caption, list.map(id => [id, basisName(id)]), currentBasis[key], id => { currentBasis[key] = id; frame.refresh(); },
-        async () => {
-          const chosen = await chooseObjects('Выбор объекта', source.choices?.basedOn || [], list);
-          // An object the window does not offer - a table of an external
-          // source - stays where it is.
-          if (chosen) set([...list.filter(id => !objectChoiceItem(source.choices?.basedOn, id)), ...chosen]);
-        },
-        id => set(list.filter(item => item !== id)));
-    };
-    const designer = node('button', 'Конструктор ввода на основании', 'object-window-designer');
-    designer.type = 'button'; designer.disabled = true;
-    page.append(...block('own', 'Вводится на основании:', own, list => setBasedOn(list, withSelf(basisFor, list.includes(self)))),
-      ...block('other', 'Является основанием для:', basisFor, list => setBasedOn(withSelf(own, list.includes(self)), list)), designer);
-    return page;
-  }
-  // «Права»: the roles of the project; the rights the role chosen gives on
-  // the catalog, a box at each, marking a right marking the rights it needs
-  // and clearing one clearing those needing it; its restrictions of access
-  // to data on the right current (spravochnik.md, page 13; snapshot okno-13;
-  // rol.md, «Права зависят друг от друга»). Each role is edited by the model
-  // of the window of a role over what it says about the catalog alone, and
-  // written with the catalog.
-  let roleModels = new Map(), currentRole = null;
-  const roleRight = {right: null, row: -1};
-  const rightCaption = key => source.rightsSchema?.rights?.find(item => item.key === key)?.title || key;
-  function renderRightsPage() {
-    const page = node('div', undefined, 'object-window-fields object-window-rights'), roles = source.roles || [];
-    const object = source.rightsSchema?.objects?.[0], model = roleModels.get(currentRole);
-    page.append(node('div', 'Роли:', 'object-window-caption'),
-      objectRows(roles.map(entry => [entry.role.id, entry.role.name]), currentRole, id => { currentRole = id; frame.refresh(); }));
-    const rights = model && object ? object.rights : [], members = object ? [{object}] : [];
-    if (!rights.includes(roleRight.right)) { roleRight.right = rights[0] ?? null; roleRight.row = -1; }
-    const redraw = () => { frame.refresh(); host.querySelector('.object-window-rights .check-list')?.focus(); };
-    const list = checkList(rights.map(right => ({key: right, caption: rightCaption(right), checked: model.groupMark(members, right) === 'all'})), roleRight.right,
-      (right, enabled) => { model.setGroup(members, right, enabled); onChange(); redraw(); },
-      right => { roleRight.right = right; roleRight.row = -1; redraw(); });
-    page.append(node('div', 'Права:', 'object-window-caption'), list);
-    if (model) page.append(roleRestrictionSection({model, object, caption: rightCaption, title: item => localizedTitle(item, source.defaultLanguage),
-      state: roleRight, changed: () => { onChange(); frame.refresh(); }}));
-    return page;
-  }
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, exchange: renderExchangePage, 'based-on': renderBasedOnPage, rights: renderRightsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
+  // «Обмен данными», «Ввод на основании», «Права» - the common pages of the
+  // window of an object (commonObjectPages).
+  const common = commonObjectPages({source: () => source, object: catalog, host,
+    setBasedOn: list => model.set('basedOn', list), changed: rerender, marked: onChange, refresh: () => frame.refresh()});
+  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, ...common.pages, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
     numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
   function renderPage(key) {
     cleanups.forEach(destroy => destroy());
@@ -628,22 +508,14 @@ function createCatalogEditor(host, onChange, around = {}) {
       const marked = places => new Set((places || []).filter(place => place.member).map(place => place.id));
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);
-      exchange = new Map((source.exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
-      currentPlan = source.exchangePlans?.[0]?.id ?? null;
-      basisFor = inTreeOrder(withSelf((source.basisFor || []).map(place => place.id), (source.catalog.basedOn || []).includes(source.catalog.id)));
-      currentBasis = {own: null, other: null};
-      roleModels = new Map((source.roles || []).map(entry => [entry.role.id, createRoleModel({role: entry.role, schema: source.rightsSchema})]));
-      if (!roleModels.has(currentRole)) currentRole = source.roles?.[0]?.role.id ?? null;
+      common.open();
       frame = showObjectWindow(host, around, {title: windowTitle(), pages: source.pages, chosen: page, page: renderPage});
       renderPalette();
     },
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged.
     value() { return model && {...model.value(), templateContents: model.templateContents(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
-      basisFor: [...basisFor].sort(),
-      roles: (source.roles || []).map(entry => ({id: entry.role.id, revision: entry.revision,
-        permission: roleModels.get(entry.role.id).value().objects.find(item => item.object === source.catalog.id) || null})),
-      exchangePlans: [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}))}; },
+      ...common.value()}; },
     // Shows the palette of the catalog itself, as a click on its node of the
     // tree does: nothing in the window stays chosen. Answers whether the
     // palette is the window's.

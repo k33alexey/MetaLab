@@ -1498,6 +1498,166 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   });
 }
 
+/* commonObjectPages are the pages the windows of objects of many kinds
+   share, as the prototype draws them in each (spravochnik.md, pages 12-14;
+   plan-obmena.md, dokument.md): «Обмен данными», «Ввод на основании» and
+   «Права». around is {source() - what the window read (windowHead), object()
+   - the object edited, setBasedOn(list) - writes its list «Вводится на
+   основании», changed() - an edit drawing the window and the palette anew,
+   marked() - an edit of a mark alone, refresh() - draws the window anew,
+   host - where the window stands}. open() takes what a source read anew
+   marks; value() is what the pages write with the object, by the pages the
+   window has. */
+function commonObjectPages(around) {
+  const source = () => around.source(), has = key => (source().pages || []).some(page => page.key === key);
+  // «Обмен данными»: the exchange plans of the project, a box and the icon
+  // of a plan at each, marked where the plan registers the changes of the
+  // object, with its autoregistration - «Разрешить» or «Запретить» - beside
+  // a marked one; «Отметить все элементы» and «Снять отметку со всех
+  // элементов» over them (spravochnik.md, page 14; snapshot okno-14). A plan
+  // marked anew registers automatically, as a new object of the plan's own
+  // window «Состав» does (plan-obmena.md). Written into the plans as the
+  // subsystems are.
+  let exchange = new Map(), currentPlan = null;
+  // The autoregistration in the prototype's order, each with its picture
+  // (snapshot configurator-2026-10-26/series-2.578/03; «Запретить» red - the
+  // owner's decision of 26.10.2026).
+  const autoRecords = [['deny', 'Запретить', 'auto-record-deny'], ['allow', 'Разрешить', 'auto-record-allow']];
+  function exchangePage() {
+    const page = node('div', undefined, 'object-window-fields'), places = source().exchangePlans || [];
+    const mark = (id, marked) => { if (!marked) exchange.delete(id); else if (!exchange.has(id)) exchange.set(id, 'allow'); };
+    const changed = () => { around.marked(); around.refresh(); };
+    const head = node('div', undefined, 'object-window-list-head');
+    head.append(...markAllButtons(marked => { for (const place of places) mark(place.id, marked); changed(); }));
+    const table = node('table', undefined, 'object-window-table');
+    const caption = node('tr');
+    caption.append(node('th', 'План обмена'), node('th', 'Авторегистрация'));
+    table.append(caption);
+    for (const place of places) {
+      const row = node('tr', undefined, place.id === currentPlan ? 'current' : ''), plan = node('td'), auto = node('td');
+      const box = node('input');
+      box.type = 'checkbox'; box.checked = exchange.has(place.id); box.className = 'object-choice-box';
+      box.setAttribute('aria-label', place.name);
+      box.addEventListener('change', () => { mark(place.id, box.checked); currentPlan = place.id; changed(); });
+      const name = node('div', undefined, 'object-window-table-name');
+      name.append(box, iconElement('exchange-plan'), node('span', place.name));
+      plan.append(name);
+      if (exchange.has(place.id)) {
+        auto.append(listCell(autoRecords, exchange.get(place.id), value => { exchange.set(place.id, value); changed(); },
+          'Авторегистрация: ' + place.name));
+      }
+      // A click makes the row current in place: a double click on its cell
+      // opens the list of the cell, which a redraw would take away.
+      row.addEventListener('click', event => {
+        if (event.target.closest('input')) return;
+        currentPlan = place.id;
+        for (const other of table.querySelectorAll('tr')) other.classList.toggle('current', other === row);
+      });
+      row.append(plan, auto);
+      table.append(row);
+    }
+    const frameOfTable = node('div', undefined, 'object-window-checks object-window-table-frame');
+    frameOfTable.append(table);
+    page.append(head, frameOfTable);
+    return page;
+  }
+  // «Ввод на основании»: «Вводится на основании» - the object's own list of
+  // bases - and «Является основанием для» - the objects whose lists name
+  // it, written into them as the subsystems are - each with «Изменить»,
+  // the window «Выбор объекта» of the eight kinds, and «Удалить»; below,
+  // «Конструктор ввода на основании», unavailable (spravochnik.md, page 12;
+  // snapshot okno-12). The object in one list is in the other too: it is
+  // the basis of itself.
+  let basisFor = [], currentBasis = {own: null, other: null};
+  function basisName(id) {
+    return objectChoiceItem(source().choices?.basedOn, id)?.fullName || (source().basisFor || []).find(place => place.id === id)?.name || id;
+  }
+  // The objects a list «Является основанием для» names stand in the order of
+  // the tree, those it does not offer - the tables of external sources -
+  // after them, as the server reads them.
+  function inTreeOrder(ids) {
+    const order = choiceOrder(source().choices?.basedOn || []), rank = id => order.includes(id) ? order.indexOf(id) : order.length;
+    return [...ids].sort((a, b) => rank(a) - rank(b));
+  }
+  function setBasedOn(own, other) {
+    around.setBasedOn(own);
+    basisFor = inTreeOrder(other);
+    around.changed();
+  }
+  // The object itself follows from one list into the other.
+  function withSelf(list, holds) {
+    const self = around.object().id, rest = list.filter(id => id !== self);
+    return holds ? [...rest, self] : rest;
+  }
+  function basedOnPage() {
+    const page = node('div', undefined, 'object-window-fields object-window-based-on'), own = around.object().basedOn || [], self = around.object().id;
+    const block = (key, caption, list, set) => {
+      if (!list.includes(currentBasis[key])) currentBasis[key] = list[0] ?? null;
+      return objectList(caption, list.map(id => [id, basisName(id)]), currentBasis[key], id => { currentBasis[key] = id; around.refresh(); },
+        async () => {
+          const chosen = await chooseObjects('Выбор объекта', source().choices?.basedOn || [], list);
+          // An object the window does not offer - a table of an external
+          // source - stays where it is.
+          if (chosen) set([...list.filter(id => !objectChoiceItem(source().choices?.basedOn, id)), ...chosen]);
+        },
+        id => set(list.filter(item => item !== id)));
+    };
+    const designer = node('button', 'Конструктор ввода на основании', 'object-window-designer');
+    designer.type = 'button'; designer.disabled = true;
+    page.append(...block('own', 'Вводится на основании:', own, list => setBasedOn(list, withSelf(basisFor, list.includes(self)))),
+      ...block('other', 'Является основанием для:', basisFor, list => setBasedOn(withSelf(own, list.includes(self)), list)), designer);
+    return page;
+  }
+  // «Права»: the roles of the project; the rights the role chosen gives on
+  // the object, a box at each, marking a right marking the rights it needs
+  // and clearing one clearing those needing it; its restrictions of access
+  // to data on the right current (spravochnik.md, page 13; snapshot okno-13;
+  // rol.md, «Права зависят друг от друга»). Each role is edited by the model
+  // of the window of a role over what it says about the object alone, and
+  // written with the object.
+  let roleModels = new Map(), currentRole = null;
+  const roleRight = {right: null, row: -1};
+  const rightCaption = key => source().rightsSchema?.rights?.find(item => item.key === key)?.title || key;
+  function rightsPage() {
+    const page = node('div', undefined, 'object-window-fields object-window-rights'), roles = source().roles || [];
+    const object = source().rightsSchema?.objects?.[0], model = roleModels.get(currentRole);
+    page.append(node('div', 'Роли:', 'object-window-caption'),
+      objectRows(roles.map(entry => [entry.role.id, entry.role.name]), currentRole, id => { currentRole = id; around.refresh(); }));
+    const rights = model && object ? object.rights : [], members = object ? [{object}] : [];
+    if (!rights.includes(roleRight.right)) { roleRight.right = rights[0] ?? null; roleRight.row = -1; }
+    const redraw = () => { around.refresh(); around.host.querySelector('.object-window-rights .check-list')?.focus(); };
+    const list = checkList(rights.map(right => ({key: right, caption: rightCaption(right), checked: model.groupMark(members, right) === 'all'})), roleRight.right,
+      (right, enabled) => { model.setGroup(members, right, enabled); around.marked(); redraw(); },
+      right => { roleRight.right = right; roleRight.row = -1; redraw(); });
+    page.append(node('div', 'Права:', 'object-window-caption'), list);
+    if (model) page.append(roleRestrictionSection({model, object, caption: rightCaption, title: item => localizedTitle(item, source().defaultLanguage),
+      state: roleRight, changed: () => { around.marked(); around.refresh(); }}));
+    return page;
+  }
+  const pages = {exchange: exchangePage, 'based-on': basedOnPage, rights: rightsPage};
+  return {
+    pages,
+    open() {
+      exchange = new Map((source().exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
+      currentPlan = source().exchangePlans?.[0]?.id ?? null;
+      basisFor = inTreeOrder(withSelf((source().basisFor || []).map(place => place.id), (around.object().basedOn || []).includes(around.object().id)));
+      currentBasis = {own: null, other: null};
+      roleModels = new Map((source().roles || []).map(entry => [entry.role.id, createRoleModel({role: entry.role, schema: source().rightsSchema})]));
+      if (!roleModels.has(currentRole)) currentRole = source().roles?.[0]?.role.id ?? null;
+    },
+    // What the pages the window has write, in one order so a mark taken
+    // back leaves the window unchanged.
+    value() {
+      const value = {};
+      if (has('based-on')) value.basisFor = [...basisFor].sort();
+      if (has('rights')) value.roles = (source().roles || []).map(entry => ({id: entry.role.id, revision: entry.revision,
+        permission: roleModels.get(entry.role.id).value().objects.find(item => item.object === around.object().id) || null}));
+      if (has('exchange')) value.exchangePlans = [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}));
+      return value;
+    },
+  };
+}
+
 /* partsOfTwoLevels is a page of the window of an object (objectWindowEditor)
    holding parts of two levels - the operations of a web service and their
    parameters, the templates of an HTTP service and their methods: a panel
