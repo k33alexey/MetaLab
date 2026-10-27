@@ -200,6 +200,19 @@ const webServiceOperationsWalk = `(async () => {
   steps.operation = {rows: rows(), chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || '', palette: palette(),
     type: windowField('#properties', 'Тип возвращаемого значения').querySelector('input').value,
     typeChoice: windowField('#properties', 'Тип возвращаемого значения').querySelector('button').disabled, panel: panel()};
+  windowField('#properties', 'Тип возвращаемого значения').querySelector('button').click(); await settle();
+  const choice = document.querySelector('dialog.xml-type-choice-dialog');
+  const okButton = () => [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'OK');
+  steps.typeWindow = {title: choice.querySelector('h3').textContent,
+    namespaces: [...choice.querySelector('.xml-type-choice').children].map(item => {
+      const row = item.matches('.studio-tree-row') ? item : item.querySelector(':scope > .studio-tree-row');
+      return row.textContent + ' ' + item.querySelectorAll('.studio-tree-children .studio-tree-row').length + (item.open ? ' (раскрыто)' : '');
+    }),
+    first: [...choice.querySelectorAll('details[open] .studio-tree-children .studio-tree-row')][0]?.textContent || '',
+    marked: choice.querySelector('.studio-tree-row.selected')?.textContent || '', ok: !okButton().disabled};
+  [...choice.querySelectorAll('.studio-tree-row')].find(item => item.textContent === 'int').click(); await settle();
+  okButton().click(); await settle();
+  steps.chosenType = windowField('#properties', 'Тип возвращаемого значения').querySelector('input').value;
   [...document.querySelectorAll('#properties .studio-tab')].find(tab => tab.textContent === 'Данные').click(); await settle();
   const lock = windowField('#properties', 'Режим управления блокировкой данных').querySelector('select');
   steps.lock = {value: lock.value, choices: [...lock.options].map(option => option.textContent)};
@@ -232,9 +245,10 @@ const webServiceOperationsWalk = `(async () => {
 // with the lock managed, its palette on «Основные» and «Данные» of two
 // values; a new parameter «Параметр1», a string, «Входной», of three
 // directions; moving round the ends; deleting after the question;
-// «Сохранить» writing it all. Defects caught: a default not the
-// prototype's; a palette not the part's; the type choosable before its
-// window; the lock offering a third value; a part removed without the
+// «…» of a type opening the window choosing it among XML Schema and the
+// packages of the service; «Сохранить» writing it all. Defects caught: a
+// default not the prototype's; a palette not the part's; the window of a
+// type offering what the service does not use, or not the type before; the lock offering a third value; a part removed without the
 // question; the operations not written.
 func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
@@ -266,8 +280,14 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 			Direction, Type string
 		}
 		Moved, Deleted []string
-		Question       string
-		Saved          bool
+		TypeWindow     struct {
+			Title, First, Marked string
+			Namespaces           []string
+			OK                   bool
+		}
+		ChosenType string
+		Question   string
+		Saved      bool
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -286,7 +306,19 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 	expect("a new operation", []any{steps.Operation.Rows, steps.Operation.Chosen, steps.Operation.Palette, steps.Operation.Type, steps.Operation.TypeChoice},
 		[]any{[]string{"Остаток", "Операция1"}, "Операция1", palette{"Свойства: Операция1", []string{"Основные", "Данные"},
 			[]string{"Имя", "Синоним", "Комментарий", "Тип возвращаемого значения", "Возможно пустое значение", "В транзакции", "Имя процедуры"}},
-			"string (http://www.w3.org/2001/XMLSchema)", true})
+			"string (http://www.w3.org/2001/XMLSchema)", false})
+	// The service uses Товары and data/core: the window lists them and XML
+	// Schema by the alphabet of the URI, XML Schema open - 91 types from
+	// «all» - data/core of 46, Товары of no type yet (web-servis.md, «Выбор
+	// типа из палитры параметра», the third pass); the type before - a
+	// string - is marked and OK available.
+	expect("the window choosing a type", steps.TypeWindow, struct {
+		Title, First, Marked string
+		Namespaces           []string
+		OK                   bool
+	}{"Выбор пакетов XDTO", "all", "string", []string{"http://example.org/goods 0", "http://v8.1c.ru/8.1/data/core 46",
+		"http://www.w3.org/2001/XMLSchema 91 (раскрыто)"}, true})
+	expect("a type chosen", steps.ChosenType, "int (http://www.w3.org/2001/XMLSchema)")
 	expect("the lock of an operation", steps.Lock, struct {
 		Value   string
 		Choices []string
@@ -299,7 +331,7 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 	expect("deleted", []any{steps.Question, steps.Deleted}, []any{"Удалить объект проекта?", []string{"Операция1", "Остаток"}})
 	expect("saved", steps.Saved, false)
 	service, _ := os.ReadFile(filepath.Join(root, "metadata", "web-services", "СкладСервис", "object.yaml"))
-	if !strings.Contains(string(service), "name: Операция1") || !strings.Contains(string(service), "procedure: Проверка") || strings.Contains(string(service), "Параметр1") {
+	if !strings.Contains(string(service), "name: Операция1") || !strings.Contains(string(service), "procedure: Проверка") || !strings.Contains(string(service), "name: int") || strings.Contains(string(service), "Параметр1") {
 		t.Errorf("on disk the service is %s", service)
 	}
 }

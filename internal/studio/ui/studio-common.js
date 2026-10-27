@@ -1116,8 +1116,14 @@ function paletteFields(context) {
       const types = row.field === 'xml-types' ? subject.get(row.key) || [] : [subject.get(row.key)].filter(Boolean), shown = node('input');
       shown.readOnly = true; shown.disabled = !available(subject, row);
       shown.value = types.filter(type => type.name).map(type => `${type.name}${type.namespace ? ` (${type.namespace})` : ''}`).join(', ');
-      const pick = fieldChoiceButton(row.title, () => {}), clear = clearButton(`Очистить: ${row.title}`, () => {});
-      pick.disabled = true; clear.disabled = true; clear.classList.add('field-button');
+      // «…» chooses a type by chooseXMLType where the place gives the types
+      // (context.xmlTypes) and the namespaces it offers (context.typeNamespaces);
+      // a list of types - the members of a union - waits for its window.
+      const pick = fieldChoiceButton(row.title, async () => {
+        const chosen = await chooseXMLType(types[0], context.typeNamespaces(), context.xmlTypes());
+        if (chosen) { subject.set(row.key, chosen); context.changed(); }
+      }), clear = clearButton(`Очистить: ${row.title}`, () => {});
+      pick.disabled = shown.disabled || row.field === 'xml-types' || !context.xmlTypes; clear.disabled = true; clear.classList.add('field-button');
       return fieldWithButtons(shown, [pick, clear]);
     }
     // The XDTO packages of a web service: their namespaces - a package of
@@ -1202,13 +1208,18 @@ function paletteFields(context) {
       const shown = node('input', undefined, 'palette-unset');
       shown.readOnly = true; shown.disabled = true;
       shown.value = (row.choices || []).find(([key]) => key === row.default)?.[1] ?? row.default ?? '';
-      const typed = row.field === 'xml-type' || row.field === 'xml-types';
-      const say = fieldButton('apply', `Задать значение: ${row.title}`, () => {
+      // ✓ of a type opens the window choosing it.
+      const say = fieldButton('apply', `Задать значение: ${row.title}`, async () => {
+        if (row.field === 'xml-type') {
+          const chosen = await chooseXMLType(null, context.typeNamespaces(), context.xmlTypes());
+          if (chosen) { subject.set(row.key, chosen); context.changed(); }
+          return;
+        }
         const given = {number: Number(row.default || 0), switch: row.default === 'true', choice: row.default || row.choices?.[0]?.[0]}[row.field];
         subject.set(row.key, given ?? '');
         context.changed();
       });
-      say.disabled = typed;
+      say.disabled = row.field === 'xml-types' || row.field === 'xml-type' && !context.xmlTypes;
       return fieldWithButtons(shown, [say]);
     }
     return fieldWithButtons(field(subject, row), [clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, false)]);
@@ -1894,6 +1905,37 @@ async function chooseXDTOPackages(items, platform, packages) {
   const kept = items.filter(item => marked.has(key(item)));
   const known = new Set(kept.map(key));
   return [...kept, ...rows.map(row => row.item).filter(item => marked.has(key(item)) && !known.has(key(item)))];
+}
+
+/* chooseXMLType is the window choosing a type named by the schema - of an
+   operation and a parameter of a web service, of a node of an XDTO package
+   (web-servis.md, «Выбор типа из палитры параметра»; paket-xdto.md, «Узлы
+   редактора»; snapshots series-2.595/12-15, 63-65): titled «Выбор пакетов
+   XDTO», as the prototype titles it, a tree of the namespaces by the
+   alphabet of their URI, each holding its types (types, by namespace; a
+   namespace whose types are not known holds none); the namespace of the
+   type chosen before is open and the type marked; OK stands unavailable
+   until a type is marked. Answers {namespace, name} on OK, null on
+   «Отмена». */
+async function chooseXMLType(current, namespaces, types) {
+  let marked = current?.name ? {namespace: current.namespace, name: current.name} : null;
+  const content = node('div', undefined, 'object-window-tree xml-type-choice');
+  const fold = (one, other) => one.toLocaleLowerCase().localeCompare(other.toLocaleLowerCase());
+  function render() {
+    content.replaceChildren(...[...new Set(namespaces)].sort(fold).map(space => {
+      const rows = (types[space] || []).map(name => {
+        const {element, row} = treeNode({caption: name});
+        row.classList.toggle('selected', marked?.namespace === space && marked?.name === name);
+        row.addEventListener('click', () => { marked = {namespace: space, name}; render(); });
+        return element;
+      });
+      return treeNode({caption: space, children: rows, open: space === current?.namespace}).element;
+    }));
+  }
+  render();
+  const answer = await showDialog({title: 'Выбор пакетов XDTO', content, className: 'xml-type-choice-dialog',
+    answers: [['ok', 'OK', {enabled: () => !!marked}], [null, 'Отмена']]});
+  return answer === 'ok' ? marked : null;
 }
 
 /* chooseBorder is the window «Выбор рамки», one for every place a border is

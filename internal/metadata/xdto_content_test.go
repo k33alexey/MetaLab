@@ -186,3 +186,38 @@ func TestTheBodyOfAPackageIsReadWithTheProject(t *testing.T) {
 		t.Errorf("a body of another namespace: %v", err)
 	}
 }
+
+// The types a type is chosen from (web-servis.md, «Выбор типа из палитры
+// параметра»; configurator-2026-10-27/series-2.595/notes.md, В9): XML
+// Schema's 91 from «all» to «wildcard» by the alphabet whatever the case,
+// data/core's 46 from «AllowedLength» to «ValueTreeRow», a package's own
+// value types and object types by the alphabet whatever the case, a
+// package of no body none.
+// Defects caught: a type missing or out of the window's order; the types
+// of a package not read from its body, or read in the order written.
+func TestTheTypesOfTheNamespacesAreTheWindows(t *testing.T) {
+	t.Parallel()
+	root := metadataProject(t)
+	writeXDTOPackage(t, root, firstXDTOPackage, "Обмен", "http://example.org/goods", xdtoBody("http://example.org/goods",
+		"\t<valueType name=\"цена\"/>\r\n\t<valueType name=\"Вид\"/>\r\n\t<objectType name=\"Товар\"/>\r\n\t<objectType name=\"Адрес\"/>\r\n"))
+	writeXDTOPackage(t, root, secondXDTOPackage, "Пустой", "http://example.org/empty", "")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := catalog.XDTOTypes()
+	schema := types["http://www.w3.org/2001/XMLSchema"]
+	if len(schema) != 91 || schema[0] != "all" || schema[90] != "wildcard" || schema[24] != "ENTITY" || schema[78] != "string" {
+		t.Errorf("XML Schema: %d %q", len(schema), schema)
+	}
+	core := types["http://v8.1c.ru/8.1/data/core"]
+	if len(core) != 46 || core[0] != "AllowedLength" || core[45] != "ValueTreeRow" {
+		t.Errorf("data/core: %d %q", len(core), core)
+	}
+	if got := strings.Join(types["http://example.org/goods"], ","); got != "Адрес,Вид,Товар,цена" {
+		t.Errorf("the package: %s", got)
+	}
+	if got, ok := types["http://example.org/empty"]; !ok || len(got) != 0 {
+		t.Errorf("a package of no body: %q, %v", got, ok)
+	}
+}

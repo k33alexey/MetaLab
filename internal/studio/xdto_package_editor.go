@@ -33,6 +33,12 @@ type XDTOPackageEditorSource struct {
 	Package      metadata.XDTOPackageDefinition `json:"package"`
 	Content      metadata.XDTOContent           `json:"content"`
 	NodePalettes map[string][]kinds.PaletteTab  `json:"nodePalettes"`
+	// Types are the types a type of a node is chosen from, by namespace,
+	// and PlatformNamespaces the platform's namespaces the window lists
+	// beside them - every one, as the window of a property of a package
+	// lists them (paket-xdto.md, «Узлы редактора»).
+	Types              map[string][]string `json:"types"`
+	PlatformNamespaces []string            `json:"platformNamespaces"`
 }
 
 // XDTOPackageWindowValue is what the editor writes: the description and the
@@ -86,7 +92,8 @@ func (workspace *Workspace) readXDTOPackageEditorLocked(relative string) (XDTOPa
 	for _, kind := range xdtoNodePalettes {
 		palettes[kind] = kinds.PartPalette(kind)
 	}
-	return XDTOPackageEditorSource{windowHead: head, Package: value, Content: content, NodePalettes: palettes}, nil
+	return XDTOPackageEditorSource{windowHead: head, Package: value, Content: content, NodePalettes: palettes, Types: loaded.XDTOTypes(),
+		PlatformNamespaces: metadata.PlatformXDTONamespaces()}, nil
 }
 
 // xdtoContentPath is the file of the body of the package described at

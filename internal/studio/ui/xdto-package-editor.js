@@ -41,7 +41,13 @@ function createXDTOPackageEditor(host, onChange, around = {}) {
         return {title: current.caption, tabs: api.source().nodePalettes[current.palette], subject: current.subject};
       };
       // «Пакет: Открыть» of the palette chooses the root of the tree.
-      const context = () => ({windows: ['content'], openWindow: () => { chosen = []; api.refresh(); api.palette(); }});
+      // A type of a node is chosen among every namespace - XML Schema, SOAP,
+      // the platform's, the packages of the project - this package's types
+      // as the editor holds them (paket-xdto.md, «Узлы редактора»).
+      const xmlTypes = () => ({...api.source().types, [api.object().namespace]: [...(content().valueTypes || []), ...(content().objectTypes || [])]
+        .map(item => item.name).filter(Boolean).sort((one, other) => one.toLocaleLowerCase().localeCompare(other.toLocaleLowerCase()))});
+      const context = () => ({windows: ['content'], openWindow: () => { chosen = []; api.refresh(); api.palette(); }, xmlTypes,
+        typeNamespaces: () => ['http://schemas.xmlsoap.org/soap/envelope/', ...api.source().platformNamespaces, ...Object.keys(xmlTypes())]});
       return {className: 'xdto-window', draw, part, context, reset() { chosen = null; },
         title: () => `XDTO пакет ${api.object().name}: Пакет`,
         value: object => ({...object, content: structuredClone(content())})};

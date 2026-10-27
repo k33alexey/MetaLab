@@ -28,6 +28,9 @@ type WebServiceEditorSource struct {
 	// the namespaces of the platform's own.
 	Packages           []XDTOPackageChoice `json:"packages"`
 	PlatformNamespaces []string            `json:"platformNamespaces"`
+	// Types are the types a type of an operation or of a parameter is
+	// chosen from, by namespace (Catalog.XDTOTypes).
+	Types map[string][]string `json:"types"`
 	// PartPalettes are the palettes of its operations and their parameters.
 	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 }
@@ -79,7 +82,7 @@ func (workspace *Workspace) readWebServiceEditorLocked(relative string) (WebServ
 		item, _ := loaded.XDTOPackageByID(object.ID)
 		packages = append(packages, XDTOPackageChoice{ID: item.ID, Namespace: item.Namespace})
 	}
-	return WebServiceEditorSource{windowHead: head, Service: value, Packages: packages, PlatformNamespaces: metadata.PlatformXDTONamespaces(),
+	return WebServiceEditorSource{windowHead: head, Service: value, Packages: packages, PlatformNamespaces: metadata.PlatformXDTONamespaces(), Types: loaded.XDTOTypes(),
 		PartPalettes: map[string][]kinds.PaletteTab{"operation": kinds.PartPalette("webServiceOperation"), "parameter": kinds.PartPalette("webServiceParameter")}}, nil
 }
 

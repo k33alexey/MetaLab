@@ -311,3 +311,5 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 /* Редактор пакета XDTO (paket-xdto/02): панель над деревом узлов. */
 .xdto-window-body{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1}
 .xdto-window-body .xdto-tree{flex:1;overflow:auto}
+.localized-title-dialog.xml-type-choice-dialog{width:min(560px,calc(100% - 40px))}
+.xml-type-choice{height:360px;overflow:auto;border:1px solid #4a4d54;padding:2px 0}

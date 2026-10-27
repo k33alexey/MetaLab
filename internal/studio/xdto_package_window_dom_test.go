@@ -77,6 +77,15 @@ const xdtoPackageWalk = `(async () => {
   steps.said = palette();
   await paletteButton('Возможно пустое', 'Очистить');
   steps.taken = palette().filter(row => row.startsWith('Возможно'));
+  await paletteButton('Тип', 'Задать значение');
+  const choice = document.querySelector('dialog.xml-type-choice-dialog');
+  const spaces = [...choice.querySelector('.xml-type-choice').children].map(item => (item.matches('.studio-tree-row') ? item : item.querySelector(':scope > .studio-tree-row')).textContent);
+  const own = [...choice.querySelector('.xml-type-choice').children].find(item => item.querySelector(':scope > .studio-tree-row')?.textContent === 'http://example.org/goods');
+  steps.typeWindow = {count: spaces.length, first: spaces[0], last: spaces.at(-1), own: [...own.querySelectorAll('.studio-tree-children .studio-tree-row')].map(item => item.textContent),
+    ok: [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'OK').disabled};
+  [...own.querySelectorAll('.studio-tree-children .studio-tree-row')].find(item => item.textContent === 'ТипЗначения1').click(); await settle();
+  [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'OK').click(); await settle();
+  steps.typed = palette().filter(row => row.startsWith('Тип:'));
   await choose('Пакет (http://example.org/goods)');
   await add('Свойство');
   await panel('Переместить вверх');
@@ -140,8 +149,15 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 			Rows  []string
 		}
 		RootChosen []string
-		Menu       []string
-		Created    struct {
+		TypeWindow struct {
+			Count       int
+			First, Last string
+			Own         []string
+			OK          bool
+		}
+		Typed   []string
+		Menu    []string
+		Created struct {
 			Title         string
 			Tree, Palette []string
 		}
@@ -182,6 +198,16 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 	expect("a property holding its definition", steps.PropertyMenuAfter, []string{"Определение типа (недоступна)"})
 	expect("said by ✓", steps.Said[3:6], []string{"Минимальное количество: 1", "Максимальное количество: 1 (не задано)", "Возможно пустое: Ложь"})
 	expect("taken back by ✕", steps.Taken, []string{"Возможно пустое: Ложь (не задано)"})
+	// Every namespace - SOAP, the platform's 66, the package's own, XML
+	// Schema - by the alphabet of the URI; the package's own holding the
+	// types the editor holds; OK unavailable until a type is marked.
+	expect("the window choosing a type of a node", steps.TypeWindow, struct {
+		Count       int
+		First, Last string
+		Own         []string
+		OK          bool
+	}{69, "http://example.org/goods", "http://www.w3.org/2001/XMLSchema", []string{"ТипЗначения1", "ТипОбъекта1"}, true})
+	expect("a type of a node chosen", steps.Typed, []string{"Тип: ТипЗначения1 (http://example.org/goods)"})
 	expect("moved up", steps.Moved[3:6], []string{"  Свойства", "    Свойство2", "    Свойство1"})
 	expect("the question of a deletion", steps.DeleteQuestion, "Удалить элемент?")
 	expect("deleted", steps.Deleted, []string{"Пакет (http://example.org/goods)", "  Директивы импорта", "    http://www.imported-package.org",
@@ -215,7 +241,7 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		"\t\t<pattern>НовыйЭлемент1</pattern>\r\n" +
 		"\t</valueType>\r\n" +
 		"\t<objectType name=\"ТипОбъекта1\">\r\n" +
-		"\t\t<property name=\"Свойство1\" lowerBound=\"1\">\r\n" +
+		"\t\t<property xmlns:d3p1=\"http://example.org/goods\" name=\"Свойство1\" type=\"d3p1:ТипЗначения1\" lowerBound=\"1\">\r\n" +
 		"\t\t\t<typeDef xsi:type=\"ObjectType\"/>\r\n" +
 		"\t\t</property>\r\n" +
 		"\t</objectType>\r\n" +
