@@ -125,26 +125,21 @@ function createCatalogModel(source) {
    actions() - the commands of the object's menu «Действия» offers; close() -
    «Закрыть». */
 function createCatalogEditor(host, onChange, around = {}) {
-  let source, model, frame, chosen = null, cleanups = [], paletteCleanups = [];
+  return objectWindowEditor(host, onChange, around, {target: opened => opened.catalog, own: api => catalogWindow(api, onChange, around, host)});
+}
+
+/* catalogWindow is what the window of a catalog adds to the window of an
+   object (objectWindowEditor): its own pages, the parts chosen in it and
+   their palettes, what its fields open and offer, and the commands of the
+   tree inside it. */
+function catalogWindow(api, onChange, around, host) {
+  let source = null, model = null, chosen = null;
   const catalog = () => source.catalog;
-  /* Подписи в окне показываются на текущем языке Studio и меняются вместе
-     с ним. */
-  StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
+  const frame = {refresh: () => api.refresh(), show: key => api.show(key)};
   // A structural edit builds the page anew; typing does not - building the
-  // field anew would drop its focus - it only renames what shows the name.
-  function rerender() { onChange(); frame.refresh(); renderPalette(); }
-  // An edit in the palette draws the window anew and one in the window the
-  // palette: each shows what the other typed, and the one typed into keeps
-  // its focus. An edit of neither - in the window «Строки на разных языках»
-  // - draws both.
-  function touch() {
-    onChange();
-    frame.setTitle(windowTitle());
-    const inPalette = !!around.palette?.contains(document.activeElement), inWindow = host.contains(document.activeElement);
-    if (!inWindow) frame.refresh();
-    if (!inPalette) renderPalette();
-  }
-  function windowTitle() { return `${source.kindTitle} ${catalog().name}`; }
+  // field anew would drop its focus - it only renames what shows the name
+  // (objectWindowEditor: changed, typed).
+  const rerender = () => api.changed(), touch = () => api.typed(), renderPalette = () => api.palette();
   function localized(get, set, collect, options = titleTextOptions) {
     const field = createLocalizedField(source, get, set, touch, options);
     collect.push(field.destroy);
@@ -177,11 +172,11 @@ function createCatalogEditor(host, onChange, around = {}) {
   ];
   function renderMainPage() {
     const page = node('div', undefined, 'object-window-fields');
-    page.append(...nameAndSynonym(catalog(), value => model.setName(value), (language, value) => model.setTitle(language, value), undefined, cleanups));
+    page.append(...nameAndSynonym(catalog(), value => model.setName(value), (language, value) => model.setTitle(language, value), undefined, api.cleanups()));
     page.append(labeledField('Комментарий', textInput(catalog().comment, value => { model.setComment(value); touch(); })));
     page.append(node('div', undefined, 'object-window-gap'));
     for (const [key, caption, options] of presentations) {
-      page.append(labeledField(caption, localized(code => catalog()[key]?.[code], (language, value) => model.setPresentation(key, language, value), cleanups, options),
+      page.append(labeledField(caption, localized(code => catalog()[key]?.[code], (language, value) => model.setPresentation(key, language, value), api.cleanups(), options),
         'catalog-field catalog-field-above'));
     }
     return page;
@@ -326,9 +321,8 @@ function createCatalogEditor(host, onChange, around = {}) {
   // it, or above it - a flag with its box at the right, a module or a
   // window opened by a button, the rows of one frame inside it
   // (spravochnik.md, okno-09, okno-15).
-  function renderRowsPage(key) {
-    return rowsPage(source.windowRows[key], source.palette, fieldsOfPalette(() => cleanups), catalogSubject(), role => around.openModule?.(role));
-  }
+  function renderRowsPage(key) { return api.rowsPage(key); }
+
   // «Формы», «Команды», «Макеты»: a tree of the parts with its panel - the
   // forms of the object below the frame of the main forms, the commands
   // above the flag of the standard commands, the templates above the menu
@@ -417,25 +411,6 @@ function createCatalogEditor(host, onChange, around = {}) {
   function renderOptionsPage() {
     return optionsPage(source.functionalOptions, options, onChange, 'справочник');
   }
-  // «Обмен данными», «Ввод на основании», «Права» - the common pages of the
-  // window of an object (commonObjectPages).
-  const common = commonObjectPages({source: () => source, object: catalog, host,
-    setBasedOn: list => model.set('basedOn', list), changed: rerender, marked: onChange, refresh: () => frame.refresh()});
-  const builtPages = {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, ...common.pages, hierarchy: renderHierarchyPage, owners: renderOwnersPage, data: renderDataPage,
-    numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage};
-  function renderPage(key) {
-    cleanups.forEach(destroy => destroy());
-    cleanups = [];
-    if (builtPages[key]) return builtPages[key]();
-    return source.windowRows?.[key] ? renderRowsPage(key) : null;
-  }
-
-  function clearPalette() {
-    paletteCleanups.forEach(destroy => destroy());
-    paletteCleanups = [];
-    around.palette?.replaceChildren();
-    around.paletteTitle?.('Свойства');
-  }
   /* What a palette edits: the catalog or a part of it chosen in the window
      (an attribute, a table part), each read and written by the key of a row
      and named by its own rules (paletteFields). */
@@ -453,79 +428,60 @@ function createCatalogEditor(host, onChange, around = {}) {
     return {target: part, owner: 'catalogs', get: path => pathValue(part, path), set: (path, value) => setPathValue(part, path, value),
       setName: value => model.setTablePartName(part.id, value), check: () => ({path: source.path, description: model.value(), at: way})};
   }
-  // The fields of the palette of the catalog and its parts: what they open,
-  // the windows of choice they offer, and how an edit is shown.
-  function fieldsOfPalette(collect = () => paletteCleanups) {
-    return paletteFields({project: source, typeOffer: model.typeOffer, choices: source.choices, cleanups: collect,
-      typed: touch, changed: rerender, openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
-      form: name => ({name, path: source.forms?.find(form => form.name === name)?.path}),
-      choose: async (row, items) => {
-        if (row.key === 'owners') { await chooseOwners(); return null; }
-        return await chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items);
-      }});
-  }
-  function renderPalette() {
-    if (!around.palette || !source) return;
-    clearPalette();
+  // The part chosen in the window and its palette (objectWindowEditor,
+  // kind.part): an attribute, a table part, a template; none - the
+  // catalog's own palette.
+  function part() {
     const parts = catalog().tableParts, partAt = id => parts.findIndex(item => item.id === id);
-    let subject, tabs, title;
     if (chosen?.kind === 'attribute') {
       const list = model.attributeList(chosen.container), attribute = list?.find(item => item.id === chosen.id);
-      if (!attribute) { chosen = null; return; }
+      if (!attribute) { chosen = null; return null; }
       const at = ['attributes', String(list.indexOf(attribute))];
-      subject = attributeSubject(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at]);
-      tabs = source.partPalettes?.attribute; title = attribute.name;
-    } else if (chosen?.kind === 'template') {
-      const templates = catalog().templates || [], at = templates.findIndex(item => item.name === chosen.id), template = templates[at];
-      if (!template) { chosen = null; return; }
-      subject = {target: template, owner: 'catalogs', get: path => pathValue(template, path),
-        set: (path, value) => { if (value) setPathValue(template, path, value); else delete template[path]; },
-        setName: value => { template.name = value; chosen.id = value; }, check: () => ({path: source.path, description: model.value(), at: ['templates', String(at)]})};
-      tabs = source.partPalettes?.template; title = template.name;
-    } else if (chosen?.kind === 'tablepart') {
-      const part = parts.find(item => item.id === chosen.id);
-      if (!part) { chosen = null; return; }
-      subject = tablePartSubject(part, ['tableParts', String(partAt(part.id))]);
-      tabs = source.partPalettes?.tablePart; title = part.name;
-    } else {
-      subject = catalogSubject(); tabs = source.palette; title = catalog().name;
+      return {title: attribute.name, tabs: source.partPalettes?.attribute,
+        subject: attributeSubject(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at])};
     }
-    around.paletteTitle?.(`Свойства: ${title}`);
-    const fields = fieldsOfPalette();
-    around.palette.append(objectPalette(tabs || [], row => fields(subject, row), paletteShown(subject)));
+    if (chosen?.kind === 'template') {
+      const templates = catalog().templates || [], at = templates.findIndex(item => item.name === chosen.id), template = templates[at];
+      if (!template) { chosen = null; return null; }
+      return {title: template.name, tabs: source.partPalettes?.template, subject: {target: template, owner: 'catalogs', get: path => pathValue(template, path),
+        set: (path, value) => { if (value) setPathValue(template, path, value); else delete template[path]; },
+        setName: value => { template.name = value; chosen.id = value; }, check: () => ({path: source.path, description: model.value(), at: ['templates', String(at)]})}};
+    }
+    if (chosen?.kind === 'tablepart') {
+      const item = parts.find(entry => entry.id === chosen.id);
+      if (!item) { chosen = null; return null; }
+      return {title: item.name, tabs: source.partPalettes?.tablePart, subject: tablePartSubject(item, ['tableParts', String(partAt(item.id))])};
+    }
+    return null;
   }
   function focusPalette() { around.palette?.querySelector('input')?.focus(); }
 
-  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearPalette(); source = null; model = null; }, {
-    // Opened anew after «Сохранить» (keep), the window stays on its page
-    // with the same part chosen.
-    open(value, keep = false) {
-      const page = keep && frame ? frame.current() : 'main';
-      if (source) clearPalette();
-      if (!keep) chosen = null;
-      source = structuredClone(value);
+  return {
+    pages: {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage,
+      data: renderDataPage, numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage},
+    open(opened) {
+      source = opened;
       model = createCatalogModel(source);
       const marked = places => new Set((places || []).filter(place => place.member).map(place => place.id));
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);
-      common.open();
-      frame = showObjectWindow(host, around, {title: windowTitle(), pages: source.pages, chosen: page, page: renderPage});
-      renderPalette();
     },
+    reset() { chosen = null; },
+    subject: () => catalogSubject(),
+    part,
+    // What the fields of the palette of the catalog and its parts offer:
+    // the types, the windows of choice, the forms and files they open.
+    context: () => ({typeOffer: model.typeOffer, choices: source.choices, openFile: path => around.openFile?.(path),
+      form: name => ({name, path: source.forms?.find(form => form.name === name)?.path}),
+      choose: async (row, items) => {
+        if (row.key === 'owners') { await chooseOwners(); return null; }
+        return await chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items);
+      }}),
     // The catalog and the subsystems and options marked on its pages, in one
-    // order so a mark taken back leaves the window unchanged.
-    value() { return model && {...model.value(), templateContents: model.templateContents(), subsystems: [...membership].sort(), functionalOptions: [...options].sort(),
-      ...common.value()}; },
-    // Shows the palette of the catalog itself, as a click on its node of the
-    // tree does: nothing in the window stays chosen. Answers whether the
-    // palette is the window's.
-    showPalette() {
-      if (!source || !around.palette) return false;
-      chosen = null;
-      frame.refresh();
-      renderPalette();
-      return true;
-    },
+    // order so a mark taken back leaves the window unchanged; the common
+    // pages add theirs (objectWindowEditor).
+    value: () => ({...model.value(), templateContents: model.templateContents(), subsystems: [...membership].sort(), functionalOptions: [...options].sort()}),
+    methods: {
     // Chooses the attribute or table part a node of the tree names
     // (`attribute:<id>` or `tablepart:<id>`) on the page «Данные», so a click
     // on the configuration tree finds it inside the open window.
@@ -587,5 +543,5 @@ function createCatalogEditor(host, onChange, around = {}) {
       chosen = null;
       rerender();
     },
-  });
+  }};
 }

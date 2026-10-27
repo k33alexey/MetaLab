@@ -1602,3 +1602,47 @@ func TestTheRightsPageOfACatalogIsThePrototypes(t *testing.T) {
 	expect("saved", steps.Saved, true)
 	expect("opened anew", steps.Reopened, []string{"Чтение", "Просмотр"})
 }
+
+// catalogSaveKeepsTheChoiceWalk adds an attribute to Товары on «Данные»,
+// saves, and reads the window and the palette after.
+const catalogSaveKeepsTheChoiceWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#catalog-editor');
+  await openObject('Товары');
+  await windowPage('Данные');
+  [...host.querySelectorAll('.object-window-panel')][0].querySelector('button[title=Добавить]').click(); await studio.settle();
+  const read = () => ({page: host.querySelector('.object-window-page[aria-selected=true]').textContent,
+    chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || '',
+    palette: document.querySelector('#inspector-title').textContent});
+  steps.before = read();
+  document.querySelector('#save').click(); await new Promise(resolve => setTimeout(resolve, 150)); await studio.settle();
+  steps.saved = document.querySelector('#save').disabled;
+  steps.after = read();
+  return steps;
+})()`
+
+// «Сохранить» opens the window of a catalog anew on its page with the same
+// part chosen and its palette shown, as before the save.
+// Defects caught: the window back on «Основные», or the part chosen and
+// its palette lost, after a save.
+func TestASaveKeepsThePageAndThePartOfTheWindowOfACatalog(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, catalogSaveKeepsTheChoiceWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type view struct{ Page, Chosen, Palette string }
+	var steps struct {
+		Before, After view
+		Saved         bool
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	want := view{Page: "Данные", Chosen: "Реквизит1", Palette: "Свойства: Реквизит1"}
+	if steps.Before != want || steps.After != want || !steps.Saved {
+		t.Errorf("before %+v, after %+v, saved %v; want %+v both, saved", steps.Before, steps.After, steps.Saved, want)
+	}
+}

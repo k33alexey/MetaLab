@@ -1415,8 +1415,13 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
-  const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), show: key => frame.show?.(key), palette: () => renderPalette(), cleanups: () => cleanups};
+  const api = {source: () => source, object, changed, typed, marked: () => onChange(), refresh: () => frame.refresh(), show: key => frame.show?.(key),
+    palette: () => renderPalette(), cleanups: () => cleanups, rowsPage: key => rowsOf(key)};
   const kind = own(api);
+  // «Обмен данными», «Ввод на основании», «Права» of a kind whose window has
+  // them (commonObjectPages); «Вводится на основании» is the object's own list.
+  const common = commonObjectPages({source: () => source, object, host, setBasedOn: list => { if (list.length) object().basedOn = list; else delete object().basedOn; },
+    changed, marked: onChange, refresh: () => frame.refresh()});
   function context(collect) {
     return {project: source, typed, changed, packages: source.packages, platformNamespaces: source.platformNamespaces, windows: [], cleanups: collect, valueChecks,
       openModule: role => around.openModule?.(role), ...kind.context?.()};
@@ -1434,6 +1439,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     cleanups.forEach(destroy => destroy());
     cleanups = [];
     if (kind.pages?.[key]) return kind.pages[key]();
+    if (common.pages[key]) return common.pages[key]();
     // «Функциональные опции»: the options of the project, a box at each,
     // marked where the object is in its content (podsistema.md, «Окно»;
     // snapshot podsistema/05), written into the options as the
@@ -1446,8 +1452,14 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       page.append(subsystemsTree(source.subsystems, marks, onChange));
       return page;
     }
+    return rowsOf(key);
+  }
+  // A page built of the palette's rows (kinds.WindowRows), each the field of
+  // the subject of the palette.
+  function rowsOf(key) {
     if (!source.windowRows?.[key]) return null;
-    return rowsPage(source.windowRows[key], source.palette, paletteFields(context(() => cleanups)), ownSubject(source, object()), role => around.openModule?.(role));
+    return rowsPage(source.windowRows[key], source.palette, paletteFields(context(() => cleanups)), kind.subject?.(source) || ownSubject(source, object()),
+      role => around.openModule?.(role));
   }
   // The window of no pages: its title over the body draw fills.
   function pagelessWindow() {
@@ -1468,24 +1480,29 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   }
   StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
   return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; kind.reset?.(); }, {
-    open(value) {
+    // Opened anew after «Сохранить» (keep), the window stays on its page with
+    // the same part chosen.
+    open(value, keep = false) {
+      const page = keep && frame?.current ? frame.current() : 'main';
       if (source) clearObjectPalette(around, paletteCleanups);
       source = structuredClone(value);
-      kind.reset?.();
+      if (!keep) kind.reset?.();
+      kind.open?.(source);
       marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
       options = new Set((source.functionalOptions || []).filter(place => place.member).map(place => place.id));
-      frame = kind.draw ? pagelessWindow() : showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: 'main', page: renderPage});
+      common.open();
+      frame = kind.draw ? pagelessWindow() : showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: page, page: renderPage});
       renderPalette();
     },
     // The object and the subsystems marked, in one order so a mark taken
     // back leaves the window unchanged; a window of no pages marks none.
     value() {
       if (!source) return null;
-      if (kind.value) return kind.value(structuredClone(object()));
+      if (kind.value) return {...kind.value(structuredClone(object())), ...common.value()};
       // A kind of the page «Функциональные опции» writes the options marked;
       // its own subsystems are a property of its own, not marks of a page.
-      if (source.pages?.some(page => page.key === 'functional-options')) return {...structuredClone(object()), functionalOptions: [...options].sort()};
-      return {...structuredClone(object()), subsystems: [...marks].sort()};
+      if (source.pages?.some(page => page.key === 'functional-options')) return {...structuredClone(object()), functionalOptions: [...options].sort(), ...common.value()};
+      return {...structuredClone(object()), subsystems: [...marks].sort(), ...common.value()};
     },
     // Shows the palette of the object itself, as a click on its node does.
     showPalette() {
@@ -1495,6 +1512,9 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       renderPalette();
       return true;
     },
+    // What the kind adds to the window: choosing a part a node of the tree
+    // names, «Добавить» and «Удалить» of the tree inside the object.
+    ...kind.methods,
   });
 }
 
