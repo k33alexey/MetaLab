@@ -164,6 +164,11 @@ type PaletteRow struct {
 	// unavailable after: the kind of a template (obshchij-maket.md,
 	// «Палитра»).
 	Fixed bool `json:"fixed,omitempty"`
+	// Optional is a value a node may leave not said, as the palette of a
+	// node of the editor of an XDTO package shows it (paket-xdto.md,
+	// «Палитра узла»): not said, the field shows Default greyed with ✓
+	// beside it, which says it; said, ✕ takes it back.
+	Optional bool `json:"optional,omitempty"`
 	// Shown are what the row stands by at all, unlike Needs, which leave it
 	// standing unavailable: type=<kind> - the kind of the one type of the
 	// part (string, number, reference), owner=<kind> - the kind of the
@@ -209,6 +214,9 @@ const (
 	// of a web service and of its parameter: its name and namespace shown,
 	// «…» choosing it in the window of the types of the packages.
 	XMLTypeField = "xml-type"
+	// XMLTypesField is a list of types named by the schema - the members of
+	// a union of an XDTO package.
+	XMLTypesField = "xml-types"
 	// PackagesField is the XDTO packages a web service uses: the namespaces
 	// shown, «…» choosing them, the cross clearing them (web-servis.md).
 	PackagesField = "packages"
@@ -660,7 +668,10 @@ func rows(groups ...[]PaletteRow) []PaletteRow {
 // usage are the values of a setting used, not used or left to the platform,
 // with the prototype's captions.
 var (
-	usage        = [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}}
+	usage = [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}}
+	// xdtoFlag is a flag of a node of an XDTO package, as its palette
+	// names it - a list, not a box (snapshot series-2.584/143).
+	xdtoFlag     = [][2]string{{"false", "Ложь"}, {"true", "Истина"}}
 	autoUsage    = [][2]string{{"auto", "Авто"}, {"use", "Использовать"}, {"dont-use", "Не использовать"}}
 	autoHistory  = [][2]string{{"auto", "Авто"}, {"dont-use", "Не использовать"}}
 	attributeUse = [][2]string{{"for-item", "Для элемента"}, {"for-folder", "Для группы"}, {"for-folder-and-item", "Для группы и элемента"}}
@@ -743,6 +754,108 @@ var partPalettes = map[string][]PaletteTab{
 				Choices:     [][2]string{{"in", "Входной"}, {"out", "Выходной"}, {"in-out", "Входной - Выходной"}},
 				Description: "Передаётся ли значение параметра в операцию, из неё или в обе стороны."},
 		})},
+	},
+	// docs/block-00/paket-xdto.md, «Окно — редактор пакета», «Узлы
+	// редактора»; snapshots paket-xdto/03, series-2.584/141-170: one tab
+	// «Другие» a node, every value but a name of a namespace said by ✓.
+	"xdtoPackage": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
+				Description: "Пространство имён, которому принадлежат типы пакета; им их называет другая сторона обмена."},
+			{Key: "elementFormQualified", Title: "Квалифицированная форма элемента", Field: SwitchField, Important: true, Optional: true,
+				Choices: xdtoFlag, Default: "false", Description: "Пишутся ли элементы свойств пакета с пространством имён."},
+			{Key: "attributeFormQualified", Title: "Квалифицированная форма атрибута", Field: SwitchField, Important: true, Optional: true,
+				Choices: xdtoFlag, Default: "false", Description: "Пишутся ли атрибуты свойств пакета с пространством имён."},
+		}},
+	},
+	"xdtoImport": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "namespace", Title: "Пространство имен", Field: TextField, Important: true,
+				Description: "Пространство имён другого пакета, типы которого использует этот."},
+		}},
+	},
+	"xdtoProperty": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Optional: true, Description: "Имя свойства."},
+			{Key: "ref", Title: "Ссылка", Field: XMLTypeField, Important: true, Optional: true,
+				Description: "Глобальное свойство, которое это свойство повторяет."},
+			{Key: "type", Title: "Тип", Field: XMLTypeField, Important: true, Optional: true, Description: "Тип значения свойства."},
+			{Key: "lowerBound", Title: "Минимальное количество", Field: NumberField, Important: true, Optional: true, Default: "1", Min: 0,
+				Description: "Сколько значений свойства самое меньшее."},
+			{Key: "upperBound", Title: "Максимальное количество", Field: NumberField, Important: true, Optional: true, Default: "1", Min: -1,
+				Description: "Сколько значений свойства самое большее; -1 — без ограничения."},
+			{Key: "nillable", Title: "Возможно пустое", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Может ли значение свойства быть пустым."},
+			{Key: "fixed", Title: "Фиксированное", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Всегда ли значение свойства равно значению по умолчанию."},
+			{Key: "default", Title: "По умолчанию", Field: TextField, Important: true, Optional: true, Description: "Значение свойства по умолчанию."},
+			{Key: "form", Title: "Форма", Field: ChoiceField, Important: true, Optional: true, Default: "Element",
+				Choices:     [][2]string{{"Attribute", "Атрибут"}, {"Element", "Элемент"}, {"Text", "Текст"}},
+				Description: "Чем свойство пишется в XML: атрибутом, элементом или текстом."},
+			{Key: "localName", Title: "Локальное имя", Field: TextField, Important: true, Optional: true,
+				Description: "Имя свойства в XML, когда оно не то, что «Имя»."},
+			{Key: "qualified", Title: "Квалифицированное", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag,
+				Description: "Пишется ли свойство в XML с пространством имён."},
+		}},
+	},
+	"xdtoValueType": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Optional: true, Description: "Имя типа значения."},
+			{Key: "base", Title: "Базовый тип", Field: XMLTypeField, Important: true, Optional: true, Description: "Тип, который этот тип сужает."},
+			{Key: "variety", Title: "Вариант", Field: ChoiceField, Important: true, Optional: true, Default: "Atomic",
+				Choices:     [][2]string{{"Atomic", "Атомарный"}, {"List", "Список"}, {"Union", "Объединение"}},
+				Description: "Одно значение, список значений или одно из значений нескольких типов."},
+			{Key: "itemType", Title: "Тип элемента", Field: XMLTypeField, Important: true, Optional: true, Description: "Тип значений списка."},
+			{Key: "memberTypes", Title: "Типы объединения", Field: XMLTypesField, Important: true, Optional: true,
+				Description: "Типы, значения которых принимает объединение."},
+			{Key: "length", Title: "Длина", Field: NumberField, Important: true, Optional: true, Default: "0", Description: "Длина значения."},
+			{Key: "minLength", Title: "Минимальная длина", Field: NumberField, Important: true, Optional: true, Default: "0",
+				Description: "Самая меньшая длина значения."},
+			{Key: "maxLength", Title: "Максимальная длина", Field: NumberField, Important: true, Optional: true, Default: "0",
+				Description: "Самая большая длина значения."},
+			{Key: "whiteSpace", Title: "Пробельные символы", Field: ChoiceField, Important: true, Optional: true, Default: "preserve",
+				Choices:     [][2]string{{"preserve", "preserve"}, {"replace", "replace"}, {"collapse", "collapse"}},
+				Description: "Сохраняются ли пробелы, переводы строк и табуляции значения."},
+			{Key: "minInclusive", Title: "Минимум включающий границу", Field: TextField, Important: true, Optional: true,
+				Description: "Самое меньшее значение, оно само допустимо."},
+			{Key: "minExclusive", Title: "Минимум не включающий границу", Field: TextField, Important: true, Optional: true,
+				Description: "Граница снизу, само значение недопустимо."},
+			{Key: "maxInclusive", Title: "Максимум включающий границу", Field: TextField, Important: true, Optional: true,
+				Description: "Самое большее значение, оно само допустимо."},
+			{Key: "maxExclusive", Title: "Максимум не включающий границу", Field: TextField, Important: true, Optional: true,
+				Description: "Граница сверху, само значение недопустимо."},
+			{Key: "totalDigits", Title: "Общее количество цифр", Field: NumberField, Important: true, Optional: true, Default: "0",
+				Description: "Сколько цифр в числе самое большее."},
+			{Key: "fractionDigits", Title: "Количество цифр дробной части", Field: NumberField, Important: true, Optional: true, Default: "0",
+				Description: "Сколько цифр после запятой самое большее."},
+		}},
+	},
+	"xdtoObjectType": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Optional: true, Description: "Имя типа объекта."},
+			{Key: "base", Title: "Базовый тип", Field: XMLTypeField, Important: true, Optional: true,
+				Description: "Тип объекта, свойства которого этот тип наследует."},
+			{Key: "open", Title: "Открытый", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Может ли объект нести свойства, не описанные в типе."},
+			{Key: "abstract", Title: "Абстрактный", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Только основа других типов: объекта этого типа не бывает."},
+			{Key: "mixed", Title: "Смешанный", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Может ли между свойствами объекта стоять текст."},
+			{Key: "ordered", Title: "Упорядоченный", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "true",
+				Description: "Пишутся ли свойства объекта в порядке типа."},
+			{Key: "sequenced", Title: "Последовательный", Field: SwitchField, Important: true, Optional: true, Choices: xdtoFlag, Default: "false",
+				Description: "Хранит ли объект порядок своих свойств и текста."},
+		}},
+	},
+	"xdtoPattern": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "value", Title: "Образец", Field: TextField, Important: true, Description: "Регулярное выражение, которому отвечает значение."},
+		}},
+	},
+	"xdtoEnumeration": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "value", Title: "Перечисление", Field: TextField, Important: true, Description: "Одно из допустимых значений типа."},
+		}},
 	},
 	"attribute": {
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{

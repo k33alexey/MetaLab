@@ -306,3 +306,8 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .localized-title-dialog .xdto-packages-own{padding-left:34px}
 /* Заголовок окна вопроса — «ML Studio», как у прототипа «Конфигуратор» над вопросом. */
 .dialog-caption{font-size:11px;font-weight:600;opacity:.7;margin:-8px 0 -4px}
+/* Незаданное значение узла пакета XDTO — умолчание серым (paket-xdto.md, «Палитра узла»). */
+.palette-unset{opacity:.55;font-style:italic}
+/* Редактор пакета XDTO (paket-xdto/02): панель над деревом узлов. */
+.xdto-window-body{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1}
+.xdto-window-body .xdto-tree{flex:1;overflow:auto}

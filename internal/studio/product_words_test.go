@@ -16,14 +16,15 @@ import (
 // of Manager and of the application are read here as their files hold
 // them - the strings and the text of the pages, comments left out, which
 // are the developers' and may name the prototype. A string of letters,
-// digits, dots, slashes, dashes and underscores alone - a file, an address,
-// a key - is not a text a person reads.
+// digits, dots, slashes, colons, dashes and underscores alone - a file, an
+// address, a key, a type named «{namespace}name» - is not a text a person
+// reads.
 var (
 	productForbiddenWords = regexp.MustCompile(`(?i)конфигурац|конфигуратор|конфігурац|конфігуратор|configuration|configurator|(?:^|[^0-9A-Za-zА-Яа-яЁё#])1[СC](?:$|[^0-9A-Za-zА-Яа-яЁё])`)
 	productBlockComments  = regexp.MustCompile(`(?s)/\*.*?\*/|<!--.*?-->`)
 	productLineComments   = regexp.MustCompile("(?m)(^|[^:'\"`\\\\])//[^\n]*")
 	productTexts          = regexp.MustCompile("'(?:[^'\\\\\n]|\\\\.)*'|\"(?:[^\"\\\\\n]|\\\\.)*\"|`(?:[^`\\\\]|\\\\.)*`|>[^<>]+<")
-	productTechnical      = regexp.MustCompile(`^[A-Za-z0-9./_-]*$`)
+	productTechnical      = regexp.MustCompile(`^[A-Za-z0-9./:{}_-]*$`)
 )
 
 // TestTheProductNamesNoConfigurationAnd1C catches a text of the interface

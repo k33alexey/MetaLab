@@ -1066,7 +1066,7 @@ function paletteFields(context) {
     open.disabled = off || !form.name;
     return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, ''); context.changed(); }, off || !form.name), open]);
   }
-  return (subject, row) => {
+  const field = (subject, row) => {
     const target = subject.target;
     if (row.field === 'name') {
       return nameInput(target.name, value => { const before = target.name; subject.setName(value); synonym?.follow(before, value); context.typed(); }, subject.check);
@@ -1112,10 +1112,10 @@ function paletteFields(context) {
     // «…» choosing it and the cross unavailable until the window of the
     // types of the packages (a type of an operation is never cleared:
     // web-servis.md, «Проверки»).
-    if (row.field === 'xml-type') {
-      const type = subject.get(row.key), shown = node('input');
+    if (row.field === 'xml-type' || row.field === 'xml-types') {
+      const types = row.field === 'xml-types' ? subject.get(row.key) || [] : [subject.get(row.key)].filter(Boolean), shown = node('input');
       shown.readOnly = true; shown.disabled = !available(subject, row);
-      shown.value = type?.name ? `${type.name}${type.namespace ? ` (${type.namespace})` : ''}` : '';
+      shown.value = types.filter(type => type.name).map(type => `${type.name}${type.namespace ? ` (${type.namespace})` : ''}`).join(', ');
       const pick = fieldChoiceButton(row.title, () => {}), clear = clearButton(`Очистить: ${row.title}`, () => {});
       pick.disabled = true; clear.disabled = true; clear.classList.add('field-button');
       return fieldWithButtons(shown, [pick, clear]);
@@ -1192,6 +1192,28 @@ function paletteFields(context) {
     control.disabled = off;
     return control;
   };
+  // A value a node may leave not said (row.optional; paket-xdto.md,
+  // «Палитра узла»): not said, the field shows the default greyed and ✓
+  // says it - the default, or for a type the window choosing one, which is
+  // an item of its own; said, the field is as any other, ✕ takes it back.
+  function optional(subject, row) {
+    const value = subject.get(row.key);
+    if (value === undefined) {
+      const shown = node('input', undefined, 'palette-unset');
+      shown.readOnly = true; shown.disabled = true;
+      shown.value = (row.choices || []).find(([key]) => key === row.default)?.[1] ?? row.default ?? '';
+      const typed = row.field === 'xml-type' || row.field === 'xml-types';
+      const say = fieldButton('apply', `Задать значение: ${row.title}`, () => {
+        const given = {number: Number(row.default || 0), switch: row.default === 'true', choice: row.default || row.choices?.[0]?.[0]}[row.field];
+        subject.set(row.key, given ?? '');
+        context.changed();
+      });
+      say.disabled = typed;
+      return fieldWithButtons(shown, [say]);
+    }
+    return fieldWithButtons(field(subject, row), [clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, false)]);
+  }
+  return (subject, row) => row.optional ? optional(subject, row) : field(subject, row);
 }
 
 /* rowsPage is a page of the window of an object built of the palette's
@@ -1282,7 +1304,8 @@ function windowHeadFields(source, object, typed, cleanups) {
    «Окно»): its title and a body draw fills (windowHeadFields at the top).
    The palette of the object, or of the part own chose, stands beside it,
    each showing what the other typed. target(source) is the object; own(api)
-   answers {pages: {key: () => element}, part() - {subject, title, tabs} of
+   answers {pages: {key: () => element}, title() - the title of the window
+   where it is not «<вид> <имя>», part() - {subject, title, tabs} of
    the part chosen or null, reset(), draw(body), subject(source) - what the
    palette of the object edits, its own properties by default, context() -
    what its fields open beyond the window's (windows, openWindow), value
@@ -1295,7 +1318,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   let source = null, frame = null, marks = new Set(), cleanups = [];
   const paletteCleanups = [];
   const object = () => target(source);
-  const title = () => `${source.kindTitle} ${object().name}`;
+  const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
   const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), palette: () => renderPalette(), cleanups: () => cleanups};
   const kind = own(api);
   function context(collect) {
