@@ -8,3 +8,19 @@
 .picture-window-image img{max-width:100%;max-height:360px}
 .picture-window-buttons{display:flex;flex-direction:column;gap:6px;width:230px}
 .picture-window-type{display:flex;gap:16px;margin-top:10px;font-size:12px}
+/* «Библиотека картинок конфигурации» (series-2.584/099): окно поверх Studio —
+   слева список, между ним и просмотром стрелки, справа просмотр и кнопки,
+   под списком «Добавить», «Изменить», «Удалить». */
+.picture-library{position:fixed;inset:80px auto auto 50%;width:fit-content;height:fit-content;max-height:none;transform:translateX(-50%);margin:0;padding:0;z-index:50;border:1px solid #4a4d54;border-radius:8px;background:#25262a;color:#dfe1e5;box-shadow:0 18px 60px #000a}
+.picture-library-title{padding:8px 12px;font-weight:600;border-bottom:1px solid #393b40}
+.picture-library-body{display:grid;grid-template-columns:260px 28px 230px;grid-template-rows:auto auto;gap:8px 10px;padding:10px 12px}
+.picture-library-list{grid-column:1;grid-row:1;height:260px;overflow:auto;border:1px solid #4a4d54;background:#1e1f22}
+.picture-library-row{display:flex;align-items:center;gap:6px;padding:2px 6px;cursor:default;white-space:nowrap}
+.picture-library-row.current{background:#2e436e}
+.picture-library-arrows{grid-column:2;grid-row:1;display:flex;flex-direction:column;justify-content:center;gap:6px}
+.picture-library-right{display:flex;flex-direction:column;gap:6px;grid-column:3;grid-row:1/span 2}
+.picture-library-image{height:180px;display:flex;align-items:center;justify-content:center;border:1px solid #4a4d54;background:#2b2d30}
+.picture-library-image img{max-width:100%;max-height:100%}
+.picture-library-right button:last-child{margin-top:auto}
+.picture-library-bottom{grid-column:1;grid-row:2;display:flex;gap:6px}
+.picture-library-arrows button{width:26px;height:26px;padding:0}

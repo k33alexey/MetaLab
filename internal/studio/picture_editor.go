@@ -280,6 +280,58 @@ func (workspace *Workspace) replacePictureImageLocked(relative string, images []
 	return nil
 }
 
+// PictureLibraryItem is a common picture as «Библиотека картинок
+// конфигурации» lists it (docs/block-00/obshchaya-kartinka.md, «Досъёмка
+// 27.10.2026»): where it is described, its name, the image it shows - none
+// for a picture of none - and whether it keeps a set of variants, which
+// the library neither shows nor clears.
+type PictureLibraryItem struct {
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	Image string `json:"image,omitempty"`
+	Set   bool   `json:"set,omitempty"`
+}
+
+// PictureLibrary lists the common pictures of the project in the order of
+// the tree.
+func (workspace *Workspace) PictureLibrary() ([]PictureLibraryItem, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		return nil, err
+	}
+	items := []PictureLibraryItem{}
+	for _, object := range loaded.KindObjects(metadata.CommonPictureKind) {
+		relative, err := project.ObjectMetadataPath(string(metadata.CommonPictureKind), object.Name)
+		if err != nil {
+			return nil, err
+		}
+		images, _, err := workspace.pictureImagesLocked(relative)
+		if err != nil {
+			return nil, err
+		}
+		picture, _ := loaded.CommonPicture(object.Name)
+		item := PictureLibraryItem{Path: relative, Name: object.Name, Set: len(picture.Variants) > 0 || len(images) > 1}
+		if len(images) == 1 && !item.Set {
+			item.Image = images[0]
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// ClearPicture takes the image of a picture away at once - «Очистить» of
+// the library, with no question (obshchaya-kartinka.md, «Досъёмка
+// 27.10.2026») - by the save of its window, at the revision read now.
+func (workspace *Workspace) ClearPicture(relative string) (PictureEditorSource, error) {
+	opened, err := workspace.ReadPictureEditor(relative)
+	if err != nil {
+		return PictureEditorSource{}, err
+	}
+	return workspace.SavePictureEditor(relative, PictureWindowValue{CommonPictureDefinition: opened.Picture, Image: &PictureImage{}}, opened.Revision)
+}
+
 // CreatePicture makes the next common picture by the one way every object
 // is made (CreateObject) and opens its window.
 func (workspace *Workspace) CreatePicture(name string) (PictureEditorSource, error) {
@@ -305,5 +357,13 @@ func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		response.Header().Set("Cache-Control", "no-store")
 		_, _ = response.Write(content)
 	})
+	routes.HandleFunc("GET "+pictureEditorAddress+"/library", answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.PictureLibrary()
+	}))
+	routes.HandleFunc("POST "+pictureEditorAddress+"/clear", answerStudio(0, writeSourceError, func(input struct {
+		Path string `json:"path"`
+	}) (any, error) {
+		return workspace.ClearPicture(input.Path)
+	}))
 	registerObjectEditor(routes, pictureEditorAddress, workspace.ReadPictureEditor, workspace.SavePictureEditor, workspace.CreatePicture, workspace.DeletePicture)
 }

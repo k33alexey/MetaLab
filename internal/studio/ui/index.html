@@ -172,13 +172,21 @@
     const templateEditor=createTemplateEditor(document.createElement('div'),()=>objectChanged(templateEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle});
     // «Добавить» of a template opens its constructor, which makes the template at its own address; a refusal is shown and the constructor opens again as it was.
     const constructCommonTemplate=()=>constructTemplate(configuration,draft=>({path:'',kind:'common-templates',name:draft.name}),({file,...made})=>postJSON('/api/template/new',made));
+    // «Все картинки» of a picture: «Библиотека картинок конфигурации» over the tree's own actions - «Добавить» of the tree, the window of a picture, its deletion and its clearing at once, with no question (obshchaya-kartinka.md, «Досъёмка 27.10.2026»). A picture changed and not saved in its open window is neither deleted nor cleared.
+    function unsavedPicture(path){if(!dirty||currentFile?.path!==path)return false;status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return true}
+    function openPictureLibrary(){showPictureLibrary({
+      add:async()=>{if(dirty){status.className='warning';status.textContent='Сначала сохраните текущие изменения.';return false}await createObject('/api/picture');return true},
+      open:path=>openFile(path),
+      clear:async path=>{if(unsavedPicture(path))return false;try{await postJSON('/api/picture/clear',{path});if(currentFile?.path===path)await loadObject('/api/picture',path);return true}catch(error){showToolError(error);return false}},
+      remove:async path=>{if(unsavedPicture(path))return false;try{const opened=await (await fetch(`/api/picture?path=${encodeURIComponent(path)}`)).json();if(!await deleteObjectAt('/api/picture',path,opened.revision))return false;if(currentFile?.path===path)closeFile();await loadTree(false);return true}catch(error){showToolError(error);return false}},
+    })}
     const wsReferenceEditor=createWSReferenceEditor(document.createElement('div'),()=>objectChanged(wsReferenceEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle});
     // «Импорт WSDL…» of a reference: the window of the address with the address before; the reference takes the new description, or stays as it was.
     async function reimportWSDL(node,element){if(!await openFile(node.path))return;const value=await importWSDL(currentFile);if(!value)return;showObject('/api/ws-reference',value);currentFile=value;dirty=false;saveButton.disabled=true;await loadTree(false);status.className='';status.textContent='Готово'}
     const webServiceEditor=createWebServiceEditor(document.querySelector('#web-service-editor'),()=>objectChanged(webServiceEditor),catalogAround);
     const httpServiceEditor=createHTTPServiceEditor(document.querySelector('#http-service-editor'),()=>objectChanged(httpServiceEditor),catalogAround);
     const webSocketClientEditor=createWebSocketClientEditor(document.createElement('div'),()=>objectChanged(webSocketClientEditor),{palette:properties,paletteTitle:catalogAround.paletteTitle,openModule:catalogAround.openModule});
-    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture'},'/api/style':{editor:styleEditor,field:'style'},'/api/template':{editor:templateEditor,field:'template',construct:constructCommonTemplate},
+    const objectEditors={'/api/role':{editor:roleEditor,field:'role',open:'Открыть права'},'/api/catalog':{editor:catalogEditor,field:'catalog'},'/api/constant':{editor:constantEditor,field:'constant'},'/api/picture':{editor:pictureEditor,field:'picture',commands:()=>[['Все картинки',openPictureLibrary]]},'/api/style':{editor:styleEditor,field:'style'},'/api/template':{editor:templateEditor,field:'template',construct:constructCommonTemplate},
       // «Просмотр», bold, opens the window viewing the description - an item of its own, unavailable until then.
       '/api/web-service':{editor:webServiceEditor,field:'service'},'/api/http-service':{editor:httpServiceEditor,field:'service'},
       // «Добавить» of a WebSocket client opens its empty module at once (websocket-klient.md, «Новый клиент»).
@@ -482,6 +490,8 @@
       if(object&&currentFile.path===selectedNode.path){const inside=object.editor.deleteContextOf?.(selectedNode);if(inside)return{...inside,inside:true};}
       return null;
     }
+    // Deletes the object described at path through the address of its window, at the revision read last; a refusal is shown as the status.
+    async function deleteObjectAt(address,path,revision){const response=await studioRequest(`${address}?path=${encodeURIComponent(path)}&expectedRevision=${encodeURIComponent(revision)}`,{method:'DELETE'});if(response.ok)return true;status.textContent=await response.text();status.className='error';return false}
     const treeAddButton=document.querySelector('#tree-add'),treeDeleteButton=document.querySelector('#tree-delete');
     const treeSubsystemsButton=subsystemFilterButton({schema:()=>projectData.subsystems,root:()=>configuration.name,holder:treeFilter,applied:renderTree,button:document.querySelector('#tree-subsystems')});
     // Под отбором по подсистемам дерево не правится: «Добавить» и «Удалить»
@@ -507,8 +517,7 @@
       if(context.inside){objectEditors[currentFile.editor].editor.deleteFromTreeContext(context);return;}
       loadingFile=true;treeAddButton.disabled=true;treeDeleteButton.disabled=true;status.className='';status.textContent='Удаление…';
       try{
-        const response=await studioRequest(`${context.editor}?path=${encodeURIComponent(context.path)}&expectedRevision=${encodeURIComponent(currentFile?.revision||'')}`,{method:'DELETE'});
-        if(!response.ok){status.textContent=await response.text();status.className='error';return;}
+        if(!await deleteObjectAt(context.editor,context.path,currentFile?.revision||''))return;
         closeFile();await loadTree();status.className='';status.textContent='Удалено.';
       }catch(error){showToolError(error);}
       finally{loadingFile=false;updateTreeToolbar();}
