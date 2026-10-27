@@ -217,3 +217,73 @@ func TestTheConstructorOfATemplateOfACatalog(t *testing.T) {
 		t.Errorf("the catalog on disk does not declare Печать: %v", err)
 	}
 }
+
+// objectBinaryTemplateWalk adds the binary template Данные to Товары with
+// a file loaded in the constructor, saves, then opens Контрагенты and reads
+// what its window and palette show.
+const objectBinaryTemplateWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
+  const host = document.querySelector('#catalog-editor');
+  const dialog = () => document.querySelector('dialog[open]');
+  const press = caption => [...dialog().querySelectorAll('button')].find(item => item.textContent === caption).click();
+  window.chooseFileContent = async () => ({name: 'data.bin', content: btoa('ML binary')});
+  await openObject('Товары');
+  await windowPage('Макеты');
+  host.querySelector('.object-window-panel button[title=Добавить]').click(); await settle();
+  const name = dialog().querySelector('.catalog-field input');
+  name.value = 'Данные'; name.dispatchEvent(new Event('input', {bubbles: true}));
+  [...dialog().querySelectorAll('fieldset label')].find(label => label.textContent === 'Двоичные данные').querySelector('input').click(); await settle();
+  [...dialog().querySelectorAll('button')].find(item => item.title === 'Загрузить из файла').click(); await settle();
+  press('Готово'); await settle();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  await openObject('Контрагенты');
+  steps.other = {page: host.querySelector('.object-window-page[aria-selected=true]').textContent, palette: document.querySelector('#inspector-title').textContent,
+    chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || ''};
+  return steps;
+})()`
+
+// A template the constructor loads from a file is written by «Сохранить» of
+// the window with the catalog (maket.md; template_editor.go), and the part
+// chosen in the window of one catalog is not carried into the window of
+// another. Defects caught: the content of a new template lost on the way
+// from the window; another catalog opened with the template of the first
+// chosen.
+func TestTheWindowOfACatalogWritesALoadedTemplateAndForgetsTheChoice(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	// Контрагенты keeps a template of the same name, which a choice carried
+	// over would find.
+	partners := filepath.Join(root, "metadata", "catalogs", "Контрагенты", "object.yaml")
+	description, err := os.ReadFile(partners)
+	if err != nil {
+		t.Fatal(err)
+	}
+	description = append(description, "templates:\n  - id: 40000000-0000-4000-8000-000000000901\n    name: Данные\n    kind: text\n"...)
+	if err := os.WriteFile(partners, description, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, objectBinaryTemplateWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Saved bool
+		Other struct{ Page, Palette, Chosen string }
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if !steps.Saved {
+		t.Errorf("the window was not saved")
+	}
+	content, err := os.ReadFile(filepath.Join(root, "metadata", "catalogs", "Товары", "templates", "Данные", "content.bin"))
+	if err != nil || string(content) != "ML binary" {
+		t.Errorf("the loaded content: %q, %v", content, err)
+	}
+	if steps.Other.Page != "Основные" || steps.Other.Palette != "Свойства: Контрагенты" || steps.Other.Chosen != "" {
+		t.Errorf("Контрагенты opened with %+v, want «Основные», its own palette, nothing chosen", steps.Other)
+	}
+}

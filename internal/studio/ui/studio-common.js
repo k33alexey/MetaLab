@@ -1415,13 +1415,29 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
+  // The part chosen in the window - of the kind's own pages or of the common
+  // ones - one for the window; its palette stands beside it.
+  let chosen = null;
+  const same = (left, right) => !!left && !!right && left.kind === right.kind && left.container === right.container && left.id === right.id;
+  const choose = choice => { chosen = choice; frame.refresh(); renderPalette(); };
+  const focusPalette = () => around.palette?.querySelector('input')?.focus();
+  // A row of a tree of parts: a click chooses its part, a double click
+  // chooses it and puts the focus into its palette.
+  function treeRow(icon, caption, choice, children = []) {
+    const {element, row} = treeNode({icon, caption, children, open: true});
+    row.classList.toggle('selected', same(chosen, choice));
+    row.addEventListener('click', () => choose(choice));
+    if (choice.id) row.addEventListener('dblclick', event => { event.stopPropagation(); choose(choice); focusPalette(); });
+    return element;
+  }
   const api = {source: () => source, object, changed, typed, marked: () => onChange(), refresh: () => frame.refresh(), show: key => frame.show?.(key),
-    palette: () => renderPalette(), cleanups: () => cleanups, rowsPage: key => rowsOf(key)};
+    palette: () => renderPalette(), cleanups: () => cleanups, rowsPage: key => rowsOf(key),
+    chosen: () => chosen, setChosen: choice => { chosen = choice; }, choose, treeRow, focusPalette, addTemplate: () => common.addTemplate()};
   const kind = own(api);
-  // «Обмен данными», «Ввод на основании», «Права» of a kind whose window has
-  // them (commonObjectPages); «Вводится на основании» is the object's own list.
+  // The common pages of a kind whose window has them (commonObjectPages);
+  // «Вводится на основании» is the object's own list.
   const common = commonObjectPages({source: () => source, object, host, setBasedOn: list => { if (list.length) object().basedOn = list; else delete object().basedOn; },
-    changed, marked: onChange, refresh: () => frame.refresh()});
+    changed, marked: onChange, refresh: () => frame.refresh(), ...api, openFile: path => around.openFile?.(path)});
   function context(collect) {
     return {project: source, typed, changed, packages: source.packages, platformNamespaces: source.platformNamespaces, windows: [], cleanups: collect, valueChecks,
       openModule: role => around.openModule?.(role), ...kind.context?.()};
@@ -1474,19 +1490,19 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   }
   function renderPalette() {
     if (!source) return;
-    const part = kind.part?.();
+    const part = common.part() || kind.part?.();
     showObjectPalette(around, paletteCleanups, part ? part.title : object().name, part ? part.tabs : source.palette,
       part ? part.subject : kind.subject?.(source) || ownSubject(source, object()), context());
   }
   StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
-  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; kind.reset?.(); }, {
+  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; chosen = null; kind.reset?.(); }, {
     // Opened anew after «Сохранить» (keep), the window stays on its page with
     // the same part chosen.
     open(value, keep = false) {
       const page = keep && frame?.current ? frame.current() : 'main';
       if (source) clearObjectPalette(around, paletteCleanups);
       source = structuredClone(value);
-      if (!keep) kind.reset?.();
+      if (!keep) { chosen = null; kind.reset?.(); }
       kind.open?.(source);
       marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
       options = new Set((source.functionalOptions || []).filter(place => place.member).map(place => place.id));
@@ -1507,6 +1523,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     // Shows the palette of the object itself, as a click on its node does.
     showPalette() {
       if (!source || !around.palette) return false;
+      chosen = null;
       kind.reset?.();
       frame.refresh();
       renderPalette();
@@ -1654,10 +1671,105 @@ function commonObjectPages(around) {
       state: roleRight, changed: () => { around.marked(); around.refresh(); }}));
     return page;
   }
-  const pages = {exchange: exchangePage, 'based-on': basedOnPage, rights: rightsPage};
+  // «Формы», «Команды», «Макеты»: a tree of the parts with its panel - the
+  // forms of the object below the frame of the main forms, the commands
+  // above the flag of the standard commands, the templates above the menu
+  // «Конструкторы» (spravochnik.md, okno-08, okno-10, okno-11). A form opens
+  // by «Изменить», a command - its module, as its own action is; commands
+  // and templates move round the ends. Adding a template opens the
+  // constructor of a template; adding forms and commands and deleting are
+  // the items of their constructors, and a template opens in its editor -
+  // each unavailable until its item. The part chosen is the window's
+  // (around.chosen), its palette beside it.
+  function partsTree(icon, caption, kind, items, open, move, add) {
+    const chosen = around.chosen(), inside = chosen?.kind === kind ? chosen : null, on = !!inside;
+    const bar = windowPanel([
+      panelButton('add', 'Добавить', !!add, () => add()),
+      panelButton('change', 'Изменить', on && !!open, () => open(inside.id)),
+      panelButton('delete', 'Удалить', false, () => {}),
+      panelButton('move-up', 'Переместить вверх', on && !!move, () => { move(inside.id, -1); around.changed(); }),
+      panelButton('move-down', 'Переместить вниз', on && !!move, () => { move(inside.id, 1); around.changed(); }),
+      panelButton('sort', 'Сортировать', false, () => {}),
+    ]);
+    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
+    tree.append(around.treeRow(icon, caption, {kind: `${kind}s`}, items.map(name => {
+      const element = around.treeRow(icon, name, {kind, id: name});
+      if (open) element.addEventListener('dblclick', () => open(name));
+      return element;
+    })));
+    return [bar, tree];
+  }
+  function moveNamed(list) {
+    return (name, by) => { const at = list.findIndex(item => item.name === name); if (at >= 0) moveInCircle(list, at, by); };
+  }
+  function formsPage() {
+    const page = around.rowsPage('forms') || node('div', undefined, 'object-window-fields');
+    page.append(...partsTree('form', 'Формы', 'form', (source().forms || []).map(form => form.name),
+      name => around.openFile(source().forms.find(form => form.name === name).path)));
+    return page;
+  }
+  function commandsPage() {
+    const page = node('div', undefined, 'object-window-fields'), rows = around.rowsPage('commands');
+    const commands = around.object().commands || [];
+    page.append(...partsTree('command', 'Команды', 'command', commands.map(command => command.name),
+      name => source().commandModules?.[name] && around.openFile(source().commandModules[name]), moveNamed(commands)), ...rows?.childNodes || []);
+    return page;
+  }
+  // A template the constructor made (constructTemplate) stands last; the
+  // content loaded from a file is written by «Сохранить» with it, by its
+  // identifier.
+  let contents = new Map();
+  // «Добавить» of a template - on the page or on the branch «Макеты» of the
+  // tree - opens the constructor of a template (maket.md); the name is
+  // checked among the templates of the object before it is added, and the
+  // template made is chosen.
+  async function addTemplate() {
+    const templates = () => around.object().templates || [];
+    const check = draft => ({path: source().path, description: {...structuredClone(around.object()), templates: [...templates(),
+      {id: crypto.randomUUID(), name: draft.name, kind: draft.kind}]}, at: ['templates', String(templates().length)]});
+    const draft = await constructTemplate(source(), check, async draft => {
+      const answer = await postJSON('/api/name', check(draft));
+      if (answer.refusal) throw new Error(answer.refusal);
+      return draft;
+    });
+    if (!draft || !source()) return;
+    const template = {id: crypto.randomUUID(), name: draft.name, kind: draft.kind};
+    if (Object.keys(draft.title || {}).length) template.title = draft.title;
+    if (draft.comment) template.comment = draft.comment;
+    (around.object().templates ||= []).push(template);
+    if (draft.content) contents.set(template.id, draft.content);
+    around.setChosen({kind: 'template', id: template.name});
+    around.show('templates');
+    around.changed();
+  }
+  function templatesPage() {
+    const page = node('div', undefined, 'object-window-fields');
+    const templates = around.object().templates || [];
+    const designers = menuButton('Конструкторы', () => []);
+    designers.disabled = true;
+    designers.classList.add('object-window-button');
+    page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates), addTemplate), designers);
+    return page;
+  }
+  // The palette of the template chosen: the rows of a template of an
+  // object (kinds.PartPalette("template")).
+  function part() {
+    const chosen = around.chosen();
+    if (chosen?.kind !== 'template' || !has('templates')) return null;
+    const templates = around.object().templates || [], at = templates.findIndex(item => item.name === chosen.id), template = templates[at];
+    if (!template) { around.setChosen(null); return null; }
+    return {title: template.name, tabs: source().partPalettes?.template, subject: {target: template, owner: source().path.split('/')[1], get: path => pathValue(template, path),
+      set: (path, value) => { if (value) setPathValue(template, path, value); else delete template[path]; },
+      setName: value => { template.name = value; chosen.id = value; },
+      check: () => ({path: source().path, description: structuredClone(around.object()), at: ['templates', String(at)]})}};
+  }
+  const pages = {exchange: exchangePage, 'based-on': basedOnPage, rights: rightsPage, forms: formsPage, commands: commandsPage, templates: templatesPage};
   return {
     pages,
+    part,
+    addTemplate,
     open() {
+      contents = new Map();
       exchange = new Map((source().exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
       currentPlan = source().exchangePlans?.[0]?.id ?? null;
       basisFor = inTreeOrder(withSelf((source().basisFor || []).map(place => place.id), (around.object().basedOn || []).includes(around.object().id)));
@@ -1672,6 +1784,8 @@ function commonObjectPages(around) {
       if (has('based-on')) value.basisFor = [...basisFor].sort();
       if (has('rights')) value.roles = (source().roles || []).map(entry => ({id: entry.role.id, revision: entry.revision,
         permission: roleModels.get(entry.role.id).value().objects.find(item => item.object === around.object().id) || null}));
+      const loaded = [...contents].filter(([id]) => around.object().templates?.some(item => item.id === id)).map(([id, content]) => ({id, content}));
+      if (loaded.length) value.templateContents = loaded;
       if (has('exchange')) value.exchangePlans = [...exchange].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, autoRecord]) => ({id, autoRecord}));
       return value;
     },

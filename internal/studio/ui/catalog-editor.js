@@ -10,7 +10,6 @@ function createCatalogModel(source) {
   // What the window «Редактирование типа данных» offers for a field the
   // database stores, as the server reads it off the model (TypeOffer).
   const typeOffer = source.typeOffer;
-  const contents = new Map();
   function attributeList(container) {
     if (container === 'catalog') return catalog.attributes;
     return catalog.tableParts.find(part => part.id === container)?.attributes;
@@ -76,17 +75,6 @@ function createCatalogModel(source) {
       const index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) list.splice(index, 1);
     },
-    // A template the constructor made (constructTemplate): it stands last;
-    // the content loaded from a file is written by «Сохранить» with it.
-    addTemplate(draft) {
-      const template = {id: crypto.randomUUID(), name: draft.name, kind: draft.kind};
-      if (Object.keys(draft.title || {}).length) template.title = draft.title;
-      if (draft.comment) template.comment = draft.comment;
-      (catalog.templates ||= []).push(template);
-      if (draft.content) contents.set(template.id, draft.content);
-      return template;
-    },
-    templateContents() { return [...contents].filter(([id]) => catalog.templates?.some(item => item.id === id)).map(([id, content]) => ({id, content})); },
     moveAttribute(container, id, by) {
       const list = attributeList(container), index = list?.findIndex(item => item.id === id) ?? -1;
       if (index >= 0) moveInCircle(list, index, by);
@@ -121,7 +109,7 @@ function createCatalogModel(source) {
    «Данные» and the two flags of «Нумерация»; a page whose item of the map is
    not done yet is listed and empty. around holds what the window stands
    among: palette - where the properties of the attribute or table part
-   chosen in the window stand, as the prototype's palette shows them;
+   pick.chosen in the window stand, as the prototype's palette shows them;
    actions() - the commands of the object's menu «Действия» offers; close() -
    «Закрыть». */
 function createCatalogEditor(host, onChange, around = {}) {
@@ -129,11 +117,14 @@ function createCatalogEditor(host, onChange, around = {}) {
 }
 
 /* catalogWindow is what the window of a catalog adds to the window of an
-   object (objectWindowEditor): its own pages, the parts chosen in it and
+   object (objectWindowEditor): its own pages, the parts pick.chosen in it and
    their palettes, what its fields open and offer, and the commands of the
    tree inside it. */
 function catalogWindow(api, onChange, around, host) {
-  let source = null, model = null, chosen = null;
+  let source = null, model = null;
+  // The part chosen in the window is the builder's (api.chosen), one for
+  // the window's every page.
+  const pick = {get chosen() { return api.chosen(); }, set chosen(choice) { api.setChosen(choice); }};
   const catalog = () => source.catalog;
   const frame = {refresh: () => api.refresh(), show: key => api.show(key)};
   // A structural edit builds the page anew; typing does not - building the
@@ -187,25 +178,17 @@ function catalogWindow(api, onChange, around, host) {
   // with its panel, and the buttons of the windows of the standard
   // attributes, characteristics, common attributes and additional indexes -
   // unavailable until their windows are built (spravochnik.md, okno-06).
-  function same(left, right) { return !!left && !!right && left.kind === right.kind && left.container === right.container && left.id === right.id; }
-  function choose(choice) { chosen = choice; frame.refresh(); renderPalette(); }
-  function treeRow(icon, caption, choice, children = []) {
-    const {element, row} = treeNode({icon, caption, children, open: true});
-    row.classList.toggle('selected', same(chosen, choice));
-    row.addEventListener('click', () => choose(choice));
-    if (choice.id) row.addEventListener('dblclick', event => { event.stopPropagation(); choose(choice); focusPalette(); });
-    return element;
-  }
+  const treeRow = api.treeRow, focusPalette = api.focusPalette;
   // The buttons a panel of parts shares (partButtons), acting on what is
   // chosen inside its tree.
   function chosenPartButtons(choice, remove, move) {
-    return partButtons(!!choice?.id, {change: () => focusPalette(), remove: () => { remove(); chosen = null; rerender(); },
+    return partButtons(!!choice?.id, {change: () => focusPalette(), remove: () => { remove(); pick.chosen = null; rerender(); },
       move: by => { move(by); rerender(); }});
   }
   function attributeChoice(container, attribute) { return {kind: 'attribute', container, id: attribute.id}; }
   function renderAttributesTree() {
-    const folder = {kind: 'attributes'}, inside = chosen?.kind === 'attribute' && chosen.container === 'catalog' ? chosen : null;
-    const add = panelButton('add', 'Добавить', true, () => { const attribute = model.addAttribute('catalog'); chosen = attributeChoice('catalog', attribute); rerender(); });
+    const folder = {kind: 'attributes'}, inside = pick.chosen?.kind === 'attribute' && pick.chosen.container === 'catalog' ? pick.chosen : null;
+    const add = panelButton('add', 'Добавить', true, () => { const attribute = model.addAttribute('catalog'); pick.chosen = attributeChoice('catalog', attribute); rerender(); });
     const bar = windowPanel([add, ...chosenPartButtons(inside, () => model.removeAttribute('catalog', inside.id), by => model.moveAttribute('catalog', inside.id, by))]);
     const tree = node('div', undefined, 'object-window-tree');
     tree.append(treeRow('attribute', 'Реквизиты', folder, catalog().attributes.map(attribute => treeRow('attribute', attribute.name, attributeChoice('catalog', attribute)))));
@@ -214,10 +197,10 @@ function catalogWindow(api, onChange, around, host) {
   function renderTablePartsTree() {
     const folder = {kind: 'tableparts'};
     // What is chosen inside the tree: a table part, or an attribute of one.
-    const part = chosen?.kind === 'tablepart' ? chosen : null, inner = chosen?.kind === 'attribute' && chosen.container !== 'catalog' ? chosen : null;
+    const part = pick.chosen?.kind === 'tablepart' ? pick.chosen : null, inner = pick.chosen?.kind === 'attribute' && pick.chosen.container !== 'catalog' ? pick.chosen : null;
     const owner = part?.id || inner?.container;
-    const addPart = panelButton('add', 'Добавить табличную часть', true, () => { const added = model.addTablePart(); chosen = {kind: 'tablepart', id: added.id}; rerender(); });
-    const addAttribute = panelButton('attribute-add', 'Добавить реквизит', !!owner, () => { const attribute = model.addAttribute(owner); chosen = attributeChoice(owner, attribute); rerender(); });
+    const addPart = panelButton('add', 'Добавить табличную часть', true, () => { const added = model.addTablePart(); pick.chosen = {kind: 'tablepart', id: added.id}; rerender(); });
+    const addAttribute = panelButton('attribute-add', 'Добавить реквизит', !!owner, () => { const attribute = model.addAttribute(owner); pick.chosen = attributeChoice(owner, attribute); rerender(); });
     const buttons = inner
       ? chosenPartButtons(inner, () => model.removeAttribute(inner.container, inner.id), by => model.moveAttribute(inner.container, inner.id, by))
       : chosenPartButtons(part, () => model.removeTablePart(part.id), by => model.moveTablePart(part.id, by));
@@ -323,75 +306,6 @@ function catalogWindow(api, onChange, around, host) {
   // (spravochnik.md, okno-09, okno-15).
   function renderRowsPage(key) { return api.rowsPage(key); }
 
-  // «Формы», «Команды», «Макеты»: a tree of the parts with its panel - the
-  // forms of the object below the frame of the main forms, the commands
-  // above the flag of the standard commands, the templates above the menu
-  // «Конструкторы» (spravochnik.md, okno-08, okno-10, okno-11). A form opens
-  // by «Изменить», a command - its module, as its own action is; commands
-  // and templates move round the ends. Adding and deleting are the items of
-  // the constructors of a form, of a command and of a template; a template
-  // opens in its editor - each unavailable until its item.
-  function partsTree(icon, caption, kind, items, open, move, add) {
-    const inside = chosen?.kind === kind ? chosen : null, on = !!inside;
-    const bar = windowPanel([
-      panelButton('add', 'Добавить', !!add, () => add()),
-      panelButton('change', 'Изменить', on && !!open, () => open(inside.id)),
-      panelButton('delete', 'Удалить', false, () => {}),
-      panelButton('move-up', 'Переместить вверх', on && !!move, () => { move(inside.id, -1); rerender(); }),
-      panelButton('move-down', 'Переместить вниз', on && !!move, () => { move(inside.id, 1); rerender(); }),
-      panelButton('sort', 'Сортировать', false, () => {}),
-    ]);
-    const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
-    tree.append(treeRow(icon, caption, {kind: `${kind}s`}, items.map(name => {
-      const element = treeRow(icon, name, {kind, id: name});
-      if (open) element.addEventListener('dblclick', () => open(name));
-      return element;
-    })));
-    return [bar, tree];
-  }
-  function moveNamed(list) {
-    return (name, by) => { const at = list.findIndex(item => item.name === name); if (at >= 0) moveInCircle(list, at, by); };
-  }
-  function renderFormsPage() {
-    const page = renderRowsPage('forms');
-    page.append(...partsTree('form', 'Формы', 'form', (source.forms || []).map(form => form.name),
-      name => around.openFile?.(source.forms.find(form => form.name === name).path)));
-    return page;
-  }
-  function renderCommandsPage() {
-    const page = node('div', undefined, 'object-window-fields'), rows = renderRowsPage('commands');
-    const commands = catalog().commands || [];
-    page.append(...partsTree('command', 'Команды', 'command', commands.map(command => command.name),
-      name => source.commandModules?.[name] && around.openFile?.(source.commandModules[name]), moveNamed(commands)), ...rows.childNodes);
-    return page;
-  }
-  // «Добавить» of a template - on the page or on the branch «Макеты» of the
-  // tree - opens the constructor of a template (maket.md); the name is
-  // checked among the templates of the catalog before it is added, and the
-  // template made is chosen.
-  async function addTemplate() {
-    const templates = () => catalog().templates || [];
-    const check = draft => ({path: source.path, description: {...model.value(), templates: [...templates(), {id: crypto.randomUUID(), name: draft.name, kind: draft.kind}]},
-      at: ['templates', String(templates().length)]});
-    const draft = await constructTemplate(source, check, async draft => {
-      const answer = await postJSON('/api/name', check(draft));
-      if (answer.refusal) throw new Error(answer.refusal);
-      return draft;
-    });
-    if (!draft || !source) return;
-    chosen = {kind: 'template', id: model.addTemplate(draft).name};
-    frame.show('templates');
-    rerender();
-  }
-  function renderTemplatesPage() {
-    const page = node('div', undefined, 'object-window-fields');
-    const templates = catalog().templates || [];
-    const designers = menuButton('Конструкторы', () => []);
-    designers.disabled = true;
-    designers.classList.add('object-window-button');
-    page.append(...partsTree('template', 'Макеты', 'template', templates.map(template => template.name), null, moveNamed(templates), addTemplate), designers);
-    return page;
-  }
   // «Подсистемы»: the subsystems of the project by their parents, a box at
   // each, marked where the catalog is in its content (spravochnik.md, page
   // 2; snapshot okno-02). The marks are written into the subsystems by
@@ -433,32 +347,24 @@ function catalogWindow(api, onChange, around, host) {
   // catalog's own palette.
   function part() {
     const parts = catalog().tableParts, partAt = id => parts.findIndex(item => item.id === id);
-    if (chosen?.kind === 'attribute') {
-      const list = model.attributeList(chosen.container), attribute = list?.find(item => item.id === chosen.id);
-      if (!attribute) { chosen = null; return null; }
+    if (pick.chosen?.kind === 'attribute') {
+      const list = model.attributeList(pick.chosen.container), attribute = list?.find(item => item.id === pick.chosen.id);
+      if (!attribute) { pick.chosen = null; return null; }
       const at = ['attributes', String(list.indexOf(attribute))];
       return {title: attribute.name, tabs: source.partPalettes?.attribute,
-        subject: attributeSubject(chosen.container, attribute, chosen.container === 'catalog' ? at : ['tableParts', String(partAt(chosen.container)), ...at])};
+        subject: attributeSubject(pick.chosen.container, attribute, pick.chosen.container === 'catalog' ? at : ['tableParts', String(partAt(pick.chosen.container)), ...at])};
     }
-    if (chosen?.kind === 'template') {
-      const templates = catalog().templates || [], at = templates.findIndex(item => item.name === chosen.id), template = templates[at];
-      if (!template) { chosen = null; return null; }
-      return {title: template.name, tabs: source.partPalettes?.template, subject: {target: template, owner: 'catalogs', get: path => pathValue(template, path),
-        set: (path, value) => { if (value) setPathValue(template, path, value); else delete template[path]; },
-        setName: value => { template.name = value; chosen.id = value; }, check: () => ({path: source.path, description: model.value(), at: ['templates', String(at)]})}};
-    }
-    if (chosen?.kind === 'tablepart') {
-      const item = parts.find(entry => entry.id === chosen.id);
-      if (!item) { chosen = null; return null; }
+    if (pick.chosen?.kind === 'tablepart') {
+      const item = parts.find(entry => entry.id === pick.chosen.id);
+      if (!item) { pick.chosen = null; return null; }
       return {title: item.name, tabs: source.partPalettes?.tablePart, subject: tablePartSubject(item, ['tableParts', String(partAt(item.id))])};
     }
     return null;
   }
-  function focusPalette() { around.palette?.querySelector('input')?.focus(); }
 
   return {
     pages: {main: renderMainPage, subsystems: renderSubsystemsPage, 'functional-options': renderOptionsPage, hierarchy: renderHierarchyPage, owners: renderOwnersPage,
-      data: renderDataPage, numbering: renderNumberingPage, forms: renderFormsPage, commands: renderCommandsPage, templates: renderTemplatesPage},
+      data: renderDataPage, numbering: renderNumberingPage},
     open(opened) {
       source = opened;
       model = createCatalogModel(source);
@@ -466,7 +372,6 @@ function catalogWindow(api, onChange, around, host) {
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);
     },
-    reset() { chosen = null; },
     subject: () => catalogSubject(),
     part,
     // What the fields of the palette of the catalog and its parts offer:
@@ -480,15 +385,15 @@ function catalogWindow(api, onChange, around, host) {
     // The catalog and the subsystems and options marked on its pages, in one
     // order so a mark taken back leaves the window unchanged; the common
     // pages add theirs (objectWindowEditor).
-    value: () => ({...model.value(), templateContents: model.templateContents(), subsystems: [...membership].sort(), functionalOptions: [...options].sort()}),
+    value: () => ({...model.value(), subsystems: [...membership].sort(), functionalOptions: [...options].sort()}),
     methods: {
     // Chooses the attribute or table part a node of the tree names
     // (`attribute:<id>` or `tablepart:<id>`) on the page «Данные», so a click
     // on the configuration tree finds it inside the open window.
     select(kind, id) {
       if (!source) return false;
-      if (kind === 'attribute' && catalog().attributes.some(item => item.id === id)) chosen = {kind: 'attribute', container: 'catalog', id};
-      else if (kind === 'tablepart' && catalog().tableParts.some(item => item.id === id)) chosen = {kind: 'tablepart', id};
+      if (kind === 'attribute' && catalog().attributes.some(item => item.id === id)) pick.chosen = {kind: 'attribute', container: 'catalog', id};
+      else if (kind === 'tablepart' && catalog().tableParts.some(item => item.id === id)) pick.chosen = {kind: 'tablepart', id};
       else return false;
       frame.show('data');
       renderPalette();
@@ -522,13 +427,13 @@ function catalogWindow(api, onChange, around, host) {
     // add them, and chooses it on the page «Данные».
     addFromTreeContext(context) {
       if (!source) return;
-      if (context.kind === 'template') { addTemplate(); return; }
+      if (context.kind === 'template') { api.addTemplate(); return; }
       if (context.kind === 'tablepart' && !context.container) {
-        chosen = {kind: 'tablepart', id: model.addTablePart().id};
+        pick.chosen = {kind: 'tablepart', id: model.addTablePart().id};
       } else {
         const container = context.container || 'catalog', attribute = model.addAttribute(container);
         if (!attribute) return;
-        chosen = attributeChoice(container, attribute);
+        pick.chosen = attributeChoice(container, attribute);
       }
       frame.show('data');
       rerender();
@@ -540,7 +445,7 @@ function catalogWindow(api, onChange, around, host) {
       if (context.kind === 'tablepart') model.removeTablePart(context.id);
       else if (context.kind === 'attribute') model.removeAttribute(context.container, context.id);
       else return;
-      chosen = null;
+      pick.chosen = null;
       rerender();
     },
   }};
