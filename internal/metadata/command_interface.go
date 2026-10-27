@@ -294,7 +294,7 @@ func (catalog *Catalog) resolveCommandInterfaces(root string) {
 		interfaces = append(interfaces, placed{"subsystem " + item.Name + " command interface", item.CommandInterface})
 	}
 	// The main section keeps the same kind of interface, on the root.
-	interfaces = append(interfaces, placed{"the configuration's main section command interface", catalog.MainSectionCommandInterface})
+	interfaces = append(interfaces, placed{"the project's main section command interface", catalog.MainSectionCommandInterface})
 	for _, item := range interfaces {
 		where, value := item.where, item.value
 		for _, entry := range value.CommandsVisibility {
@@ -317,11 +317,11 @@ func (catalog *Catalog) resolveCommandInterfaces(root string) {
 		}
 	}
 	for _, id := range catalog.Project.SubsystemsOrder {
-		subsystem("the configuration's order of sections", id)
+		subsystem("the project's order of sections", id)
 	}
 	for _, item := range catalog.Project.SubsystemsVisibility {
-		subsystem("the configuration's visibility of sections", item.Subsystem)
-		role("the configuration's visibility of sections", item.InterfaceVisibility)
+		subsystem("the project's visibility of sections", item.Subsystem)
+		role("the project's visibility of sections", item.InterfaceVisibility)
 	}
 }
 

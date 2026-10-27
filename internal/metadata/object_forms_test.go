@@ -509,7 +509,7 @@ forms: {main: common-forms/ФормаОтчета}
 	if err == nil {
 		t.Fatal("a role opening a common form that is not there was accepted")
 	}
-	if !strings.Contains(err.Error(), "opens main form with common form ФормаОтчета, which is not in the configuration") {
+	if !strings.Contains(err.Error(), "opens main form with common form ФормаОтчета, which is not in the project") {
 		t.Fatalf("refused for another reason: %v", err)
 	}
 }

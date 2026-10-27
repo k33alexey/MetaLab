@@ -109,7 +109,7 @@ func (catalog *Catalog) validateDocumentMovements() error {
 				continue
 			}
 			if !ok {
-				return fmt.Errorf("document %s writes into %s, which is not a register of the configuration", document.Name, id)
+				return fmt.Errorf("document %s writes into %s, which is not a register of the project", document.Name, id)
 			}
 			if target.Kind != InformationRegisterKind {
 				continue

@@ -163,7 +163,7 @@ func (catalog *Catalog) checkReferenceObject(value Value, allowed Type) string {
 		return "reference to " + value.Object.String() + " is not allowed here"
 	}
 	if found, _ := catalog.typeNamesObject(allowed.Kind, value.Object); !found {
-		return "object " + value.Object.String() + " is not in the configuration"
+		return "object " + value.Object.String() + " is not in the project"
 	}
 	return ""
 }

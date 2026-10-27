@@ -1085,8 +1085,8 @@ func TestObjectsOrderIsCheckedForShape(t *testing.T) {
 		order map[string][]uuid.UUID
 		want  string
 	}{
-		"не вид":  {map[string][]uuid.UUID{"tables": {object}}, "objects_order.tables is not a kind of the configuration's tree"},
-		"языки":   {map[string][]uuid.UUID{"languages": {object}}, "objects_order.languages is not a kind of the configuration's tree"},
+		"не вид":  {map[string][]uuid.UUID{"tables": {object}}, "objects_order.tables is not a kind of the project's tree"},
+		"языки":   {map[string][]uuid.UUID{"languages": {object}}, "objects_order.languages is not a kind of the project's tree"},
 		"нулевой": {map[string][]uuid.UUID{"catalogs": {{}}}, "objects_order.catalogs[0] must be a non-zero UUID"},
 		"дважды":  {map[string][]uuid.UUID{"catalogs": {object, object}}, "objects_order.catalogs[1] names " + object.String() + " twice"},
 	} {

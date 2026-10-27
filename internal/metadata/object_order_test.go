@@ -115,7 +115,7 @@ func TestOrderLineNamingNothingIsAReferenceToNothing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := orderProject(t, map[string][]uuid.UUID{"catalogs": list})
-			if !containsWhere(unresolvedOf(t, root), "the configuration's objects_order.catalogs") {
+			if !containsWhere(unresolvedOf(t, root), "the project's objects_order.catalogs") {
 				t.Fatalf("%s: the line was not listed", name)
 			}
 		})

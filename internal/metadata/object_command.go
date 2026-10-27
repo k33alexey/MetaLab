@@ -242,7 +242,7 @@ func validateCommandShape(prefix string, command ObjectCommand, configuration pr
 	// которую входит команда по умолчанию» (opis of 15.10.2026, komanda.md).
 	switch {
 	case command.Group != "" && command.GroupRef != nil:
-		issues = append(issues, prefix+" names both a standard group and a group of the configuration")
+		issues = append(issues, prefix+" names both a standard group and a group of the project")
 	case command.Group == "" && command.GroupRef == nil:
 		issues = append(issues, prefix+" names no group: the designer refuses a command with no group it stands in by default")
 	}

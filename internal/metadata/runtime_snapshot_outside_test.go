@@ -160,7 +160,7 @@ func TestARuntimeSnapshotCarriesRightsAndMovementsOnKindsItHoldsNot(t *testing.T
 	document := slices.IndexFunc(stranger.Documents, func(item DocumentDefinition) bool { return item.Name == "Поступление" })
 	stranger.Documents[document] = cloneDocumentDefinition(stranger.Documents[document])
 	stranger.Documents[document].Movements = append(stranger.Documents[document].Movements, uuid.MustNew())
-	if _, err := stranger.Catalog(); err == nil || !strings.Contains(err.Error(), "not a register of the configuration") {
+	if _, err := stranger.Catalog(); err == nil || !strings.Contains(err.Error(), "not a register of the project") {
 		t.Errorf("a movement into an object the project has not is accepted: %v", err)
 	}
 }

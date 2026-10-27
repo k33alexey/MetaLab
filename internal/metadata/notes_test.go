@@ -668,7 +668,7 @@ func TestTheRootsTextsAreNoted(t *testing.T) {
 	}
 	var noted bool
 	for _, note := range catalog.Notes() {
-		noted = noted || (note.Kind == NoteTextInUndeclaredLanguage && strings.HasPrefix(note.Where, "configuration"))
+		noted = noted || (note.Kind == NoteTextInUndeclaredLanguage && strings.HasPrefix(note.Where, "project"))
 	}
 	if !noted {
 		t.Fatalf("the root's synonym in an undeclared language carries no note: %+v", catalog.Notes())

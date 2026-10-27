@@ -132,7 +132,7 @@ func TestBrokenFilterCriteriaAreRefused(t *testing.T) {
 	for name, broken := range map[string]struct{ body, want string }{
 		"объекта не существует": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
 fields: [{kind: documents, object: ` + criterionManager + `, attribute: ` + criterionContract + `}]`,
-			"which is not in the configuration"},
+			"which is not in the project"},
 		"реквизита не существует": {`types: [{kind: catalog, reference: ` + criterionContracts + `}]
 fields: [{kind: documents, object: ` + criterionOrder + `, attribute: ` + criterionManager + `}]`,
 			"which that object does not have"},

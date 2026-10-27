@@ -1296,7 +1296,7 @@ func (compiler *queryCompiler) decodeOutput(output queryOutput, raw json.RawMess
 		}
 		kind, ok := compiler.runtime.catalog.objectOfKinds(column.referenceKinds, typeID)
 		if !ok {
-			return bytecode.Undefined(), fmt.Errorf("query field %s points at %s, which is not an object of the configuration", column.name, typeID)
+			return bytecode.Undefined(), fmt.Errorf("query field %s points at %s, which is not an object of the project", column.name, typeID)
 		}
 		return compiler.runtime.wrapObjectReference(kind, typeID, objectID)
 	case queryMovementKindColumn:

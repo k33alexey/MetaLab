@@ -111,7 +111,7 @@ func (workspace *Workspace) rootPictureNodesLocked() []Node {
 func (workspace *Workspace) OpenRootModule(id string) (SourceFile, error) {
 	module, ok := rootModuleByID(id)
 	if !ok {
-		return SourceFile{}, fmt.Errorf("%q is not a module of the configuration root", id)
+		return SourceFile{}, fmt.Errorf("%q is not a module of the project root", id)
 	}
 	return workspace.OpenModule(module.file)
 }

@@ -739,7 +739,7 @@ func TestExternalTableCharacteristicsAreResolved(t *testing.T) {
 		t.Fatalf("characteristics read from tables of the source were refused: %v", err)
 	}
 	for name, test := range map[string]struct{ kinds, key, owner, says string }{
-		"a table of kinds that is not there": {"f8000000-0000-4000-8000-0000000000ee", "{standard: ref}", goodsRef, "which is not in the configuration"},
+		"a table of kinds that is not there": {"f8000000-0000-4000-8000-0000000000ee", "{standard: ref}", goodsRef, "which is not in the project"},
 		"values that cannot hold the goods":  {propertyKindsTable, "{standard: ref}", "{kind: string, length: 10}", "values.object cannot hold a reference to external data source table Склад.Товары"},
 		"a code a table of a source has not": {propertyKindsTable, "{standard: code}", goodsRef, "names the standard field code"},
 		"a key the kinds table has not":      {propertyKindsTable, "{attribute: " + propertyValuesValue + "}", goodsRef, "names attribute " + propertyValuesValue},

@@ -120,7 +120,7 @@ func TestBrokenFunctionalOptionParametersAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
 		"объекта не существует": {"use: [{kind: catalogs, object: " + parameterSecond + "}]",
-			"which is not in the configuration"},
+			"which is not in the project"},
 		"поля не существует": {"use: [{kind: information-registers, object: " + optionRegister +
 			", element: " + parameterSecond + "}]", "which is not a dimension of that information register"},
 		// A parameter stands for a dimension (help, FunctionalOptionsParameter.Use).
@@ -129,7 +129,7 @@ func TestBrokenFunctionalOptionParametersAreRefused(t *testing.T) {
 		"ресурс вместо измерения": {"use: [{kind: information-registers, object: " + optionRegister +
 			", element: " + optionResource + "}]", "which is not a dimension of that information register"},
 		"регистра не существует": {"use: [{kind: information-registers, object: " + parameterSecond +
-			", element: " + optionDimension + "}]", "which is not in the configuration"},
+			", element: " + optionDimension + "}]", "which is not in the project"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

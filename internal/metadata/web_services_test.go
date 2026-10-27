@@ -224,7 +224,7 @@ func TestWebServiceTypeAndPackageShapeIsChecked(t *testing.T) {
 `, "names both"},
 		"пакет не назван никак": {`packages:
   - {}
-`, "must name a package of the configuration or a namespace of the platform"},
+`, "must name a package of the project or a namespace of the platform"},
 		"пространство платформы дважды": {`packages:
   - {namespace: "http://v8.1c.ru/8.1/data/core"}
   - {namespace: "http://v8.1c.ru/8.1/data/core"}

@@ -135,7 +135,7 @@ func validateFormCommandParameter(path string, parameter *FormCommandParameter) 
 		return []string{path + " must be types or an object"}
 	}
 	if _, ok := parseCommandObject(parameter.Object); !ok && !isUUIDText(parameter.Object) {
-		return []string{path + ".object must be <kind>.<name> of an object of the configuration or its identifier"}
+		return []string{path + ".object must be <kind>.<name> of an object of the project or its identifier"}
 	}
 	return nil
 }

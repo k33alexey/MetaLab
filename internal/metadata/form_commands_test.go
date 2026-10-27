@@ -118,7 +118,7 @@ func TestAButtonRefusesWhatIsNoCommand(t *testing.T) {
 		"параметр без команды": {"kind: button, command_parameter: {object: Catalog.Номенклатура}", "items[0].command_parameter is allowed only beside a command"},
 		"параметр двойной":     {"kind: button, command: Form.StandardCommand.ShowInList, command_parameter: {object: Catalog.Номенклатура, types: [{kind: string}]}", "items[0].command_parameter is either types or an object, not both"},
 		"параметр пустой":      {"kind: button, command: Form.StandardCommand.ShowInList, command_parameter: {}", "items[0].command_parameter must be types or an object"},
-		"параметр не объект":   {"kind: button, command: Form.StandardCommand.ShowInList, command_parameter: {object: Номенклатура}", "items[0].command_parameter.object must be <kind>.<name> of an object of the configuration or its identifier"},
+		"параметр не объект":   {"kind: button, command: Form.StandardCommand.ShowInList, command_parameter: {object: Номенклатура}", "items[0].command_parameter.object must be <kind>.<name> of an object of the project or its identifier"},
 		"параметр нулевой":     {"kind: button, command: Form.StandardCommand.ShowInList, command_parameter: {object: 00000000-0000-0000-0000-000000000000}", "items[0].command_parameter.object must be"},
 	} {
 		source := strings.Replace(formElementsForm("  - {id: c0de0000-0000-4000-8000-000000990001, name: Элемент, "+test.item+"}\n"), "items:\n",

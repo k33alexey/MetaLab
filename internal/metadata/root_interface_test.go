@@ -120,10 +120,10 @@ func TestRootInterfaceNamesWhatPointsAtNothing(t *testing.T) {
 		noted[item.ID.String()] = item.Where
 	}
 	for id, where := range map[string]string{
-		goneForm:           "the configuration's home page left form",
-		goneRole:           "the configuration's home page left role",
-		goneCommand:        "the configuration's main section command interface command",
-		rootInterfaceGroup: "the configuration's main section command interface group",
+		goneForm:           "the project's home page left form",
+		goneRole:           "the project's home page left role",
+		goneCommand:        "the project's main section command interface command",
+		rootInterfaceGroup: "the project's main section command interface group",
 	} {
 		if noted[id] != where {
 			t.Errorf("%s is not noted at %q: %v", id, where, noted)
@@ -155,7 +155,7 @@ func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 		"высота у группы": {project.ClientInterfaceFile, "left:\n  - {height: 2, items: [{panel: " + rootInterfaceRole + "}]}\n",
 			"left[0].height belongs to a panel"},
 		"порядок разделов у основного раздела": {project.MainSectionCommandInterfaceFile, "subsystems_order: [" + rootInterfaceForm + "]\n",
-			"subsystems_order lies on the configuration, not on its main section"},
+			"subsystems_order lies on the project, not on its main section"},
 		"неизвестное поле": {project.ClientInterfaceFile, "middle: []\n", "field middle not found"},
 	} {
 		t.Run(name, func(t *testing.T) {

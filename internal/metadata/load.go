@@ -2130,7 +2130,7 @@ func (catalog *Catalog) validateCommonFormSlots(kind, name string, slots []formS
 			continue
 		}
 		if !catalog.commonFormNames[strings.ToLower(reference.name)] {
-			return fmt.Errorf("%s %s opens %s with common form %s, which is not in the configuration",
+			return fmt.Errorf("%s %s opens %s with common form %s, which is not in the project",
 				kind, name, slot.role(), reference.name)
 		}
 	}

@@ -426,7 +426,7 @@ var prototypeCaptions = map[string]string{
 	"InteractivePostingRegular": "Интерактивное проведение неоперативное",
 	"InteractiveUndoPosting":    "Интерактивная отмена проведения", "InteractiveChangeOfPosted": "Интерактивное изменение проведенных",
 	"InputByString": "Ввод по строке", "TotalsControl": "Управление итогами", "Administration": "Администрирование",
-	"DataAdministration": "Администрирование данных", "UpdateDataBaseConfiguration": "Обновление конфигурации базы данных",
+	"DataAdministration": "Администрирование данных", "UpdateDataBaseConfiguration": "Обновление применённого проекта",
 	"ExclusiveMode": "Монопольный режим", "ActiveUsers": "Активные пользователи", "EventLog": "Журнал регистрации",
 	"RunApplication": "Запуск приложения", "DeveloperTools": "Инструменты разработчика", "ChangeHistory": "История изменений",
 	"ExclusiveModeTerminationAtSessionStart": "Завершение монопольного режима при начале сеанса",

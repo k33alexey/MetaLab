@@ -357,7 +357,7 @@ func DecodeStyle(source string, reader io.Reader, configuration project.Project)
 			var key string
 			switch {
 			case setting.Item != nil && setting.Standard != "":
-				issues = append(issues, prefix+" names both a style item of the configuration and a standard one")
+				issues = append(issues, prefix+" names both a style item of the project and a standard one")
 				continue
 			case setting.Item != nil:
 				if setting.Item.IsZero() {
@@ -375,7 +375,7 @@ func DecodeStyle(source string, reader io.Reader, configuration project.Project)
 				issues = append(issues, validateStyleItemValue(prefix+".value", itemType, setting.Value, true)...)
 				key = "standard:" + string(itemType) + ":" + englishStandardStyleItem(setting.Standard)
 			default:
-				issues = append(issues, prefix+" must name a style item of the configuration or a standard one")
+				issues = append(issues, prefix+" must name a style item of the project or a standard one")
 				continue
 			}
 			if seen[key] {
@@ -555,9 +555,9 @@ func validateStyleItemReference(path string, reference *StyleItemReference) []st
 	}
 	switch {
 	case named > 1:
-		return []string{path + " names more than one of a standard style item, one of the configuration and one written as a number"}
+		return []string{path + " names more than one of a standard style item, one of the project and one written as a number"}
 	case named == 0:
-		return []string{path + " must name a standard style item or one of the configuration"}
+		return []string{path + " must name a standard style item or one of the project"}
 	case reference.Written != "" && !allDigits(reference.Written):
 		return []string{path + ".written must be the number the prototype wrote"}
 	case reference.Standard != "" && !project.IsIdentifier(reference.Standard):

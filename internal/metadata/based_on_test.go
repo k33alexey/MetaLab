@@ -202,9 +202,9 @@ func TestBrokenBasisIsRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
 		"основания нет в конфигурации": {`based_on: [` + basisMissing + `]`,
-			"which is not an object of the configuration that can be a basis"},
+			"which is not an object of the project that can be a basis"},
 		"основанием не может быть регистр": {`based_on: [` + basisRegister + `]`,
-			"which is not an object of the configuration that can be a basis"},
+			"which is not an object of the project that can be a basis"},
 		"одно основание дважды": {`based_on: [` + basisReceipt + `, ` + basisReceipt + `]`,
 			"based_on[1] repeats"},
 		"пустой идентификатор": {`based_on: [00000000-0000-0000-0000-000000000000]`,

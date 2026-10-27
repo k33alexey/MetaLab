@@ -198,11 +198,11 @@ func TestBrokenDocumentMovementsAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ first, want string }{
 		"регистра нет в конфигурации": {"movements: [" + movementMissing + "]",
-			"which is not a register of the configuration"},
+			"which is not a register of the project"},
 		"регистр сведений пишется независимо": {"movements: [" + movementRates + "]",
 			"written independently and keeps no recorder"},
 		"движение в справочник": {"movements: [" + movementGoods + "]",
-			"which is not a register of the configuration"},
+			"which is not a register of the project"},
 		"один регистр дважды": {"movements: [" + movementBalance + ", " + movementBalance + "]",
 			"movements[1] repeats"},
 	} {

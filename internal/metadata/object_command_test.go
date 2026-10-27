@@ -286,7 +286,7 @@ func TestBrokenCommandsAreRefused(t *testing.T) {
 			"commands[0].group is not a standard group of the platform"},
 		"место указано дважды": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: actions-panel-tools, group_ref: ` + commandGroup + `}`,
-			"names both a standard group and a group of the configuration"},
+			"names both a standard group and a group of the project"},
 		"картинка из двух источников": {`commands:
   - {id: ` + commandID + `, name: Открыть, title: {ru: Открыть}, group: form-command-bar-important, picture: {standard: Открыть, common: ` + commandGroup + `}}`,
 			"names more than one of a standard picture, a common picture and a file"},

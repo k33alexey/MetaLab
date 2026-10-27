@@ -152,7 +152,7 @@ var roleRights = []keptRight{
 	{roleRight{PermissionTotalsControl, "TotalsControl", "УправлениеИтогами"}, `Управление итогами`, `Право управлять итогами регистра`},
 	{roleRight{PermissionAdministration, "Administration", "Администрирование"}, `Администрирование`, `Право выполнять административные функции`},
 	{roleRight{PermissionDataAdministration, "DataAdministration", "АдминистрированиеДанных"}, `Администрирование данных`, `Право администрировать данные`},
-	{roleRight{PermissionUpdateDataBaseConfiguration, "UpdateDataBaseConfiguration", "ОбновлениеКонфигурацииБазыДанных"}, `Обновление конфигурации базы данных`, `Право обновлять конфигурацию базы данных`},
+	{roleRight{PermissionUpdateDataBaseConfiguration, "UpdateDataBaseConfiguration", "ОбновлениеКонфигурацииБазыДанных"}, `Обновление применённого проекта`, `Право обновлять применённый проект`},
 	{roleRight{PermissionExclusiveMode, "ExclusiveMode", "МонопольныйРежим"}, `Монопольный режим`, `Право устанавливать монопольный режим`},
 	{roleRight{PermissionActiveUsers, "ActiveUsers", "АктивныеПользователи"}, `Активные пользователи`, `Право получать список активных пользователей`},
 	{roleRight{PermissionEventLog, "EventLog", "ЖурналРегистрации"}, `Журнал регистрации`, `Право просматривать журнал регистрации`},
@@ -204,7 +204,7 @@ var droppedRights = []droppedRight{
 	{roleRight{"thick-client", "ThickClient", "ТолстыйКлиент"}, "", "ML has no thick client"},
 	{roleRight{"mobile-client", "MobileClient", "МобильныйКлиент"}, "", "ML has no mobile client"},
 	{roleRight{"configuration-extensions-administration", "ConfigurationExtensionsAdministration", "АдминистрированиеРасширенийКонфигурации"}, "",
-		"ML has no configuration extensions"},
+		"ML has no project extensions"},
 	{roleRight{"collaboration-system-info-base-registration", "CollaborationSystemInfoBaseRegistration", "РегистрацияИнформационнойБазыСистемыВзаимодействия"}, "",
 		"ML has no collaboration system"},
 	// The rights of the configuration that would change nothing in ML

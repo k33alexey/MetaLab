@@ -201,7 +201,7 @@ func (catalog *Catalog) loadRootInterface(root string) error {
 		// The order of the sections is the root's own, on its description:
 		// the main section is one of them, not their parent.
 		if len(commands.SubsystemsOrder) > 0 {
-			issues = append(issues, "subsystems_order lies on the configuration, not on its main section")
+			issues = append(issues, "subsystems_order lies on the project, not on its main section")
 		}
 		return issues
 	}); err != nil {
@@ -236,7 +236,7 @@ func rootFilePath(root, file string) (string, error) {
 		return "", err
 	}
 	if !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
-		return "", fmt.Errorf("the configuration keeps %q, which must be a file", file)
+		return "", fmt.Errorf("the project keeps %q, which must be a file", file)
 	}
 	return path, nil
 }
@@ -262,7 +262,7 @@ func (catalog *Catalog) resolveRootInterface() {
 		}
 	}
 	for _, column := range catalog.HomePage.columns() {
-		where := "the configuration's home page " + column.name
+		where := "the project's home page " + column.name
 		for _, item := range column.forms {
 			if !forms[item.Form] {
 				catalog.noteUnresolved(where+" form", item.Form)

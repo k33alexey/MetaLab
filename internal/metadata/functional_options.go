@@ -236,7 +236,7 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 			where := fmt.Sprintf("%s content[%d]", owner, index)
 			elements, ok := catalog.objectElementsOf(item.Kind, item.Object)
 			if !ok {
-				return fmt.Errorf("%s switches %s %s, which is not in the configuration", where, item.Kind, item.Object)
+				return fmt.Errorf("%s switches %s %s, which is not in the project", where, item.Kind, item.Object)
 			}
 			if err := checkOptionElement(where, item, elements); err != nil {
 				return err
@@ -251,7 +251,7 @@ func (catalog *Catalog) validateFunctionalOptions() error {
 // dimension of the register is not a place - it is what the value is looked up
 // by - and neither is an attribute of the register.
 func (catalog *Catalog) checkOptionLocation(owner string, location FunctionalOptionLocation) error {
-	missing := fmt.Errorf("%s keeps its value in %s %s, which is not in the configuration", owner, location.Kind, location.Object)
+	missing := fmt.Errorf("%s keeps its value in %s %s, which is not in the project", owner, location.Kind, location.Object)
 	var fields []Attribute
 	switch location.Kind {
 	case ConstantKind:

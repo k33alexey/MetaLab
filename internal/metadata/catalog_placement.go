@@ -124,7 +124,7 @@ func (repository *CatalogRepository) decodePlacement(definition CatalogDefinitio
 		}
 		kind, ok := repository.catalog.ownerObject(definition.Owners[0])
 		if !ok {
-			return fmt.Errorf("catalog %s belongs to %s, which is not in the configuration", definition.Name, definition.Owners[0])
+			return fmt.Errorf("catalog %s belongs to %s, which is not in the project", definition.Name, definition.Owners[0])
 		}
 		record.Owner = Value{Kind: referenceTo(kind), Object: definition.Owners[0], Data: id.String()}
 		return nil
@@ -143,7 +143,7 @@ func (repository *CatalogRepository) decodePlacement(definition CatalogDefinitio
 	}
 	kind, ok := repository.catalog.ownerObject(objectID)
 	if !ok {
-		return fmt.Errorf("catalog %s row belongs to %s, which is not an object of the configuration", definition.Name, objectID)
+		return fmt.Errorf("catalog %s row belongs to %s, which is not an object of the project", definition.Name, objectID)
 	}
 	record.Owner = Value{Kind: referenceTo(kind), Object: objectID, Data: rowID.String()}
 	return nil
@@ -254,7 +254,7 @@ func (repository *CatalogRepository) checkOwnerRow(ctx context.Context, transact
 	}
 	kind, ok := repository.catalog.ownerObject(record.Owner.Object)
 	if !ok {
-		return fmt.Errorf("catalog %s owner %s is not an object of the configuration", definition.Name, record.Owner.Object)
+		return fmt.Errorf("catalog %s owner %s is not an object of the project", definition.Name, record.Owner.Object)
 	}
 	hierarchy := repository.catalog.ownerHierarchy(kind, record.Owner.Object)
 	hasFolders := hierarchy.Enabled && hierarchy.Kind == FoldersAndItemsHierarchy

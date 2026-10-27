@@ -657,7 +657,7 @@ func validateObjectsOrder(order map[string][]uuid.UUID) []string {
 	for kind, list := range order {
 		field := "objects_order." + kind
 		if kind == string(kinds.Language) || !slices.Contains(metadataKinds, kind) {
-			issues = append(issues, field+" is not a kind of the configuration's tree")
+			issues = append(issues, field+" is not a kind of the project's tree")
 			continue
 		}
 		seen := make(map[uuid.UUID]bool, len(list))

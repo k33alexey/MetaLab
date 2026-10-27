@@ -173,7 +173,7 @@ func criterionFieldKind(kind Kind) bool { return usesOf(kind).criterion == prese
 func (catalog *Catalog) criterionFieldTypes(where string, field CriterionField) ([]Type, error) {
 	elements, ok := catalog.objectElementsOf(field.Kind, field.Object)
 	if !ok {
-		return nil, fmt.Errorf("%s searches %s %s, which is not in the configuration", where, field.Kind, field.Object)
+		return nil, fmt.Errorf("%s searches %s %s, which is not in the project", where, field.Kind, field.Object)
 	}
 	if field.TablePart == nil {
 		types, ok := elements.attributes[field.Attribute]

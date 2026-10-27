@@ -124,7 +124,7 @@ func (catalog *Catalog) validateFunctionalOptionParameters() error {
 		owner := "functional option parameter " + parameter.Name
 		for index, item := range parameter.Use {
 			where := fmt.Sprintf("%s use[%d]", owner, index)
-			missing := fmt.Errorf("%s stands for %s %s, which is not in the configuration", where, item.Kind, item.Object)
+			missing := fmt.Errorf("%s stands for %s %s, which is not in the project", where, item.Kind, item.Object)
 			switch item.Kind {
 			case CatalogKind:
 				if _, ok := catalog.catalogByID[item.Object]; !ok {

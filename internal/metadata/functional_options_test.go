@@ -162,7 +162,7 @@ func TestFunctionalOptionsPointingNowhereAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
 		"значение лежит в несуществующем объекте": {`location: {kind: constants, object: ` + optionSecond + `}`,
-			"which is not in the configuration"},
+			"which is not in the project"},
 		"значение лежит в несуществующем поле": {`location: {kind: information-registers, object: ` +
 			optionRegister + `, element: ` + optionSecond + `}`, "which is not a resource of that information register"},
 		// A dimension is what the value is looked up by, not where it is kept
@@ -172,9 +172,9 @@ func TestFunctionalOptionsPointingNowhereAreRefused(t *testing.T) {
 		"значение лежит в реквизите табличной части": {`location: {kind: catalogs, object: ` +
 			optionCatalog + `, element: ` + optionPartField + `}`, "which is not an attribute of that catalog"},
 		"значение лежит в несуществующем справочнике": {`location: {kind: catalogs, object: ` +
-			optionSecond + `, element: ` + optionAttribute + `}`, "which is not in the configuration"},
+			optionSecond + `, element: ` + optionAttribute + `}`, "which is not in the project"},
 		"переключается несуществующий объект": {`location: {kind: constants, object: ` + optionConstant + `}
-content: [{kind: catalogs, object: ` + optionSecond + `}]`, "which is not in the configuration"},
+content: [{kind: catalogs, object: ` + optionSecond + `}]`, "which is not in the project"},
 		"переключается несуществующий реквизит": {`location: {kind: constants, object: ` + optionConstant + `}
 content: [{kind: catalogs, object: ` + optionCatalog + `, element: ` + optionSecond + `}]`,
 			"which that object does not have"},

@@ -114,7 +114,7 @@ func TestSaveDataButtonEndToEndIntegration(t *testing.T) {
 		}
 	}
 	if !named {
-		t.Fatalf("the dropped attribute is not named in the configuration's own terms: %+v", denied.Changes)
+		t.Fatalf("the dropped attribute is not named in the project's own terms: %+v", denied.Changes)
 	}
 
 	confirmedResponse := httptest.NewRecorder()

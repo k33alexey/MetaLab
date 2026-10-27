@@ -85,7 +85,7 @@ func (catalog *Catalog) resolveObjectsOrder(root string) {
 	for _, kind := range orderedKinds(catalog) {
 		for _, id := range catalog.Project.ObjectsOrder[string(kind)] {
 			if object, ok := catalog.objects[id]; !ok || object.kind != kind {
-				catalog.noteUnresolved("the configuration's objects_order."+string(kind), id)
+				catalog.noteUnresolved("the project's objects_order."+string(kind), id)
 			}
 		}
 	}

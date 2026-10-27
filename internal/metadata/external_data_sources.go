@@ -467,7 +467,7 @@ func validateExternalFieldStorage(prefix string, field ExternalField) []string {
 	}
 	for _, property := range refused {
 		if property.set {
-			issues = append(issues, prefix+"."+property.name+" belongs to an attribute of the configuration's own objects, and a field of an external data source has none")
+			issues = append(issues, prefix+"."+property.name+" belongs to an attribute of the project's own objects, and a field of an external data source has none")
 		}
 	}
 	return issues

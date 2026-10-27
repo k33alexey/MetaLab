@@ -209,7 +209,7 @@ func TestCharacteristicsMustResolveAgainstTheConfiguration(t *testing.T) {
       object: {attribute: ` + characteristicRegObject + `}
       type: {attribute: ` + characteristicRegKind + `}
       value: {attribute: ` + characteristicRegValue + `}`,
-			"which is not in the configuration"},
+			"which is not in the project"},
 		"табличной части нет у объекта": {`characteristics:
   - types:
       table: {kind: catalogs, object: ` + characteristicSets + `, table_part: ` + characteristicMissing + `}

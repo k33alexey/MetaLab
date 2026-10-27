@@ -422,7 +422,7 @@ func TestRightsGoWhereThePrototypeGivesThem(t *testing.T) {
 		"update on a report": {grant(cmpReport, PermissionView, PermissionUpdate), "reports Ведомость update"},
 		"posting denied":     {deny(grant(cmpReport, PermissionUse), PermissionPosting), "reports Ведомость posting"},
 		"view on the configuration": {grant(project.Project.ID.String(), PermissionRunApplication, PermissionView),
-			"configuration " + project.Project.Name + " view"},
+			"project " + project.Project.Name + " view"},
 		"use on a field of a standard table part": {part(grant(cmpAccounts, PermissionRead),
 			"extdimensiontypes.turnoversonly", PermissionView, PermissionUse),
 			"charts-of-accounts Хозрасчетный.ВидыСубконто.ТолькоОбороты use"},

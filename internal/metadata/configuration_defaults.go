@@ -46,13 +46,13 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 	configuration := catalog.Project
 	if id := configuration.DefaultStyle; id != nil {
 		if _, ok := catalog.styleByID[*id]; !ok {
-			return fmt.Errorf("the configuration is drawn with style %s, which is not in the configuration", id)
+			return fmt.Errorf("the project is drawn with style %s, which is not in the project", id)
 		}
 	}
 	if catalog.rolesLoaded {
 		for _, id := range configuration.DefaultRoles {
 			if _, ok := catalog.roleByID[id]; !ok {
-				return fmt.Errorf("the configuration runs under role %s, which is not in the configuration", id)
+				return fmt.Errorf("the project runs under role %s, which is not in the project", id)
 			}
 		}
 	}
@@ -68,19 +68,19 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 			continue
 		}
 		if _, ok := catalog.settingsStorageByID[*storage.id]; !ok {
-			return fmt.Errorf("the configuration keeps %s in settings storage %s, which is not in the configuration",
+			return fmt.Errorf("the project keeps %s in settings storage %s, which is not in the project",
 				storage.purpose, storage.id)
 		}
 	}
 	if id := configuration.DefaultReportAppearanceTemplate; id != nil {
 		index, ok := catalog.commonTemplateByID[*id]
 		if !ok {
-			return fmt.Errorf("the configuration paints its reports with common template %s, which is not in the configuration", id)
+			return fmt.Errorf("the project paints its reports with common template %s, which is not in the project", id)
 		}
 		// A template of another kind describes nothing an appearance is made
 		// of: a spreadsheet is a document, not a set of colours and fonts.
 		if template := catalog.CommonTemplates[index]; template.Kind != CompositionAppearance {
-			return fmt.Errorf("the configuration paints its reports with common template %s, which is a %s and not a %s",
+			return fmt.Errorf("the project paints its reports with common template %s, which is a %s and not a %s",
 				template.Name, template.Kind, CompositionAppearance)
 		}
 	}
@@ -91,9 +91,9 @@ func (catalog *Catalog) validateConfigurationDefaults(root string) error {
 	// it in its own Ext (sb): the same pages and pictures as an object's.
 	if info, err := os.Lstat(filepath.Join(root, project.HelpDirectory)); err == nil {
 		if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("the configuration keeps %q, and its help is a folder", project.HelpDirectory)
+			return fmt.Errorf("the project keeps %q, and its help is a folder", project.HelpDirectory)
 		}
-		if err := validateHelpFolder("the configuration", filepath.Join(root, project.HelpDirectory)); err != nil {
+		if err := validateHelpFolder("the project", filepath.Join(root, project.HelpDirectory)); err != nil {
 			return err
 		}
 	}
@@ -116,12 +116,12 @@ func (catalog *Catalog) validateFullTextSearchDictionaries() error {
 		switch dictionary.Kind {
 		case project.TemplateDictionary:
 			if _, ok := catalog.commonTemplateByID[dictionary.Object]; !ok {
-				return fmt.Errorf("the full-text search is given common template %s as a dictionary, which is not in the configuration",
+				return fmt.Errorf("the full-text search is given common template %s as a dictionary, which is not in the project",
 					dictionary.Object)
 			}
 		case project.ConstantDictionary:
 			if _, ok := catalog.constantByID[dictionary.Object]; !ok {
-				return fmt.Errorf("the full-text search is given constant %s as a dictionary, which is not in the configuration",
+				return fmt.Errorf("the full-text search is given constant %s as a dictionary, which is not in the project",
 					dictionary.Object)
 			}
 		}
@@ -158,7 +158,7 @@ func (catalog *Catalog) validateConfigurationDefaultForms(root string) error {
 			}
 		}
 		if !forms[*form.id] {
-			return fmt.Errorf("the configuration opens %s with common form %s, which is not in the configuration",
+			return fmt.Errorf("the project opens %s with common form %s, which is not in the project",
 				form.purpose, form.id)
 		}
 	}
@@ -179,7 +179,7 @@ func validateRootPictures(root string) error {
 		if _, err := os.Stat(directory); os.IsNotExist(err) {
 			continue
 		}
-		owner := "picture " + picture + " of the configuration"
+		owner := "picture " + picture + " of the project"
 		images, err := readRootPictureImages(directory)
 		if err != nil {
 			return fmt.Errorf("%s: %w", owner, err)
@@ -195,7 +195,7 @@ func validateRootPictures(root string) error {
 // drawn. A folder without a description draws its files as they are.
 func ReadRootPictureImages(root, picture string) (PictureImages, error) {
 	if !project.IsRootPictureDirectory(picture) {
-		return PictureImages{}, fmt.Errorf("%q is not a picture of the configuration root", picture)
+		return PictureImages{}, fmt.Errorf("%q is not a picture of the project root", picture)
 	}
 	return readRootPictureImages(filepath.Join(root, picture))
 }

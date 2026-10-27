@@ -204,7 +204,7 @@ items:
 	case style.Items[0].Standard != "FormBackColor" || style.Items[0].Item != nil:
 		t.Fatalf("the standard item was not kept by name: %+v", style.Items[0])
 	case style.Items[4].Item == nil || style.Items[4].Item.String() != styleItemColor:
-		t.Fatalf("the configuration's own item was lost: %+v", style.Items[4])
+		t.Fatalf("the project's own item was lost: %+v", style.Items[4])
 	}
 	// The platform's item takes its value from one of the configuration's,
 	// and that one must exist and be of the same type.
@@ -248,7 +248,7 @@ func TestBrokenStyleSettingsAreRefused(t *testing.T) {
 		"названы оба": {"  - standard: FormBackColor\n    item: " + styleItemColor + "\n    value: {color: {source: auto}}",
 			"names both"},
 		"не названо ничего": {"  - value: {color: {source: auto}}",
-			"must name a style item of the configuration or a standard one"},
+			"must name a style item of the project or a standard one"},
 		// The same item under its two names is one item set twice.
 		"один элемент на двух языках": {"  - standard: FormBackColor\n    value: {color: {source: auto}}\n  - standard: ЦветФонаФормы\n    value: {color: {source: auto}}",
 			"is set twice by one style"},

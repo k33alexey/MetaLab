@@ -321,7 +321,7 @@ func Initialize(root string, configuration Project) error {
 	configurationPath := filepath.Join(staging, ConfigurationFile)
 	file, err := os.OpenFile(configurationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("create ML Project configuration: %w", err)
+		return fmt.Errorf("create the root of ML Project: %w", err)
 	}
 	if err := Encode(file, configuration); err != nil {
 		_ = file.Close()
@@ -329,10 +329,10 @@ func Initialize(root string, configuration Project) error {
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("sync ML Project configuration: %w", err)
+		return fmt.Errorf("sync the root of ML Project: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close ML Project configuration: %w", err)
+		return fmt.Errorf("close the root of ML Project: %w", err)
 	}
 	for _, directory := range rootDirectories {
 		path := filepath.Join(staging, directory)
@@ -405,7 +405,7 @@ func SaveConfiguration(root string, configuration Project) error {
 	if err := atomicfile.Write(filepath.Join(root, ConfigurationFile), ".configuration-*.yaml", 0o644, func(writer io.Writer) error {
 		return Encode(writer, configuration)
 	}); err != nil {
-		return fmt.Errorf("write ML Project configuration: %w", err)
+		return fmt.Errorf("write the root of ML Project: %w", err)
 	}
 	return nil
 }
@@ -1308,7 +1308,7 @@ func requirePath(path string, directory bool) error {
 func readConfiguration(path string) (Project, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return Project{}, fmt.Errorf("open configuration %q: %w", path, err)
+		return Project{}, fmt.Errorf("open the root of the project %q: %w", path, err)
 	}
 	defer file.Close()
 	return DecodeSource(path, file)

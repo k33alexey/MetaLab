@@ -323,7 +323,7 @@ func (table characteristicTable) field(field CharacteristicField) ([]Type, bool)
 func (catalog *Catalog) resolveCharacteristicTable(where string, table CharacteristicTable) (characteristicTable, error) {
 	elements, ok := catalog.objectElementsOf(table.Kind, table.Object)
 	if !ok {
-		return characteristicTable{}, fmt.Errorf("%s reads %s %s, which is not in the configuration", where, table.Kind, table.Object)
+		return characteristicTable{}, fmt.Errorf("%s reads %s %s, which is not in the project", where, table.Kind, table.Object)
 	}
 	resolved := characteristicTable{standard: catalog.standardFieldsOf(table.Kind, table.Object), attributes: elements.attributes}
 	if table.TablePart == nil {

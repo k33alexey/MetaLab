@@ -213,7 +213,7 @@ func (catalog *Catalog) validateBasedOnReferences() error {
 	for _, carrier := range catalog.basisCarriers() {
 		for index, id := range carrier.basedOn {
 			if _, ok := catalog.basisObject(id); !ok {
-				return fmt.Errorf("%s %s is entered on the basis of %s (based_on[%d]), which is not an object of the configuration that can be a basis",
+				return fmt.Errorf("%s %s is entered on the basis of %s (based_on[%d]), which is not an object of the project that can be a basis",
 					carrier.kind, carrier.name, id, index)
 			}
 		}

@@ -234,7 +234,7 @@ func validateCubeFields(cube ExternalCube, configuration project.Project) []stri
 			{field.Use != "", "use"},
 		} {
 			if property.set {
-				issues = append(issues, prefix+"."+property.name+" belongs to an attribute of the configuration's own objects, and a field of a cube has none")
+				issues = append(issues, prefix+"."+property.name+" belongs to an attribute of the project's own objects, and a field of a cube has none")
 			}
 		}
 	}

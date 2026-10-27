@@ -147,7 +147,7 @@ func DecodeWebService(source string, reader io.Reader, configuration project.Pro
 			var key string
 			switch {
 			case item.Package != nil && item.Namespace != "":
-				issues = append(issues, where+" names both a package of the configuration and a namespace of the platform")
+				issues = append(issues, where+" names both a package of the project and a namespace of the platform")
 				continue
 			case item.Package != nil:
 				if item.Package.IsZero() {
@@ -162,7 +162,7 @@ func DecodeWebService(source string, reader io.Reader, configuration project.Pro
 				}
 				key = "namespace:" + item.Namespace
 			default:
-				issues = append(issues, where+" must name a package of the configuration or a namespace of the platform")
+				issues = append(issues, where+" must name a package of the project or a namespace of the platform")
 				continue
 			}
 			// A package named twice describes the service no better than once.

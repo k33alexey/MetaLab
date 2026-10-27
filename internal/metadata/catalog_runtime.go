@@ -266,7 +266,7 @@ func (runtime *Runtime) GetObjectProperty(ctx context.Context, value bytecode.Ru
 			}
 			kind, ok := runtime.catalog.ownerObject(object.record.Owner.Object)
 			if !ok {
-				return bytecode.Undefined(), fmt.Errorf("catalog %s owner %s is not an object of the configuration", object.definition.Name, object.record.Owner.Object)
+				return bytecode.Undefined(), fmt.Errorf("catalog %s owner %s is not an object of the project", object.definition.Name, object.record.Owner.Object)
 			}
 			id, err := uuid.Parse(object.record.Owner.Data)
 			if err != nil {
