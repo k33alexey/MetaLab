@@ -39,8 +39,16 @@ const xdtoPackageWalk = `(async () => {
     .querySelector('button[title^="' + title + '"]').click(); await settle(); };
   const panel = async title => { host.querySelector('.object-window-panel button[title="' + title + '"]').click(); await settle(); };
   await openObject('Обмен');
+  const packageRow = [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.querySelector(':scope > span:not(.studio-tree-sign)')?.textContent === 'Обмен');
+  packageRow.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
+  steps.menu = [...document.querySelectorAll('.context-menu .context-menu-item')].slice(0, 3).map(item => item.textContent + (item.disabled ? ' (недоступна)' : '') +
+    (getComputedStyle(item).fontWeight >= 600 ? ' (жирный)' : ''));
+  closeContextMenu();
   steps.title = host.querySelector('.object-window-title').textContent;
   steps.opened = tree();
+  steps.packagePalette = {title: document.querySelector('#inspector-title').textContent, rows: palette()};
+  [...document.querySelectorAll('#properties .object-palette-row button')].find(item => item.textContent === 'Открыть').click(); await settle();
+  steps.rootChosen = rows().filter(row => row.classList.contains('selected')).map(row => row.textContent);
   steps.rootPalette = palette();
   steps.rootMenu = await menu();
   document.body.click(); await settle();
@@ -81,14 +89,19 @@ const xdtoPackageWalk = `(async () => {
   steps.unsaved = !document.querySelector('#save').disabled;
   await openObject('Обмен');
   steps.reopened = tree();
+  await openObject('XDTO-пакеты');
+  document.querySelector('#tree-add').click(); await settle();
+  steps.created = {title: host.querySelector('.object-window-title').textContent, tree: tree(), palette: palette()};
   return steps;
 })()`
 
 // The editor of an XDTO package is the prototype's (docs/block-00/
 // paket-xdto.md, «Окно — редактор пакета», «Узлы редактора»; snapshots
 // paket-xdto/02-04, series-2.584/139-178): titled «XDTO пакет <Имя>:
-// Пакет», the root «Пакет (<пространство>)» with its palette - the URI and
-// the two qualified forms not said, «Ложь» greyed; «Добавить ▾» at the root
+// Пакет» over the palette of the package - the name, the synonym, the
+// comment, the URI, «Пакет: Открыть», which chooses the root «Пакет
+// (<пространство>)» with its palette - the URI and the two qualified forms
+// not said, «Ложь» greyed; «Добавить ▾» at the root
 // offers the import, the property, the value type, the object type, which
 // stand in their folders in that order under the names of the prototype;
 // at a value type the definition of a type, the pattern, the enumeration
@@ -97,8 +110,14 @@ const xdtoPackageWalk = `(async () => {
 // «Выберите тип объекта», then unavailable; ✓ says the default of a value,
 // ✕ takes it back; a node moves up among its siblings; «Удалить» asks
 // «Удалить элемент?» and takes the enumeration away; «Сохранить» writes the body in the prototype's form,
-// read again the same.
-// Defects caught: a node, a folder, a caption or a name not the
+// read again the same. «Добавить» makes «ПакетXDTO1» of
+// «http://www.sample-package.org», its body saying the qualified form of an
+// element, not of an attribute, and opens its editor (paket-xdto.md, «Новый
+// пакет»).
+// Its menu opens with «Открыть пакет» in bold, «Проверить пакет» and
+// «Экспорт XML-схемы…» unavailable until their item.
+// Defects caught: a new package not the prototype's; the menu not the
+// prototype's; a node, a folder, a caption or a name not the
 // prototype's, or out of its order; «Добавить» offering what the node does
 // not hold; a value not said written, or said and not written; the body not
 // written, written in another form, or read again otherwise.
@@ -116,7 +135,17 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		InnerProperty, PropertyMenu, PropertyMenuAfter, Said, Taken, Moved []string
 		Deleted, Reopened                                                  []string
 		Question, DeleteQuestion                                           string
-		Unsaved                                                            bool
+		PackagePalette                                                     struct {
+			Title string
+			Rows  []string
+		}
+		RootChosen []string
+		Menu       []string
+		Created    struct {
+			Title         string
+			Tree, Palette []string
+		}
+		Unsaved bool
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -130,7 +159,13 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		}
 	}
 	expect("the title", steps.Title, "XDTO пакет Обмен: Пакет")
+	expect("the menu of the package", steps.Menu, []string{"Открыть пакет (жирный)", "Проверить пакет (недоступна)", "Экспорт XML-схемы… (недоступна)"})
 	expect("opened", steps.Opened, []string{"Пакет (http://example.org/goods)"})
+	expect("the palette of the package", steps.PackagePalette, struct {
+		Title string
+		Rows  []string
+	}{"Свойства: Обмен", []string{"Имя: Обмен", "Синоним: Обмен", "Комментарий: ", "URI пространства имен: http://example.org/goods", "Пакет: "}})
+	expect("«Пакет: Открыть» chooses the root", steps.RootChosen, []string{"Пакет (http://example.org/goods)"})
 	expect("the palette of the root", steps.RootPalette, []string{"URI пространства имен: http://example.org/goods",
 		"Квалифицированная форма элемента: Ложь (не задано)", "Квалифицированная форма атрибута: Ложь (не задано)"})
 	expect("«Добавить» at the root", steps.RootMenu, []string{"Директива импорта", "Свойство", "Тип значения", "Тип объекта"})
@@ -154,6 +189,19 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		"      Образец", "        НовыйЭлемент1", "  Типы объектов", "    ТипОбъекта1", "      Свойство1", "        Определение типа"})
 	expect("saved", steps.Unsaved, false)
 	expect("reopened", steps.Reopened, steps.Deleted)
+	expect("a new package", steps.Created, struct {
+		Title         string
+		Tree, Palette []string
+	}{"XDTO пакет ПакетXDTO1: Пакет", []string{"Пакет (http://www.sample-package.org)"},
+		[]string{"Имя: ПакетXDTO1", "Синоним: ", "Комментарий: ", "URI пространства имен: http://www.sample-package.org", "Пакет: "}})
+	created, err := os.ReadFile(filepath.Join(root, "metadata", "xdto-packages", "ПакетXDTO1", "content.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "\uFEFF<package xmlns=\"http://v8.1c.ru/8.1/xdto\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
+		"targetNamespace=\"http://www.sample-package.org\" elementFormQualified=\"true\" attributeFormQualified=\"false\"/>"; string(created) != want {
+		t.Errorf("the body of a new package: %q", created)
+	}
 	written, err := os.ReadFile(filepath.Join(root, "metadata", "xdto-packages", "Обмен", "content.xml"))
 	if err != nil {
 		t.Fatal(err)

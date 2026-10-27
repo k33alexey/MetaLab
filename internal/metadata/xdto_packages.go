@@ -214,3 +214,7 @@ func PlatformXDTONamespaces() []string {
 	}
 	return namespaces
 }
+
+// newXDTONamespace is the namespace of a new package, the prototype's
+// (paket-xdto.md, «Новый пакет»).
+const newXDTONamespace = "http://www.sample-package.org"

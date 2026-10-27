@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -148,6 +147,14 @@ func (workspace *Workspace) SaveXDTOPackageWindow(relative string, window XDTOPa
 	return workspace.readXDTOPackageEditorLocked(written)
 }
 
+// CreateXDTOPackage makes the next package - «ПакетXDTO1» of the
+// namespace «http://www.sample-package.org» with its body (paket-xdto.md,
+// «Новый пакет») - by the one way every object is made (CreateObject) and
+// opens its editor.
+func (workspace *Workspace) CreateXDTOPackage(name string) (XDTOPackageEditorSource, error) {
+	return createObjectAs(workspace, metadata.XDTOPackageKind, name, nil, workspace.readXDTOPackageEditorLocked)
+}
+
 // DeleteXDTOPackage removes the folder of a package by the one order of
 // steps of every deletion.
 func (workspace *Workspace) DeleteXDTOPackage(relative, expectedRevision string) error {
@@ -155,10 +162,8 @@ func (workspace *Workspace) DeleteXDTOPackage(relative, expectedRevision string)
 }
 
 func registerXDTOPackageEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	registerObjectEditor(routes, xdtoPackageEditorAddress, workspace.ReadXDTOPackageEditor, workspace.SaveXDTOPackageWindow,
-		func(string) (XDTOPackageEditorSource, error) {
-			return XDTOPackageEditorSource{}, fmt.Errorf("a new XDTO package is not made by Studio yet")
-		}, workspace.DeleteXDTOPackage)
+	registerObjectEditor(routes, xdtoPackageEditorAddress, workspace.ReadXDTOPackageEditor, workspace.SaveXDTOPackageWindow, workspace.CreateXDTOPackage,
+		workspace.DeleteXDTOPackage)
 }
 
 func (source XDTOPackageEditorSource) identity() (uuid.UUID, string) {

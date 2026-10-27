@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"bytes"
+	"path"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -117,6 +118,18 @@ var kindNewObjectOf = map[Kind]newObject{
 		timeout := defaultWebSocketTimeout
 		module, _ := project.ObjectModulePath(string(WebSocketClientKind), name, string(kinds.ClientModule)+".bsl")
 		return Fresh{Value: WebSocketClientDefinition{Format: CurrentFormat, ID: id, Name: name, Timeout: &timeout}, Files: []FreshFile{{Path: module}}}
+	},
+	// paket-xdto.md, «Новый пакет»: the namespace
+	// «http://www.sample-package.org» and the body saying the qualified
+	// form of an element true, of an attribute false, in the prototype's
+	// form beside the description.
+	XDTOPackageKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		yes, no := true, false
+		var body bytes.Buffer
+		_ = EncodeXDTOContent(&body, XDTOContent{Namespace: newXDTONamespace, ElementFormQualified: &yes, AttributeFormQualified: &no})
+		description, _ := project.ObjectMetadataPath(string(XDTOPackageKind), name)
+		return Fresh{Value: XDTOPackageDefinition{Format: CurrentFormat, ID: id, Name: name, Namespace: newXDTONamespace},
+			Files: []FreshFile{{Path: path.Join(path.Dir(description), XDTOPackageContentFile), Content: body.Bytes()}}}
 	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».

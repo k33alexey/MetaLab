@@ -325,6 +325,16 @@ var palettes = map[Kind][]PaletteTab{
 				Description: "Картинку можно выбрать в приложении и для элемента условного оформления."},
 		})},
 	},
+	// docs/block-00/paket-xdto.md, «Палитра»; snapshot paket-xdto/01: one
+	// tab - the name, the synonym, the comment, the namespace and «Пакет:
+	// Открыть», the editor of the package.
+	XDTOPackage: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("пакета", "о пакете"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			xdtoNamespaceRow,
+			{Key: "content", Title: "Пакет", Field: WindowField, Important: true, Description: "Типы пакета: открываются его редактором."},
+		})},
+	},
 	// docs/block-00/stil.md, «Палитра»; snapshot stil/01-palitra: one tab,
 	// «Стиль: Открыть» opening the values of the style in a window of
 	// their own with OK and «Отмена».
@@ -669,6 +679,10 @@ func rows(groups ...[]PaletteRow) []PaletteRow {
 // with the prototype's captions.
 var (
 	usage = [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}}
+	// xdtoNamespaceRow is the namespace of an XDTO package, one row in the
+	// palette of the package and of the root of its tree.
+	xdtoNamespaceRow = PaletteRow{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
+		Description: "Пространство имён, которому принадлежат типы пакета; им их называет другая сторона обмена."}
 	// xdtoFlag is a flag of a node of an XDTO package, as its palette
 	// names it - a list, not a box (snapshot series-2.584/143).
 	xdtoFlag     = [][2]string{{"false", "Ложь"}, {"true", "Истина"}}
@@ -760,8 +774,7 @@ var partPalettes = map[string][]PaletteTab{
 	// «Другие» a node, every value but a name of a namespace said by ✓.
 	"xdtoPackage": {
 		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
-			{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
-				Description: "Пространство имён, которому принадлежат типы пакета; им их называет другая сторона обмена."},
+			xdtoNamespaceRow,
 			{Key: "elementFormQualified", Title: "Квалифицированная форма элемента", Field: SwitchField, Important: true, Optional: true,
 				Choices: xdtoFlag, Default: "false", Description: "Пишутся ли элементы свойств пакета с пространством имён."},
 			{Key: "attributeFormQualified", Title: "Квалифицированная форма атрибута", Field: SwitchField, Important: true, Optional: true,

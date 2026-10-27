@@ -20,17 +20,19 @@
 function createXDTOPackageEditor(host, onChange, around = {}) {
   return objectWindowEditor(host, onChange, around, {target: source => source.package,
     own: api => {
-      let chosen = [];
+      // The node chosen, by its path; null - none: the palette is the
+      // package's own, as a click on it in the tree of the project shows.
+      let chosen = null;
       const content = () => api.source().content;
       const draw = body => {
         const tree = node('div', undefined, 'object-window-tree object-window-tree-tall xdto-tree');
         const root = xdtoTree(content(), api.object());
-        const current = xdtoFind(root, chosen) || root;
+        const current = chosen && xdtoFind(root, chosen);
         tree.append(xdtoRow(root, current, picked => { chosen = picked.path; api.refresh(); api.palette(); }));
-        body.append(xdtoPanel(current, content(), api, path => { chosen = path; }), tree);
+        body.append(xdtoPanel(current || root, content(), api, path => { chosen = path; }), tree);
       };
       const part = () => {
-        const root = xdtoTree(content(), api.object()), current = xdtoFind(root, chosen);
+        const root = xdtoTree(content(), api.object()), current = chosen && xdtoFind(root, chosen);
         if (!current || current.kind === 'folder') return null;
         if (current.kind === 'package') {
           const object = api.object(), body = content();
@@ -38,7 +40,9 @@ function createXDTOPackageEditor(host, onChange, around = {}) {
         }
         return {title: current.caption, tabs: api.source().nodePalettes[current.palette], subject: current.subject};
       };
-      return {className: 'xdto-window', draw, part, reset() { chosen = []; },
+      // «Пакет: Открыть» of the palette chooses the root of the tree.
+      const context = () => ({windows: ['content'], openWindow: () => { chosen = []; api.refresh(); api.palette(); }});
+      return {className: 'xdto-window', draw, part, context, reset() { chosen = null; },
         title: () => `XDTO пакет ${api.object().name}: Пакет`,
         value: object => ({...object, content: structuredClone(content())})};
     }});
