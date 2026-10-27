@@ -17,29 +17,29 @@ const SubsystemKind = kinds.Subsystem
 // section of ML App navigation. Membership and nesting are purely
 // navigational: they do not affect execution, rights or storage.
 type SubsystemDefinition struct {
-	Format int           `yaml:"format"`
-	ID     uuid.UUID     `yaml:"id"`
-	Name   string        `yaml:"name"`
-	Title  LocalizedText `yaml:"title"`
+	Format int           `yaml:"format" json:"format"`
+	ID     uuid.UUID     `yaml:"id" json:"id"`
+	Name   string        `yaml:"name" json:"name"`
+	Title  LocalizedText `yaml:"title" json:"title"`
 	// A subsystem is offered to a user and has a help topic, but no commands of
 	// its own to offer: the help gives it the explanation and the help flag and
 	// no standard commands - see object_presentation.go.
 	ObjectExplanation     `yaml:",inline"`
-	IncludeHelpInContents bool        `yaml:"include_help_in_contents,omitempty"`
-	Parent                *uuid.UUID  `yaml:"parent,omitempty"`
-	Members               []uuid.UUID `yaml:"members,omitempty"`
+	IncludeHelpInContents bool        `yaml:"include_help_in_contents,omitempty" json:"includeHelpInContents,omitempty"`
+	Parent                *uuid.UUID  `yaml:"parent,omitempty" json:"parent,omitempty"`
+	Members               []uuid.UUID `yaml:"members,omitempty" json:"members,omitempty"`
 	// IncludeInCommandInterface decides whether the subsystem becomes a section
 	// of the command interface at all. Without it a subsystem groups objects for
 	// the developer and shows the user nothing.
-	IncludeInCommandInterface bool `yaml:"include_in_command_interface,omitempty"`
+	IncludeInCommandInterface bool `yaml:"include_in_command_interface,omitempty" json:"includeInCommandInterface,omitempty"`
 	// Picture is the icon of the section.
-	Picture *PictureReference `yaml:"picture,omitempty"`
+	Picture *PictureReference `yaml:"picture,omitempty" json:"picture,omitempty"`
 	// UseOneCommand puts the commands of the section behind one command instead
 	// of listing them.
-	UseOneCommand bool `yaml:"use_one_command,omitempty"`
+	UseOneCommand bool `yaml:"use_one_command,omitempty" json:"useOneCommand,omitempty"`
 	// CommandInterface is what the section shows and in what order - see
 	// CommandInterface.
-	CommandInterface CommandInterface `yaml:"command_interface,omitempty"`
+	CommandInterface CommandInterface `yaml:"command_interface,omitempty" json:"commandInterface,omitempty"`
 }
 
 func DecodeSubsystem(source string, reader io.Reader, configuration project.Project) (SubsystemDefinition, error) {

@@ -22,39 +22,39 @@ const CommonAttributeKind = kinds.CommonAttribute
 // so schema generation, BSL property dispatch and forms all see it exactly
 // like a natively declared attribute.
 type CommonAttributeDefinition struct {
-	Format       int           `yaml:"format"`
-	ID           uuid.UUID     `yaml:"id"`
-	Name         string        `yaml:"name"`
-	Title        LocalizedText `yaml:"title"`
-	Types        []Type        `yaml:"types"`
-	FillChecking FillCheck     `yaml:"fill_checking,omitempty"`
-	Indexing     IndexMode     `yaml:"indexing,omitempty"`
+	Format       int           `yaml:"format" json:"format"`
+	ID           uuid.UUID     `yaml:"id" json:"id"`
+	Name         string        `yaml:"name" json:"name"`
+	Title        LocalizedText `yaml:"title" json:"title"`
+	Types        []Type        `yaml:"types" json:"types"`
+	FillChecking FillCheck     `yaml:"fill_checking,omitempty" json:"fillChecking,omitempty"`
+	Indexing     IndexMode     `yaml:"indexing,omitempty" json:"indexing,omitempty"`
 	// FullTextSearch is the field's own flag, which a common attribute carries
 	// like any other field - see full_text_search.go. The prototype gives it to
 	// a common attribute and the demonstration configuration writes it on all
 	// six of them.
-	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty"`
+	FullTextSearch FullTextSearchMode `yaml:"full_text_search,omitempty" json:"fullTextSearch,omitempty"`
 	// DataHistory is the field's half of data history, which a common
 	// attribute carries the same way - see data_history.go. Only the
 	// participation flag: the two booleans beside it belong to the object,
 	// not to a field. The demonstration configuration writes it on all six
 	// common attributes, and on all six it is Использовать.
-	DataHistory DataHistoryMode `yaml:"data_history,omitempty"`
+	DataHistory DataHistoryMode `yaml:"data_history,omitempty" json:"dataHistory,omitempty"`
 	// Comment, Presentation, Choice and Filling are the rest of what any field
 	// carries. ТЗ asks for «полный набор свойств реквизита» here, and it asks
 	// for a reason: a common attribute becomes an ordinary attribute of every
 	// object it targets, so a format or a choice form it cannot hold is a
 	// format or a choice form none of those objects get. All six common
 	// attributes of the demonstration configuration carry them.
-	Comment      string            `yaml:"comment,omitempty"`
-	Presentation FieldPresentation `yaml:"presentation,omitempty"`
-	Choice       FieldChoice       `yaml:"choice,omitempty"`
-	Filling      FieldFilling      `yaml:"filling,omitempty"`
+	Comment      string            `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Presentation FieldPresentation `yaml:"presentation,omitempty" json:"presentation,omitempty"`
+	Choice       FieldChoice       `yaml:"choice,omitempty" json:"choice,omitempty"`
+	Filling      FieldFilling      `yaml:"filling,omitempty" json:"filling,omitempty"`
 	// AutoUse decides the objects the composition says nothing definite about:
 	// those it does not mention at all, and those it marks «auto». The
 	// prototype's default is not to use them, and that is the safe way round -
 	// an object nobody spoke about does not silently grow a column.
-	AutoUse CommonAttributeAutoUse `yaml:"auto_use,omitempty"`
+	AutoUse CommonAttributeAutoUse `yaml:"auto_use,omitempty" json:"autoUse,omitempty"`
 	// Content is the composition, and it is not a list of the objects that get
 	// the attribute: it is a list of objects with a verdict on each. That
 	// difference is the whole of it. Of the six common attributes of the
@@ -63,7 +63,7 @@ type CommonAttributeDefinition struct {
 	// auto-use on, and all 331 items marked «do not use», so the composition
 	// works as a list of exceptions. Read as a list of the included, it would
 	// give the attribute to precisely the objects that must not have it.
-	Content []CommonAttributeContentItem `yaml:"content,omitempty"`
+	Content []CommonAttributeContentItem `yaml:"content,omitempty" json:"content,omitempty"`
 	// The seven properties of data separation ML carries. In the prototype the same
 	// metadata object carries a second, unrelated mechanism: one database shared
 	// between independent companies, each with its own users and authentication,
@@ -78,12 +78,12 @@ type CommonAttributeDefinition struct {
 	// in: one holds the value of the separator for this session, the other says
 	// whether separation is in force. Both separators of the demonstration
 	// configuration name both.
-	DataSeparation           SeparationMode   `yaml:"data_separation,omitempty"`
-	SeparatedDataUse         SeparatedDataUse `yaml:"separated_data_use,omitempty"`
-	DataSeparationValue      *uuid.UUID       `yaml:"data_separation_value,omitempty"`
-	DataSeparationUse        *uuid.UUID       `yaml:"data_separation_use,omitempty"`
-	UsersSeparation          SeparationMode   `yaml:"users_separation,omitempty"`
-	AuthenticationSeparation SeparationMode   `yaml:"authentication_separation,omitempty"`
+	DataSeparation           SeparationMode   `yaml:"data_separation,omitempty" json:"dataSeparation,omitempty"`
+	SeparatedDataUse         SeparatedDataUse `yaml:"separated_data_use,omitempty" json:"separatedDataUse,omitempty"`
+	DataSeparationValue      *uuid.UUID       `yaml:"data_separation_value,omitempty" json:"dataSeparationValue,omitempty"`
+	DataSeparationUse        *uuid.UUID       `yaml:"data_separation_use,omitempty" json:"dataSeparationUse,omitempty"`
+	UsersSeparation          SeparationMode   `yaml:"users_separation,omitempty" json:"usersSeparation,omitempty"`
+	AuthenticationSeparation SeparationMode   `yaml:"authentication_separation,omitempty" json:"authenticationSeparation,omitempty"`
 	// The separation of the extensions of the configuration is not carried:
 	// it goes with the extensions, which ML does not keep (owner, 15.10.2026;
 	// METADATA-OBJECTS.md, «Общие: общие реквизиты»). A file naming it is not
@@ -95,7 +95,7 @@ type CommonAttributeDefinition struct {
 	// carry for one object, and the help gives it a constant only. All three
 	// configurations being moved set it on their two separators. Carried, not
 	// executed, for the reason above.
-	ConditionalSeparation *uuid.UUID `yaml:"conditional_separation,omitempty"`
+	ConditionalSeparation *uuid.UUID `yaml:"conditional_separation,omitempty" json:"conditionalSeparation,omitempty"`
 }
 
 // SeparationMode is the two-valued answer three of the seven give: separate by
@@ -156,14 +156,14 @@ const (
 // CommonAttributeContentItem is one object of the composition and what the
 // attribute does with it.
 type CommonAttributeContentItem struct {
-	Metadata uuid.UUID          `yaml:"metadata"`
-	Use      CommonAttributeUse `yaml:"use,omitempty"`
+	Metadata uuid.UUID          `yaml:"metadata" json:"metadata"`
+	Use      CommonAttributeUse `yaml:"use,omitempty" json:"use,omitempty"`
 	// ConditionalSeparation is the condition under which the attribute
 	// separates this object's data. It is part of the composition and not of
 	// the attribute, because the condition is per object - see
 	// ConditionalSeparation. We carry it and do not act on it: separation of
 	// data is not ours, and the reason is in METADATA-OBJECTS.md.
-	ConditionalSeparation *ConditionalSeparation `yaml:"conditional_separation,omitempty"`
+	ConditionalSeparation *ConditionalSeparation `yaml:"conditional_separation,omitempty" json:"conditionalSeparation,omitempty"`
 }
 
 // ConditionalSeparation names the boolean that decides whether the attribute
@@ -173,11 +173,11 @@ type CommonAttributeContentItem struct {
 // not our caution: a condition that lived on a separated object would have to
 // be read to decide whether to separate it, and reading it needs the answer.
 type ConditionalSeparation struct {
-	Constant *uuid.UUID `yaml:"constant,omitempty"`
+	Constant *uuid.UUID `yaml:"constant,omitempty" json:"constant,omitempty"`
 	// Object and Attribute are named together: an attribute of an object, and
 	// the object is needed because the condition may live anywhere.
-	Object    *uuid.UUID `yaml:"object,omitempty"`
-	Attribute *uuid.UUID `yaml:"attribute,omitempty"`
+	Object    *uuid.UUID `yaml:"object,omitempty" json:"object,omitempty"`
+	Attribute *uuid.UUID `yaml:"attribute,omitempty" json:"attribute,omitempty"`
 }
 
 func validCommonAttributeUse(value CommonAttributeUse) bool {
