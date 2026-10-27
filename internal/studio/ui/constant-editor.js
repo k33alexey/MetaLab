@@ -10,8 +10,7 @@
 function createConstantEditor(host, onChange, around = {}) {
   return paletteEditor(host, onChange, around, {
     target: source => source.constant,
-    subject: source => valueSubject(source.constant, source.typeOffer, types => { source.constant.types = types; }, {owner: 'constants',
-      setName: value => { source.constant.name = value; }, check: () => ({path: source.path, name: source.constant.name})}),
+    subject: source => typedObjectSubject(source, source.constant, 'constants'),
     context: source => ({typeOffer: source.typeOffer, choices: source.choices,
       openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
       // The main form of a constant is a common form, named by its

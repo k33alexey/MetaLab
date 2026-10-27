@@ -119,6 +119,16 @@ var kindNewObjectOf = map[Kind]newObject{
 		module, _ := project.ObjectModulePath(string(WebSocketClientKind), name, string(kinds.ClientModule)+".bsl")
 		return Fresh{Value: WebSocketClientDefinition{Format: CurrentFormat, ID: id, Name: name, Timeout: &timeout}, Files: []FreshFile{{Path: module}}}
 	},
+	// obshchij-rekvizit.md, «Новый реквизит»: a string of 10 of variable
+	// length, no auto-use and no separation, not indexed, in the full-text
+	// search and the history of data, the filling not checked, the quick
+	// choice, the creation on input and the history of choice «Авто».
+	CommonAttributeKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: CommonAttributeDefinition{Format: CurrentFormat, ID: id, Name: name, Types: []Type{{Kind: StringType, Length: 10}},
+			AutoUse: CommonAttributeAutoUseDontUse, DataSeparation: SeparationDontUse, Indexing: DontIndex,
+			FullTextSearch: FullTextSearchUse, DataHistory: DataHistoryUse, FillChecking: DontCheckFilling,
+			Choice: FieldChoice{QuickChoice: UsageAuto, CreateOnInput: UsageAuto, HistoryOnInput: ChoiceHistoryAuto}}}
+	},
 	// podsistema.md, «Новая подсистема»: in the command interface, not of
 	// one command, in the contents of the help.
 	SubsystemKind: func(id uuid.UUID, name string, _ project.Project) Fresh {

@@ -340,6 +340,28 @@ var palettes = map[Kind][]PaletteTab{
 				Description: "Картинку можно выбрать в приложении и для элемента условного оформления."},
 		})},
 	},
+	// docs/block-00/obshchij-rekvizit.md, «Палитра»: «Основные» - the name,
+	// the type and its qualifiers; «Использование» - «Состав: Открыть»,
+	// the auto-use, the separation of data, the use in the database;
+	// «Представление» - as of a field, with its filling and choice.
+	CommonAttribute: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("общего реквизита", "об общем реквизите"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+		}, typeRows)},
+		{Key: "use", Title: "Использование", Important: true, Rows: rows([]PaletteRow{
+			{Key: "content", Title: "Состав", Field: WindowField, Important: true, Description: "Объекты, у которых есть общий реквизит, и решение о каждом."},
+			{Key: "autoUse", Title: "Автоиспользование", Field: ChoiceField, Important: true, Default: "dont-use",
+				Choices:     [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}},
+				Description: "Получают ли реквизит объекты, о которых состав ничего не говорит."},
+			{Key: "dataSeparation", Title: "Разделение данных", Field: ChoiceField, Important: true, Default: "dont-use",
+				Choices:     [][2]string{{"dont-use", "Не использовать"}, {"separate", "Разделять"}},
+				Description: "Разделяет ли реквизит данные базы на независимые области."},
+			{Field: SeparatorField, Important: true},
+		}, fieldUseRows)},
+		{Key: "presentation", Title: "Представление", Important: true, Rows: rows(typePresentation, []PaletteRow{
+			{Field: SeparatorField, Important: true},
+		}, fieldFillingAndChoiceRows)},
+	},
 	// docs/block-00/podsistema.md, «Палитра»; snapshots podsistema/17, 18:
 	// «Основные» with «Состав: Открыть» and the two flags, «Представление»
 	// with «Командный интерфейс: Открыть», the explanation and the picture,
@@ -748,6 +770,36 @@ var (
 	}
 )
 
+// fieldUseRows are the rows of the use of a field in the database - an
+// attribute and a common attribute alike (rekvizit.md, obshchij-rekvizit.md,
+// «Палитра»); fieldFillingAndChoiceRows those of its filling and choice.
+var (
+	fieldUseRows = []PaletteRow{
+		{Key: "indexing", Title: "Индексировать", Field: ChoiceField, Important: true, Default: "dont-index",
+			Choices:     [][2]string{{"dont-index", "Не индексировать"}, {"index", "Индексировать"}, {"index-with-additional-order", "Индексировать с доп. упорядочиванием"}},
+			Description: "Строит ли база индекс по реквизиту: отбор и упорядочивание по нему быстрее."},
+		{Key: "fullTextSearch", Title: "Полнотекстовый поиск", Field: ChoiceField, Important: true, Choices: usage,
+			Description: "Входит ли реквизит в полнотекстовый индекс."},
+		{Key: "dataHistory", Title: "История данных", Field: ChoiceField, Important: true, Choices: usage,
+			Description: "Хранятся ли изменения реквизита в истории данных."},
+	}
+	fieldFillingAndChoiceRows = []PaletteRow{
+		{Key: "filling.fromFillingValue", Title: "Заполнять из данных заполнения", Field: FlagField, Important: true,
+			Description: "Новый объект берёт значение реквизита из данных заполнения - например, из отбора списка."},
+		{Key: "filling.value", Title: "Значение заполнения", Field: ValueField, Important: true,
+			Description: "Значение реквизита у нового объекта."},
+		{Key: "fillChecking", Title: "Проверка заполнения", Field: ChoiceField, Important: true, Default: "dont-check", Choices: fillChecks,
+			Description: "Отказывает ли запись объекта с незаполненным реквизитом."},
+		{Field: SeparatorField, Important: true},
+		{Key: "choice.quickChoice", Title: "Быстрый выбор", Field: ChoiceField, Important: true, Choices: autoUsage,
+			Description: "Выбирается ли значение из выпадающего списка вместо формы выбора."},
+		{Key: "choice.createOnInput", Title: "Создание при вводе", Field: ChoiceField, Important: true, Choices: autoUsage,
+			Description: "Можно ли создать значение прямо из поля."},
+		{Key: "choice.historyOnInput", Title: "История выбора при вводе", Field: ChoiceField, Important: true, Choices: autoHistory,
+			Description: "Предлагаются ли первыми значения, которые пользователь уже выбирал."},
+	}
+)
+
 // partPalettes are the palettes of the parts of an object - an attribute, a
 // table part, a template - by the kind of the part (docs/block-00/rekvizit.md,
 // tablichnaya-chast.md, «Палитра»; snapshots spravochnik/rekvizit-*). The
@@ -957,32 +1009,13 @@ var partPalettes = map[string][]PaletteTab{
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{
 			{Field: SeparatorField, Important: true},
 		}, typeRows)},
-		{Key: "use", Title: "Использование", Important: true, Rows: []PaletteRow{
+		{Key: "use", Title: "Использование", Important: true, Rows: rows([]PaletteRow{
 			{Key: "use", Title: "Использование", Field: ChoiceField, Important: true, Shown: []string{"owner=catalogs"}, Choices: attributeUse,
 				Description: "Чей это реквизит: элемента, группы или обоих."},
-			{Key: "indexing", Title: "Индексировать", Field: ChoiceField, Important: true, Default: "dont-index",
-				Choices:     [][2]string{{"dont-index", "Не индексировать"}, {"index", "Индексировать"}, {"index-with-additional-order", "Индексировать с доп. упорядочиванием"}},
-				Description: "Строит ли база индекс по реквизиту: отбор и упорядочивание по нему быстрее."},
-			{Key: "fullTextSearch", Title: "Полнотекстовый поиск", Field: ChoiceField, Important: true, Choices: usage,
-				Description: "Входит ли реквизит в полнотекстовый индекс."},
-			{Key: "dataHistory", Title: "История данных", Field: ChoiceField, Important: true, Choices: usage,
-				Description: "Хранятся ли изменения реквизита в истории данных."},
-		}},
+		}, fieldUseRows)},
 		{Key: "presentation", Title: "Представление", Important: true, Rows: rows(typePresentation, referenceChoice, []PaletteRow{
 			{Field: SeparatorField, Important: true},
-			{Key: "filling.fromFillingValue", Title: "Заполнять из данных заполнения", Field: FlagField, Important: true,
-				Description: "Новый объект берёт значение реквизита из данных заполнения - например, из отбора списка."},
-			{Key: "filling.value", Title: "Значение заполнения", Field: ValueField, Important: true,
-				Description: "Значение реквизита у нового объекта."},
-			{Key: "fillChecking", Title: "Проверка заполнения", Field: ChoiceField, Important: true, Default: "dont-check", Choices: fillChecks,
-				Description: "Отказывает ли запись объекта с незаполненным реквизитом."},
-			{Field: SeparatorField, Important: true},
-			{Key: "choice.quickChoice", Title: "Быстрый выбор", Field: ChoiceField, Important: true, Choices: autoUsage,
-				Description: "Выбирается ли значение из выпадающего списка вместо формы выбора."},
-			{Key: "choice.createOnInput", Title: "Создание при вводе", Field: ChoiceField, Important: true, Choices: autoUsage,
-				Description: "Можно ли создать значение прямо из поля."},
-			{Key: "choice.historyOnInput", Title: "История выбора при вводе", Field: ChoiceField, Important: true, Choices: autoHistory,
-				Description: "Предлагаются ли первыми значения, которые пользователь уже выбирал."},
+		}, fieldFillingAndChoiceRows, []PaletteRow{
 			{Field: SeparatorField, Important: true},
 			{Key: "choice.linkByType", Title: "Связь по типу", Field: FieldsField, Important: true,
 				Description: "Реквизит, от значения которого зависит тип значения этого реквизита."},

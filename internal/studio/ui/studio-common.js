@@ -1000,6 +1000,15 @@ function objectChoiceItem(branches, id) {
   return null;
 }
 
+/* typedObjectSubject is what the palette of an object holding a value of a
+   type edits - a constant, a common attribute: the object (valueSubject),
+   its types by the window of the type over source.typeOffer, its name
+   checked at source.path; owner names its kind's folder. */
+function typedObjectSubject(source, object, owner) {
+  return valueSubject(object, source.typeOffer, types => { object.types = types; }, {owner,
+    setName: value => { object.name = value; }, check: () => ({path: source.path, name: object.name})});
+}
+
 /* valueSubject is what the palette edits of anything that holds a value of
    a type - an attribute, a constant: its properties by their keys, and the
    qualifiers of its one type (type.length, type.precision…) written by the
