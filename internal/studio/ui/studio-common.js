@@ -824,13 +824,15 @@ function objectList(caption, items, current, choose, change, remove) {
 }
 
 /* objectRows is the list of rows of objectList, without its head: items are
-   [key, caption], one of them current; choose(key) makes a row current,
-   open() is a double click on a row. */
+   [key, caption] or [key, caption, sign] - an element drawn before the
+   caption, an icon or an image - one of them current; choose(key) makes a
+   row current, open() is a double click on a row. */
 function objectRows(items, current, choose, open = () => {}) {
   const list = node('div', undefined, 'object-window-list');
   list.setAttribute('role', 'listbox');
-  for (const [key, text] of items) {
-    const row = node('div', text, 'object-window-list-row' + (key === current ? ' current' : ''));
+  for (const [key, text, sign] of items) {
+    const row = node('div', sign ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    if (sign) row.append(sign, node('span', text));
     row.title = text;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
@@ -1183,15 +1185,22 @@ function paletteFields(context) {
       if (web) { link.href = address; link.target = '_blank'; link.rel = 'noopener'; }
       return link;
     }
-    // A picture: of the platform by its name, of the project by its own
-    // (metadata.PictureReference); «…» waits for the window «Выбор
-    // картинки», an item of its own; the cross takes it away.
+    // A picture: of the platform by its Russian name, of the project by
+    // its own (metadata.PictureReference, PictureChoice); «…» chooses it in
+    // «Выбор картинки», the cross takes it away. A picture of a file of the
+    // object's own is shown by the file: its tabs «Из файла» are a question
+    // of series 2.618, and «…» stands unavailable on it.
     if (row.field === 'picture') {
-      const picture = subject.get(row.key), shown = node('input');
+      const picture = subject.get(row.key), shown = node('input'), names = context.project?.pictures;
       shown.readOnly = true;
-      shown.value = picture ? picture.standard || context.project?.pictures?.find(item => item.id === picture.item)?.name || picture.item || '' : '';
-      const pick = fieldChoiceButton(row.title, () => {});
-      pick.disabled = true;
+      shown.value = !picture ? '' : picture.standard ? names?.standard.find(item => item.name === picture.standard)?.russian || picture.standard
+        : picture.common ? names?.common.find(item => item.id === picture.common)?.name || picture.common : picture.file || '';
+      const pick = fieldChoiceButton(row.title, async () => {
+        const chosen = await choosePicture(picture, names);
+        if (chosen === undefined) return;
+        subject.set(row.key, chosen || undefined); context.changed();
+      });
+      pick.disabled = !names || !!picture?.file || !!picture?.variants;
       return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, !picture)]);
     }
     if (row.field === 'module' || row.field === 'window') {
@@ -2113,6 +2122,87 @@ function borderSample({line, width}) {
   const side = {underline: 'Bottom', 'double-underline': 'Bottom', overline: 'Top'}[line] || '';
   box.style['border' + side] = `${styles[line] === 'double' ? Math.max(3, width) : width}px ${styles[line]} currentColor`;
   return box;
+}
+
+/* choosePicture is the window «Выбор картинки», one for every place a
+   picture is chosen (docs/block-00/standartnye-kartinki.md, «Окно»;
+   gruppa-komand.md, «Палитра»; snapshots standartnye-kartinki/19, 20):
+   «Из библиотеки» with «Из проекта» - the common pictures of the
+   project in the order of the tree, each with its image - and
+   «Стандартные» - the pictures of the platform by their Russian names,
+   the hidden ones left out; at the right the picture chosen with its
+   size, under them «Очистить», «Сохранить», OK and «Отмена». The list
+   marks no row until one is clicked, even one showing the picture set
+   (snapshot 19); the tab of the picture set comes first, «Из
+   конфигурации» when none is. «Очистить» takes the picture away and
+   leaves the list as it is. The tabs «Из файла» and «Подбор из
+   файла-коллекции», the arrows, «Добавить», «Изменить», «Удалить» and
+   «Сохранить» wait for questions of series 2.618: the tabs are not shown,
+   the buttons stand unavailable. value is a reference to a picture
+   (metadata.PictureReference), pictures the names of the project's and
+   the platform's (PictureChoice). Answers the reference chosen - the
+   settings of its loading kept, as the prototype keeps them with no
+   picture (METADATA-OBJECTS, «Ссылка без картинки»), null when nothing is
+   left - or undefined after «Отмена». */
+async function choosePicture(value, pictures) {
+  let library = [];
+  try { library = await (await fetch('/api/picture/library')).json(); } catch { library = []; }
+  const images = new Map(library.map(item => [item.id, item]));
+  const standard = new Map(pictures.standard.map(item => [item.name, item]));
+  const chosen = {standard: value?.standard || '', common: value?.common || ''};
+  let tab = chosen.standard ? 'standard' : 'common', marked = null;
+  const imageOf = id => {
+    const item = images.get(id);
+    if (!item?.image) return null;
+    const image = node('img');
+    image.src = `/api/picture/image?path=${encodeURIComponent(item.path)}&name=${encodeURIComponent(item.image)}`;
+    image.alt = item.name;
+    return image;
+  };
+  const content = node('div', undefined, 'picture-choice');
+  const inner = tabStrip([['common', 'Из проекта'], ['standard', 'Стандартные']], tab, key => { tab = key; marked = null; render(); });
+  const list = node('div', undefined, 'picture-choice-list'), shown = node('div', undefined, 'picture-choice-image');
+  const up = panelButton('move-up', 'Переместить вверх', false, () => {}), down = panelButton('move-down', 'Переместить вниз', false, () => {});
+  const arrows = node('div', undefined, 'picture-choice-arrows');
+  arrows.append(up, down);
+  const below = node('div', undefined, 'picture-choice-buttons');
+  for (const caption of ['Добавить', 'Изменить', 'Удалить']) {
+    const button = node('button', caption);
+    button.type = 'button'; button.disabled = true;
+    below.append(button);
+  }
+  function render() {
+    const rows = tab === 'common'
+      ? pictures.common.map(item => [item.id, item.name, imageOf(item.id) || iconElement('')])
+      : pictures.standard.filter(item => !item.hidden).map(item => [item.name, item.russian, iconElement(item.icon)]);
+    list.replaceChildren(objectRows(rows, marked, key => {
+      marked = key;
+      Object.assign(chosen, tab === 'common' ? {standard: '', common: key} : {standard: key, common: ''});
+      render();
+    }));
+    const drawn = chosen.common ? imageOf(chosen.common) : chosen.standard ? iconElement(standard.get(chosen.standard)?.icon || '') : null;
+    const size = node('div', undefined, 'picture-choice-size');
+    shown.replaceChildren(...drawn ? [drawn, size] : []);
+    if (drawn?.tagName === 'IMG') drawn.addEventListener('load', () => { size.textContent = `${drawn.naturalWidth} x ${drawn.naturalHeight}`; });
+    else if (drawn) size.textContent = '16 x 16';
+  }
+  render();
+  const left = node('div', undefined, 'picture-choice-left');
+  left.append(inner, list, below);
+  const body = node('div', undefined, 'picture-choice-body');
+  body.append(left, arrows, shown);
+  content.append(tabStrip([['library', 'Из библиотеки']], 'library', () => {}), body);
+  const any = () => !!(chosen.standard || chosen.common);
+  const answer = await showDialog({title: 'Выбор картинки', content, className: 'picture-choice-dialog', answers: [
+    ['clear', 'Очистить', {act: () => { chosen.standard = ''; chosen.common = ''; render(); }, enabled: any}],
+    ['save', 'Сохранить', {act: () => {}, enabled: () => false}],
+    ['ok', 'OK', {primary: () => true}], [null, 'Отмена']]});
+  if (answer !== 'ok') return undefined;
+  const reference = {...value || {}};
+  delete reference.standard; delete reference.common;
+  if (chosen.standard) reference.standard = chosen.standard;
+  if (chosen.common) reference.common = chosen.common;
+  return Object.keys(reference).length ? reference : null;
 }
 
 /* valueChoiceDialog shows a window choosing a value of a style - «Выбор

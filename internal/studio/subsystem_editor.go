@@ -27,6 +27,9 @@ type SubsystemEditorSource struct {
 	// Composition is the tree of the page «Состав»: the objects of the kinds
 	// a subsystem's window offers (metadata.SubsystemCompositionKinds).
 	Composition []ObjectChoiceBranch `json:"composition"`
+	// Pictures name the pictures the field «Картинка» shows and its window
+	// «Выбор картинки» offers.
+	Pictures PictureChoice `json:"pictures"`
 }
 
 // SubsystemWindowValue is what the window of a subsystem writes: the
@@ -66,7 +69,8 @@ func (workspace *Workspace) readSubsystemEditorLocked(relative string) (Subsyste
 		return SubsystemEditorSource{}, err
 	}
 	head.FunctionalOptions = optionPlaces(loaded, metadata.SubsystemKind, value.ID)
-	return SubsystemEditorSource{windowHead: head, Subsystem: value, Composition: objectChoiceTree(loaded, metadata.SubsystemCompositionKinds())}, nil
+	return SubsystemEditorSource{windowHead: head, Subsystem: value, Composition: objectChoiceTree(loaded, metadata.SubsystemCompositionKinds()),
+		Pictures: pictureChoice(loaded)}, nil
 }
 
 // SaveSubsystemWindow writes the subsystem and the options its window marks

@@ -15,9 +15,11 @@ import (
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/atomicfile"
+	"github.com/k33alexey/MetaLab/internal/icons"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 // The window of a common picture (docs/block-00/obshchaya-kartinka.md,
@@ -286,10 +288,11 @@ func (workspace *Workspace) replacePictureImageLocked(relative string, images []
 // for a picture of none - and whether it keeps a set of variants, which
 // the library neither shows nor clears.
 type PictureLibraryItem struct {
-	Path  string `json:"path"`
-	Name  string `json:"name"`
-	Image string `json:"image,omitempty"`
-	Set   bool   `json:"set,omitempty"`
+	ID    uuid.UUID `json:"id"`
+	Path  string    `json:"path"`
+	Name  string    `json:"name"`
+	Image string    `json:"image,omitempty"`
+	Set   bool      `json:"set,omitempty"`
 }
 
 // PictureLibrary lists the common pictures of the project in the order of
@@ -312,13 +315,51 @@ func (workspace *Workspace) PictureLibrary() ([]PictureLibraryItem, error) {
 			return nil, err
 		}
 		picture, _ := loaded.CommonPicture(object.Name)
-		item := PictureLibraryItem{Path: relative, Name: object.Name, Set: len(picture.Variants) > 0 || len(images) > 1}
+		item := PictureLibraryItem{ID: object.ID, Path: relative, Name: object.Name, Set: len(picture.Variants) > 0 || len(images) > 1}
 		if len(images) == 1 && !item.Set {
 			item.Image = images[0]
 		}
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+// PictureChoice is what a field of a picture and the window «Выбор
+// картинки» name pictures by (docs/block-00/standartnye-kartinki.md): the
+// common pictures of the project in the order of the tree, by identifier
+// and name, and the standard pictures of the platform in the order of the
+// help - the name a reference writes, the Russian name the window shows,
+// the icon drawing it, and whether the window hides it. Their images the
+// window reads by PictureLibrary when it opens.
+type PictureChoice struct {
+	Common   []PicturePlace         `json:"common"`
+	Standard []StandardPicturePlace `json:"standard"`
+}
+
+// PicturePlace is a common picture by its identifier and name.
+type PicturePlace struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// StandardPicturePlace is a picture of the platform's library
+// (icons.StandardPicture).
+type StandardPicturePlace struct {
+	Name    string `json:"name"`
+	Russian string `json:"russian"`
+	Icon    string `json:"icon,omitempty"`
+	Hidden  bool   `json:"hidden,omitempty"`
+}
+
+func pictureChoice(loaded *metadata.Catalog) PictureChoice {
+	choice := PictureChoice{Common: []PicturePlace{}}
+	for _, object := range loaded.KindObjects(metadata.CommonPictureKind) {
+		choice.Common = append(choice.Common, PicturePlace{ID: object.ID, Name: object.Name})
+	}
+	for _, picture := range icons.StandardPictures() {
+		choice.Standard = append(choice.Standard, StandardPicturePlace{Name: picture.Name, Russian: picture.Russian, Icon: picture.Icon, Hidden: picture.Hidden})
+	}
+	return choice
 }
 
 // ClearPicture takes the image of a picture away at once - «Очистить» of

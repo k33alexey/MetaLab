@@ -7,8 +7,9 @@
    «Функциональные опции» - the options of the project marked where the
    subsystem is in their content - «Состав» and «Прочее» with the help -
    and its palette of three tabs, whose «Состав: Открыть» shows the page
-   «Состав». The window «Командный интерфейс» and «Выбор картинки» are
-   items of their own: their button and «…» stand unavailable. */
+   «Состав». The window «Командный интерфейс» is an item of its own: its
+   button stands unavailable; the picture is chosen by «Выбор картинки»
+   (choosePicture). */
 function createSubsystemEditor(host, onChange, around = {}) {
   return objectWindowEditor(host, onChange, around, {target: source => source.subsystem, own: api => {
     const opened = new Set();
