@@ -109,7 +109,7 @@ function createProjectEditor(host, onChange) {
     const select = selectInput([['', 'Не задано'], ...choices.map(choice => [choice.id, presentation(choice)])], stored,
       value => { model.setField(field, value); rerender(); });
     if (stored && !choices.some(choice => choice.id === stored)) {
-      const missing = node('option', 'Не найдено в конфигурации: ' + stored, 'project-default-missing');
+      const missing = node('option', 'Не найдено в проекте: ' + stored, 'project-default-missing');
       missing.value = stored;
       select.append(missing);
       select.classList.add('project-default-broken');
@@ -158,15 +158,15 @@ function createProjectEditor(host, onChange) {
       ({key: item.kind + ':' + item.id, kind: item.kind, id: item.id, title: presentation(item), chip: chip(item.kind)}));
     return choiceList(label, known, source.configuration.additionalFullTextSearchDictionaries || [],
       entry => entry.kind + ':' + entry.object,
-      entry => ({kind: entry.kind, id: entry.object, title: 'Не найден в конфигурации: ' + entry.object, chip: chip(entry.kind)}),
-      'В конфигурации нет ни макетов, ни констант',
+      entry => ({kind: entry.kind, id: entry.object, title: 'Не найден в проекте: ' + entry.object, chip: chip(entry.kind)}),
+      'В проекте нет ни макетов, ни констант',
       (row, checked) => model.setDictionary(row.kind, row.id, checked));
   }
   function rolesField(label, field) {
     const known = (source.defaults?.roles || []).map(role => ({key: role.id, title: presentation(role)}));
     return choiceList(label, known, source.configuration[field] || [], id => id,
-      id => ({title: 'Не найдена в конфигурации: ' + id}),
-      'В конфигурации нет ни одной роли',
+      id => ({title: 'Не найдена в проекте: ' + id}),
+      'В проекте нет ни одной роли',
       (row, checked) => model.setRoleGranted(field, row.key, checked));
   }
   function checkField(label, field) {
@@ -186,7 +186,7 @@ function createProjectEditor(host, onChange) {
     clearFields();
     host.replaceChildren();
     const panel = node('div', undefined, 'catalog-detail');
-    panel.append(node('h3', 'Корень конфигурации'));
+    panel.append(node('h3', 'Корень проекта'));
 
     const identity = section('Как называется');
     const synonym = localizedField('Синоним', 'title');
@@ -205,12 +205,12 @@ function createProjectEditor(host, onChange) {
       source.configuration.defaultLanguage, value => { model.setDefaultLanguage(value); rerender(); })));
     panel.append(identity);
 
-    const about = section('Что это за конфигурация');
+    const about = section('Что это за проект');
     about.append(localizedField('Краткая информация', 'briefInformation'));
     about.append(localizedField('Подробная информация', 'detailedInformation', {kind: 'area', rows: 3}));
     panel.append(about);
 
-    const vendor = section('Кто её выпустил');
+    const vendor = section('Кто его выпустил');
     vendor.append(textField('Поставщик', source.configuration.vendor,
       value => model.setField('vendor', value)));
     vendor.append(textField('Версия', source.configuration.version,
@@ -218,9 +218,9 @@ function createProjectEditor(host, onChange) {
     vendor.append(localizedField('Авторские права', 'copyright'));
     panel.append(vendor);
 
-    const addresses = section('Где о ней прочитать');
+    const addresses = section('Где о нём прочитать');
     addresses.append(localizedField('Адрес поставщика', 'vendorAddress'));
-    addresses.append(localizedField('Адрес конфигурации', 'informationAddress'));
+    addresses.append(localizedField('Адрес проекта', 'informationAddress'));
     panel.append(addresses);
 
     /* Пятнадцать умолчаний корня: чем приложение рисуется, под какими правами
@@ -267,7 +267,7 @@ function createProjectEditor(host, onChange) {
        прототипа, которых ML не исполняет, — основное окно, хранение двоичных
        данных, автонумерация и прочие — не переносятся вовсе
        (METADATA-OBJECTS, «Корень конфигурации»). */
-    const settings = section('Как устроена сама конфигурация');
+    const settings = section('Как устроен сам проект');
     settings.append(choiceField('Управление блокировкой данных', 'dataLockControl', [
       ['', 'Как в ML'], ['managed', 'Управляемый'], ['automatic', 'Автоматический'],
       ['automatic-and-managed', 'Автоматический и управляемый'],

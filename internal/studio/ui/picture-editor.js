@@ -99,10 +99,12 @@ function createPictureEditor(host, onChange, around = {}) {
     value: object => image ? {...object, image: structuredClone(image)} : object})});
 }
 
-/* showPictureLibrary is «Библиотека картинок конфигурации», the command «Все
-   картинки» of a picture (docs/block-00/obshchaya-kartinka.md, «Команды»,
-   «Досъёмка 27.10.2026»; snapshot series-2.584/099): a window standing over
-   Studio, not shutting it, as the prototype's - the pictures of the project
+/* showPictureLibrary is «Библиотека картинок проекта» - the prototype's
+   «Библиотека картинок конфигурации» (ML-STUDIO.md, «„Проект“ вместо
+   „конфигурации“») - the command «Все картинки» of a picture (docs/
+   block-00/obshchaya-kartinka.md, «Команды», «Досъёмка 27.10.2026»;
+   snapshot series-2.584/099): a window standing over Studio, not shutting
+   it, as the prototype's - the pictures of the project
    in the order of the tree, the first current, the image of the current at
    the right with «Очистить», «Сохранить в файл» and «Закрыть», and
    «Добавить», «Изменить», «Удалить» under the list. «Добавить» makes a
@@ -169,7 +171,7 @@ function showPictureLibrary(actions) {
   bottom.append(add, change, remove);
   const body = node('div', undefined, 'picture-library-body');
   body.append(list, arrows, right, bottom);
-  library.append(node('div', 'Библиотека картинок конфигурации', 'picture-library-title'), body);
+  library.append(node('div', 'Библиотека картинок проекта', 'picture-library-title'), body);
   library.addEventListener('close', () => library.remove());
   document.body.append(library);
   library.show();

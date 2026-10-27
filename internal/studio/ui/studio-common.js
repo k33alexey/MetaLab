@@ -552,7 +552,7 @@ async function postJSON(path, body, options = {}) {
    of a button keeps its place empty, as the prototype keeps the place of a
    button a window of the same kind shows. help names the window's page of studioHelp: «Справка» and
    F1 open it over the dialog. */
-function showDialog({title, explanation, content, answers, check, className, help, side}) {
+function showDialog({title, caption, explanation, content, answers, check, className, help, side}) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
     // side — кнопки столбцом справа от содержимого, как в окнах прототипа
@@ -560,6 +560,9 @@ function showDialog({title, explanation, content, answers, check, className, hel
     dialog.className = 'localized-title-dialog' + (side ? ' dialog-side' : '') + (className ? ' ' + className : '');
     const form = document.createElement('form');
     form.method = 'dialog';
+    // caption is the window's own title above what it asks - «ML Studio»
+    // of a question (questionCaption).
+    if (caption) form.append(node('div', caption, 'dialog-caption'));
     form.append(node('h3', title));
     if (explanation) form.append(node('p', explanation, 'muted'));
     if (content) form.append(content);
@@ -695,10 +698,15 @@ function closeContextMenu() {
   document.querySelector('.context-menu')?.remove();
 }
 
+/* questionCaption is the title of a window asking a question or warning:
+   where the prototype writes «Конфигуратор», the product writes «ML Studio»
+   (ML-STUDIO.md, «„Проект“ вместо „конфигурации“», the owner, 24.10.2026). */
+const questionCaption = 'ML Studio';
+
 /* askChoice asks a question in a dialog of the page and answers with the key
    of the button pressed, or null when the dialog is closed without one. */
 function askChoice(question, explanation, answers) {
-  return showDialog({title: question, explanation, answers});
+  return showDialog({title: question, caption: questionCaption, explanation, answers});
 }
 
 /* askDeleteObject is the one question before an object or a part of it is
@@ -1819,7 +1827,7 @@ function iconButton(name, title) {
    true is «Да» - the value before comes back, false is «Нет» - the field
    stays to be put right. */
 function askCancelInput() {
-  return showDialog({title: 'В поле введены некорректные данные. Отменить ввод?',
+  return showDialog({title: 'В поле введены некорректные данные. Отменить ввод?', caption: questionCaption,
     explanation: 'Нажмите «Да» для отмены ввода или «Нет» для продолжения редактирования.',
     answers: [['yes', 'Да'], ['no', 'Нет']]}).then(answer => answer !== 'no');
 }

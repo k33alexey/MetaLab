@@ -731,7 +731,7 @@ function createRoleOverview(host, openRole, onChange) {
       objectList.replaceChildren(); boxes = []; groups = [];
       if (!kinds.size) { objectList.append(node('p', 'Ни один объект не входит в отмеченные подсистемы.', 'muted')); return; }
       const root = source.schema.objects?.find(item => item.root);
-      line(0, null, groupBox(root ? title(root) || root.name : 'Конфигурация', shown));
+      line(0, null, groupBox(root ? title(root) || root.name : 'Проект', shown));
       for (const [kind, items] of kinds) {
         const rows = [], caption = source.kindTitles?.[kind] || kind, folding = restrictionFold(caption, rows);
         line(1, folding.toggle, groupBox(caption, items));

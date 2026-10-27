@@ -250,3 +250,5 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .xdto-packages-choice{max-height:60vh;overflow:auto;border:1px solid #4a4d54;background:#1e1f22;padding:2px 0}
 .localized-title-dialog .xdto-packages-row{display:flex;align-items:center;gap:6px;padding:1px 6px;color:#dfe1e5;font-size:12.5px;white-space:nowrap}
 .localized-title-dialog .xdto-packages-own{padding-left:34px}
+/* Заголовок окна вопроса — «ML Studio», как у прототипа «Конфигуратор» над вопросом. */
+.dialog-caption{font-size:11px;font-weight:600;opacity:.7;margin:-8px 0 -4px}

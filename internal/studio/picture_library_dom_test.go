@@ -8,7 +8,7 @@ import (
 )
 
 // pictureLibraryWalk opens «Все картинки» from the menu of the picture
-// Луна and reads «Библиотека картинок конфигурации»; it saves Звезда to a
+// Луна and reads «Библиотека картинок проекта»; it saves Звезда to a
 // file, clears it, deletes Луна, adds a picture, and opens the window of
 // the current one by «Изменить».
 const pictureLibraryWalk = `(async () => {
@@ -53,7 +53,9 @@ const pictureLibraryWalk = `(async () => {
   return steps;
 })()`
 
-// «Библиотека картинок конфигурации» is the prototype's (docs/block-00/
+// «Библиотека картинок проекта» - the prototype's «Библиотека картинок
+// конфигурации», named as the product names it (ML-STUDIO.md, «„Проект“
+// вместо „конфигурации“») - is the prototype's (docs/block-00/
 // obshchaya-kartinka.md, «Команды», «Досъёмка 27.10.2026»; snapshot
 // series-2.584/099): «Все картинки» stands first in the menu of a picture;
 // the window stands over Studio without shutting it, lists the pictures in
@@ -131,11 +133,11 @@ func TestThePictureLibraryIsThePrototypes(t *testing.T) {
 	// The common part of the menu is an item of its own («контекстное меню
 	// дерева»): «Все картинки» stands alone first.
 	expect("the menu of a picture", steps.Menu, []string{"Все картинки"})
-	expect("opened", steps.Opened, window{Title: "Библиотека картинок конфигурации", Rows: []string{"Звезда *", "Луна"}, Image: true, Buttons: buttons(true)})
+	expect("opened", steps.Opened, window{Title: "Библиотека картинок проекта", Rows: []string{"Звезда *", "Луна"}, Image: true, Buttons: buttons(true)})
 	expect("not modal", steps.Modal, false)
-	expect("Звезда", steps.Star, window{Title: "Библиотека картинок конфигурации", Rows: []string{"Звезда *", "Луна"}, Image: true, Buttons: buttons(true)})
+	expect("Звезда", steps.Star, window{Title: "Библиотека картинок проекта", Rows: []string{"Звезда *", "Луна"}, Image: true, Buttons: buttons(true)})
 	expect("saved to a file", steps.Saved, "Звезда.png")
-	expect("cleared", steps.Cleared, window{Title: "Библиотека картинок конфигурации", Rows: []string{"Звезда *", "Луна"}, Buttons: buttons(false)})
+	expect("cleared", steps.Cleared, window{Title: "Библиотека картинок проекта", Rows: []string{"Звезда *", "Луна"}, Buttons: buttons(false)})
 	if _, err := os.Stat(filepath.Join(root, "metadata", "common-pictures", "Звезда", "100.png")); !os.IsNotExist(err) {
 		t.Errorf("the cleared image is still on disk: %v", err)
 	}

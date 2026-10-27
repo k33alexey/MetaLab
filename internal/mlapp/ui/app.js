@@ -743,7 +743,7 @@ class MLAppShell extends HTMLElement {
   showUpdateBanner() {
     if (this.querySelector(".app-update")) return;
     const banner = document.createElement("div"); banner.className = "app-update"; banner.setAttribute("role", "status");
-    const text = document.createElement("span"); text.textContent = "Конфигурация обновлена. Открытые окна продолжают работать на прежней версии.";
+    const text = document.createElement("span"); text.textContent = "Проект обновлён. Открытые окна продолжают работать на прежней версии.";
     const refresh = document.createElement("button"); refresh.type = "button"; refresh.className = "primary"; refresh.textContent = "Обновить";
     refresh.addEventListener("click", () => location.reload());
     const later = document.createElement("button"); later.type = "button"; later.className = "secondary"; later.textContent = "Позже";

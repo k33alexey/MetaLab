@@ -222,6 +222,7 @@ const styleBorderWalk = `(async () => {
   thickness().value = '6'; thickness().dispatchEvent(new Event('change')); await settle();
   const question = [...document.querySelectorAll('dialog')].pop();
   steps.question = question.querySelector('h3').textContent;
+  steps.caption = question.querySelector('.dialog-caption')?.textContent || '';
   button(question, 'Да').click(); await settle();
   steps.after6 = read().thickness;
   thickness().value = '5'; thickness().dispatchEvent(new Event('change')); await settle();
@@ -283,7 +284,7 @@ func TestTheBorderOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
 	}
 	var steps struct {
 		Opened, Unmarked, Double, Five, None, Reopened, OwnBorder window
-		Question, After6, InValues                                string
+		Question, Caption, After6, InValues                       string
 		Chosen, Cancelled, Taken                                  shown
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
@@ -304,6 +305,9 @@ func TestTheBorderOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
 	expect("unmarked", steps.Unmarked, window{Styles: styles, Types: types, Type: "Нет рамки", Thickness: "1 (недоступна)", Sample: "Нет просмотра"})
 	expect("double", steps.Double, window{Styles: styles, Types: types, Type: "Двойная", Thickness: "1", Sample: "рамка"})
 	expect("6 asked", []string{steps.Question, steps.After6}, []string{"В поле введены некорректные данные. Отменить ввод?", "1"})
+	// The window of the question is titled as ML Studio, where the
+	// prototype's is «Конфигуратор» (ML-STUDIO.md, the owner, 24.10.2026).
+	expect("the title of the question", steps.Caption, "ML Studio")
 	expect("5 taken", steps.Five, window{Styles: styles, Types: types, Type: "Двойная", Thickness: "5", Sample: "рамка"})
 	expect("«Нет рамки» after 5", steps.None, window{Styles: styles, Types: types, Type: "Нет рамки", Thickness: "1 (недоступна)", Sample: "Нет просмотра"})
 	expect("chosen", steps.Chosen, shown{Text: "", Unsaved: true})
