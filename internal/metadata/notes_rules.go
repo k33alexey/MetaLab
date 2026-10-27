@@ -75,6 +75,7 @@ const (
 	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
 	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
 	NoteObjectOutsideOrder         NoteKind = "object-outside-order"
+	NoteXDTOContentUnknown         NoteKind = "xdto-content-unknown"
 )
 
 func init() {
@@ -338,6 +339,10 @@ func init() {
 				"объекта добавили мимо Studio. Это не состояние прототипа — его выгрузка пишет все объекты по порядку.",
 			"Объект стоит после названных, среди таких же — по имени; описание корня не меняется, пока порядок не запишет " +
 				"Studio."},
+		NoteKindInfo{NoteXDTOContentUnknown,
+			"Атрибут или элемент в содержимом пакета XDTO, которого модель XDTO справки (свойство, тип значения, тип объекта, " +
+				"фасеты) не знает. В проверочных выгрузках таких нет (294 пакета).",
+			"Несётся как записан, пишется обратно рядом со своим узлом и не исполняется."},
 	)
 	noteRules[NoteUnusedBound] = noteUnusedBound
 	noteRules[NoteFillingNotHeld] = noteFillingNotHeld
@@ -381,6 +386,13 @@ func init() {
 	}
 	noteRules[NoteFormReferenceAsWritten] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NoteFormReferenceAsWritten, note)
+	}
+	noteRules[NoteXDTOContentUnknown] = func(catalog *Catalog, note func(where, written string)) {
+		for _, item := range catalog.XDTOPackages {
+			if content, ok := catalog.xdtoContents[item.ID]; ok {
+				content.unknownPlaces(func(where, written string) { note("пакет XDTO "+item.Name+where, written) })
+			}
+		}
 	}
 	noteRules[NotePropertyOutsideHelp] = func(catalog *Catalog, note func(where, written string)) {
 		catalog.formNotesOf(NotePropertyOutsideHelp, note)

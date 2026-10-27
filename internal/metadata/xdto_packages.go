@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -130,8 +131,48 @@ func (catalog *Catalog) validateXDTOPackages(root string) error {
 					item.Name, entry.Name())
 			}
 		}
+		if err := catalog.readXDTOContent(item, filepath.Join(directory, XDTOPackageContentFile)); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// readXDTOContent reads the body of a package, where it has one, and keeps
+// it with the catalog. The body names the namespace of the package again,
+// as the prototype's does: the two must be one (the 294 packages of the
+// exports agree).
+func (catalog *Catalog) readXDTOContent(item XDTOPackageDefinition, path string) error {
+	file, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("XDTO package %s: %w", item.Name, err)
+	}
+	defer file.Close()
+	content, err := DecodeXDTOContent(file)
+	if err != nil {
+		return fmt.Errorf("XDTO package %s: %w", item.Name, err)
+	}
+	if content.Namespace != item.Namespace {
+		return fmt.Errorf("XDTO package %s: the body defines namespace %q, and the package %q", item.Name, content.Namespace, item.Namespace)
+	}
+	if catalog.xdtoContents == nil {
+		catalog.xdtoContents = map[uuid.UUID]XDTOContent{}
+	}
+	catalog.xdtoContents[item.ID] = content
+	return nil
+}
+
+// XDTOPackageContent returns the body of a package read with the catalog,
+// by the identifier of the package; false where it has none.
+func (catalog *Catalog) XDTOPackageContent(id uuid.UUID) (XDTOContent, bool) {
+	content, ok := catalog.xdtoContents[id]
+	if !ok {
+		return XDTOContent{}, false
+	}
+	return content.clone(), true
 }
 
 // platformXDTONamespaces are the namespaces of the platform's own XDTO

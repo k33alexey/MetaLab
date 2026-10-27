@@ -766,13 +766,16 @@ type Catalog struct {
 	// formOwnerKinds holds the kind of each object that may keep forms, by
 	// its identifier, as the loader indexed its folder: what a choice form's
 	// kind is checked against.
-	formOwnerKinds           map[uuid.UUID]Kind
-	CommonTemplates          []CommonTemplateDefinition
-	commonTemplateByName     map[string]int
-	commonTemplateByID       map[uuid.UUID]int
-	XDTOPackages             []XDTOPackageDefinition
-	xdtoPackageByName        map[string]int
-	xdtoPackageByID          map[uuid.UUID]int
+	formOwnerKinds       map[uuid.UUID]Kind
+	CommonTemplates      []CommonTemplateDefinition
+	commonTemplateByName map[string]int
+	commonTemplateByID   map[uuid.UUID]int
+	XDTOPackages         []XDTOPackageDefinition
+	xdtoPackageByName    map[string]int
+	xdtoPackageByID      map[uuid.UUID]int
+	// xdtoContents are the bodies of the packages read with them, by the
+	// identifier of the package (validateXDTOPackages).
+	xdtoContents             map[uuid.UUID]XDTOContent
 	WebServices              []WebServiceDefinition
 	webServiceByName         map[string]int
 	webServiceByID           map[uuid.UUID]int

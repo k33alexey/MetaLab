@@ -65,6 +65,10 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 			configuration.ObjectsOrder = map[string][]uuid.UUID{string(CatalogKind): {listed}}
 		})
 	},
+	NoteXDTOContentUnknown: func(t *testing.T, root string) {
+		writeXDTOPackage(t, root, firstXDTOPackage, "Обмен", "http://example.org/x", xdtoBody("http://example.org/x",
+			"\t<objectType name=\"Товар\">\r\n\t\t<property name=\"Код\" type=\"xs:string\" unknownFacet=\"1\"/>\r\n\t</objectType>\r\n"))
+	},
 	NoteUnusedBound: func(t *testing.T, root string) {
 		noteCatalog(t, root, "", noteField("string", "    presentation: {min_value: \"0\"}\n"))
 	},

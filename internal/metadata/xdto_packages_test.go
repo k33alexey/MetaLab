@@ -12,6 +12,19 @@ const (
 	secondXDTOPackage = "f2000000-0000-4000-8000-000000000002"
 )
 
+// xdtoBody is the body of a package as the prototype writes it - the byte
+// order mark, the root declaring the model of XDTO, «xs» and «xsi», lines
+// ended by CR LF, the last without one - holding nodes, each line of them
+// ended by CR LF; none makes the root an empty element.
+func xdtoBody(namespace, nodes string) string {
+	root := "\uFEFF<package xmlns=\"http://v8.1c.ru/8.1/xdto\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" " +
+		"xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" targetNamespace=\"" + namespace + "\""
+	if nodes == "" {
+		return root + "/>"
+	}
+	return root + ">\r\n" + nodes + "</package>"
+}
+
 // writeXDTOPackage writes one package: its description, and the schema beside
 // it when the test asks for one.
 func writeXDTOPackage(t *testing.T, root, id, name, namespace, schema string) {
@@ -38,7 +51,7 @@ func TestXDTOPackageCarriesItsNamespaceAndSchema(t *testing.T) {
 	t.Parallel()
 	root := metadataProject(t)
 	writeXDTOPackage(t, root, firstXDTOPackage, "ОбменТоварами", "http://example.org/goods/1.0",
-		`<package targetNamespace="http://example.org/goods/1.0"/>`)
+		xdtoBody("http://example.org/goods/1.0", ""))
 	writeXDTOPackage(t, root, secondXDTOPackage, "ОбменДокументами", "http://example.org/documents/1.0", "")
 
 	catalog, err := Load(root)
