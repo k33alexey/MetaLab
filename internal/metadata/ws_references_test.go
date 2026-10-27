@@ -220,3 +220,57 @@ func TestWSReferenceTakesADescriptionLargerThan32MiB(t *testing.T) {
 		t.Fatalf("a description of 33 MiB was refused: %v", err)
 	}
 }
+
+// A reference keeps the schemas its description imports beside it, as the
+// prototype keeps them (ws-ssylka.md, «Выгрузки»; 5 of the 12 references of
+// the exports, probed: 5 schemas, none refused): «1.xsd» named by the
+// description «file://1.xsd», «2.xsd» named by «1.xsd». A schema nothing
+// imports, a schema named and not kept, a schema that is not XML or not a
+// schema of XML Schema, and schemas beside no description are refused with
+// the file named; «01.xsd» is no schema of a reference.
+// Defects caught: an imported schema refused or lost; a folder left with a
+// schema of an import before, or missing one its description needs.
+func TestWSReferenceKeepsTheSchemasItsDescriptionImports(t *testing.T) {
+	t.Parallel()
+	importing := strings.Replace(wsdl11, `<service name="Склад"/>`,
+		`<types><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:import namespace="u" schemaLocation="file://1.xsd"/></xs:schema></types>`, 1)
+	schema := func(more string) string {
+		return `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">` + more + `</xs:schema>`
+	}
+	project := func(definition string, schemas map[string]string) string {
+		root := metadataProject(t)
+		writeWSReference(t, root, firstWSReference, "Склад", "", definition)
+		folder := filepath.Join(root, "metadata", string(WSReferenceKind), "Склад")
+		if definition == "" {
+			if err := os.MkdirAll(folder, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for name, content := range schemas {
+			if err := os.WriteFile(filepath.Join(folder, name), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return root
+	}
+	if _, err := Load(project(importing, map[string]string{"1.xsd": schema(`<xs:import namespace="v" schemaLocation="file://2.xsd"/>`), "2.xsd": schema("")})); err != nil {
+		t.Fatalf("schemas imported by the description and by a schema: %v", err)
+	}
+	for what, case_ := range map[string]struct {
+		definition string
+		schemas    map[string]string
+		named      string
+	}{
+		"a schema nothing imports":      {importing, map[string]string{"1.xsd": schema(""), "2.xsd": schema("")}, "2.xsd is kept beside the description and nothing imports it"},
+		"a schema named and not kept":   {importing, nil, "imports 1.xsd, which is not kept"},
+		"a schema not XML":              {importing, map[string]string{"1.xsd": "<xs:schema"}, "1.xsd: the schema is not well-formed XML"},
+		"a schema of another root":      {importing, map[string]string{"1.xsd": `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"/>`}, "1.xsd: the root element"},
+		"schemas beside no description": {"", map[string]string{"1.xsd": schema("")}, "keeps schemas and no description"},
+		"a file of no schema":           {importing, map[string]string{"1.xsd": schema(""), "01.xsd": schema("")}, `"01.xsd"`},
+	} {
+		message := loadRefused(t, project(case_.definition, case_.schemas), what)
+		if !strings.Contains(message, case_.named) {
+			t.Errorf("%s: %v", what, message)
+		}
+	}
+}

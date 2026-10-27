@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -112,20 +113,123 @@ func (catalog *Catalog) validateWSReferenceFiles(root string) error {
 			return fmt.Errorf("WS reference %s: %w", item.Name, err)
 		}
 		described := false
+		schemas := map[string]bool{}
 		for _, entry := range entries {
+			name := entry.Name()
 			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 ||
-				(entry.Name() != project.ObjectMetadataFile && entry.Name() != WSReferenceDefinitionFile) {
-				return fmt.Errorf("WS reference %s keeps %q, and a reference keeps its description and the service's",
-					item.Name, entry.Name())
+				(name != project.ObjectMetadataFile && name != WSReferenceDefinitionFile && !WSReferenceSchemaFile(name)) {
+				return fmt.Errorf("WS reference %s keeps %q, and a reference keeps its description, the service's and the schemas it imports",
+					item.Name, name)
 			}
-			described = described || entry.Name() == WSReferenceDefinitionFile
+			described = described || name == WSReferenceDefinitionFile
+			if WSReferenceSchemaFile(name) {
+				schemas[name] = false
+			}
 		}
 		if !described {
+			if len(schemas) > 0 {
+				return fmt.Errorf("WS reference %s keeps schemas and no description of the service imports them", item.Name)
+			}
 			continue
 		}
 		if err := checkWSDefinition(filepath.Join(directory, WSReferenceDefinitionFile)); err != nil {
 			return fmt.Errorf("WS reference %s: %s: %w", item.Name, WSReferenceDefinitionFile, err)
 		}
+		if err := checkWSReferenceSchemas(directory, schemas); err != nil {
+			return fmt.Errorf("WS reference %s: %w", item.Name, err)
+		}
+	}
+	return nil
+}
+
+// WSReferenceSchemaFile says a file of the folder of a reference is a schema
+// its description imports: the prototype keeps each beside the description
+// under a number - «1.xsd» - and names it in the description by
+// «file://1.xsd» (5 of the 12 references of the exports, ws-ssylka.md,
+// «Выгрузки»).
+func WSReferenceSchemaFile(name string) bool {
+	number, found := strings.CutSuffix(name, ".xsd")
+	if !found || number == "" || number[0] == '0' {
+		return false
+	}
+	for _, digit := range number {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// wsSchemaLocation is how a description or a schema names a schema kept
+// beside it: «file://<number>.xsd».
+var wsSchemaLocation = regexp.MustCompile(`schemaLocation\s*=\s*["']file://([1-9][0-9]*\.xsd)["']`)
+
+// checkWSReferenceSchemas checks the schemas kept beside a description:
+// each is well-formed XML whose root is a schema of XML Schema, each is
+// named by the description or by another schema - one named by nobody is
+// left over from another import - and each schema named is there. schemas
+// are the files of the folder, marked as they are found named.
+func checkWSReferenceSchemas(directory string, schemas map[string]bool) error {
+	named := func(path string) ([]string, error) {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, match := range wsSchemaLocation.FindAllStringSubmatch(string(content), -1) {
+			names = append(names, match[1])
+		}
+		return names, nil
+	}
+	queue, err := named(filepath.Join(directory, WSReferenceDefinitionFile))
+	if err != nil {
+		return err
+	}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		seen, kept := schemas[name]
+		if !kept {
+			return fmt.Errorf("the description imports %s, which is not kept beside it", name)
+		}
+		if seen {
+			continue
+		}
+		schemas[name] = true
+		if err := checkWSSchema(filepath.Join(directory, name)); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		more, err := named(filepath.Join(directory, name))
+		if err != nil {
+			return err
+		}
+		queue = append(queue, more...)
+	}
+	for name, seen := range schemas {
+		if !seen {
+			return fmt.Errorf("%s is kept beside the description and nothing imports it", name)
+		}
+	}
+	return nil
+}
+
+// checkWSSchema reads a schema through to its end: well-formed XML whose
+// root is the schema of XML Schema.
+func checkWSSchema(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	root, err := xmlRootOf(file)
+	if err != nil {
+		return fmt.Errorf("the schema is not well-formed XML: %w", err)
+	}
+	if root == (xml.Name{}) {
+		return errors.New("the schema holds no document")
+	}
+	if root != (xml.Name{Space: xmlSchemaNamespace, Local: "schema"}) {
+		return fmt.Errorf("the root element is {%s}%s, and an imported schema is the schema of XML Schema", root.Space, root.Local)
 	}
 	return nil
 }
@@ -167,28 +271,36 @@ func WSDefinitionFaultOf(reader io.Reader) (WSDefinitionFault, error) {
 	// No ceiling on the size of the description: a description carries the
 	// whole data model of the service, the prototype limits none, and it is
 	// read token by token, never whole (owner, 03.10.2026).
+	root, err := xmlRootOf(reader)
+	if err != nil {
+		return WSDefinitionNotXML, fmt.Errorf("the description is not well-formed XML: %w", err)
+	}
+	if root == (xml.Name{}) {
+		return WSDefinitionNotXML, errors.New("the description holds no document")
+	}
+	if root.Space != wsdl11Namespace || root.Local != "definitions" {
+		return WSDefinitionNotDefinitions, fmt.Errorf("the root element is {%s}%s, and a service description is the definitions of WSDL 1.1 {%s}: the designer imports no other",
+			root.Space, root.Local, wsdl11Namespace)
+	}
+	return WSDefinitionFits, nil
+}
+
+// xmlRootOf reads a document through to its end - a file cut off in the
+// middle has a perfectly good root - and answers the name of its root, none
+// where it holds no element.
+func xmlRootOf(reader io.Reader) (xml.Name, error) {
 	decoder := xml.NewDecoder(reader)
-	rooted := false
+	var root xml.Name
 	for {
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
-			break
+			return root, nil
 		}
 		if err != nil {
-			return WSDefinitionNotXML, fmt.Errorf("the description is not well-formed XML: %w", err)
+			return xml.Name{}, err
 		}
-		element, ok := token.(xml.StartElement)
-		if !ok || rooted {
-			continue
-		}
-		rooted = true
-		if element.Name.Space != wsdl11Namespace || element.Name.Local != "definitions" {
-			return WSDefinitionNotDefinitions, fmt.Errorf("the root element is {%s}%s, and a service description is the definitions of WSDL 1.1 {%s}: the designer imports no other",
-				element.Name.Space, element.Name.Local, wsdl11Namespace)
+		if element, ok := token.(xml.StartElement); ok && root == (xml.Name{}) {
+			root = element.Name
 		}
 	}
-	if !rooted {
-		return WSDefinitionNotXML, errors.New("the description holds no document")
-	}
-	return WSDefinitionFits, nil
 }

@@ -12,6 +12,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,6 +116,10 @@ func (workspace *Workspace) ImportWSReference(ctx context.Context, request WSImp
 	if fault, _ := metadata.WSDefinitionFaultOf(bytes.NewReader(content)); fault != metadata.WSDefinitionFits {
 		return WSReferenceEditorSource{}, wsDefinitionRefusals[fault]
 	}
+	content, schemas, err := fetchWSSchemas(ctx, content, location)
+	if err != nil {
+		return WSReferenceEditorSource{}, err
+	}
 	if request.Path == "" {
 		return createObjectAs(workspace, metadata.WSReferenceKind, "", func(fresh *metadata.Fresh) error {
 			reference, _ := fresh.Value.(metadata.WSReferenceDefinition)
@@ -124,6 +130,9 @@ func (workspace *Workspace) ImportWSReference(ctx context.Context, request WSImp
 				return err
 			}
 			fresh.Files = append(fresh.Files, metadata.FreshFile{Path: path.Join(directory, metadata.WSReferenceDefinitionFile), Content: content})
+			for _, schema := range schemas {
+				fresh.Files = append(fresh.Files, metadata.FreshFile{Path: path.Join(directory, schema.name), Content: schema.content})
+			}
 			return nil
 		}, workspace.readWSReferenceEditorLocked)
 	}
@@ -142,27 +151,129 @@ func (workspace *Workspace) ImportWSReference(ctx context.Context, request WSImp
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return WSReferenceEditorSource{}, err
 	}
-	// The description of the service first, put back if the description of
-	// the reference is then refused.
-	definition := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(request.Path)), metadata.WSReferenceDefinitionFile)
-	before, err := os.ReadFile(definition)
-	had := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return WSReferenceEditorSource{}, err
+	// The description of the service and its schemas first - the schemas of
+	// the import before taken away - all put back if the description of the
+	// reference is then refused.
+	directory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(request.Path)))
+	files := map[string][]byte{metadata.WSReferenceDefinitionFile: content}
+	for _, schema := range schemas {
+		files[schema.name] = schema.content
 	}
-	if err := atomicfile.Write(definition, ".ml-write-*", 0o644, atomicfile.Bytes(content)); err != nil {
-		return WSReferenceEditorSource{}, err
-	}
+	putBack, err := replaceWSFiles(directory, files)
 	workspace.invalidateStudioIndexesLocked()
+	if err != nil {
+		return WSReferenceEditorSource{}, errors.Join(err, putBack())
+	}
 	if _, err := workspace.saveSourceLocked(request.Path, encoded.String(), opened.Revision); err != nil {
-		putBack := os.Remove(definition)
-		if had {
-			putBack = atomicfile.Write(definition, ".ml-write-*", 0o644, atomicfile.Bytes(before))
-		}
+		err = errors.Join(err, putBack())
 		workspace.invalidateStudioIndexesLocked()
-		return WSReferenceEditorSource{}, errors.Join(err, putBack)
+		return WSReferenceEditorSource{}, err
 	}
 	return workspace.readWSReferenceEditorLocked(request.Path)
+}
+
+// wsSchema is a schema a description imports, as the reference keeps it
+// beside the description: «1.xsd» and on.
+type wsSchema struct {
+	name    string
+	content []byte
+}
+
+// wsImportedSchema finds where a description names a schema it imports or
+// includes: the attribute schemaLocation, its value.
+var wsImportedSchema = regexp.MustCompile(`(\sschemaLocation\s*=\s*["'])([^"']+)(["'])`)
+
+// fetchWSSchemas takes the schemas the description imports - each
+// schemaLocation of it, by the address of the description where it is
+// relative - and keeps them as the prototype does (ws-ssylka.md,
+// «Выгрузки»): «1.xsd», «2.xsd» in the order the description names them,
+// the description naming each «file://1.xsd». A schema named twice is taken
+// once. Answers the description so changed and the schemas; a schema that
+// cannot be read refuses the import with its address, as a description
+// does. The schemas a schema imports in turn are not taken (series 2.603,
+// question В7).
+func fetchWSSchemas(ctx context.Context, content []byte, location string) ([]byte, []wsSchema, error) {
+	base, err := url.Parse(location)
+	if err != nil {
+		return nil, nil, err
+	}
+	var schemas []wsSchema
+	numbers := map[string]string{}
+	var failure error
+	changed := wsImportedSchema.ReplaceAllFunc(content, func(match []byte) []byte {
+		parts := wsImportedSchema.FindSubmatch(match)
+		written := string(parts[2])
+		name, ok := numbers[written]
+		if !ok && failure == nil {
+			address := written
+			if kept, found := strings.CutPrefix(written, "file://"); found && metadata.WSReferenceSchemaFile(kept) {
+				address = kept
+			}
+			if reference, err := url.Parse(address); err == nil {
+				address = base.ResolveReference(reference).String()
+			}
+			schema, _, err := fetchWSDefinition(ctx, address)
+			if err != nil {
+				failure = err
+				return match
+			}
+			name = strconv.Itoa(len(schemas)+1) + ".xsd"
+			numbers[written] = name
+			schemas = append(schemas, wsSchema{name: name, content: schema})
+		}
+		return []byte(string(parts[1]) + "file://" + name + string(parts[3]))
+	})
+	if failure != nil {
+		return nil, nil, failure
+	}
+	return changed, schemas, nil
+}
+
+// replaceWSFiles writes the files of an import into the folder of a
+// reference and takes away the schemas of the import before; answers how to
+// put the folder back as it was.
+func replaceWSFiles(directory string, files map[string][]byte) (func() error, error) {
+	before := map[string][]byte{}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return func() error { return nil }, err
+	}
+	for _, entry := range entries {
+		if entry.Name() == metadata.WSReferenceDefinitionFile || metadata.WSReferenceSchemaFile(entry.Name()) {
+			content, err := os.ReadFile(filepath.Join(directory, entry.Name()))
+			if err != nil {
+				return func() error { return nil }, err
+			}
+			before[entry.Name()] = content
+		}
+	}
+	putBack := func() error {
+		var errs []error
+		for name := range files {
+			if _, had := before[name]; !had {
+				if err := os.Remove(filepath.Join(directory, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					errs = append(errs, err)
+				}
+			}
+		}
+		for name, content := range before {
+			errs = append(errs, atomicfile.Write(filepath.Join(directory, name), ".ml-write-*", 0o644, atomicfile.Bytes(content)))
+		}
+		return errors.Join(errs...)
+	}
+	for name, content := range files {
+		if err := atomicfile.Write(filepath.Join(directory, name), ".ml-write-*", 0o644, atomicfile.Bytes(content)); err != nil {
+			return putBack, err
+		}
+	}
+	for name := range before {
+		if _, kept := files[name]; !kept {
+			if err := os.Remove(filepath.Join(directory, name)); err != nil {
+				return putBack, err
+			}
+		}
+	}
+	return putBack, nil
 }
 
 // fetchWSDefinition reads the description at an address and answers it with
