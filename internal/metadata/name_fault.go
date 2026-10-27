@@ -40,11 +40,13 @@ type EditorLimits struct {
 	Description int `json:"description"`
 	// Levels is the most levels a hierarchy may be limited to.
 	Levels int `json:"levels"`
+	// BorderWidth is the thickest border (maxBorderWidth).
+	BorderWidth int `json:"borderWidth"`
 }
 
 // Limits is the description of the ceilings.
 func Limits() EditorLimits {
-	return EditorLimits{Name: maxNameLength, Code: maxCodeLength, Description: maxDescriptionLength, Levels: maxHierarchyLevelCount}
+	return EditorLimits{Name: maxNameLength, Code: maxCodeLength, Description: maxDescriptionLength, Levels: maxHierarchyLevelCount, BorderWidth: maxBorderWidth}
 }
 
 // NameRuleFault is what the rule of a name alone says of it, whatever stands

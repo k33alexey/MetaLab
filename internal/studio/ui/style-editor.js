@@ -12,21 +12,37 @@
    a border, which are items of their own. around holds the palette and its
    title. */
 function createStyleEditor(host, onChange, around = {}) {
-  let source = null;
+  let source = null, changed = () => {};
   function draw(body, api) {
     source = api.source();
+    changed = api.changed;
     const preview = node('fieldset', undefined, 'studio-frame style-window-preview');
     preview.append(node('legend', 'Предварительный просмотр'), ...stylePreview(source));
     const left = node('div', undefined, 'style-window-left');
     left.append(...windowHeadFields(source, source.style, api.typed, api.cleanups()), preview);
-    body.append(left, styleValueRows(source, 'style-window-items'));
+    body.append(left, styleValueRows(source, 'style-window-items', item => chooseValue(source.style, item, api.changed)));
   }
-  // «Стиль: Открыть»: the values in a window of their own. Nothing in it
-  // changes a value until the windows choosing one, so OK and «Отмена»
-  // leave the style as it was.
-  function openValues() {
-    showDialog({title: `${source.kindTitle} ${source.style.name}`, content: styleValueRows(source, 'style-values-dialog'),
-      answers: [['ok', 'OK'], [null, 'Отмена']], className: 'style-values-window'});
+  // «…» of a value: the window choosing a value of the item's kind, its
+  // answer the value this style gives the item. Only «Выбор рамки» is made;
+  // the windows choosing a colour and a font are items of their own.
+  async function chooseValue(style, item, done) {
+    if (item.type !== 'border') return;
+    const given = styleSetting({...source, style}, item);
+    const chosen = await chooseBorder(given?.border, styleBorders(source), source.borderLines);
+    if (!chosen) return;
+    styleGive(style, item, {border: chosen});
+    done();
+  }
+  // «Стиль: Открыть»: the values in a window of their own, chosen on a
+  // copy - OK gives them to the style, «Отмена» leaves it as it was.
+  async function openValues() {
+    const copy = structuredClone(source.style), content = node('div');
+    const fill = () => content.replaceChildren(styleValueRows({...source, style: copy}, 'style-values-dialog', item => chooseValue(copy, item, fill)));
+    fill();
+    const answer = await showDialog({title: `${source.kindTitle} ${source.style.name}`, content, answers: [['ok', 'OK'], [null, 'Отмена']], className: 'style-values-window'});
+    if (answer !== 'ok' || JSON.stringify(copy.items) === JSON.stringify(source.style.items)) return;
+    if (copy.items) source.style.items = copy.items;
+    changed();
   }
   return objectWindowEditor(host, onChange, around, {target: opened => opened.style, own: api => ({className: 'style-window',
     draw: body => draw(body, api), context: () => ({windows: ['items'], openWindow: openValues}), value: object => object})});
@@ -36,7 +52,7 @@ function createStyleEditor(host, onChange, around = {}) {
    createStyleEditor reads it): the caption of each item listed and a field
    of its value - a sample of a colour and the text of styleValueText - with
    «…», unavailable until the windows choosing a value. */
-function styleValueRows(source, className) {
+function styleValueRows(source, className, choose) {
   const list = node('div', undefined, 'style-values ' + className);
   for (const item of source.items) {
     const caption = node('span', undefined, 'style-value-caption');
@@ -49,9 +65,9 @@ function styleValueRows(source, className) {
       field.append(sample);
     }
     field.append(node('span', shown.text));
-    const choose = fieldChoiceButton(styleItemTitle(source, item), () => {});
-    choose.disabled = true;
-    list.append(caption, fieldWithButtons(field, [choose]));
+    const pick = fieldChoiceButton(styleItemTitle(source, item), () => choose(item));
+    pick.disabled = item.type !== 'border';
+    list.append(caption, fieldWithButtons(field, [pick]));
   }
   return list;
 }
@@ -152,6 +168,32 @@ function styleColorOf(source, item, depth) {
    MediumGray and four more - series 2.595, question). */
 function styleWebColor(name) {
   return CSS.supports('color', name) ? name : undefined;
+}
+
+/* styleGive makes the value a style gives an item value (metadata.
+   StyleItemValue): the setting of the item is changed where it stands, or
+   added last. */
+function styleGive(style, item, value) {
+  const items = style.items || (style.items = []);
+  const at = items.findIndex(setting => item.item ? setting.item === item.item : !!setting.standard && setting.standard.toLowerCase() === item.standard.toLowerCase());
+  const setting = item.item ? {item: item.item, value} : {standard: item.standard, value};
+  if (at < 0) items.push(setting); else items[at] = setting;
+}
+
+/* styleBorders are the borders a style may take a border from, as
+   «Выбор рамки» lists them: the platform's, then the project's in the
+   order of the tree, each with the type and thickness it draws - the
+   platform's own «Нет рамки», 1 (snapshot series-2.584/048), one of the
+   project's its own value followed through the items it is taken from. */
+function styleBorders(source) {
+  const drawn = (item, depth) => {
+    const own = item?.value?.border;
+    if (!own || depth > 40) return {line: 'none', width: 1};
+    if (own.source === 'style') return drawn(styleReferenced(source, own.from), depth + 1);
+    return {line: own.line, width: own.line === 'none' ? 1 : own.width || 1};
+  };
+  return [...source.platform.filter(item => item.type === 'border').map(item => ({reference: {standard: item.name}, caption: item.title, drawn: {line: 'none', width: 1}})),
+    ...source.items.filter(item => item.item && item.type === 'border').map(item => ({reference: {item: item.item}, caption: styleItemTitle(source, item), drawn: drawn(item, 0)}))];
 }
 
 /* styleRGB is the three numbers of a colour written #RRGGBB. */

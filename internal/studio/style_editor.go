@@ -26,6 +26,9 @@ type StyleEditorSource struct {
 	// taken from, and WebColors the web palette a value may name.
 	Platform  []metadata.PlatformStyleItem `json:"platform"`
 	WebColors []metadata.WebColorName      `json:"webColors"`
+	// BorderLines are the ways a border is drawn, as «Выбор рамки» lists
+	// them.
+	BorderLines []metadata.BorderLineName `json:"borderLines"`
 }
 
 // StyleWindowItem is a style item as the window of a style lists it: one of
@@ -86,7 +89,8 @@ func (workspace *Workspace) readStyleEditorLocked(relative string) (StyleEditorS
 		own := item.Value
 		items = append(items, StyleWindowItem{Item: &item.ID, Name: item.Name, Title: item.Title, Type: item.Type, Value: &own})
 	}
-	return StyleEditorSource{windowHead: head, Style: value, Items: items, Platform: metadata.PlatformStyleItems, WebColors: metadata.WebColors}, nil
+	return StyleEditorSource{windowHead: head, Style: value, Items: items, Platform: metadata.PlatformStyleItems, WebColors: metadata.WebColors,
+		BorderLines: metadata.BorderLines}, nil
 }
 
 // SaveStyleWindow writes the style and the subsystems its window marks as

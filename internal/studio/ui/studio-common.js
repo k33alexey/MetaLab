@@ -1821,6 +1821,64 @@ function askCancelInput() {
     answers: [['yes', 'Да'], ['no', 'Нет']]}).then(answer => answer !== 'no');
 }
 
+/* chooseBorder is the window «Выбор рамки», one for every place a border is
+   chosen - a value of a style, a style item, an element of a form (stil.md,
+   «Досъёмка 27.10.2026»; snapshots series-2.584/033-049): «Из стиля» with
+   the borders of the style, «Пример рамки», «Тип рамки» of eight (lines,
+   metadata.BorderLines) and «Толщина» from 1 to the model's ceiling - 0 and
+   6 are asked «Отменить ввод?» (textInput). «Нет рамки» keeps the
+   thickness at 1 and shows «Нет просмотра». Marked «Из стиля», the window
+   shows the type and thickness of the border of the style chosen and the
+   thickness is unavailable. styles are the borders of the style - the
+   platform's, then the project's - as {reference, caption, drawn: {line,
+   width}}; value is the border chosen before (metadata.BorderValue) or
+   none. Answers the border chosen on OK, null on «Отмена». How the type
+   answers a click while «Из стиля» is marked the inventory does not show
+   (series 2.595, question): the list does not take it. */
+async function chooseBorder(value, styles, lines) {
+  const same = (one, other) => JSON.stringify(one || null) === JSON.stringify(other || null);
+  const fromStyle = value?.source === 'style';
+  const chosen = {fromStyle, from: fromStyle ? value.from : styles[0]?.reference, line: !fromStyle && value?.line || 'none',
+    width: !fromStyle && value?.width || 1};
+  const content = node('div', undefined, 'border-choice');
+  function render() {
+    const style = styles.find(item => same(item.reference, chosen.from));
+    const drawn = chosen.fromStyle ? style?.drawn || {line: 'none', width: 1} : {line: chosen.line, width: chosen.line === 'none' ? 1 : chosen.width};
+    const mark = checkboxField('Из стиля', chosen.fromStyle, on => { chosen.fromStyle = on; render(); });
+    const list = objectRows(styles.map((item, index) => [String(index), item.caption]), chosen.fromStyle && style ? String(styles.indexOf(style)) : null,
+      picked => { chosen.from = styles[Number(picked)].reference; render(); });
+    const sample = node('fieldset', undefined, 'studio-frame border-choice-sample');
+    sample.append(node('legend', 'Пример рамки'));
+    if (drawn.line === 'none') sample.append(node('div', 'Нет просмотра', 'border-choice-none'));
+    else sample.append(borderSample(drawn));
+    const types = objectRows(lines.map(item => [item.name, item.title]), drawn.line,
+      picked => { if (chosen.fromStyle) return; chosen.line = picked; render(); });
+    const thickness = textInput(String(drawn.width), number => { if (!Number.isInteger(number)) return false; chosen.width = number; render(); },
+      {type: 'number', min: 1, max: StudioLimits.borderWidth, disabled: chosen.fromStyle || drawn.line === 'none'});
+    const left = node('div', undefined, 'border-choice-left'), right = node('div', undefined, 'border-choice-right');
+    left.append(mark, list, sample);
+    right.append(node('div', 'Тип рамки', 'border-choice-caption'), types, labeledField('Толщина', thickness));
+    content.replaceChildren(left, right);
+  }
+  render();
+  const answer = await showDialog({title: 'Выбор рамки', content, side: true, className: 'border-choice-dialog', help: 'border-choice',
+    answers: [['ok', 'OK'], [null, 'Отмена']]});
+  if (answer !== 'ok') return null;
+  if (chosen.fromStyle) return {source: 'style', from: structuredClone(chosen.from)};
+  return {source: 'absolute', line: chosen.line, width: chosen.line === 'none' ? 1 : chosen.width};
+}
+
+/* borderSample draws a border of a type and a thickness (metadata.
+   BorderValue): «Пример рамки» of «Выбор рамки» (snapshots series-2.584/
+   042, 047) - a frame, double, raised or sunk, or a line under or over. */
+function borderSample({line, width}) {
+  const box = node('div', undefined, 'border-choice-box');
+  const styles = {single: 'solid', double: 'double', embossed: 'outset', indented: 'inset', underline: 'solid', 'double-underline': 'double', overline: 'solid'};
+  const side = {underline: 'Bottom', 'double-underline': 'Bottom', overline: 'Top'}[line] || '';
+  box.style['border' + side] = `${styles[line] === 'double' ? Math.max(3, width) : width}px ${styles[line]} currentColor`;
+  return box;
+}
+
 /* typeEditorModel is the window «Редактирование типа данных» without its
    drawing, as the prototype's behaves (docs/block-00/obshchee.md, «Окно
    «Редактирование типа данных»», 23.10.2026). offer is the model's

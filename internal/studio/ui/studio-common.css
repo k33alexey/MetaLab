@@ -232,3 +232,15 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .headers-table td{padding:2px 4px}
 .headers-table td input{width:100%;box-sizing:border-box}
 .headers-table tr.selected td{background:rgba(88,157,246,.18)}
+/* «Выбор рамки» (series-2.584/033): слева «Из стиля», список и пример, справа тип и толщина. */
+.border-choice{display:grid;grid-template-columns:220px 220px;gap:12px}
+.border-choice-left,.border-choice-right{display:flex;flex-direction:column;gap:6px}
+.border-choice .object-window-list{height:120px;overflow:auto}
+.border-choice-sample{min-height:110px;display:flex;align-items:center;justify-content:center}
+.border-choice-box{width:150px;height:70px;box-sizing:border-box}
+.border-choice-none{font-size:11px;opacity:.75}
+.localized-title-dialog.border-choice-dialog{width:min(640px,calc(100% - 40px))}
+.border-choice-dialog .catalog-check{display:flex;align-items:center;gap:6px;margin:0;color:inherit}
+.border-choice-dialog .catalog-field{display:flex;align-items:center;justify-content:space-between;color:inherit}
+.border-choice-dialog .catalog-field input{width:60px}
+.border-choice-caption{font-size:12px}

@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -174,6 +175,22 @@ const (
 	DoubleUnderlineBorder BorderLine = "double-underline"
 	OverlineBorderLine    BorderLine = "overline"
 )
+
+// BorderLineName is a way a border is drawn with the caption the window
+// «Выбор рамки» gives it.
+type BorderLineName struct {
+	Name  BorderLine `json:"name"`
+	Title string     `json:"title"`
+}
+
+// BorderLines are the eight ways a border is drawn, in the order and under
+// the captions of «Тип рамки» of the window «Выбор рамки» (stil.md,
+// «Досъёмка 27.10.2026»; snapshots series-2.584/033, 034).
+var BorderLines = []BorderLineName{
+	{NoBorderLine, "Нет рамки"}, {SingleBorderLine, "Одинарная"}, {DoubleBorderLine, "Двойная"}, {EmbossedBorderLine, "Выпуклая"},
+	{IndentedBorderLine, "Вдавленная"}, {UnderlineBorderLine, "Подчеркивание"}, {DoubleUnderlineBorder, "Двойное подчеркивание"},
+	{OverlineBorderLine, "Черта сверху"},
+}
 
 // maxBorderWidth is the thickest border there is: the configurator takes no
 // more than 5 (checked on 8.3.27 by the owner, 04.10.2026).
@@ -552,13 +569,7 @@ func validateStyleItemReference(path string, reference *StyleItemReference) []st
 }
 
 func validBorderLine(line BorderLine) bool {
-	switch line {
-	case NoBorderLine, SingleBorderLine, DoubleBorderLine, IndentedBorderLine, EmbossedBorderLine,
-		UnderlineBorderLine, DoubleUnderlineBorder, OverlineBorderLine:
-		return true
-	default:
-		return false
-	}
+	return slices.ContainsFunc(BorderLines, func(item BorderLineName) bool { return item.Name == line })
 }
 
 func validHexColor(value string) bool {
