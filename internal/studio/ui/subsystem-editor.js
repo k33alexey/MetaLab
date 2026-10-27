@@ -70,13 +70,17 @@ function subsystemComposition(api, opened, chosen, choose) {
 /* subsystemCommands are the commands of the menu of a subsystem of its own
    (podsistema.md, «Команды»; snapshot podsistema/15): «Открыть командный
    интерфейс» and «Справочная информация», unavailable until their windows;
-   «Объекты подсистемы», unavailable until its question (series 2.603,
-   В9); «Добавить ▸» - «Подчиненная подсистема», «Подсистема»; «Переместить
-   подсистему». node is the subsystem in the tree; actions are {create(make)
-   - makes a subsystem by make() and opens it, moved() - draws the tree
-   anew}. */
+   «Объекты подсистемы» - the tree filtered by this subsystem alone, the
+   objects of the subsystems beneath and above it not taken in
+   (podsistema.md, «Командный интерфейс, „Объекты подсистемы“, „Все
+   подсистемы“»; snapshots series-2.603/49, 50); «Добавить ▸» - «Подчиненная
+   подсистема», «Подсистема»; «Переместить подсистему». node is the
+   subsystem in the tree; actions are {create(make) - makes a subsystem by
+   make() and opens it, moved() - draws the tree anew, filter(chosen) -
+   puts the tree's filter by subsystems in force}. */
 function subsystemCommands(node, actions) {
-  return [['Открыть командный интерфейс', () => {}, false], ['Объекты подсистемы', () => {}, false], null,
+  return [['Открыть командный интерфейс', () => {}, false],
+    ['Объекты подсистемы', () => actions.filter({chosen: new Set([node.id]), children: false, parents: false})], null,
     ['Добавить', [['Подчиненная подсистема', () => actions.create(() => postJSON('/api/subsystem/child', {parent: node.id}))],
       ['Подсистема', () => actions.create(() => postJSON('/api/subsystem', {}))]]], null,
     ['Переместить подсистему', async () => { if (await moveSubsystem(node.path, actions.projectName())) actions.moved(); }], null,
