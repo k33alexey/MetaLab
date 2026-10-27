@@ -8,8 +8,8 @@ import (
 )
 
 // A common attribute has no window: its palette is what Studio reads and
-// writes of it (docs/block-00/obshchij-rekvizit.md, «Палитра»); the window
-// «Состав» and the menu are an item of their own.
+// writes of it (docs/block-00/obshchij-rekvizit.md, «Палитра»), and its
+// window «Состав» edits the composition it writes.
 
 // CommonAttributeEditorSource is a common attribute as its palette reads
 // and writes it, with the types a field the database stores may have.
@@ -17,6 +17,9 @@ type CommonAttributeEditorSource struct {
 	objectHead
 	Attribute metadata.CommonAttributeDefinition `json:"attribute"`
 	TypeOffer metadata.TypeOffer                 `json:"typeOffer"`
+	// Composition is the tree of the window «Состав»: the objects of the
+	// kinds it lists (metadata.CommonAttributeCompositionKinds).
+	Composition []ObjectChoiceBranch `json:"composition"`
 }
 
 func (source CommonAttributeEditorSource) paletteOf() (metadata.CommonAttributeDefinition, objectHead) {
@@ -51,7 +54,8 @@ func (workspace *Workspace) readCommonAttributeEditorLocked(relative string) (Co
 		return CommonAttributeEditorSource{}, err
 	}
 	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
-	return CommonAttributeEditorSource{objectHead: head, Attribute: value, TypeOffer: offer}, nil
+	return CommonAttributeEditorSource{objectHead: head, Attribute: value, TypeOffer: offer,
+		Composition: objectChoiceTree(loaded, metadata.CommonAttributeCompositionKinds())}, nil
 }
 
 // SaveCommonAttributeEditor validates and writes an edited common attribute.

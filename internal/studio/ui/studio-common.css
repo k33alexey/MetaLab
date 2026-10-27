@@ -326,3 +326,8 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .subsystem-composition-caption{display:flex;align-items:center;justify-content:space-between}
 .context-submenu{position:absolute;margin:0}
 .context-menu-parent{display:flex;justify-content:space-between}
+.localized-title-dialog.common-attribute-content-dialog{width:min(640px,calc(100% - 40px))}
+.common-attribute-content-tree{height:300px;overflow:auto}
+.common-attribute-content-used{height:140px;overflow:auto}
+.common-attribute-content-row{display:flex;justify-content:space-between;gap:12px;flex:1}
+.common-attribute-content-head{display:flex;justify-content:space-between;font-size:12px;opacity:.8}

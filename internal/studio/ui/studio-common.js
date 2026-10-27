@@ -1588,7 +1588,7 @@ function paletteEditor(host, onChange, around, {target, subject = source => ownS
   function changed() { onChange(); render(); }
   function render() {
     if (!source) return;
-    showObjectPalette(around, cleanups, target(source).name, source.palette, subject(source), {project: source, typed, changed, ...context(source)});
+    showObjectPalette(around, cleanups, target(source).name, source.palette, subject(source), {project: source, typed, changed, ...context(source, {changed})});
   }
   StudioLanguage.onChange(() => render());
   return hostedEditor(host, () => { if (source) clearObjectPalette(around, cleanups); source = null; }, {
@@ -1604,6 +1604,9 @@ function paletteEditor(host, onChange, around, {target, subject = source => ownS
       render();
       return true;
     },
+    // A window the palette opens by a row - from the menu of the object
+    // too («Состав» of a common attribute).
+    openWindow(key) { if (source) context(source, {changed}).openWindow?.(key); },
   });
 }
 

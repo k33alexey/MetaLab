@@ -897,3 +897,16 @@ func tablePartNames(parts []TablePart) []Attribute {
 	}
 	return fields
 }
+
+// CommonAttributeCompositionKinds are the kinds the window «Состав» of a
+// common attribute that does not separate data lists (docs/block-00/
+// obshchij-rekvizit.md, «Окно „Состав“»): exchange plans in «Общие», then
+// catalogs, documents, document journals - shown, though a journal keeps
+// no use - charts of characteristic types, of accounts and of calculation
+// types, the four registers, business processes and tasks. What the
+// window of a separator lists is the question В10 of series 2.603.
+func CommonAttributeCompositionKinds() []Kind {
+	return []Kind{ExchangePlanKind, CatalogKind, DocumentKind, DocumentJournalKind, ChartOfCharacteristicTypesKind, ChartOfAccountsKind,
+		ChartOfCalculationTypesKind, InformationRegisterKind, AccumulationRegisterKind, AccountingRegisterKind, CalculationRegisterKind,
+		BusinessProcessKind, TaskKind}
+}
