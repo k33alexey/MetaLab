@@ -55,9 +55,9 @@ func jsString(text string) string {
 // (docs/block-00/ws-ssylka.md; snapshots 01, 03, 10, 12): the window
 // «Введите URL импортируемого WSDL» of one line with OK and «Отмена»; the
 // reference made shows its palette - the name, the synonym, the comment,
-// «URL источника» as an address, «WS-ссылка: Открыть» unavailable until the
-// window viewing the description; its menu has «Просмотр», bold and
-// unavailable for now, and «Импорт WSDL…». A text that is not WSDL is
+// «URL источника» as an address, «WS-ссылка: Открыть» available - the
+// window viewing the description; its menu has «Просмотр», bold, and
+// «Импорт WSDL…». A text that is not WSDL is
 // refused in the prototype's words, and «Отмена» makes nothing. Defects
 // caught: a reference made without its description; the address not shown
 // or editable; the menu of the reference without its commands; a refused
@@ -108,11 +108,11 @@ func TestTheImportOfAWSReferenceIsThePrototypes(t *testing.T) {
 		Buttons []string
 	}{"Введите URL импортируемого WSDL", 1, []string{"ОК", "Отмена"}})
 	expect("the reference made", []any{steps.Made.Tree, steps.Made.Title, steps.Made.Rows, steps.Made.Open},
-		[]any{true, "Свойства: WSСсылка1", []string{"Имя", "Синоним", "Комментарий", "URL источника", "WS-ссылка"}, true})
+		[]any{true, "Свойства: WSСсылка1", []string{"Имя", "Синоним", "Комментарий", "URL источника", "WS-ссылка"}, false})
 	if !strings.HasPrefix(steps.Made.Address, "file:///") || !strings.HasSuffix(steps.Made.Address, "/stock.wsdl") {
 		t.Errorf("the address shown is %q", steps.Made.Address)
 	}
-	expect("its menu", steps.Menu, []string{"Просмотр (недоступна) (жирный)", "Импорт WSDL…"})
+	expect("its menu", steps.Menu, []string{"Просмотр (жирный)", "Импорт WSDL…"})
 	expect("a text that is no WSDL", steps.Refusal, "Ошибка разбора WSDL: неверный формат WSDL описания")
 	expect("references in the tree", steps.References, 1)
 }

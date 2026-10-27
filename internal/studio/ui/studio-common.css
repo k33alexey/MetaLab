@@ -313,3 +313,11 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .xdto-window-body .xdto-tree{flex:1;overflow:auto}
 .localized-title-dialog.xml-type-choice-dialog{width:min(560px,calc(100% - 40px))}
 .xml-type-choice{height:360px;overflow:auto;border:1px solid #4a4d54;padding:2px 0}
+/* Окно просмотра WS-ссылки (ws-ssylka/04-09): поверх Studio, дерево слева, палитра узла справа только для чтения. */
+dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;margin:0;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--panel,#25272b);color:inherit;border:1px solid #4a4d54;border-radius:6px;z-index:20}
+.ws-reference-view-body{flex:1;display:grid;grid-template-columns:1fr 360px;gap:10px;min-height:0}
+.ws-reference-view-tree,.ws-reference-view-palette{overflow:auto;border:1px solid #4a4d54;padding:4px}
+.ws-reference-view-palette-title{font-weight:600;margin-bottom:6px}
+.read-only-palette-row{display:grid;grid-template-columns:200px 1fr;gap:8px;padding:2px 0;font-size:12.5px}
+.read-only-palette-caption{color:#aeb1b8}
+.read-only-palette-value{display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

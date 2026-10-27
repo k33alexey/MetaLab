@@ -1115,7 +1115,7 @@ function paletteFields(context) {
     if (row.field === 'xml-type' || row.field === 'xml-types') {
       const types = row.field === 'xml-types' ? subject.get(row.key) || [] : [subject.get(row.key)].filter(Boolean), shown = node('input');
       shown.readOnly = true; shown.disabled = !available(subject, row);
-      shown.value = types.filter(type => type.name).map(type => `${type.name}${type.namespace ? ` (${type.namespace})` : ''}`).join(', ');
+      shown.value = types.filter(type => type.name).map(xmlTypeText).join(', ');
       // «…» chooses a type by chooseXMLType where the place gives the types
       // (context.xmlTypes) and the namespaces it offers (context.typeNamespaces);
       // a list of types - the members of a union - waits for its window.
@@ -1905,6 +1905,42 @@ async function chooseXDTOPackages(items, platform, packages) {
   const kept = items.filter(item => marked.has(key(item)));
   const known = new Set(kept.map(key));
   return [...kept, ...rows.map(row => row.item).filter(item => marked.has(key(item)) && !known.has(key(item)))];
+}
+
+/* xmlTypeText is how a field shows a type named by the schema: «string
+   (http://www.w3.org/2001/XMLSchema)». */
+function xmlTypeText(type) {
+  return `${type.name}${type.namespace ? ` (${type.namespace})` : ''}`;
+}
+
+/* readOnlyPalette draws the rows of a palette (kinds.PaletteTab) that shows
+   and edits nothing - the palette of a node of the window viewing a
+   description of a WS reference (ws-ssylka.md, «Окно»): each row its
+   caption and its value in words, a value a node may leave not said
+   (row.optional) marked ✓ where the description says it and shown as its
+   default greyed where not. get(key) answers the value of a row. */
+function readOnlyPalette(tabs, get) {
+  const list = node('div', undefined, 'read-only-palette');
+  for (const tab of tabs || []) for (const row of tab.rows) {
+    const value = get(row.key), said = value !== undefined && value !== null && value !== '';
+    let text = '';
+    if (said) {
+      if (row.field === 'switch') text = (row.choices || []).find(([key]) => key === String(!!value))?.[1] || '';
+      else if (row.field === 'choice') text = (row.choices || []).find(([key]) => key === value)?.[1] || value;
+      else if (row.field === 'xml-type') text = value.name ? xmlTypeText(value) : '';
+      else if (row.field === 'xml-types') text = value.map(xmlTypeText).join(', ');
+      else text = String(value);
+    } else if (row.default !== undefined) text = (row.choices || []).find(([key]) => key === row.default)?.[1] ?? row.default;
+    // A flag a node always has, left out, is false.
+    else if (row.field === 'switch' && !row.optional) text = (row.choices || []).find(([key]) => key === 'false')?.[1] || '';
+    const line = node('div', undefined, 'read-only-palette-row');
+    const shown = node('span', text, 'read-only-palette-value' + (!said && row.optional ? ' palette-unset' : ''));
+    if (said && row.optional) shown.prepend(iconElement('apply'));
+    line.append(node('span', row.title, 'read-only-palette-caption'), shown);
+    line.title = row.description || '';
+    list.append(line);
+  }
+  return list;
 }
 
 /* chooseXMLType is the window choosing a type named by the schema - of an

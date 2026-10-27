@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"io"
 	"io/fs"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -318,6 +320,48 @@ func fetchWSDefinition(ctx context.Context, address string) ([]byte, string, err
 	return content, (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String(), nil
 }
 
+// WSReferenceView is what the window viewing a description shows: the
+// model of the description and the palettes of its nodes, by the kind of
+// the node - the packages' as the editor of an XDTO package has them.
+type WSReferenceView struct {
+	Title        string                        `json:"title"`
+	Model        metadata.WSDefinitionModel    `json:"model"`
+	NodePalettes map[string][]kinds.PaletteTab `json:"nodePalettes"`
+}
+
+// wsViewAddress is where the window viewing a description reads it.
+const wsViewAddress = "/api/ws-reference/view"
+
+// ReadWSReferenceView reads the description of the reference described at
+// relative and the schemas kept beside it into the model its window shows
+// (ws-ssylka.md, «Окно»); a reference of no description shows none.
+func (workspace *Workspace) ReadWSReferenceView(relative string) (WSReferenceView, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	opened, err := workspace.readWSReferenceEditorLocked(relative)
+	if err != nil {
+		return WSReferenceView{}, err
+	}
+	palettes := map[string][]kinds.PaletteTab{}
+	for _, kind := range append(slices.Clone(xdtoNodePalettes), "wsRoot", "wsService", "wsPort", "wsOperation", "wsParameter") {
+		palettes[kind] = kinds.PartPalette(kind)
+	}
+	view := WSReferenceView{Title: fmt.Sprintf("WS-ссылка %s: WS-ссылка [Только для чтения]", opened.Reference.Name), NodePalettes: palettes,
+		Model: metadata.WSDefinitionModel{Packages: []metadata.XDTOContent{}, Services: []metadata.WSService{}}}
+	directory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
+	definition, err := os.ReadFile(filepath.Join(directory, metadata.WSReferenceDefinitionFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return view, nil
+	}
+	if err != nil {
+		return WSReferenceView{}, err
+	}
+	view.Model, err = metadata.ReadWSDefinition(definition, func(name string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(directory, name))
+	})
+	return view, err
+}
+
 // DeleteWSReference removes a WS reference's folder - its description and
 // the service's - by the one order of steps of every deletion.
 func (workspace *Workspace) DeleteWSReference(relative, expectedRevision string) error {
@@ -325,6 +369,9 @@ func (workspace *Workspace) DeleteWSReference(relative, expectedRevision string)
 }
 
 func registerWSReferenceEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("GET "+wsViewAddress, answerQuery(writeSourceError, func(request *http.Request) (any, error) {
+		return workspace.ReadWSReferenceView(request.URL.Query().Get("path"))
+	}))
 	routes.HandleFunc("POST "+wsImportAddress, func(response http.ResponseWriter, request *http.Request) {
 		answerStudio(0, writeSourceError, func(input WSImport) (any, error) {
 			return workspace.ImportWSReference(request.Context(), input)

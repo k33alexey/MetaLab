@@ -870,6 +870,50 @@ var partPalettes = map[string][]PaletteTab{
 			{Key: "value", Title: "Перечисление", Field: TextField, Important: true, Description: "Одно из допустимых значений типа."},
 		}},
 	},
+	// docs/block-00/ws-ssylka.md, «Окно»; snapshots ws-ssylka/04-09,
+	// series-2.584/236-239: the nodes of «Web-сервисы» of the window viewing
+	// a description, read only, each on one tab.
+	"wsRoot": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "documentation", Title: "Описание определения Web-сервисов", Field: TextField, Important: true,
+				Description: "Описание определения сервисов из описания WSDL."},
+		}},
+	},
+	"wsService": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "namespace", Title: "Пространство имен", Field: TextField, Important: true, Description: "Пространство имён описания сервиса."},
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Description: "Имя сервиса в описании."},
+			{Key: "documentation", Title: "Описание Web-сервиса", Field: TextField, Important: true, Description: "Описание сервиса из описания WSDL."},
+		}},
+	},
+	"wsPort": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Description: "Имя точки подключения в описании."},
+			{Key: "documentation", Title: "Описание порта", Field: TextField, Important: true, Description: "Описание точки подключения из описания WSDL."},
+		}},
+	},
+	"wsOperation": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Description: "Имя операции в описании."},
+			{Key: "documentation", Title: "Описание операции", Field: TextField, Important: true, Description: "Описание операции из описания WSDL."},
+			{Key: "returnType", Title: "Тип возвращаемого значения", Field: XMLTypeField, Important: true, Description: "Тип значения, которое возвращает операция."},
+			{Key: "nillable", Title: "Возможно пустое", Field: SwitchField, Important: true, Choices: xdtoFlag, Description: "Может ли операция вернуть пустое значение."},
+			{Key: "returnDocumentation", Title: "Описание возвращаемого значения", Field: TextField, Important: true,
+				Description: "Описание возвращаемого значения из описания WSDL."},
+		}},
+	},
+	"wsParameter": {
+		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
+			{Key: "name", Title: "Имя", Field: TextField, Important: true, Description: "Имя параметра в описании."},
+			{Key: "type", Title: "Тип", Field: XMLTypeField, Important: true, Description: "Тип значения параметра."},
+			{Key: "direction", Title: "Направление", Field: ChoiceField, Important: true,
+				Choices:     [][2]string{{"in", "Входной"}, {"out", "Выходной"}, {"in-out", "ВходнойВыходной"}},
+				Description: "Передаётся ли значение параметра в операцию, из неё или в обе стороны."},
+			{Key: "nillable", Title: "Возможно пустое", Field: SwitchField, Important: true, Choices: xdtoFlag, Description: "Может ли значение параметра быть пустым."},
+			{Key: "documentation", Title: "Описание параметра операции", Field: TextField, Important: true,
+				Description: "Описание параметра из описания WSDL."},
+		}},
+	},
 	"attribute": {
 		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("реквизита", "о реквизите"), []PaletteRow{
 			{Field: SeparatorField, Important: true},
