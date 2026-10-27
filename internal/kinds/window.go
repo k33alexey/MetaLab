@@ -317,6 +317,15 @@ var palettes = map[Kind][]PaletteTab{
 				Description: "Картинку можно выбрать в приложении и для элемента условного оформления."},
 		})},
 	},
+	// docs/block-00/stil.md, «Палитра»; snapshot stil/01-palitra: one tab,
+	// «Стиль: Открыть» opening the values of the style in a window of
+	// their own with OK and «Отмена».
+	Style: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("стиля", "о стиле"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "items", Title: "Стиль", Field: WindowField, Important: true, Description: "Значения элементов стиля в этом стиле: открываются отдельным окном."},
+		})},
+	},
 	// docs/block-00/konstanta.md, «Палитра свойств»; snapshots
 	// konstanta/palitra-*: three tabs, «только важные» keeps «Основные» and
 	// «Данные»; the modules are named as the palette of a constant names

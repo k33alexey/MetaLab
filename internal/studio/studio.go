@@ -108,7 +108,7 @@ var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditor
 	metadata.ConstantKind: constantEditorAddress, metadata.CommonPictureKind: pictureEditorAddress,
 	metadata.CommonTemplateKind: templateEditorAddress, metadata.WSReferenceKind: wsReferenceEditorAddress,
 	metadata.WebServiceKind: webServiceEditorAddress, metadata.HTTPServiceKind: httpServiceEditorAddress,
-	metadata.WebSocketClientKind: webSocketClientEditorAddress}
+	metadata.WebSocketClientKind: webSocketClientEditorAddress, metadata.StyleKind: styleEditorAddress}
 
 // registerObjectEditor serves the window or palette of an object at its
 // address: the object read by its description (GET), and what
@@ -348,6 +348,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerWebServiceEditorRoutes(routes, workspace)
 	registerHTTPServiceEditorRoutes(routes, workspace)
 	registerWebSocketClientEditorRoutes(routes, workspace)
+	registerStyleEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)
 	registerListSettingsRoutes(routes, workspace)

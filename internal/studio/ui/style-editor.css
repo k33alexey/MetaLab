@@ -1,0 +1,20 @@
+/* Окно стиля (stil/05, stil/06, series-2.584/004): слева поля и
+   предварительный просмотр, справа элементы стиля со значениями. */
+#style-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5);overflow:hidden}
+#style-editor[hidden]{display:none}
+.style-window-body{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:12px;flex:1;min-height:0;padding:10px 14px}
+.style-window-left{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0}
+.style-window-preview{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.style-preview-sections,.style-preview-functions{padding:10px 8px;background:var(--panel-bg,#2b2d30)}
+.style-preview-heading{font-size:15px;padding:4px 0}
+.style-preview-button{align-self:flex-start;font-weight:600}
+.style-preview-table{border-collapse:collapse;width:100%;font-size:12px}
+.style-preview-table th,.style-preview-table td{border:1px solid #4a4d54;height:20px;text-align:left;padding:0 6px;font-weight:normal}
+.style-preview-field{display:flex;align-items:center;gap:4px;border:1px solid #4a4d54;align-self:flex-start;padding:1px 4px}
+.style-preview-field input{border:0;width:120px;background:transparent}
+.style-values{display:grid;grid-template-columns:minmax(160px,40%) minmax(0,1fr);gap:3px 10px;align-content:start;overflow:auto;min-height:0}
+.style-value-caption{display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.style-value-field,.field-with-buttons>.style-value-field{display:flex;align-items:center;gap:6px;min-height:22px;padding:0 6px;border:1px solid #4a4d54;font-size:12.5px;white-space:nowrap;overflow:hidden}
+.style-value-field span:last-child{overflow:hidden;text-overflow:ellipsis}
+.style-value-sample{flex:none;width:10px;height:10px;border:1px solid #6f737a}
+.style-values-dialog{max-height:60vh;width:min(560px,80vw)}

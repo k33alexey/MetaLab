@@ -1230,27 +1230,55 @@ function subsystemsTree(places, marks, changed) {
   return tree;
 }
 
-/* objectWindowEditor is the editor of the window of an object of a kind
+/* windowHeadFields are the fields at the top of the window of an object
+   without pages - a common picture, a style (obshchaya-kartinka.md, stil.md,
+   «Окно»): the name, the synonym, the comment, and the subsystems holding
+   it (source.subsystems) by commas with «…», unavailable until the window
+   choosing them. object is the object edited; typed() is called on every
+   key; the synonym's cleanup goes to cleanups. */
+function windowHeadFields(source, object, typed, cleanups) {
+  const setText = (key, value) => { if (typeof value === 'string' ? value : Object.keys(value || {}).length) object[key] = value; else delete object[key]; };
+  const synonym = createLocalizedField(source, code => object.title?.[code], (language, value) => setText('title', setTranslation(object.title, language, value)), typed, titleTextOptions);
+  cleanups.push(synonym.destroy);
+  const name = nameInput(object.name, value => { const before = object.name; object.name = value; synonym.follow(before, value); typed(); },
+    () => ({path: source.path, name: object.name}));
+  const subsystems = node('input');
+  subsystems.readOnly = true;
+  subsystems.value = (source.subsystems || []).filter(place => place.member).map(place => place.name).join(',');
+  const choose = fieldChoiceButton('Подсистемы', () => {});
+  choose.disabled = true;
+  return [labeledField('Имя:', name), labeledField('Синоним:', synonym),
+    labeledField('Комментарий:', textInput(object.comment, value => { setText('comment', value); typed(); })),
+    labeledField('Подсистемы:', fieldWithButtons(subsystems, [choose]))];
+}
+
+/* objectWindowEditor is the editor of the window of an object: of a kind
    whose pages are the palette's rows (source.pages, source.windowRows),
    «Подсистемы» the tree of the subsystems, and pages of its own the kind
-   gives (own); the palette of the object, or of the part own chose, beside
-   it, each showing what the other typed. target(source) is the object;
-   own(api) answers {pages: {key: () => element}, part() - {subject, title,
-   tabs} of the part chosen or null, reset()} over api - {source(),
-   object(), changed(), refresh(), palette()}; valueChecks are the addresses checking a
-   value of a row when its field is left (paletteFields). around holds the
-   palette, its title, the opening of a module, the actions and the closing
-   of the window. */
+   gives (own); or, where own gives draw(body), of a kind whose window has
+   no pages - a common picture, a style (obshchaya-kartinka.md, stil.md,
+   «Окно»): its title and a body draw fills (windowHeadFields at the top).
+   The palette of the object, or of the part own chose, stands beside it,
+   each showing what the other typed. target(source) is the object; own(api)
+   answers {pages: {key: () => element}, part() - {subject, title, tabs} of
+   the part chosen or null, reset(), draw(body), subject(source) - what the
+   palette of the object edits, its own properties by default, context() -
+   what its fields open beyond the window's (windows, openWindow), value
+   (object) - what the window writes of the object} over api - {source(),
+   object(), changed(), typed(), refresh(), palette(), cleanups()};
+   valueChecks are the addresses checking a value of a row when its field
+   is left (paletteFields). around holds the palette, its title, the opening
+   of a module, the actions and the closing of the window. */
 function objectWindowEditor(host, onChange, around, {target, own = () => ({pages: {}}), valueChecks}) {
   let source = null, frame = null, marks = new Set(), cleanups = [];
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => `${source.kindTitle} ${object().name}`;
-  const api = {source: () => source, object, changed, refresh: () => frame.refresh(), palette: () => renderPalette()};
+  const api = {source: () => source, object, changed, typed, refresh: () => frame.refresh(), palette: () => renderPalette(), cleanups: () => cleanups};
   const kind = own(api);
   function context(collect) {
     return {project: source, typed, changed, packages: source.packages, windows: [], cleanups: collect, valueChecks,
-      openModule: role => around.openModule?.(role)};
+      openModule: role => around.openModule?.(role), ...kind.context?.()};
   }
   // Typing renames the window and the palette and leaves the field typed
   // into as it is; anything else draws both anew.
@@ -1275,25 +1303,39 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     if (!source.windowRows?.[key]) return null;
     return rowsPage(source.windowRows[key], source.palette, paletteFields(context(() => cleanups)), ownSubject(source, object()), role => around.openModule?.(role));
   }
+  // The window of no pages: its title over the body draw fills.
+  function pagelessWindow() {
+    host.hidden = false;
+    const element = node('div', undefined, 'object-window ' + kind.className), heading = node('div', title(), 'object-window-title');
+    const body = node('div', undefined, kind.className + '-body');
+    element.append(heading, body);
+    host.replaceChildren(element);
+    const refresh = () => { cleanups.forEach(destroy => destroy()); cleanups = []; body.replaceChildren(); kind.draw(body); };
+    refresh();
+    return {refresh, setTitle(text) { heading.textContent = text; }};
+  }
   function renderPalette() {
     if (!source) return;
     const part = kind.part?.();
     showObjectPalette(around, paletteCleanups, part ? part.title : object().name, part ? part.tabs : source.palette,
-      part ? part.subject : ownSubject(source, object()), context());
+      part ? part.subject : kind.subject?.(source) || ownSubject(source, object()), context());
   }
   StudioLanguage.onChange(() => { if (source) { frame.refresh(); renderPalette(); } });
-  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; }, {
+  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; kind.reset?.(); }, {
     open(value) {
       if (source) clearObjectPalette(around, paletteCleanups);
       source = structuredClone(value);
       kind.reset?.();
       marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
-      frame = showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: 'main', page: renderPage});
+      frame = kind.draw ? pagelessWindow() : showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: 'main', page: renderPage});
       renderPalette();
     },
     // The object and the subsystems marked, in one order so a mark taken
-    // back leaves the window unchanged.
-    value() { return source && {...structuredClone(object()), subsystems: [...marks].sort()}; },
+    // back leaves the window unchanged; a window of no pages marks none.
+    value() {
+      if (!source) return null;
+      return kind.value ? kind.value(structuredClone(object())) : {...structuredClone(object()), subsystems: [...marks].sort()};
+    },
     // Shows the palette of the object itself, as a click on its node does.
     showPalette() {
       if (!source || !around.palette) return false;

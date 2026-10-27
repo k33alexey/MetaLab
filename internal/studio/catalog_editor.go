@@ -80,13 +80,21 @@ func validateCatalogEditorPath(relative string) error {
 }
 
 // validateObjectEditorPath accepts the description of an object of a kind
-// that keeps a folder named after it: metadata/<kind>/<Имя>/object.yaml.
+// where its kind keeps it: metadata/<kind>/<Имя>/object.yaml of a kind
+// keeping a folder named after the object, metadata/<kind>/<id>.yaml of
+// one keeping a file of its own (kinds.InFile).
 func validateObjectEditorPath(relative string, kind metadata.Kind) error {
 	canonical, language, err := validateEditablePath(relative)
 	if err != nil || language != "yaml" {
 		return ErrInvalidSourcePath
 	}
 	parts := strings.Split(canonical, "/")
+	if kinds.Must(kind).Layout().Storage == kinds.InFile {
+		if len(parts) != 3 || parts[0] != "metadata" || parts[1] != string(kind) {
+			return ErrInvalidSourcePath
+		}
+		return nil
+	}
 	if len(parts) != 4 || parts[0] != "metadata" || parts[1] != string(kind) || parts[3] != project.ObjectMetadataFile {
 		return ErrInvalidSourcePath
 	}
@@ -416,10 +424,11 @@ func (source TemplateEditorSource) identity() (uuid.UUID, string) {
 	return source.Template.ID, source.Revision
 }
 
-// deleteObjectFolder deletes an object of a kind that keeps a folder named
-// after it - its description, modules, forms, content - by the one order of
-// steps of every deletion (deleteObjectLocked), while the caller holds the
-// revision read last. read reads the object as its window does.
+// deleteObjectFolder deletes an object - the folder named after it with its
+// description, modules, forms, content, or the one file of an object of a
+// kind keeping no folder (kinds.InFile) - by the one order of steps of
+// every deletion (deleteObjectLocked), while the caller holds the revision
+// read last. read reads the object as its window does.
 func deleteObjectFolder[Window windowSource](workspace *Workspace, kind metadata.Kind, relative, expectedRevision string, read func(string) (Window, error)) error {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
@@ -432,6 +441,9 @@ func deleteObjectFolder[Window windowSource](workspace *Workspace, kind metadata
 		return ErrSourceChanged
 	}
 	return workspace.deleteObjectLocked(kind, id, relative, func() error {
+		if kinds.Must(kind).Layout().Storage == kinds.InFile {
+			return os.Remove(filepath.Join(workspace.root, filepath.FromSlash(relative)))
+		}
 		return os.RemoveAll(filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative))))
 	})
 }

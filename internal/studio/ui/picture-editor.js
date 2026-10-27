@@ -14,11 +14,10 @@
    decision of 15.10.2026, ML-STUDIO.md, «Окно общей картинки»).
    around holds the palette and its title. */
 function createPictureEditor(host, onChange, around = {}) {
-  let source = null, image = null, cleanups = [], frame = null;
-  const paletteCleanups = [];
-  const picture = () => source.picture;
+  let image = null, source = null;
   // The formats an image of a picture is kept in (metadata.PictureFormats).
   const formats = ['png', 'svg', 'gif', 'ico', 'jpg', 'bmp'];
+  const picture = () => source.picture;
   // A picture of more than one image, or of variants, keeps a set.
   const set = () => (picture().variants || []).length > 0 || source.images.length > 1;
   // The image the window shows: chosen, cleared, or the one in the folder.
@@ -29,16 +28,6 @@ function createPictureEditor(host, onChange, around = {}) {
       format: name.slice(name.lastIndexOf('.') + 1).toLowerCase(), name} : null;
   }
   function mediaOf(format) { return format === 'svg' ? 'image/svg+xml' : format === 'jpg' ? 'image/jpeg' : format === 'ico' ? 'image/x-icon' : `image/${format}`; }
-  function title() { return `${source.kindTitle} ${picture().name}`; }
-  function changed() { onChange(); render(); }
-  // Typing renames the window and the palette, and leaves the field typed
-  // into as it is.
-  function typed() {
-    onChange();
-    frame.heading.textContent = title();
-    if (!host.contains(document.activeElement)) renderWindow();
-    if (!around.palette?.contains(document.activeElement)) renderPalette();
-  }
   function setText(key, value) {
     if (typeof value === 'string' ? value : Object.keys(value || {}).length) picture()[key] = value; else delete picture()[key];
   }
@@ -48,25 +37,9 @@ function createPictureEditor(host, onChange, around = {}) {
     // makes the one editable only while the other is on.
     if (key === 'availableForChoice' && !value) delete picture().availableForAppearance;
   }
-  function renderWindow() {
-    cleanups.forEach(destroy => destroy());
-    cleanups = [];
-    const body = frame.body;
-    body.replaceChildren();
-    const synonym = createLocalizedField(source, code => picture().title?.[code], (language, value) => setText('title', setTranslation(picture().title, language, value)), typed, titleTextOptions);
-    cleanups.push(synonym.destroy);
-    const name = nameInput(picture().name, value => { const before = picture().name; picture().name = value; synonym.follow(before, value); typed(); },
-      () => ({path: source.path, name: picture().name}));
-    const members = (source.subsystems || []).filter(place => place.member).map(place => place.name).join(',');
-    const subsystems = node('input');
-    subsystems.readOnly = true;
-    subsystems.value = members;
-    // The window choosing the subsystems is not described yet.
-    const choose = fieldChoiceButton('Подсистемы', () => {});
-    choose.disabled = true;
-    body.append(labeledField('Имя:', name), labeledField('Синоним:', synonym),
-      labeledField('Комментарий:', textInput(picture().comment, value => { setText('comment', value); typed(); })),
-      labeledField('Подсистемы:', fieldWithButtons(subsystems, [choose])),
+  function draw(body, api) {
+    const {typed, changed} = api;
+    body.append(...windowHeadFields(source, picture(), typed, api.cleanups()),
       checkboxField('Доступность для выбора', !!picture().availableForChoice, value => { setFlag('availableForChoice', value); changed(); }),
       checkboxField('Доступность для оформления', !!picture().availableForAppearance, value => { setFlag('availableForAppearance', value); changed(); },
         'catalog-check', !picture().availableForChoice));
@@ -87,7 +60,7 @@ function createPictureEditor(host, onChange, around = {}) {
       return element;
     };
     const single = !set();
-    button('Выбрать из файла', single, chooseFile);
+    button('Выбрать из файла', single, () => chooseFile(api));
     button('Очистить', single && !!shown, () => { image = {}; changed(); });
     button('Установить прозрачный фон', false, () => {});
     button('Убрать прозрачность', false, () => {});
@@ -102,12 +75,12 @@ function createPictureEditor(host, onChange, around = {}) {
   }
   // «Выбрать из файла»: a file of one of the formats, read whole; it becomes
   // the picture when the window is saved.
-  async function chooseFile() {
+  async function chooseFile(api) {
     const file = await chooseFileContent(formats.map(format => '.' + format).join(','));
     const format = file?.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
     if (!file || !formats.includes(format)) return;
     image = {format, content: file.content};
-    changed();
+    api.changed();
   }
   // «Сохранить в файл»: the image as the browser saves a download, named
   // after the picture.
@@ -117,33 +90,11 @@ function createPictureEditor(host, onChange, around = {}) {
     link.download = `${picture().name}.${shown.format}`;
     link.click();
   }
-  function renderPalette() {
-    if (!source) return;
-    const subject = {target: picture(), get: key => picture()[key], set: (key, value) => key === 'comment' ? setText(key, value) : setFlag(key, value),
-      setName: value => { picture().name = value; }, check: () => ({path: source.path, name: picture().name})};
-    showObjectPalette(around, paletteCleanups, picture().name, source.palette, subject,
-      {project: source, typed, changed: () => changed(), windows: ['picture'], openWindow: () => host.querySelector('input')?.focus()});
-  }
-  function render() { renderWindow(); renderPalette(); }
-  StudioLanguage.onChange(() => { if (source) render(); });
-  return hostedEditor(host, () => { cleanups.forEach(destroy => destroy()); cleanups = []; if (source) clearObjectPalette(around, paletteCleanups); source = null; image = null; }, {
-    open(value) {
-      if (source) clearObjectPalette(around, paletteCleanups);
-      source = structuredClone(value);
-      image = null;
-      host.hidden = false;
-      const element = node('div', undefined, 'object-window picture-window'), heading = node('div', title(), 'object-window-title');
-      const body = node('div', undefined, 'picture-window-body');
-      element.append(heading, body);
-      frame = {heading, body};
-      host.replaceChildren(element);
-      render();
-    },
-    value() { return source && {...structuredClone(picture()), ...(image ? {image: structuredClone(image)} : {})}; },
-    showPalette() {
-      if (!source || !around.palette) return false;
-      renderPalette();
-      return true;
-    },
-  });
+  return objectWindowEditor(host, onChange, around, {target: opened => opened.picture, own: api => ({className: 'picture-window',
+    draw: body => { source = api.source(); draw(body, api); },
+    subject: opened => ({target: opened.picture, get: key => opened.picture[key], set: (key, value) => key === 'comment' ? setText(key, value) : setFlag(key, value),
+      setName: value => { opened.picture.name = value; }, check: () => ({path: opened.path, name: opened.picture.name})}),
+    context: () => ({windows: ['picture'], openWindow: () => host.querySelector('input')?.focus()}),
+    reset: () => { image = null; },
+    value: object => image ? {...object, image: structuredClone(image)} : object})});
 }

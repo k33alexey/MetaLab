@@ -74,6 +74,11 @@ var kindNewObjectOf = map[Kind]newObject{
 	RoleKind: func(id uuid.UUID, name string, configuration project.Project) Fresh {
 		return Fresh{Value: NewRole(id, name, configuration.ID)}
 	},
+	// stil.md, «Новый стиль»: a style giving no item a value of its own -
+	// each shows «стиль: <элемент>».
+	StyleKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: StyleDefinition{Format: CurrentFormat, ID: id, Name: name}}
+	},
 	// obshchij-modul.md, «Новый модуль»: «Сервер» alone. The text of the
 	// module lies apart, named by an identifier of its own.
 	CommonModuleKind: func(id uuid.UUID, name string, _ project.Project) Fresh {

@@ -1,0 +1,198 @@
+'use strict';
+
+/* The window of a style, as the prototype's (docs/block-00/stil.md, «Окно»;
+   snapshots stil/05, 06, configurator-2026-10-27/series-2.584/004-014): no
+   pages - at the left the name, the synonym, the comment, the subsystems
+   (windowHeadFields) and «Предварительный просмотр» drawn by the style; at
+   the right the style items the window lists (source.items: the platform's
+   five, then the project's in the order of the tree), each with its value
+   in this style and «…». The palette beside it opens the same values in a
+   window of their own with OK and «Отмена» («Стиль: Открыть»). «…» of a
+   value stands unavailable until the windows choosing a colour, a font and
+   a border, which are items of their own. around holds the palette and its
+   title. */
+function createStyleEditor(host, onChange, around = {}) {
+  let source = null;
+  function draw(body, api) {
+    source = api.source();
+    const preview = node('fieldset', undefined, 'studio-frame style-window-preview');
+    preview.append(node('legend', 'Предварительный просмотр'), ...stylePreview(source));
+    const left = node('div', undefined, 'style-window-left');
+    left.append(...windowHeadFields(source, source.style, api.typed, api.cleanups()), preview);
+    body.append(left, styleValueRows(source, 'style-window-items'));
+  }
+  // «Стиль: Открыть»: the values in a window of their own. Nothing in it
+  // changes a value until the windows choosing one, so OK and «Отмена»
+  // leave the style as it was.
+  function openValues() {
+    showDialog({title: `${source.kindTitle} ${source.style.name}`, content: styleValueRows(source, 'style-values-dialog'),
+      answers: [['ok', 'OK'], [null, 'Отмена']], className: 'style-values-window'});
+  }
+  return objectWindowEditor(host, onChange, around, {target: opened => opened.style, own: api => ({className: 'style-window',
+    draw: body => draw(body, api), context: () => ({windows: ['items'], openWindow: openValues}), value: object => object})});
+}
+
+/* styleValueRows are the rows of the values of a style (source, as
+   createStyleEditor reads it): the caption of each item listed and a field
+   of its value - a sample of a colour and the text of styleValueText - with
+   «…», unavailable until the windows choosing a value. */
+function styleValueRows(source, className) {
+  const list = node('div', undefined, 'style-values ' + className);
+  for (const item of source.items) {
+    const caption = node('span', undefined, 'style-value-caption');
+    caption.append(iconElement('style-item'), node('span', styleItemTitle(source, item)));
+    const shown = styleValueText(source, item), field = node('div', undefined, 'style-value-field');
+    field.title = shown.text;
+    if (item.type === 'color') {
+      const sample = node('span', undefined, 'style-value-sample');
+      if (shown.color) sample.style.background = shown.color;
+      field.append(sample);
+    }
+    field.append(node('span', shown.text));
+    const choose = fieldChoiceButton(styleItemTitle(source, item), () => {});
+    choose.disabled = true;
+    list.append(caption, fieldWithButtons(field, [choose]));
+  }
+  return list;
+}
+
+/* styleItemTitle is how the windows of a style name a style item: one of
+   the platform's by its caption, one of the project's by its synonym in
+   the language of Studio, its name where there is none. */
+function styleItemTitle(source, item) {
+  if (item.standard) return stylePlatformItem(source, item.standard)?.title || item.standard;
+  return textPresentation(item.title, StudioLanguage.get(), item.name);
+}
+
+/* stylePlatformItem is the platform's own style item named in either
+   language (source.platform), or undefined. */
+function stylePlatformItem(source, name) {
+  const folded = name.toLowerCase();
+  return source.platform.find(item => item.name.toLowerCase() === folded || item.russian.toLowerCase() === folded);
+}
+
+/* styleSetting is the value this style gives an item - by the identifier
+   of one of the project's, by the name in either language of one of the
+   platform's - or undefined where it gives none. */
+function styleSetting(source, item) {
+  const platform = item.standard && stylePlatformItem(source, item.standard);
+  return (source.style.items || []).find(setting => item.item ? setting.item === item.item
+    : !!setting.standard && stylePlatformItem(source, setting.standard) === platform)?.value;
+}
+
+/* styleReferenced is the item a reference to a style item names (metadata.
+   StyleItemReference): one of the platform's by name in either language,
+   one of the project's by identifier - as source.items holds them, the
+   platform's not listed there as {standard, type} - or null. */
+function styleReferenced(source, reference) {
+  if (reference?.standard) {
+    const own = stylePlatformItem(source, reference.standard);
+    return own ? (source.items.find(item => item.standard === own.name) || {standard: own.name, type: own.type}) : null;
+  }
+  return reference?.item ? source.items.find(item => item.item === reference.item) || null : null;
+}
+
+/* styleValueText is what the field of an item's value shows in a style
+   (stil.md, «Окно», «Досъёмка 27.10.2026»; snapshots series-2.584/004,
+   008, 014, 049, 055): {text, color} - the text and the colour of the
+   sample of a colour. A value the style does not give shows «стиль:
+   <элемент>» with the sample of the item's own value; one of a border,
+   nothing. A colour of its own shows its numbers «250, 195, 113»; a colour
+   of the web palette its name «Мятный крем (MintCream)»; a value taken from
+   a style item «стиль: <элемент>», a font struck out «, зачеркнутый» after
+   it. What the inventory does not show - a colour of the system, an
+   automatic one, a font of its own or of the system, a font changed in
+   other ways, a border of its own - shows nothing (series 2.595,
+   question). */
+function styleValueText(source, item) {
+  const given = styleSetting(source, item);
+  if (!given) {
+    if (item.type === 'border') return {text: ''};
+    return {text: `стиль: ${styleItemTitle(source, item)}`, color: styleColorOf(source, item, 0)};
+  }
+  const value = given[item.type];
+  const from = value?.source === 'style' && styleReferenced(source, value.from);
+  if (item.type === 'color') {
+    if (value.source === 'absolute') return {text: styleRGB(value.rgb).join(', '), color: value.rgb};
+    if (value.source === 'web') {
+      const web = source.webColors.find(color => color.name.toLowerCase() === value.name.toLowerCase());
+      return {text: web ? `${web.title} (${web.name})` : value.name, color: styleWebColor(value.name)};
+    }
+    if (from) return {text: `стиль: ${styleItemTitle(source, from)}`, color: styleColorOf(source, from, 0)};
+    return {text: ''};
+  }
+  if (!from) return {text: ''};
+  if (item.type === 'border') return {text: `стиль: ${styleItemTitle(source, from)}`};
+  // A font taken from a style item and changed: the words of what is
+  // changed after its name. Only «зачеркнутый» is shot (series-2.584/014);
+  // a font changed otherwise waits for the question.
+  const words = {strikeout: 'зачеркнутый'};
+  const changed = ['bold', 'italic', 'underline', 'strikeout'].filter(flag => value[flag]);
+  if (value.face || value.size || value.scale || changed.some(flag => !words[flag])) return {text: ''};
+  return {text: [`стиль: ${styleItemTitle(source, from)}`, ...changed.map(flag => words[flag])].join(', ')};
+}
+
+/* styleColorOf is the colour an item of a colour has in a style, for its
+   sample - what the style gives it, else its own value, followed through
+   the items it is taken from - or undefined where it is not known: a
+   colour of the platform the style does not give (series 2.595, question),
+   of the system, an automatic one. */
+function styleColorOf(source, item, depth) {
+  if (!item || item.type !== 'color' || depth > 40) return undefined;
+  const value = styleSetting(source, item)?.color || item.value?.color;
+  if (!value) return undefined;
+  if (value.source === 'absolute') return value.rgb;
+  if (value.source === 'web') return styleWebColor(value.name);
+  if (value.source === 'style') return styleColorOf(source, styleReferenced(source, value.from), depth + 1);
+  return undefined;
+}
+
+/* styleWebColor is a colour of the web palette as the browser draws it, by
+   its English name, or undefined for a name CSS never had (Cream,
+   MediumGray and four more - series 2.595, question). */
+function styleWebColor(name) {
+  return CSS.supports('color', name) ? name : undefined;
+}
+
+/* styleRGB is the three numbers of a colour written #RRGGBB. */
+function styleRGB(hex) {
+  return [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16));
+}
+
+/* stylePreview is «Предварительный просмотр» of the window of a style
+   (snapshots stil/05, series-2.584/008): the panel of sections in the
+   navigation colour, the panel of functions in the auxiliary navigation
+   colour, the heading of a group and the mark of the flag in the accent
+   colour, the default button in the colour of the important, the field in
+   the colour of activity - as the two styles shot draw them - with a
+   table of two columns between. A colour not known (styleColorOf) leaves
+   the element as Studio draws it. */
+function stylePreview(source) {
+  const color = name => styleColorOf(source, styleReferenced(source, {standard: name}), 0);
+  const paint = (element, property, name) => { const value = color(name); if (value) element.style[property] = value; return element; };
+  const sections = paint(node('div', 'Панель разделов', 'style-preview-sections'), 'background', 'NavigationColor');
+  const functions = paint(node('div', 'Панель функций текущего раздела', 'style-preview-functions'), 'background', 'AuxiliaryNavigationColor');
+  const heading = paint(node('div', 'Заголовок группы', 'style-preview-heading'), 'color', 'AccentColor');
+  const button = paint(node('button', 'Кнопка по умолчанию', 'style-preview-button'), 'background', 'ImportantColor');
+  button.type = 'button';
+  button.tabIndex = -1;
+  const flag = node('label', undefined, 'catalog-check style-preview-flag'), box = node('input');
+  box.type = 'checkbox';
+  box.checked = true;
+  box.tabIndex = -1;
+  flag.append(paint(box, 'accentColor', 'AccentColor'), node('span', 'Флажок'));
+  const table = node('table', undefined, 'style-preview-table'), head = node('tr');
+  head.append(node('th', 'Колонка1'), node('th', 'Колонка2'));
+  table.append(head);
+  for (let row = 0; row < 4; row++) {
+    const line = node('tr');
+    line.append(node('td'), node('td'));
+    table.append(line);
+  }
+  const input = node('input');
+  input.readOnly = true;
+  input.tabIndex = -1;
+  const field = paint(node('div', undefined, 'style-preview-field'), 'borderColor', 'ActivityColor');
+  field.append(input, node('span', '…'), node('span', '×'));
+  return [sections, functions, heading, button, flag, table, field];
+}

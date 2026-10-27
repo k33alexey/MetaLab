@@ -225,53 +225,80 @@ type StyleItemSetting struct {
 	Value    StyleItemValue `yaml:"value" json:"value"`
 }
 
-// standardStyleItems is the platform's own style items, by name in either
-// language, folded, with the type of each: 28 colours, 5 fonts and a border
-// (help, StyleColors, StyleFonts, StyleBorders). A style may give any of them a
-// value of its own - the configurations being moved set 34, 5 and 21 of them -
-// and the type decides what that value has to be.
-var standardStyleItems = map[string]StyleItemType{
-	"fieldalternativebackcolor": ColorStyleItem, "альтернативныйцветфонаполя": ColorStyleItem,
-	"activitycolor": ColorStyleItem, "цветактивности": ColorStyleItem,
-	"accentcolor": ColorStyleItem, "цветакцента": ColorStyleItem,
-	"importantcolor": ColorStyleItem, "цветважного": ColorStyleItem,
-	"auxiliarynavigationcolor": ColorStyleItem, "цветдополнительнойнавигации": ColorStyleItem,
-	"reportlinecolor": ColorStyleItem, "цветлинииотчета": ColorStyleItem,
-	"navigationcolor": ColorStyleItem, "цветнавигации": ColorStyleItem,
-	"specialtextcolor": ColorStyleItem, "цветособоготекста": ColorStyleItem,
-	"negativetextcolor": ColorStyleItem, "цветотрицательногочисла": ColorStyleItem,
-	"bordercolor": ColorStyleItem, "цветрамки": ColorStyleItem,
-	"buttonbordercolor": ColorStyleItem, "цветрамкикнопки": ColorStyleItem,
-	"fieldselectedtextcolor": ColorStyleItem, "цветтекставыделенияполя": ColorStyleItem,
-	"buttontextcolor": ColorStyleItem, "цветтекстакнопки": ColorStyleItem,
-	"tablefootertextcolor": ColorStyleItem, "цветтекстаподвалатаблицы": ColorStyleItem,
-	"tooltiptextcolor": ColorStyleItem, "цветтекстаподсказки": ColorStyleItem,
-	"fieldtextcolor": ColorStyleItem, "цветтекстаполя": ColorStyleItem,
-	"formtextcolor": ColorStyleItem, "цветтекстаформы": ColorStyleItem,
-	"tableheadertextcolor": ColorStyleItem, "цветтексташапкитаблицы": ColorStyleItem,
-	"fieldselectionbackcolor": ColorStyleItem, "цветфонавыделенияполя": ColorStyleItem,
-	"reportgroup1backcolor": ColorStyleItem, "цветфонагруппировкиотчета1": ColorStyleItem,
-	"reportgroup2backcolor": ColorStyleItem, "цветфонагруппировкиотчета2": ColorStyleItem,
-	"buttonbackcolor": ColorStyleItem, "цветфонакнопки": ColorStyleItem,
-	"tablefooterbackcolor": ColorStyleItem, "цветфонаподвалатаблицы": ColorStyleItem,
-	"tooltipbackcolor": ColorStyleItem, "цветфонаподсказки": ColorStyleItem,
-	"fieldbackcolor": ColorStyleItem, "цветфонаполя": ColorStyleItem,
-	"formbackcolor": ColorStyleItem, "цветфонаформы": ColorStyleItem,
-	"reportheaderbackcolor": ColorStyleItem, "цветфонашапкиотчета": ColorStyleItem,
-	"tableheaderbackcolor": ColorStyleItem, "цветфонашапкитаблицы": ColorStyleItem,
-	"largetextfont": FontStyleItem, "крупныйшрифттекста": FontStyleItem,
-	"smalltextfont": FontStyleItem, "мелкийшрифттекста": FontStyleItem,
-	"normaltextfont": FontStyleItem, "обычныйшрифттекста": FontStyleItem,
-	"extralargetextfont": FontStyleItem, "оченькрупныйшрифттекста": FontStyleItem,
-	"textfont": FontStyleItem, "шрифттекста": FontStyleItem,
-	"controlborder": BorderStyleItem, "рамкаэлементауправления": BorderStyleItem,
+// PlatformStyleItem is one of the platform's own style items: its name in
+// the language, in English and in Russian, its caption in the windows of
+// Studio and its type.
+type PlatformStyleItem struct {
+	Name    string        `json:"name"`
+	Russian string        `json:"russian"`
+	Title   string        `json:"title"`
+	Type    StyleItemType `json:"type"`
+	// InStyleWindow says the window of a style lists the item before the
+	// style items of the project: five colours do (stil.md, «Досъёмка
+	// 27.10.2026»), the rest the window leaves out.
+	InStyleWindow bool `json:"inStyleWindow,omitempty"`
 }
+
+// PlatformStyleItems are the platform's own style items: 28 colours, 5 fonts
+// and a border (help, StyleColors, StyleFonts, StyleBorders), in the order
+// and under the captions of the lists «Из стиля» of the windows choosing a
+// colour, a font and a border (stil.md, «Досъёмка 27.10.2026»; the order is
+// the one the prototype writes a style in too). A style may give any of
+// them a value of its own - the configurations being moved set 34, 5 and 21
+// of them - and the type decides what that value has to be.
+var PlatformStyleItems = []PlatformStyleItem{
+	{Name: "FormBackColor", Russian: "ЦветФонаФормы", Title: "Фон формы", Type: ColorStyleItem},
+	{Name: "FormTextColor", Russian: "ЦветТекстаФормы", Title: "Текст формы", Type: ColorStyleItem},
+	{Name: "ButtonBackColor", Russian: "ЦветФонаКнопки", Title: "Фон кнопки", Type: ColorStyleItem},
+	{Name: "ButtonTextColor", Russian: "ЦветТекстаКнопки", Title: "Текст кнопки", Type: ColorStyleItem},
+	{Name: "FieldBackColor", Russian: "ЦветФонаПоля", Title: "Фон редактирования", Type: ColorStyleItem},
+	{Name: "FieldTextColor", Russian: "ЦветТекстаПоля", Title: "Текст редактирования", Type: ColorStyleItem},
+	{Name: "FieldSelectionBackColor", Russian: "ЦветФонаВыделенияПоля", Title: "Фон выделения редактирования", Type: ColorStyleItem},
+	{Name: "FieldSelectedTextColor", Russian: "ЦветТекстаВыделенияПоля", Title: "Текст выделения редактирования", Type: ColorStyleItem},
+	{Name: "FieldAlternativeBackColor", Russian: "АльтернативныйЦветФонаПоля", Title: "Альтернативный фон редактирования", Type: ColorStyleItem},
+	{Name: "ToolTipBackColor", Russian: "ЦветФонаПодсказки", Title: "Фон подсказки", Type: ColorStyleItem},
+	{Name: "ToolTipTextColor", Russian: "ЦветТекстаПодсказки", Title: "Текст подсказки", Type: ColorStyleItem},
+	{Name: "SpecialTextColor", Russian: "ЦветОсобогоТекста", Title: "Особый текст", Type: ColorStyleItem},
+	{Name: "NegativeTextColor", Russian: "ЦветОтрицательногоЧисла", Title: "Отрицательное число", Type: ColorStyleItem},
+	{Name: "BorderColor", Russian: "ЦветРамки", Title: "Рамка", Type: ColorStyleItem},
+	{Name: "ReportHeaderBackColor", Russian: "ЦветФонаШапкиОтчета", Title: "Фон шапки отчета", Type: ColorStyleItem},
+	{Name: "ReportGroup1BackColor", Russian: "ЦветФонаГруппировкиОтчета1", Title: "Фон группировки отчета 1", Type: ColorStyleItem},
+	{Name: "ReportGroup2BackColor", Russian: "ЦветФонаГруппировкиОтчета2", Title: "Фон группировки отчета 2", Type: ColorStyleItem},
+	{Name: "ReportLineColor", Russian: "ЦветЛинииОтчета", Title: "Линия отчета", Type: ColorStyleItem},
+	{Name: "ButtonBorderColor", Russian: "ЦветРамкиКнопки", Title: "Рамка кнопки", Type: ColorStyleItem},
+	{Name: "TableHeaderBackColor", Russian: "ЦветФонаШапкиТаблицы", Title: "Фон шапки таблицы", Type: ColorStyleItem},
+	{Name: "TableHeaderTextColor", Russian: "ЦветТекстаШапкиТаблицы", Title: "Текст шапки таблицы", Type: ColorStyleItem},
+	{Name: "TableFooterBackColor", Russian: "ЦветФонаПодвалаТаблицы", Title: "Фон подвала таблицы", Type: ColorStyleItem},
+	{Name: "TableFooterTextColor", Russian: "ЦветТекстаПодвалаТаблицы", Title: "Текст подвала таблицы", Type: ColorStyleItem},
+	{Name: "ActivityColor", Russian: "ЦветАктивности", Title: "Цвет активности", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "AccentColor", Russian: "ЦветАкцента", Title: "Цвет акцентирования", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "NavigationColor", Russian: "ЦветНавигации", Title: "Цвет навигации", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "AuxiliaryNavigationColor", Russian: "ЦветДополнительнойНавигации", Title: "Цвет дополнительной навигации", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "ImportantColor", Russian: "ЦветВажного", Title: "Цвет важного", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "TextFont", Russian: "ШрифтТекста", Title: "Шрифт текста", Type: FontStyleItem},
+	{Name: "SmallTextFont", Russian: "МелкийШрифтТекста", Title: "Мелкий шрифт текста", Type: FontStyleItem},
+	{Name: "NormalTextFont", Russian: "ОбычныйШрифтТекста", Title: "Обычный шрифт текста", Type: FontStyleItem},
+	{Name: "LargeTextFont", Russian: "КрупныйШрифтТекста", Title: "Крупный шрифт текста", Type: FontStyleItem},
+	{Name: "ExtraLargeTextFont", Russian: "ОченьКрупныйШрифтТекста", Title: "Очень крупный шрифт текста", Type: FontStyleItem},
+	{Name: "ControlBorder", Russian: "РамкаЭлементаУправления", Title: "Рамка элементов управления", Type: BorderStyleItem},
+}
+
+// platformStyleItemByName is PlatformStyleItems by name in either language,
+// folded.
+var platformStyleItemByName = func() map[string]PlatformStyleItem {
+	byName := make(map[string]PlatformStyleItem, 2*len(PlatformStyleItems))
+	for _, item := range PlatformStyleItems {
+		byName[strings.ToLower(item.Name)] = item
+		byName[strings.ToLower(item.Russian)] = item
+	}
+	return byName
+}()
 
 // StandardStyleItemType returns the type of a standard style item named in
 // either language.
 func StandardStyleItemType(name string) (StyleItemType, bool) {
-	itemType, ok := standardStyleItems[strings.ToLower(name)]
-	return itemType, ok
+	item, ok := platformStyleItemByName[strings.ToLower(name)]
+	return item.Type, ok
 }
 
 // StyleDefinition is one look: a set of style items and what this look makes
@@ -750,46 +777,8 @@ func (catalog *Catalog) validateStyleItemCycles() error {
 // language to one key, so that a style setting the same item twice under its
 // two names is seen as setting it twice.
 func englishStandardStyleItem(name string) string {
-	folded := strings.ToLower(name)
-	if english, ok := standardStyleItemEnglish[folded]; ok {
-		return english
+	if item, ok := platformStyleItemByName[strings.ToLower(name)]; ok {
+		return strings.ToLower(item.Name)
 	}
-	return folded
-}
-
-var standardStyleItemEnglish = map[string]string{
-	"альтернативныйцветфонаполя":  "fieldalternativebackcolor",
-	"цветактивности":              "activitycolor",
-	"цветакцента":                 "accentcolor",
-	"цветважного":                 "importantcolor",
-	"цветдополнительнойнавигации": "auxiliarynavigationcolor",
-	"цветлинииотчета":             "reportlinecolor",
-	"цветнавигации":               "navigationcolor",
-	"цветособоготекста":           "specialtextcolor",
-	"цветотрицательногочисла":     "negativetextcolor",
-	"цветрамки":                   "bordercolor",
-	"цветрамкикнопки":             "buttonbordercolor",
-	"цветтекставыделенияполя":     "fieldselectedtextcolor",
-	"цветтекстакнопки":            "buttontextcolor",
-	"цветтекстаподвалатаблицы":    "tablefootertextcolor",
-	"цветтекстаподсказки":         "tooltiptextcolor",
-	"цветтекстаполя":              "fieldtextcolor",
-	"цветтекстаформы":             "formtextcolor",
-	"цветтексташапкитаблицы":      "tableheadertextcolor",
-	"цветфонавыделенияполя":       "fieldselectionbackcolor",
-	"цветфонагруппировкиотчета1":  "reportgroup1backcolor",
-	"цветфонагруппировкиотчета2":  "reportgroup2backcolor",
-	"цветфонакнопки":              "buttonbackcolor",
-	"цветфонаподвалатаблицы":      "tablefooterbackcolor",
-	"цветфонаподсказки":           "tooltipbackcolor",
-	"цветфонаполя":                "fieldbackcolor",
-	"цветфонаформы":               "formbackcolor",
-	"цветфонашапкиотчета":         "reportheaderbackcolor",
-	"цветфонашапкитаблицы":        "tableheaderbackcolor",
-	"крупныйшрифттекста":          "largetextfont",
-	"мелкийшрифттекста":           "smalltextfont",
-	"обычныйшрифттекста":          "normaltextfont",
-	"оченькрупныйшрифттекста":     "extralargetextfont",
-	"шрифттекста":                 "textfont",
-	"рамкаэлементауправления":     "controlborder",
+	return strings.ToLower(name)
 }
