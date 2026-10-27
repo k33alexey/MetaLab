@@ -43,6 +43,9 @@ func (WebServiceEditorSource) named(value metadata.WebServiceDefinition) (uuid.U
 	return value.ID, value.Name
 }
 
+// webServiceShape is how the window names an object of its kind.
+var webServiceShape = objectShape[metadata.WebServiceDefinition]{named: WebServiceEditorSource{}.named}
+
 func (source WebServiceEditorSource) identity() (uuid.UUID, string) {
 	return source.Service.ID, source.Revision
 }
@@ -72,8 +75,7 @@ func (workspace *Workspace) ReadWebServiceEditor(relative string) (WebServiceEdi
 }
 
 func (workspace *Workspace) readWebServiceEditorLocked(relative string) (WebServiceEditorSource, error) {
-	value, head, loaded, err := readObjectWindow(workspace, metadata.WebServiceKind, relative, metadata.DecodeWebService,
-		func(value metadata.WebServiceDefinition) uuid.UUID { return value.ID })
+	value, head, loaded, err := readObjectWindow(workspace, metadata.WebServiceKind, relative, metadata.DecodeWebService, webServiceShape)
 	if err != nil {
 		return WebServiceEditorSource{}, err
 	}
@@ -89,7 +91,7 @@ func (workspace *Workspace) readWebServiceEditorLocked(relative string) (WebServ
 // SaveWebServiceWindow writes the service and the subsystems its window
 // marks as one save (saveObjectWindow).
 func (workspace *Workspace) SaveWebServiceWindow(relative string, window WebServiceWindowValue, revision string) (WebServiceEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.WebServiceDefinition, window.Subsystems, workspace.readWebServiceEditorLocked)
+	return saveObjectWindowAs(workspace, relative, revision, window.WebServiceDefinition, windowMarks{Subsystems: window.Subsystems}, workspace.readWebServiceEditorLocked, webServiceShape)
 }
 
 // DeleteWebService removes a web service's folder - its description and

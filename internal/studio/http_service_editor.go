@@ -33,6 +33,9 @@ func (HTTPServiceEditorSource) named(value metadata.HTTPServiceDefinition) (uuid
 	return value.ID, value.Name
 }
 
+// httpServiceShape is how the window names an object of its kind.
+var httpServiceShape = objectShape[metadata.HTTPServiceDefinition]{named: HTTPServiceEditorSource{}.named}
+
 func (source HTTPServiceEditorSource) identity() (uuid.UUID, string) {
 	return source.Service.ID, source.Revision
 }
@@ -65,8 +68,7 @@ func (workspace *Workspace) ReadHTTPServiceEditor(relative string) (HTTPServiceE
 }
 
 func (workspace *Workspace) readHTTPServiceEditorLocked(relative string) (HTTPServiceEditorSource, error) {
-	value, head, _, err := readObjectWindow(workspace, metadata.HTTPServiceKind, relative, metadata.DecodeHTTPService,
-		func(value metadata.HTTPServiceDefinition) uuid.UUID { return value.ID })
+	value, head, _, err := readObjectWindow(workspace, metadata.HTTPServiceKind, relative, metadata.DecodeHTTPService, httpServiceShape)
 	return HTTPServiceEditorSource{windowHead: head, Service: value,
 		PartPalettes: map[string][]kinds.PaletteTab{"template": kinds.PartPalette("httpTemplate"), "method": kinds.PartPalette("httpMethod")}}, err
 }
@@ -74,7 +76,7 @@ func (workspace *Workspace) readHTTPServiceEditorLocked(relative string) (HTTPSe
 // SaveHTTPServiceWindow writes the service and the subsystems its window
 // marks as one save (saveObjectWindow).
 func (workspace *Workspace) SaveHTTPServiceWindow(relative string, window HTTPServiceWindowValue, revision string) (HTTPServiceEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.HTTPServiceDefinition, window.Subsystems, workspace.readHTTPServiceEditorLocked)
+	return saveObjectWindowAs(workspace, relative, revision, window.HTTPServiceDefinition, windowMarks{Subsystems: window.Subsystems}, workspace.readHTTPServiceEditorLocked, httpServiceShape)
 }
 
 // DeleteHTTPService removes an HTTP service's folder - its description and

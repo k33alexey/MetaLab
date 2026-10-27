@@ -48,6 +48,9 @@ func (SubsystemEditorSource) named(value metadata.SubsystemDefinition) (uuid.UUI
 	return value.ID, value.Name
 }
 
+// subsystemShape is how the window names an object of its kind.
+var subsystemShape = objectShape[metadata.SubsystemDefinition]{named: SubsystemEditorSource{}.named}
+
 func (source SubsystemEditorSource) identity() (uuid.UUID, string) {
 	return source.Subsystem.ID, source.Revision
 }
@@ -63,12 +66,10 @@ func (workspace *Workspace) ReadSubsystemEditor(relative string) (SubsystemEdito
 }
 
 func (workspace *Workspace) readSubsystemEditorLocked(relative string) (SubsystemEditorSource, error) {
-	value, head, loaded, err := readObjectWindow(workspace, metadata.SubsystemKind, relative, metadata.DecodeSubsystem,
-		func(value metadata.SubsystemDefinition) uuid.UUID { return value.ID })
+	value, head, loaded, err := readObjectWindow(workspace, metadata.SubsystemKind, relative, metadata.DecodeSubsystem, subsystemShape)
 	if err != nil {
 		return SubsystemEditorSource{}, err
 	}
-	head.FunctionalOptions = optionPlaces(loaded, metadata.SubsystemKind, value.ID)
 	return SubsystemEditorSource{windowHead: head, Subsystem: value, Composition: objectChoiceTree(loaded, metadata.SubsystemCompositionKinds()),
 		Pictures: pictureChoice(loaded)}, nil
 }
@@ -83,7 +84,7 @@ func (workspace *Workspace) SaveSubsystemWindow(relative string, window Subsyste
 		func(relative string) (metadata.SubsystemDefinition, windowHead, error) {
 			opened, err := workspace.readSubsystemEditorLocked(relative)
 			return opened.Subsystem, opened.windowHead, err
-		}, SubsystemEditorSource{}.named)
+		}, subsystemShape)
 	if err != nil {
 		return SubsystemEditorSource{}, err
 	}

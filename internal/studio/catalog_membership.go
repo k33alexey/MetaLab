@@ -297,15 +297,3 @@ func (workspace *Workspace) rewriteMembersLocked(relative string, mark *MemberPl
 	}
 	return SourceFile{Content: file.Content, Revision: saved.Revision}, nil
 }
-
-// markMembers shows the places marked as the window wrote them.
-func markMembers(page membership) {
-	for index := range page.places {
-		place := &page.places[index]
-		at := slices.IndexFunc(page.marked, func(mark MemberPlace) bool { return mark.ID == place.ID })
-		place.Member, place.AutoRecord = at >= 0, ""
-		if at >= 0 {
-			place.AutoRecord = page.marked[at].AutoRecord
-		}
-	}
-}

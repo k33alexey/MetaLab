@@ -1,14 +1,12 @@
 package studio
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -18,54 +16,44 @@ import (
 )
 
 // CatalogEditorSource is the typed, revision-safe representation the
-// visual catalog editor reads and writes, in place of raw YAML.
+// visual catalog editor reads and writes, in place of raw YAML: the head
+// of its window with what its pages show (windowHead), the catalog, and
+// what the window of a catalog offers beside them.
 type CatalogEditorSource struct {
-	Path            string                     `json:"path"`
-	Revision        string                     `json:"revision"`
-	Catalog         metadata.CatalogDefinition `json:"catalog"`
-	TypeOffer       metadata.TypeOffer         `json:"typeOffer"`
-	Languages       []project.Language         `json:"languages"`
-	DefaultLanguage string                     `json:"defaultLanguage"`
-	// KindTitle names one object of the kind in the window, from the
-	// descriptor of the kind.
-	KindTitle string `json:"kindTitle"`
-	// Pages are the pages of the window, the kind's (kinds.WindowPages), and
-	// WindowRows those of them built of the palette's rows.
-	Pages      []kinds.Page                 `json:"pages"`
-	WindowRows map[string][]kinds.WindowRow `json:"windowRows"`
-	// Palette is the tabs of the palette of the catalog and their rows, the
-	// kind's (kinds.Palette).
-	Palette []kinds.PaletteTab `json:"palette"`
+	windowHead
+	Catalog   metadata.CatalogDefinition `json:"catalog"`
+	TypeOffer metadata.TypeOffer         `json:"typeOffer"`
 	// PartPalettes are the palettes of its parts: an attribute, a table part.
 	PartPalettes map[string][]kinds.PaletteTab `json:"partPalettes"`
 	// Choices are what the windows «Выбор объекта» of the catalog offer, by
 	// the property they choose: owners - the objects of the five kinds that
 	// may own it, basedOn - those of the eight that may be its basis.
 	Choices map[string][]ObjectChoiceBranch `json:"choices"`
-	// Forms are the forms the catalog keeps, with where each is described,
-	// and CommandModules where the module of each command lies, by its
-	// name: the window opens them.
-	// Subsystems are the subsystems of the project, those the catalog is in
-	// marked (its page «Подсистемы»), and FunctionalOptions the options of
-	// the project, those whose content lists it marked (its page
-	// «Функциональные опции»), and ExchangePlans the exchange plans, those
-	// registering its changes marked with their autoregistration (its page
-	// «Обмен данными»).
-	Subsystems        []MemberPlace `json:"subsystems"`
-	FunctionalOptions []MemberPlace `json:"functionalOptions"`
-	ExchangePlans     []MemberPlace `json:"exchangePlans"`
-	// BasisFor are the objects entered on the basis of the catalog, by
-	// their full names, but the catalog itself (its list «Является
-	// основанием для»), and basisPlaces every object that may be.
-	BasisFor    []MemberPlace `json:"basisFor"`
-	basisPlaces []MemberPlace
-	// Roles are the roles of the project with what each says about the
-	// catalog alone, and RightsSchema the schema of its rights (its page
-	// «Права»).
-	Roles          []RolePlace               `json:"roles"`
-	RightsSchema   metadata.PermissionSchema `json:"rightsSchema"`
-	Forms          []NamedPath               `json:"forms"`
-	CommandModules map[string]string         `json:"commandModules"`
+}
+
+func (source CatalogEditorSource) windowOf() (metadata.CatalogDefinition, windowHead) {
+	return source.Catalog, source.windowHead
+}
+
+func (CatalogEditorSource) named(value metadata.CatalogDefinition) (uuid.UUID, string) {
+	return value.ID, value.Name
+}
+
+// catalogShape is how the window names a catalog and what its pages know
+// of it: its commands, the fields a right is given to, its templates.
+var catalogShape = objectShape[metadata.CatalogDefinition]{
+	named: CatalogEditorSource{}.named,
+	commands: func(value metadata.CatalogDefinition) []string {
+		names := make([]string, 0, len(value.Commands))
+		for _, command := range value.Commands {
+			names = append(names, command.Name)
+		}
+		return names
+	},
+	fields: func(value metadata.CatalogDefinition) []string {
+		return metadata.DeclaredFieldKeys(value.Attributes, value.TableParts)
+	},
+	templates: func(value metadata.CatalogDefinition) []metadata.ObjectTemplate { return value.Templates },
 }
 
 // NamedPath is a part of an object kept in a file of its own: its name and
@@ -108,61 +96,17 @@ func (workspace *Workspace) ReadCatalogEditor(relative string) (CatalogEditorSou
 }
 
 func (workspace *Workspace) readCatalogEditorLocked(relative string) (CatalogEditorSource, error) {
-	if err := validateCatalogEditorPath(relative); err != nil {
-		return CatalogEditorSource{}, err
-	}
-	file, err := workspace.readSource(relative)
+	value, head, loaded, err := readObjectWindow(workspace, metadata.CatalogKind, relative, metadata.DecodeCatalog, catalogShape)
 	if err != nil {
 		return CatalogEditorSource{}, err
 	}
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	value, err := metadata.DecodeCatalog(relative, strings.NewReader(file.Content), configuration)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	// What the window «Редактирование типа данных» offers for an attribute,
-	// a field the database stores, and the owners the window of the owners
-	// offers, the model says with the objects of the project.
-	loaded, err := metadata.Load(workspace.root)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
+	// What the window «Редактирование типа данных» offers for an attribute
+	// is a field the database stores.
 	offer, _ := loaded.TypeOffer(metadata.StoredFieldChoice)
-	var forms []NamedPath
-	for _, name := range loaded.ObjectFormNames(metadata.CatalogKind, value.Name) {
-		if form, err := project.ObjectFormPath(string(metadata.CatalogKind), value.Name, name); err == nil {
-			forms = append(forms, NamedPath{Name: name, Path: form})
-		}
-	}
-	commandModules := map[string]string{}
-	for _, command := range value.Commands {
-		if module, err := project.ObjectCommandModulePath(string(metadata.CatalogKind), value.Name, command.Name); err == nil {
-			commandModules[command.Name] = module
-		}
-	}
-	basis := basisPlaces(loaded, value.ID)
-	roles, err := workspace.rolePlacesLocked(roleOrder(loaded), value.ID, configuration)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	schema, err := objectRightsSchema(workspace.root, value.ID)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	return CatalogEditorSource{
-		BasisFor: members(basis), basisPlaces: basis, Roles: roles, RightsSchema: schema,
-		Forms: forms, CommandModules: commandModules, Subsystems: subsystemPlaces(loaded, value.ID),
-		FunctionalOptions: optionPlaces(loaded, metadata.CatalogKind, value.ID), ExchangePlans: exchangePlaces(loaded, value.ID),
-		Path: relative, Revision: file.Revision, Catalog: value, TypeOffer: offer,
+	return CatalogEditorSource{windowHead: head, Catalog: value, TypeOffer: offer,
 		Choices: map[string][]ObjectChoiceBranch{
 			"owners": objectChoiceTree(loaded, metadata.CatalogOwnerKinds()), "basedOn": objectChoiceTree(loaded, metadata.BasisKinds()),
 		},
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
-		KindTitle: kinds.Must(metadata.CatalogKind).Title, Pages: kinds.Must(metadata.CatalogKind).WindowPages(), WindowRows: kinds.Must(metadata.CatalogKind).WindowRows(),
-		Palette: kinds.Must(metadata.CatalogKind).Palette(),
 		PartPalettes: map[string][]kinds.PaletteTab{"attribute": kinds.PartPalette("attribute"), "tablePart": kinds.PartPalette("tablePart"),
 			"template": kinds.PartPalette("template")},
 	}, nil
@@ -195,121 +139,15 @@ type CatalogWindowValue struct {
 	Roles             *[]RoleMark       `json:"roles,omitempty"`
 }
 
-// memberships are the pages of the window given, each with the objects it
-// marks.
-func (window CatalogWindowValue) memberships(opened CatalogEditorSource) []membership {
-	var pages []membership
-	if window.Subsystems != nil {
-		pages = append(pages, subsystemMembership(opened.Catalog.ID, opened.Subsystems, *window.Subsystems))
-	}
-	if window.FunctionalOptions != nil {
-		pages = append(pages, optionMembership(metadata.CatalogKind, opened.Catalog.ID, opened.FunctionalOptions, *window.FunctionalOptions))
-	}
-	if window.ExchangePlans != nil {
-		pages = append(pages, exchangeMembership(metadata.CatalogKind, opened.Catalog.ID, opened.ExchangePlans, *window.ExchangePlans))
-	}
-	if window.BasisFor != nil {
-		pages = append(pages, basisMembership(opened.Catalog.ID, opened.basisPlaces, *window.BasisFor))
-	}
-	return pages
-}
-
-// SaveCatalogWindow writes the catalog and the content of the subsystems
-// the options and the exchange plans its window marks, one write: a refusal of any of them
-// puts back what was written before it - the roles, the subsystems, the
-// options and the plans, the folder.
+// SaveCatalogWindow writes the catalog and what the pages of its window
+// mark - the roles, the subsystems, the options, the exchange plans, the
+// objects entered on its basis, the contents of new templates - as one
+// save (saveObjectWindow).
 func (workspace *Workspace) SaveCatalogWindow(relative string, window CatalogWindowValue, revision string) (CatalogEditorSource, error) {
-	value := window.CatalogDefinition
-	workspace.mu.Lock()
-	defer workspace.mu.Unlock()
-	opened, err := workspace.readCatalogEditorLocked(relative)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	if opened.Revision != revision {
-		return CatalogEditorSource{}, ErrSourceChanged
-	}
-	if value.ID != opened.Catalog.ID {
-		return CatalogEditorSource{}, fmt.Errorf("catalog UUID cannot be changed")
-	}
-	if value.Name != opened.Catalog.Name {
-		if err := workspace.objectNameErrorLocked(relative, "", value.Name); err != nil {
-			return CatalogEditorSource{}, err
-		}
-	}
-	var encoded bytes.Buffer
-	if err := metadata.Encode(&encoded, value); err != nil {
-		return CatalogEditorSource{}, err
-	}
-	// What the page «Права» changes in a role is checked before anything is
-	// written.
-	configuration, err := project.ValidateLayout(workspace.root)
-	if err != nil {
-		return CatalogEditorSource{}, err
-	}
-	var edits map[uuid.UUID]*metadata.ObjectPermission
-	if window.Roles != nil {
-		if edits, err = workspace.roleEditsLocked(value.ID, opened.Roles, *window.Roles, configuration); err != nil {
-			return CatalogEditorSource{}, fmt.Errorf("the rights of the catalog: %w", err)
-		}
-	}
-	// The roles go first, put back if the catalog is then refused: a
-	// refusal halfway leaves neither a catalog the roles do not match nor
-	// roles naming fields it has not. A role takes the change of the page
-	// first, then that of the catalog's fields.
-	added, removed := declaredFieldChanges(opened.Catalog, value)
-	restoreRoles, err := workspace.applyRoleAutoGrantsLocked(func(role *metadata.RoleDefinition) bool {
-		entry, edited := edits[role.ID]
-		if edited {
-			putPermission(role, value.ID, entry)
-		}
-		// A deleted field leaves every role, its rights and its
-		// restrictions, as the prototype takes it off them (ACCESS-RIGHTS.md,
-		// «Удаление реквизита, по которому стоит ограничение роли»).
-		changed := role.DropFields(value.ID, removed) || edited
-		if !role.GrantNewFieldsByDefault {
-			return changed
-		}
-		for _, key := range added {
-			// A line number is not a part a right is given to.
-			if _, err := uuid.Parse(key); err == nil && role.GrantFieldReadByDefault(value.ID, key) {
-				changed = true
-			}
-		}
-		return changed
-	})
-	if err != nil {
-		return CatalogEditorSource{}, fmt.Errorf("apply the catalog's fields to the roles: %w", err)
-	}
-	// The subsystems, the options and the plans go after the roles and
-	// before the catalog, the contents of new templates after them, all put
-	// back with the roles if the catalog is refused.
-	pages := window.memberships(opened)
-	contents, err := templateContentFiles(metadata.CatalogKind, value.Name, opened.Catalog.Templates, value.Templates, window.TemplateContents)
-	if err != nil {
-		return CatalogEditorSource{}, errors.Join(err, restoreRoles())
-	}
-	written, saved, err := workspace.writeObjectWindowLocked(relative, opened.Catalog.Name, value.Name, encoded.String(), revision, pages, contents)
-	if err != nil {
-		return CatalogEditorSource{}, errors.Join(err, restoreRoles())
-	}
-	opened.Path, opened.Catalog, opened.Revision = written, value, saved.Revision
-	for _, page := range pages {
-		markMembers(page)
-	}
-	opened.BasisFor = members(opened.basisPlaces)
-	// The roles are read anew: the page and the fields change them, and
-	// each has a revision of its own. A role that does not read now stays
-	// as the window had it, and its next change is refused as one of a role
-	// changed on disk.
-	var order []uuid.UUID
-	for _, place := range opened.Roles {
-		order = append(order, place.Role.ID)
-	}
-	if roles, err := workspace.rolePlacesLocked(order, value.ID, configuration); err == nil {
-		opened.Roles = roles
-	}
-	return opened, nil
+	return saveObjectWindowAs(workspace, relative, revision, window.CatalogDefinition, windowMarks{
+		Subsystems: window.Subsystems, FunctionalOptions: window.FunctionalOptions, ExchangePlans: window.ExchangePlans,
+		BasisFor: window.BasisFor, Roles: window.Roles, TemplateContents: window.TemplateContents, Kind: metadata.CatalogKind,
+	}, workspace.readCatalogEditorLocked, catalogShape)
 }
 
 // writeObjectWindowLocked writes what the window of an object marks on its
@@ -368,26 +206,6 @@ func (workspace *Workspace) followNameLocked(relative, before, after string) (st
 		workspace.invalidateStudioIndexesLocked()
 		return renameFolder(to, from)
 	}, nil
-}
-
-// declaredFieldChanges is the keys of the fields the catalog declares after
-// the edit and not before - an attribute added to a table part added earlier
-// counts too, since that attribute alone is separately grantable - and the
-// keys of those it declared before and not after.
-func declaredFieldChanges(before, after metadata.CatalogDefinition) (added, removed []string) {
-	was := metadata.DeclaredFieldKeys(before.Attributes, before.TableParts)
-	is := metadata.DeclaredFieldKeys(after.Attributes, after.TableParts)
-	for _, key := range is {
-		if !slices.Contains(was, key) {
-			added = append(added, key)
-		}
-	}
-	for _, key := range was {
-		if !slices.Contains(is, key) {
-			removed = append(removed, key)
-		}
-	}
-	return added, removed
 }
 
 // CreateCatalog makes the next catalog by the one way every object is made

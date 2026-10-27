@@ -54,6 +54,9 @@ func (StyleEditorSource) named(value metadata.StyleDefinition) (uuid.UUID, strin
 	return value.ID, value.Name
 }
 
+// styleShape is how the window names an object of its kind.
+var styleShape = objectShape[metadata.StyleDefinition]{named: StyleEditorSource{}.named}
+
 func (source StyleEditorSource) identity() (uuid.UUID, string) {
 	return source.Style.ID, source.Revision
 }
@@ -75,8 +78,7 @@ func (workspace *Workspace) ReadStyleEditor(relative string) (StyleEditorSource,
 }
 
 func (workspace *Workspace) readStyleEditorLocked(relative string) (StyleEditorSource, error) {
-	value, head, loaded, err := readObjectWindow(workspace, metadata.StyleKind, relative, metadata.DecodeStyle,
-		func(value metadata.StyleDefinition) uuid.UUID { return value.ID })
+	value, head, loaded, err := readObjectWindow(workspace, metadata.StyleKind, relative, metadata.DecodeStyle, styleShape)
 	if err != nil {
 		return StyleEditorSource{}, err
 	}
@@ -98,7 +100,7 @@ func (workspace *Workspace) readStyleEditorLocked(relative string) (StyleEditorS
 // SaveStyleWindow writes the style and the subsystems its window marks as
 // one save (saveObjectWindow).
 func (workspace *Workspace) SaveStyleWindow(relative string, window StyleWindowValue, revision string) (StyleEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.StyleDefinition, window.Subsystems, workspace.readStyleEditorLocked)
+	return saveObjectWindowAs(workspace, relative, revision, window.StyleDefinition, windowMarks{Subsystems: window.Subsystems}, workspace.readStyleEditorLocked, styleShape)
 }
 
 // CreateStyle makes the next style - one giving no item a value of its own

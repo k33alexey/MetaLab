@@ -56,6 +56,9 @@ func (XDTOPackageEditorSource) named(value metadata.XDTOPackageDefinition) (uuid
 	return value.ID, value.Name
 }
 
+// xdtoPackageShape is how the window names an object of its kind.
+var xdtoPackageShape = objectShape[metadata.XDTOPackageDefinition]{named: XDTOPackageEditorSource{}.named}
+
 // xdtoPackageEditorAddress is where the editor of a package is read and
 // written.
 const xdtoPackageEditorAddress = "/api/xdto-package"
@@ -71,8 +74,7 @@ func (workspace *Workspace) ReadXDTOPackageEditor(relative string) (XDTOPackageE
 }
 
 func (workspace *Workspace) readXDTOPackageEditorLocked(relative string) (XDTOPackageEditorSource, error) {
-	value, head, loaded, err := readObjectWindow(workspace, metadata.XDTOPackageKind, relative, metadata.DecodeXDTOPackage,
-		func(value metadata.XDTOPackageDefinition) uuid.UUID { return value.ID })
+	value, head, loaded, err := readObjectWindow(workspace, metadata.XDTOPackageKind, relative, metadata.DecodeXDTOPackage, xdtoPackageShape)
 	if err != nil {
 		return XDTOPackageEditorSource{}, err
 	}
@@ -147,7 +149,7 @@ func (workspace *Workspace) SaveXDTOPackageWindow(relative string, window XDTOPa
 			head := opened.windowHead
 			head.Revision = description.Revision
 			return opened.Package, head, nil
-		}, opened.named)
+		}, xdtoPackageShape)
 	if err != nil {
 		return XDTOPackageEditorSource{}, errors.Join(err, putBack())
 	}
