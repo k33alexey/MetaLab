@@ -109,15 +109,18 @@ func openStyleProject(t *testing.T) (context.Context, *devtools, string, string)
 // comment, subsystems, the preview, and at the right the platform's five
 // colours, then the project's items in the order of the tree (by name, where the
 // project keeps no order of its own), each «стиль:
-// <элемент>» but a border, which shows nothing; «…» of a colour and a font
-// unavailable until the windows choosing them, of a border available. The palette is one tab with «Стиль: Открыть»,
+// <элемент>» but a border, which shows nothing, a platform's colour with
+// the sample of the platform's own numbers (stil.md, «Второй заход»); «…»
+// of a font unavailable until the window choosing it, of a colour and a
+// border available. The palette is one tab with «Стиль: Открыть»,
 // which opens the same values with OK and «Отмена» and changes nothing. A
 // style giving values shows a colour by its numbers, a web colour by its
 // name, a font struck out and a border taken from a style item by the
 // item's caption, and draws the preview by them.
 // Defects caught: a caption or an item not the prototype's, or out of its
 // order; a value shown in other words than the prototype's; the sample of
-// an item not followed to its own value; the preview not drawn by the
+// an item not followed to its own value, of a platform's colour not the
+// platform's; the preview not drawn by the
 // style; «Стиль: Открыть» not opening or changing the style.
 func TestTheWindowOfAStyleIsThePrototypes(t *testing.T) {
 	ctx, browser, page, _ := openStyleProject(t)
@@ -153,18 +156,17 @@ func TestTheWindowOfAStyleIsThePrototypes(t *testing.T) {
 			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
 		}
 	}
-	none := "rgba(0, 0, 0, 0)"
 	captions := []string{"Имя:", "Синоним:", "Комментарий:", "Подсистемы:"}
 	preview := []string{"Предварительный просмотр", "Панель разделов", "Панель функций текущего раздела", "Заголовок группы", "Кнопка по умолчанию", "Флажок", "Колонка1Колонка2", "…×"}
 	expect("the new style", steps.Created, window{Title: "Стиль Стиль1", Captions: captions, Preview: preview, Values: [][]any{
-		{"Цвет активности", "стиль: Цвет активности", none, true},
-		{"Цвет акцентирования", "стиль: Цвет акцентирования", none, true},
-		{"Цвет навигации", "стиль: Цвет навигации", none, true},
-		{"Цвет дополнительной навигации", "стиль: Цвет дополнительной навигации", none, true},
-		{"Цвет важного", "стиль: Цвет важного", none, true},
+		{"Цвет активности", "стиль: Цвет активности", "rgb(250, 204, 31)", false},
+		{"Цвет акцентирования", "стиль: Цвет акцентирования", "rgb(0, 150, 70)", false},
+		{"Цвет навигации", "стиль: Цвет навигации", "rgb(251, 237, 158)", false},
+		{"Цвет дополнительной навигации", "стиль: Цвет дополнительной навигации", "rgb(255, 255, 217)", false},
+		{"Цвет важного", "стиль: Цвет важного", "rgb(255, 225, 0)", false},
 		{"РамкаПоля", "", "", false},
 		{"РамкаТонкая", "", "", false},
-		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", true},
+		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", false},
 		{"ШрифтЗаголовка", "стиль: ШрифтЗаголовка", "", true},
 	}})
 	expect("the palette", []any{steps.PaletteTitle, steps.Palette}, []any{"Свойства: Стиль1", []string{"Имя", "Синоним", "Комментарий", "Стиль"}})
@@ -175,14 +177,14 @@ func TestTheWindowOfAStyleIsThePrototypes(t *testing.T) {
 	}{"Стиль Стиль1", 9, []string{"OK", "Отмена"}})
 	expect("closed by «Отмена», unchanged", []bool{steps.DialogClosed, steps.Unsaved}, []bool{true, false})
 	expect("a style giving values", steps.Main.Values, [][]any{
-		{"Цвет активности", "250, 195, 113", "rgb(250, 195, 113)", true},
-		{"Цвет акцентирования", "Мятный крем (MintCream)", "rgb(245, 255, 250)", true},
-		{"Цвет навигации", "стиль: Цвет навигации", none, true},
-		{"Цвет дополнительной навигации", "стиль: Цвет дополнительной навигации", none, true},
-		{"Цвет важного", "стиль: Цвет важного", none, true},
+		{"Цвет активности", "250, 195, 113", "rgb(250, 195, 113)", false},
+		{"Цвет акцентирования", "Мятный крем (MintCream)", "rgb(245, 255, 250)", false},
+		{"Цвет навигации", "стиль: Цвет навигации", "rgb(251, 237, 158)", false},
+		{"Цвет дополнительной навигации", "стиль: Цвет дополнительной навигации", "rgb(255, 255, 217)", false},
+		{"Цвет важного", "стиль: Цвет важного", "rgb(255, 225, 0)", false},
 		{"РамкаПоля", "стиль: Рамка элементов управления", "", false},
 		{"РамкаТонкая", "", "", false},
-		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", true},
+		{"Цвет ошибки", "стиль: Цвет ошибки", "rgb(255, 0, 0)", false},
 		{"ШрифтЗаголовка", "стиль: Шрифт текста, зачеркнутый", "", true},
 	})
 	expect("the preview drawn by it", steps.Paint, struct{ Heading, Field string }{"rgb(245, 255, 250)", "rgb(250, 195, 113)"})
@@ -328,4 +330,204 @@ func TestTheBorderOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
 	expect("chosen in the values", steps.InValues, "стиль: РамкаТонкая")
 	expect("«Отмена» of the values", steps.Cancelled, shown{Text: "", Unsaved: false})
 	expect("OK of the values", steps.Taken, shown{Text: "стиль: Рамка элементов управления", Unsaved: true})
+}
+
+// styleColorWalk opens Основной and chooses colours by «Выбор цвета» as the
+// inventory reads it: «…» of an item the style gives nothing, the tab
+// «Web» and a row of it, 256 refused, a sample, OK; again on the colour of
+// numbers, a row of «Из стиля», OK; the item's own row, OK; «#» refused
+// and taken, the palette and its bar, «Отмена»; then the simple window as
+// the palette of a style item opens it.
+const styleColorWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
+  const dialog = () => [...document.querySelectorAll('dialog.color-choice-dialog')].pop();
+  const button = (within, text) => [...within.querySelectorAll('button')].find(item => item.textContent === text);
+  const number = caption => [...dialog().querySelectorAll('.catalog-field')].find(field => field.querySelector('span').textContent === caption).querySelector('input');
+  const read = () => {
+    const window = dialog(), rows = [...window.querySelectorAll('.color-choice-row')];
+    return {tab: window.querySelector('.studio-tab[aria-selected=true]')?.textContent || '',
+      rows: rows.length, first: rows[0]?.textContent || '', last: rows.at(-1)?.textContent || '',
+      firstSample: rows[0] ? getComputedStyle(rows[0].querySelector('.color-choice-sample')).backgroundColor : '',
+      current: window.querySelector('.color-choice-row.current')?.textContent || '',
+      numbers: ['Красный', 'Зеленый', 'Синий'].map(caption => number(caption).value).join(', '),
+      hex: number('#').value, chosen: getComputedStyle(window.querySelector('.color-choice-chosen')).backgroundColor,
+      swatch: window.querySelector('.color-choice-swatch.current')?.title || ''};
+  };
+  const field = caption => [...document.querySelectorAll('#style-editor .style-value-caption')].find(item => item.textContent === caption).nextElementSibling;
+  const shown = caption => { const row = field(caption); return [row.querySelector('.style-value-field').textContent, getComputedStyle(row.querySelector('.style-value-sample')).backgroundColor]; };
+  const open = async caption => { button(field(caption), '…').click(); await settle(); };
+  const pick = async text => { [...dialog().querySelectorAll('.color-choice-row')].find(item => item.textContent === text).click(); await settle(); };
+  const tab = async text => { [...dialog().querySelectorAll('.studio-tab')].find(item => item.textContent === text).click(); await settle(); };
+  const type = async (caption, value) => { const input = number(caption); input.value = value; input.dispatchEvent(new Event('change')); await settle(); };
+  await openObject('Основной');
+  await open('Цвет навигации');
+  steps.opened = read();
+  steps.buttons = [...dialog().querySelectorAll('.localized-title-actions button')].map(item => item.textContent);
+  await tab('Web');
+  steps.web = read();
+  await pick('Мятный крем (MintCream)');
+  steps.mint = read();
+  await type('Красный', '256');
+  const question = [...document.querySelectorAll('dialog')].pop();
+  steps.question = question.querySelector('h3').textContent;
+  button(question, 'Да').click(); await settle();
+  steps.after256 = read().numbers;
+  [...dialog().querySelectorAll('.color-choice-swatch')][16].click(); await settle();
+  steps.swatch = read();
+  button(dialog(), 'OK').click(); await settle();
+  steps.chosen = {shown: shown('Цвет навигации'), unsaved: !document.querySelector('#save').disabled};
+  await open('Цвет навигации');
+  steps.reopened = read();
+  await pick('Цвет важного');
+  button(dialog(), 'OK').click(); await settle();
+  steps.fromStyle = shown('Цвет навигации');
+  await open('Цвет навигации');
+  steps.onStyle = read();
+  await pick('Цвет навигации');
+  button(dialog(), 'OK').click(); await settle();
+  steps.itself = shown('Цвет навигации');
+  document.querySelector('#save').click(); await settle();
+  await open('Цвет ошибки');
+  await type('#', 'zz');
+  const refusal = [...document.querySelectorAll('dialog')].pop();
+  steps.hexQuestion = refusal.querySelector('h3').textContent;
+  button(refusal, 'Да').click(); await settle();
+  steps.hexBack = read().hex;
+  await type('#', '00ff00');
+  steps.hex = read();
+  const at = (element, x, y) => { const box = element.getBoundingClientRect();
+    element.dispatchEvent(new PointerEvent('pointerdown', {clientX: box.left + x * box.width, clientY: box.top + y * box.height, bubbles: true, pointerId: 1}));
+    element.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, pointerId: 1})); };
+  at(dialog().querySelector('.color-choice-palette'), 0, 0); await settle();
+  steps.paletteCorner = read().numbers;
+  at(dialog().querySelector('.color-choice-palette'), 1 / 3, 0); await settle();
+  steps.paletteThird = read().numbers;
+  at(dialog().querySelector('.color-choice-palette'), 0.5, 1); await settle();
+  steps.paletteBottom = read().numbers;
+  at(dialog().querySelector('.color-choice-value'), 0, 1); await settle();
+  steps.valueBottom = read().numbers;
+  button(dialog(), 'Отмена').click(); await settle();
+  steps.cancelled = shown('Цвет ошибки');
+  const path = [...document.querySelectorAll('*')].find(item => item.children.length === 0 && /^metadata\/styles\/.*\.yaml$/.test(item.textContent)).textContent;
+  const source = {...await (await fetch('/api/style?path=' + encodeURIComponent(path))).json(), style: {items: []}};
+  const simple = chooseColor({source: 'absolute', rgb: '#FF0000'}, styleColors(source), styleWebColors(source), {simple: true});
+  await settle();
+  const shownSimple = dialog();
+  steps.simple = {tabs: shownSimple.querySelectorAll('.studio-tab').length, rows: shownSimple.querySelectorAll('.color-choice-row').length,
+    current: shownSimple.querySelector('.color-choice-row.current')?.textContent || '',
+    fields: [...shownSimple.querySelectorAll('.catalog-field > span:first-child')].map(item => item.textContent),
+    examples: [...shownSimple.querySelectorAll('.color-choice-examples > div')].map(item => item.textContent),
+    palette: !!shownSimple.querySelector('.color-choice-palette'), buttons: [...shownSimple.querySelectorAll('.localized-title-actions button')].map(item => item.textContent)};
+  await pick('Фон формы');
+  button(dialog(), 'OK').click();
+  steps.simpleChosen = await simple;
+  return steps;
+})()`
+
+// «Выбор цвета» is the prototype's (stil.md, «Окно», «Второй заход
+// 27.10.2026»; element-stilya.md, «Палитра»; obshchee.md, «Значения цвета,
+// шрифта и рамки»; snapshots stil/07, series-2.584/024, series-2.595/05):
+// «…» of an item the style gives nothing opens on «Из стиля» at the item's
+// own row - the platform's 28 colours with the prototype's numbers, then
+// the project's - with its numbers and code; «Web» lists 146 colours
+// from «Белый (White)» to «Темно-бордовый (Maroon)»; a row sets the
+// numbers; 256 is asked «Отменить ввод?»; a sample takes the colour itself
+// and marks the first row drawing it; OK writes the numbers, which stay
+// numbers on reopening with «Особый текст» marked; a row of «Из стиля»
+// writes «стиль: <элемент>»; the item's own row leaves the style giving it
+// nothing; a code of not six hex digits is asked; the palette's corner is
+// red, a third across green, its bottom white, the bottom of the bar
+// black; «Отмена» changes
+// nothing. The simple window has no tabs, palette or help: one list of
+// 175 rows, «Красный:», «Зеленый:», «Синий:», «Пример фона», «Пример
+// текста», and answers the row chosen.
+// Defects caught: a number, a caption or a row out of the prototype's
+// order; a row answered as numbers or numbers as a row; a value beyond
+// 0-255 or a bad code taken; the item's own row written as a reference to
+// itself; «Отмена» applied; the simple window drawn as the full one.
+func TestTheColourOfAStyleIsChosenByThePrototypesWindow(t *testing.T) {
+	ctx, browser, page, root := openStyleProject(t)
+	result, err := browser.evaluate(ctx, page, styleColorWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type window struct {
+		Tab, First, Last, FirstSample, Current, Numbers, Hex, Chosen, Swatch string
+		Rows                                                                 int
+	}
+	var steps struct {
+		Opened, Web, Mint, Swatch, Reopened, OnStyle, Hex       window
+		Buttons                                                 []string
+		Question, After256, HexQuestion, HexBack                string
+		PaletteCorner, PaletteThird, PaletteBottom, ValueBottom string
+		Chosen                                                  struct {
+			Shown   []string
+			Unsaved bool
+		}
+		FromStyle, Itself, Cancelled []string
+		Simple                       struct {
+			Tabs, Rows                int
+			Current                   string
+			Fields, Examples, Buttons []string
+			Palette                   bool
+		}
+		SimpleChosen metadata.ColorValue
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	// The style lists the platform's 28 colours, then Цвет ошибки; Фон
+	// формы is FCFAEB, Цвет навигации FBED9E (stil.md, «Второй заход»).
+	expect("opened on the item's own row", steps.Opened, window{Tab: "Из стиля", Rows: 29, First: "Фон формы", Last: "Цвет ошибки",
+		FirstSample: "rgb(252, 250, 235)", Current: "Цвет навигации", Numbers: "251, 237, 158", Hex: "FBED9E", Chosen: "rgb(251, 237, 158)"})
+	expect("the buttons", steps.Buttons, []string{"OK", "Отмена", "Справка"})
+	expect("the tab «Web»", steps.Web, window{Tab: "Web", Rows: 146, First: "Белый (White)", Last: "Темно-бордовый (Maroon)",
+		FirstSample: "rgb(255, 255, 255)", Numbers: "251, 237, 158", Hex: "FBED9E", Chosen: "rgb(251, 237, 158)"})
+	expect("a web colour", steps.Mint, window{Tab: "Web", Rows: 146, First: "Белый (White)", Last: "Темно-бордовый (Maroon)",
+		FirstSample: "rgb(255, 255, 255)", Current: "Мятный крем (MintCream)", Numbers: "245, 255, 250", Hex: "F5FFFA", Chosen: "rgb(245, 255, 250)"})
+	expect("256 asked", []string{steps.Question, steps.After256}, []string{"В поле введены некорректные данные. Отменить ввод?", "245, 255, 250"})
+	expect("a sample", steps.Swatch, window{Tab: "Web", Rows: 146, First: "Белый (White)", Last: "Темно-бордовый (Maroon)",
+		FirstSample: "rgb(255, 255, 255)", Current: "Красный (Red)", Numbers: "255, 0, 0", Hex: "FF0000", Chosen: "rgb(255, 0, 0)", Swatch: "255, 0, 0"})
+	expect("written as numbers", steps.Chosen, struct {
+		Shown   []string
+		Unsaved bool
+	}{[]string{"255, 0, 0", "rgb(255, 0, 0)"}, true})
+	expect("reopened on the numbers", steps.Reopened, window{Tab: "Из стиля", Rows: 29, First: "Фон формы", Last: "Цвет ошибки",
+		FirstSample: "rgb(252, 250, 235)", Current: "Особый текст", Numbers: "255, 0, 0", Hex: "FF0000", Chosen: "rgb(255, 0, 0)", Swatch: "255, 0, 0"})
+	expect("a row of «Из стиля»", steps.FromStyle, []string{"стиль: Цвет важного", "rgb(255, 225, 0)"})
+	expect("reopened on the row", steps.OnStyle.Current, "Цвет важного")
+	expect("the item's own row", steps.Itself, []string{"стиль: Цвет навигации", "rgb(251, 237, 158)"})
+	expect("a code asked", []string{steps.HexQuestion, steps.HexBack}, []string{"В поле введены некорректные данные. Отменить ввод?", "FF0000"})
+	expect("a code taken", []string{steps.Hex.Numbers, steps.Hex.Current}, []string{"0, 255, 0", ""})
+	expect("the palette", []string{steps.PaletteCorner, steps.PaletteThird, steps.PaletteBottom, steps.ValueBottom},
+		[]string{"255, 0, 0", "0, 255, 0", "255, 255, 255", "0, 0, 0"})
+	expect("«Отмена»", steps.Cancelled, []string{"стиль: Цвет ошибки", "rgb(255, 0, 0)"})
+	expect("the simple window", steps.Simple, struct {
+		Tabs, Rows                int
+		Current                   string
+		Fields, Examples, Buttons []string
+		Palette                   bool
+	}{0, 175, "Особый текст", []string{"Красный:", "Зеленый:", "Синий:"}, []string{"Пример фона", "Пример текста"}, []string{"OK", "Отмена"}, false})
+	expect("the simple window's answer", steps.SimpleChosen, metadata.ColorValue{Source: metadata.StyleColor, From: &metadata.StyleItemReference{Standard: "FormBackColor"}})
+	entries, _ := os.ReadDir(filepath.Join(root, "metadata", "styles"))
+	if len(entries) != 1 {
+		t.Fatalf("the styles: %v", entries)
+	}
+	written, err := os.ReadFile(filepath.Join(root, "metadata", "styles", entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(written, []byte("NavigationColor")) || !bytes.Contains(written, []byte("ActivityColor")) {
+		t.Errorf("the item's own row is written as a value of the style:\n%s", written)
+	}
 }

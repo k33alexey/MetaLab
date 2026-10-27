@@ -1920,6 +1920,203 @@ function borderSample({line, width}) {
   return box;
 }
 
+/* colorSwatches are the 40 samples under the palette of «Выбор цвета», four
+   rows of ten from the left (stil.md, «Второй заход 27.10.2026»;
+   configurator-2026-10-27/series-2.595/notes.md, В5). */
+const colorSwatches = [
+  '000000', '993300', '333300', '003300', '003366', '000080', '333399', '333333', '800000', 'FF6600',
+  '808000', '008000', '008080', '0000FF', '666699', '808080', 'FF0000', 'FF9900', '99CC00', '339966',
+  '33CCCC', '3366FF', '800080', '999999', 'FF00FF', 'FFCC00', 'FFFF00', '00FF00', '00FFFF', '00CCFF',
+  '993366', 'C0C0C0', 'FF99CC', 'FFCC99', 'FFFF99', 'CCFFCC', 'CCFFFF', '99CCFF', 'CC99FF', 'FFFFFF',
+].map(hex => '#' + hex);
+
+/* colorNumbers is the three numbers of a colour written #RRGGBB;
+   colorHex writes three numbers so. */
+function colorNumbers(hex) {
+  return [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16));
+}
+
+function colorHex(numbers) {
+  return '#' + numbers.map(number => number.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+/* colorHSV and colorFromHSV turn three numbers to hue (0-360), saturation
+   and value (0-1) and back - the coordinates of the palette of «Выбор
+   цвета». */
+function colorHSV([red, green, blue]) {
+  const [r, g, b] = [red, green, blue].map(number => number / 255), top = Math.max(r, g, b), span = top - Math.min(r, g, b);
+  let hue = 0;
+  if (span) hue = top === r ? ((g - b) / span + 6) % 6 : top === g ? (b - r) / span + 2 : (r - g) / span + 4;
+  return {hue: hue * 60, saturation: top ? span / top : 0, value: top};
+}
+
+function colorFromHSV({hue, saturation, value}) {
+  const at = shift => { const k = (shift + hue / 60) % 6; return value - value * saturation * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return [at(5), at(3), at(1)].map(part => Math.round(part * 255));
+}
+
+/* chooseColor is the window «Выбор цвета», one for every place a colour is
+   chosen (stil.md, «Окно», «Досъёмка» and «Второй заход 27.10.2026»;
+   ML-STUDIO.md, «Окно стиля»; snapshots stil/07, series-2.584/024). Full,
+   as the window of a style opens it: the tabs «Из стиля» (styles: the
+   platform's 28 colours, then the project's) and «Web» (web: the web
+   palette in the window's order), the palette - hue across, saturation
+   down, the value on the bar beside it - «Красный», «Зеленый», «Синий»,
+   «#», the 40 samples, OK, «Отмена», «Справка». Simple (options.simple),
+   as the palette of a style item opens it (element-stilya.md,
+   «Палитра»; snapshot series-2.595/05): one list, the colours of the style
+   then the web palette, the three numbers, «Пример фона» and «Пример
+   текста», OK and «Отмена». The tab «Windows», «Взять с экрана»,
+   «Запомнить цвет» and the signs over the palette are not carried
+   (ML-STUDIO.md). A row of a list is {key, caption, rgb, value} - rgb the
+   colour it draws, #RRGGBB, or none where it is not known. A row answers
+   its own value; the numbers, the palette, «#» and a sample answer the
+   colour itself, even one some row draws too - the window then marks the
+   first such row (obshchee.md, «Значения цвета, шрифта и рамки»). value is
+   the colour chosen before (metadata.ColorValue) or none. Answers the
+   colour chosen on OK, null on «Отмена». */
+async function chooseColor(value, styles, web, options = {}) {
+  const lists = options.simple ? [['all', [...styles, ...web]]] : [['style', styles], ['web', web]];
+  const rows = lists.flatMap(([, list]) => list);
+  const sameValue = (one, other) => JSON.stringify(one) === JSON.stringify(other);
+  const opened = value && rows.find(row => sameValue(row.value, value));
+  const chosen = {row: opened || null, rgb: value?.source === 'absolute' ? value.rgb : opened?.rgb || '#000000'};
+  let tab = lists.find(([, list]) => list.includes(opened))?.[0] || lists[0][0];
+  let hsv = colorHSV(colorNumbers(chosen.rgb));
+  const content = node('div', undefined, 'color-choice' + (options.simple ? ' color-choice-simple' : ''));
+  // Where the window marks a row: the one chosen, else the first of the tab
+  // shown drawing the colour of the numbers.
+  const marked = list => chosen.row && list.includes(chosen.row) ? chosen.row : chosen.row ? null : list.find(row => row.rgb === chosen.rgb) || null;
+  function take(rgb, keepHSV) {
+    chosen.row = null;
+    chosen.rgb = rgb;
+    if (!keepHSV) hsv = colorHSV(colorNumbers(rgb));
+    render();
+  }
+  function listOf(list) {
+    const current = marked(list), element = node('div', undefined, 'object-window-list color-choice-list');
+    element.setAttribute('role', 'listbox');
+    for (const row of list) {
+      const line = node('div', undefined, 'object-window-list-row color-choice-row' + (row === current ? ' current' : ''));
+      line.setAttribute('role', 'option');
+      line.setAttribute('aria-selected', String(row === current));
+      const sample = node('span', undefined, 'color-choice-sample');
+      if (row.rgb) sample.style.background = row.rgb;
+      line.append(sample, node('span', row.caption));
+      line.title = row.caption;
+      line.addEventListener('click', () => {
+        chosen.row = row;
+        if (row.rgb) { chosen.rgb = row.rgb; hsv = colorHSV(colorNumbers(row.rgb)); }
+        render();
+      });
+      element.append(line);
+    }
+    return element;
+  }
+  function numbers() {
+    const frame = node('div', undefined, 'color-choice-numbers');
+    const parts = colorNumbers(chosen.rgb);
+    for (const [index, caption] of ['Красный', 'Зеленый', 'Синий'].entries()) {
+      frame.append(labeledField(caption + (options.simple ? ':' : ''), textInput(String(parts[index]), number => {
+        if (!Number.isInteger(number)) return false;
+        const next = [...parts];
+        next[index] = number;
+        take(colorHex(next));
+      }, {type: 'number', min: 0, max: 255})));
+    }
+    return frame;
+  }
+  // A drag over the palette or its bar: where the pointer goes, set(x, y)
+  // in parts of the element's size.
+  function dragged(element, set) {
+    element.addEventListener('pointerdown', event => {
+      const at = move => {
+        const box = element.getBoundingClientRect();
+        set(Math.min(1, Math.max(0, (move.clientX - box.left) / box.width)), Math.min(1, Math.max(0, (move.clientY - box.top) / box.height)));
+      };
+      element.setPointerCapture?.(event.pointerId);
+      at(event);
+      const follow = move => at(move);
+      element.addEventListener('pointermove', follow);
+      element.addEventListener('pointerup', () => element.removeEventListener('pointermove', follow), {once: true});
+    });
+    return element;
+  }
+  function palette() {
+    const square = dragged(node('div', undefined, 'color-choice-palette'), (x, y) => {
+      hsv = {...hsv, hue: x * 360, saturation: 1 - y, value: hsv.value || 1};
+      take(colorHex(colorFromHSV(hsv)), true);
+    });
+    const spot = node('span', undefined, 'color-choice-spot');
+    spot.style.left = `${hsv.hue / 360 * 100}%`;
+    spot.style.top = `${(1 - hsv.saturation) * 100}%`;
+    square.append(spot);
+    const bar = dragged(node('div', undefined, 'color-choice-value'), (x, y) => {
+      hsv = {...hsv, value: 1 - y};
+      take(colorHex(colorFromHSV(hsv)), true);
+    });
+    bar.style.background = `linear-gradient(${colorHex(colorFromHSV({...hsv, value: 1}))}, #000)`;
+    const arrow = node('span', undefined, 'color-choice-arrow');
+    arrow.style.top = `${(1 - hsv.value) * 100}%`;
+    bar.append(arrow);
+    const frame = node('div', undefined, 'color-choice-picker');
+    frame.append(square, bar);
+    return frame;
+  }
+  function hexField() {
+    const input = node('input');
+    input.value = chosen.rgb.slice(1);
+    input.maxLength = 6;
+    input.setAttribute('aria-label', '#');
+    input.addEventListener('change', async () => {
+      if (/^[0-9a-f]{6}$/i.test(input.value)) { take('#' + input.value.toUpperCase()); return; }
+      if (await askCancelInput()) input.value = chosen.rgb.slice(1); else input.focus();
+    });
+    const field = node('label', undefined, 'catalog-field color-choice-hex');
+    field.append(node('span', '#'), input);
+    return field;
+  }
+  function swatches() {
+    const grid = node('div', undefined, 'color-choice-swatches');
+    for (const rgb of colorSwatches) {
+      const cell = node('button', undefined, 'color-choice-swatch' + (!chosen.row && rgb === chosen.rgb ? ' current' : ''));
+      cell.type = 'button';
+      cell.style.background = rgb;
+      cell.title = colorNumbers(rgb).join(', ');
+      cell.addEventListener('click', () => take(rgb));
+      grid.append(cell);
+    }
+    return grid;
+  }
+  function render() {
+    if (options.simple) {
+      const background = node('div', 'Пример фона', 'color-choice-background'), text = node('div', 'Пример текста', 'color-choice-text');
+      background.style.background = chosen.rgb;
+      background.style.color = colorHSV(colorNumbers(chosen.rgb)).value > 0.6 ? '#000' : '#fff';
+      text.style.color = chosen.rgb;
+      const samples = node('div', undefined, 'color-choice-examples');
+      samples.append(background, text);
+      content.replaceChildren(listOf(lists[0][1]), numbers(), samples);
+      return;
+    }
+    const tabs = tabStrip([['style', 'Из стиля'], ['web', 'Web']], tab, key => { tab = key; render(); });
+    const left = node('div', undefined, 'color-choice-left');
+    left.append(tabs, listOf(lists.find(([key]) => key === tab)[1]));
+    const sample = node('div', undefined, 'color-choice-chosen');
+    sample.style.background = chosen.rgb;
+    const right = node('div', undefined, 'color-choice-right');
+    right.append(sample, numbers(), hexField());
+    const middle = node('div', undefined, 'color-choice-middle');
+    middle.append(palette(), swatches());
+    content.replaceChildren(left, middle, right);
+  }
+  render();
+  const answer = await showDialog({title: 'Выбор цвета', content, className: 'color-choice-dialog', help: options.simple ? undefined : 'color-choice',
+    answers: [['ok', 'OK'], [null, 'Отмена']]});
+  if (answer !== 'ok') return null;
+  return chosen.row ? structuredClone(chosen.row.value) : {source: 'absolute', rgb: chosen.rgb};
+}
+
 /* typeEditorModel is the window «Редактирование типа данных» without its
    drawing, as the prototype's behaves (docs/block-00/obshchee.md, «Окно
    «Редактирование типа данных»», 23.10.2026). offer is the model's

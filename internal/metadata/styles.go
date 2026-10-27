@@ -250,6 +250,10 @@ type PlatformStyleItem struct {
 	Russian string        `json:"russian"`
 	Title   string        `json:"title"`
 	Type    StyleItemType `json:"type"`
+	// Color is the colour, #RRGGBB, the platform gives one of its colours
+	// where no style gives it one (stil.md, «Второй заход 27.10.2026»: a new
+	// style, «Выбор цвета», «Из стиля»).
+	Color string `json:"color,omitempty"`
 	// InStyleWindow says the window of a style lists the item before the
 	// style items of the project: five colours do (stil.md, «Досъёмка
 	// 27.10.2026»), the rest the window leaves out.
@@ -264,34 +268,34 @@ type PlatformStyleItem struct {
 // them a value of its own - the configurations being moved set 34, 5 and 21
 // of them - and the type decides what that value has to be.
 var PlatformStyleItems = []PlatformStyleItem{
-	{Name: "FormBackColor", Russian: "ЦветФонаФормы", Title: "Фон формы", Type: ColorStyleItem},
-	{Name: "FormTextColor", Russian: "ЦветТекстаФормы", Title: "Текст формы", Type: ColorStyleItem},
-	{Name: "ButtonBackColor", Russian: "ЦветФонаКнопки", Title: "Фон кнопки", Type: ColorStyleItem},
-	{Name: "ButtonTextColor", Russian: "ЦветТекстаКнопки", Title: "Текст кнопки", Type: ColorStyleItem},
-	{Name: "FieldBackColor", Russian: "ЦветФонаПоля", Title: "Фон редактирования", Type: ColorStyleItem},
-	{Name: "FieldTextColor", Russian: "ЦветТекстаПоля", Title: "Текст редактирования", Type: ColorStyleItem},
-	{Name: "FieldSelectionBackColor", Russian: "ЦветФонаВыделенияПоля", Title: "Фон выделения редактирования", Type: ColorStyleItem},
-	{Name: "FieldSelectedTextColor", Russian: "ЦветТекстаВыделенияПоля", Title: "Текст выделения редактирования", Type: ColorStyleItem},
-	{Name: "FieldAlternativeBackColor", Russian: "АльтернативныйЦветФонаПоля", Title: "Альтернативный фон редактирования", Type: ColorStyleItem},
-	{Name: "ToolTipBackColor", Russian: "ЦветФонаПодсказки", Title: "Фон подсказки", Type: ColorStyleItem},
-	{Name: "ToolTipTextColor", Russian: "ЦветТекстаПодсказки", Title: "Текст подсказки", Type: ColorStyleItem},
-	{Name: "SpecialTextColor", Russian: "ЦветОсобогоТекста", Title: "Особый текст", Type: ColorStyleItem},
-	{Name: "NegativeTextColor", Russian: "ЦветОтрицательногоЧисла", Title: "Отрицательное число", Type: ColorStyleItem},
-	{Name: "BorderColor", Russian: "ЦветРамки", Title: "Рамка", Type: ColorStyleItem},
-	{Name: "ReportHeaderBackColor", Russian: "ЦветФонаШапкиОтчета", Title: "Фон шапки отчета", Type: ColorStyleItem},
-	{Name: "ReportGroup1BackColor", Russian: "ЦветФонаГруппировкиОтчета1", Title: "Фон группировки отчета 1", Type: ColorStyleItem},
-	{Name: "ReportGroup2BackColor", Russian: "ЦветФонаГруппировкиОтчета2", Title: "Фон группировки отчета 2", Type: ColorStyleItem},
-	{Name: "ReportLineColor", Russian: "ЦветЛинииОтчета", Title: "Линия отчета", Type: ColorStyleItem},
-	{Name: "ButtonBorderColor", Russian: "ЦветРамкиКнопки", Title: "Рамка кнопки", Type: ColorStyleItem},
-	{Name: "TableHeaderBackColor", Russian: "ЦветФонаШапкиТаблицы", Title: "Фон шапки таблицы", Type: ColorStyleItem},
-	{Name: "TableHeaderTextColor", Russian: "ЦветТекстаШапкиТаблицы", Title: "Текст шапки таблицы", Type: ColorStyleItem},
-	{Name: "TableFooterBackColor", Russian: "ЦветФонаПодвалаТаблицы", Title: "Фон подвала таблицы", Type: ColorStyleItem},
-	{Name: "TableFooterTextColor", Russian: "ЦветТекстаПодвалаТаблицы", Title: "Текст подвала таблицы", Type: ColorStyleItem},
-	{Name: "ActivityColor", Russian: "ЦветАктивности", Title: "Цвет активности", Type: ColorStyleItem, InStyleWindow: true},
-	{Name: "AccentColor", Russian: "ЦветАкцента", Title: "Цвет акцентирования", Type: ColorStyleItem, InStyleWindow: true},
-	{Name: "NavigationColor", Russian: "ЦветНавигации", Title: "Цвет навигации", Type: ColorStyleItem, InStyleWindow: true},
-	{Name: "AuxiliaryNavigationColor", Russian: "ЦветДополнительнойНавигации", Title: "Цвет дополнительной навигации", Type: ColorStyleItem, InStyleWindow: true},
-	{Name: "ImportantColor", Russian: "ЦветВажного", Title: "Цвет важного", Type: ColorStyleItem, InStyleWindow: true},
+	{Name: "FormBackColor", Russian: "ЦветФонаФормы", Title: "Фон формы", Type: ColorStyleItem, Color: "#FCFAEB"},
+	{Name: "FormTextColor", Russian: "ЦветТекстаФормы", Title: "Текст формы", Type: ColorStyleItem, Color: "#413003"},
+	{Name: "ButtonBackColor", Russian: "ЦветФонаКнопки", Title: "Фон кнопки", Type: ColorStyleItem, Color: "#F5F2DD"},
+	{Name: "ButtonTextColor", Russian: "ЦветТекстаКнопки", Title: "Текст кнопки", Type: ColorStyleItem, Color: "#594304"},
+	{Name: "FieldBackColor", Russian: "ЦветФонаПоля", Title: "Фон редактирования", Type: ColorStyleItem, Color: "#FFFFFF"},
+	{Name: "FieldTextColor", Russian: "ЦветТекстаПоля", Title: "Текст редактирования", Type: ColorStyleItem, Color: "#000000"},
+	{Name: "FieldSelectionBackColor", Russian: "ЦветФонаВыделенияПоля", Title: "Фон выделения редактирования", Type: ColorStyleItem, Color: "#536AC2"},
+	{Name: "FieldSelectedTextColor", Russian: "ЦветТекстаВыделенияПоля", Title: "Текст выделения редактирования", Type: ColorStyleItem, Color: "#FFFFFF"},
+	{Name: "FieldAlternativeBackColor", Russian: "АльтернативныйЦветФонаПоля", Title: "Альтернативный фон редактирования", Type: ColorStyleItem, Color: "#F5FBF7"},
+	{Name: "ToolTipBackColor", Russian: "ЦветФонаПодсказки", Title: "Фон подсказки", Type: ColorStyleItem, Color: "#FFFAD9"},
+	{Name: "ToolTipTextColor", Russian: "ЦветТекстаПодсказки", Title: "Текст подсказки", Type: ColorStyleItem, Color: "#000000"},
+	{Name: "SpecialTextColor", Russian: "ЦветОсобогоТекста", Title: "Особый текст", Type: ColorStyleItem, Color: "#FF0000"},
+	{Name: "NegativeTextColor", Russian: "ЦветОтрицательногоЧисла", Title: "Отрицательное число", Type: ColorStyleItem, Color: "#FF0000"},
+	{Name: "BorderColor", Russian: "ЦветРамки", Title: "Рамка", Type: ColorStyleItem, Color: "#B3AC86"},
+	{Name: "ReportHeaderBackColor", Russian: "ЦветФонаШапкиОтчета", Title: "Фон шапки отчета", Type: ColorStyleItem, Color: "#F4ECC5"},
+	{Name: "ReportGroup1BackColor", Russian: "ЦветФонаГруппировкиОтчета1", Title: "Фон группировки отчета 1", Type: ColorStyleItem, Color: "#F4ECC5"},
+	{Name: "ReportGroup2BackColor", Russian: "ЦветФонаГруппировкиОтчета2", Title: "Фон группировки отчета 2", Type: ColorStyleItem, Color: "#FBF9EC"},
+	{Name: "ReportLineColor", Russian: "ЦветЛинииОтчета", Title: "Линия отчета", Type: ColorStyleItem, Color: "#CCC085"},
+	{Name: "ButtonBorderColor", Russian: "ЦветРамкиКнопки", Title: "Рамка кнопки", Type: ColorStyleItem, Color: "#B3AC86"},
+	{Name: "TableHeaderBackColor", Russian: "ЦветФонаШапкиТаблицы", Title: "Фон шапки таблицы", Type: ColorStyleItem, Color: "#F5F2DD"},
+	{Name: "TableHeaderTextColor", Russian: "ЦветТекстаШапкиТаблицы", Title: "Текст шапки таблицы", Type: ColorStyleItem, Color: "#594304"},
+	{Name: "TableFooterBackColor", Russian: "ЦветФонаПодвалаТаблицы", Title: "Фон подвала таблицы", Type: ColorStyleItem, Color: "#F5F2DD"},
+	{Name: "TableFooterTextColor", Russian: "ЦветТекстаПодвалаТаблицы", Title: "Текст подвала таблицы", Type: ColorStyleItem, Color: "#594304"},
+	{Name: "ActivityColor", Russian: "ЦветАктивности", Title: "Цвет активности", Type: ColorStyleItem, Color: "#FACC1F", InStyleWindow: true},
+	{Name: "AccentColor", Russian: "ЦветАкцента", Title: "Цвет акцентирования", Type: ColorStyleItem, Color: "#009646", InStyleWindow: true},
+	{Name: "NavigationColor", Russian: "ЦветНавигации", Title: "Цвет навигации", Type: ColorStyleItem, Color: "#FBED9E", InStyleWindow: true},
+	{Name: "AuxiliaryNavigationColor", Russian: "ЦветДополнительнойНавигации", Title: "Цвет дополнительной навигации", Type: ColorStyleItem, Color: "#FFFFD9", InStyleWindow: true},
+	{Name: "ImportantColor", Russian: "ЦветВажного", Title: "Цвет важного", Type: ColorStyleItem, Color: "#FFE100", InStyleWindow: true},
 	{Name: "TextFont", Russian: "ШрифтТекста", Title: "Шрифт текста", Type: FontStyleItem},
 	{Name: "SmallTextFont", Russian: "МелкийШрифтТекста", Title: "Мелкий шрифт текста", Type: FontStyleItem},
 	{Name: "NormalTextFont", Russian: "ОбычныйШрифтТекста", Title: "Обычный шрифт текста", Type: FontStyleItem},

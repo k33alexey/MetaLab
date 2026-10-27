@@ -244,6 +244,37 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .border-choice-dialog .catalog-field{display:flex;align-items:center;justify-content:space-between;color:inherit}
 .border-choice-dialog .catalog-field input{width:60px}
 .border-choice-caption{font-size:12px}
+/* «Выбор цвета» (stil/07, series-2.584/024): слева закладки и список с
+   образцами, посередине палитра со шкалой яркости и 40 образцов, справа
+   выбранный цвет, три числа и «#»; простой вид (series-2.595/05) — список,
+   числа строкой и два примера. */
+.localized-title-dialog.color-choice-dialog{width:min(860px,calc(100% - 40px))}
+.color-choice{display:grid;grid-template-columns:260px 1fr 170px;gap:12px}
+.color-choice-left,.color-choice-right,.color-choice-middle{display:flex;flex-direction:column;gap:8px;min-width:0}
+.color-choice-left .studio-tabs{padding:0}
+.color-choice .color-choice-list{height:300px;flex:0 0 auto;margin:0}
+.color-choice-row{display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.color-choice-row>span:last-child{overflow:hidden;text-overflow:ellipsis}
+.color-choice-sample{flex:0 0 auto;width:22px;height:13px;border:1px solid #6f737a;box-sizing:border-box}
+.color-choice-picker{display:flex;gap:10px}
+.color-choice-palette{position:relative;flex:1;height:180px;cursor:crosshair;touch-action:none;
+  background:linear-gradient(transparent,#fff),linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+.color-choice-spot{position:absolute;width:9px;height:9px;margin:-6px 0 0 -6px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none}
+.color-choice-value{position:relative;width:16px;height:180px;cursor:ns-resize;touch-action:none}
+.color-choice-arrow{position:absolute;right:-9px;width:0;height:0;margin-top:-5px;border:5px solid transparent;border-right-color:currentColor;pointer-events:none}
+.color-choice-swatches{display:grid;grid-template-columns:repeat(10,18px);gap:4px}
+.color-choice-swatch{width:18px;height:18px;padding:0;border:1px solid #6f737a;border-radius:0;min-width:0}
+.color-choice-swatch.current{outline:2px solid #dfe1e5;outline-offset:1px}
+.color-choice-chosen{height:34px;border:1px solid #6f737a}
+.color-choice-dialog .catalog-field{display:flex;align-items:center;justify-content:space-between;gap:8px;color:inherit}
+.color-choice-dialog .catalog-field input{width:64px}
+.color-choice-simple{grid-template-columns:1fr;width:300px}
+.color-choice-simple .color-choice-list{height:220px}
+.color-choice-simple .color-choice-numbers{display:flex;gap:8px}
+.color-choice-simple .color-choice-numbers .catalog-field input{width:48px}
+.color-choice-examples{display:grid;grid-template-columns:1fr 1fr}
+.color-choice-background,.color-choice-text{padding:6px;text-align:center;font-size:12px}
+.color-choice-text{background:#fff}
 /* «Выбор пакетов XDTO» (series-2.584/131-136): пространства платформы, затем
    пакеты проекта с отступом, флажками, одним прокручиваемым списком. */
 .localized-title-dialog.xdto-packages-dialog{width:min(720px,calc(100% - 40px))}

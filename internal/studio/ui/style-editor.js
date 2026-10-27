@@ -8,9 +8,9 @@
    five, then the project's in the order of the tree), each with its value
    in this style and «…». The palette beside it opens the same values in a
    window of their own with OK and «Отмена» («Стиль: Открыть»). «…» of a
-   value stands unavailable until the windows choosing a colour, a font and
-   a border, which are items of their own. around holds the palette and its
-   title. */
+   colour opens «Выбор цвета», of a border «Выбор рамки»; of a font it
+   stands unavailable until the window choosing a font, an item of its own.
+   around holds the palette and its title. */
 function createStyleEditor(host, onChange, around = {}) {
   let source = null, changed = () => {};
   function draw(body, api) {
@@ -23,14 +23,24 @@ function createStyleEditor(host, onChange, around = {}) {
     body.append(left, styleValueRows(source, 'style-window-items', item => chooseValue(source.style, item, api.changed)));
   }
   // «…» of a value: the window choosing a value of the item's kind, its
-  // answer the value this style gives the item. Only «Выбор рамки» is made;
-  // the windows choosing a colour and a font are items of their own.
+  // answer the value this style gives the item. «Выбор шрифта» is an item
+  // of its own. A colour taken from the item itself is what the window
+  // shows of an item the style gives nothing - «стиль: <элемент>» - and
+  // the style is left giving it nothing.
   async function chooseValue(style, item, done) {
-    if (item.type !== 'border') return;
     const given = styleSetting({...source, style}, item);
-    const chosen = await chooseBorder(given?.border, styleBorders(source), source.borderLines);
-    if (!chosen) return;
-    styleGive(style, item, {border: chosen});
+    if (item.type === 'border') {
+      const chosen = await chooseBorder(given?.border, styleBorders(source), source.borderLines);
+      if (!chosen) return;
+      styleGive(style, item, {border: chosen});
+    } else if (item.type === 'color') {
+      // An item the style gives nothing opens on its own row (snapshot
+      // series-2.584/024).
+      const itself = {source: 'style', from: item.item ? {item: item.item} : {standard: stylePlatformItem(source, item.standard)?.name || item.standard}};
+      const chosen = await chooseColor(styleColorValue(source, given?.color) || itself, styleColors({...source, style}), styleWebColors(source));
+      if (!chosen) return;
+      styleGive(style, item, JSON.stringify(chosen) === JSON.stringify(itself) ? null : {color: chosen});
+    } else return;
     done();
   }
   // «Стиль: Открыть»: the values in a window of their own, chosen on a
@@ -51,7 +61,7 @@ function createStyleEditor(host, onChange, around = {}) {
 /* styleValueRows are the rows of the values of a style (source, as
    createStyleEditor reads it): the caption of each item listed and a field
    of its value - a sample of a colour and the text of styleValueText - with
-   «…», unavailable until the windows choosing a value. */
+   «…», unavailable at a font until the window choosing it. */
 function styleValueRows(source, className, choose) {
   const list = node('div', undefined, 'style-values ' + className);
   for (const item of source.items) {
@@ -66,7 +76,7 @@ function styleValueRows(source, className, choose) {
     }
     field.append(node('span', shown.text));
     const pick = fieldChoiceButton(styleItemTitle(source, item), () => choose(item));
-    pick.disabled = item.type !== 'border';
+    pick.disabled = item.type === 'font';
     list.append(caption, fieldWithButtons(field, [pick]));
   }
   return list;
@@ -129,10 +139,10 @@ function styleValueText(source, item) {
   const value = given[item.type];
   const from = value?.source === 'style' && styleReferenced(source, value.from);
   if (item.type === 'color') {
-    if (value.source === 'absolute') return {text: styleRGB(value.rgb).join(', '), color: value.rgb};
+    if (value.source === 'absolute') return {text: colorNumbers(value.rgb).join(', '), color: value.rgb};
     if (value.source === 'web') {
-      const web = source.webColors.find(color => color.name.toLowerCase() === value.name.toLowerCase());
-      return {text: web ? `${web.title} (${web.name})` : value.name, color: styleWebColor(value.name)};
+      const web = styleWebColor(source, value.name);
+      return {text: web ? styleWebTitle(web) : value.name, color: web?.rgb};
     }
     if (from) return {text: `стиль: ${styleItemTitle(source, from)}`, color: styleColorOf(source, from, 0)};
     return {text: ''};
@@ -150,33 +160,65 @@ function styleValueText(source, item) {
 
 /* styleColorOf is the colour an item of a colour has in a style, for its
    sample - what the style gives it, else its own value, followed through
-   the items it is taken from - or undefined where it is not known: a
-   colour of the platform the style does not give (series 2.595, question),
-   of the system, an automatic one. */
+   the items it is taken from; one of the platform's the style gives
+   nothing, the platform's own (metadata.PlatformStyleItem.Color) - or
+   undefined where it is not known: a colour of the system, an automatic
+   one. */
 function styleColorOf(source, item, depth) {
   if (!item || item.type !== 'color' || depth > 40) return undefined;
   const value = styleSetting(source, item)?.color || item.value?.color;
-  if (!value) return undefined;
+  if (!value) return item.standard ? stylePlatformItem(source, item.standard)?.color : undefined;
   if (value.source === 'absolute') return value.rgb;
-  if (value.source === 'web') return styleWebColor(value.name);
+  if (value.source === 'web') return styleWebColor(source, value.name)?.rgb;
   if (value.source === 'style') return styleColorOf(source, styleReferenced(source, value.from), depth + 1);
   return undefined;
 }
 
-/* styleWebColor is a colour of the web palette as the browser draws it, by
-   its English name, or undefined for a name CSS never had (Cream,
-   MediumGray and four more - series 2.595, question). */
-function styleWebColor(name) {
-  return CSS.supports('color', name) ? name : undefined;
+/* styleWebColor is a colour of the web palette by its English name
+   (metadata.WebColorName: its caption and the numbers the prototype draws
+   it by), or undefined; styleWebTitle is how the windows name it,
+   «Мятный крем (MintCream)». */
+function styleWebColor(source, name) {
+  const folded = name.toLowerCase();
+  return source.webColors.find(color => color.name.toLowerCase() === folded);
+}
+
+function styleWebTitle(web) {
+  return `${web.title} (${web.name})`;
+}
+
+/* styleColors are the rows of «Из стиля» of «Выбор цвета» (chooseColor):
+   the platform's 28 colours, then the project's in the order of the tree,
+   each drawn by the colour it has in this style; styleWebColors the rows
+   of «Web». styleColorValue is a colour as those rows hold it - a
+   platform's colour by its English name, a web colour by the palette's -
+   so that the window finds the row of the value it opens on. */
+function styleColors(source) {
+  return [...source.platform.filter(item => item.type === 'color').map(item => ({standard: item.name, type: 'color'})),
+    ...source.items.filter(item => item.item && item.type === 'color')].map(item => {
+    const reference = item.item ? {item: item.item} : {standard: item.standard};
+    return {caption: styleItemTitle(source, item), rgb: styleColorOf(source, styleReferenced(source, reference), 0), value: {source: 'style', from: reference}};
+  });
+}
+
+function styleWebColors(source) {
+  return source.webColors.map(web => ({caption: styleWebTitle(web), rgb: web.rgb, value: {source: 'web', name: web.name}}));
+}
+
+function styleColorValue(source, value) {
+  if (value?.source === 'web') return {source: 'web', name: styleWebColor(source, value.name)?.name || value.name};
+  if (value?.source === 'style' && value.from?.standard) return {source: 'style', from: {standard: stylePlatformItem(source, value.from.standard)?.name || value.from.standard}};
+  return value;
 }
 
 /* styleGive makes the value a style gives an item value (metadata.
    StyleItemValue): the setting of the item is changed where it stands, or
-   added last. */
+   added last; value null takes it away. */
 function styleGive(style, item, value) {
   const items = style.items || (style.items = []);
   const at = items.findIndex(setting => item.item ? setting.item === item.item : !!setting.standard && setting.standard.toLowerCase() === item.standard.toLowerCase());
   const setting = item.item ? {item: item.item, value} : {standard: item.standard, value};
+  if (!value) { if (at >= 0) items.splice(at, 1); return; }
   if (at < 0) items.push(setting); else items[at] = setting;
 }
 
@@ -194,11 +236,6 @@ function styleBorders(source) {
   };
   return [...source.platform.filter(item => item.type === 'border').map(item => ({reference: {standard: item.name}, caption: item.title, drawn: {line: 'none', width: 1}})),
     ...source.items.filter(item => item.item && item.type === 'border').map(item => ({reference: {item: item.item}, caption: styleItemTitle(source, item), drawn: drawn(item, 0)}))];
-}
-
-/* styleRGB is the three numbers of a colour written #RRGGBB. */
-function styleRGB(hex) {
-  return [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16));
 }
 
 /* stylePreview is «Предварительный просмотр» of the window of a style
