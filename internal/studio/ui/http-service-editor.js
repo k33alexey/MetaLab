@@ -14,7 +14,7 @@ function createHTTPServiceEditor(host, onChange, around = {}) {
   return objectWindowEditor(host, onChange, around, {target: source => source.service, valueChecks: {rootUrl: '/api/http-service/root'},
     own: api => partsOfTwoLevels(api, 'templates', {
       list: 'templates', children: 'methods',
-      upper: {kind: 'template', icon: 'url-template', add: ['add', 'Добавить шаблон'], base: 'ШаблонURL', fields: () => ({template: '/*'})},
-      lower: {kind: 'method', icon: 'http-method', add: ['attribute-add', 'Добавить метод'], base: 'Метод', fields: () => ({method: 'GET', handler: ''})},
+      upper: {kind: 'template', icon: 'url-template', add: ['url-template-add', 'Добавить шаблон'], base: 'ШаблонURL', fields: () => ({template: '/*'})},
+      lower: {kind: 'method', icon: 'http-method', add: ['http-method-add', 'Добавить метод'], base: 'Метод', fields: () => ({method: 'GET', handler: ''})},
     })});
 }

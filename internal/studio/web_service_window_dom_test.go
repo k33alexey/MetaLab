@@ -149,13 +149,14 @@ const webServiceOperationsWalk = `(async () => {
   const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
   const panel = () => [...host.querySelectorAll('.object-window-panel button')].map(item => item.title + (item.disabled ? ' (недоступна)' : ''));
   const press = title => [...host.querySelectorAll('.object-window-panel button')].find(item => item.title === title).click();
+  const icons = () => [...host.querySelectorAll('.object-window-panel button')].slice(0, 2).map(item => item.querySelector('use').getAttribute('href'));
   const rows = () => [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   const palette = () => ({title: document.querySelector('#inspector-title').textContent,
     tabs: [...document.querySelectorAll('#properties .studio-tab')].map(tab => tab.textContent),
     rows: [...document.querySelectorAll('#properties .object-palette-row .object-palette-caption')].map(item => item.textContent)});
   await openObject('СкладСервис');
   await windowPage('Операции');
-  steps.opened = {panel: panel(), rows: rows()};
+  steps.opened = {panel: panel(), rows: rows(), icons: icons()};
   press('Добавить операцию'); await settle();
   steps.operation = {rows: rows(), chosen: host.querySelector('.object-window-body .studio-tree-row.selected')?.textContent.trim() || '', palette: palette(),
     type: windowField('#properties', 'Тип возвращаемого значения').querySelector('input').value,
@@ -209,7 +210,7 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 		Tabs, Rows []string
 	}
 	var steps struct {
-		Opened    struct{ Panel, Rows []string }
+		Opened    struct{ Panel, Rows, Icons []string }
 		Operation struct {
 			Rows, Panel  []string
 			Chosen, Type string
@@ -240,8 +241,9 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
 		}
 	}
-	expect("the page", steps.Opened, struct{ Panel, Rows []string }{[]string{"Добавить операцию", "Добавить параметр (недоступна)", "Изменить (недоступна)",
-		"Удалить (недоступна)", "Переместить вверх (недоступна)", "Переместить вниз (недоступна)", "Сортировать (недоступна)"}, []string{"Остаток"}})
+	expect("the page", steps.Opened, struct{ Panel, Rows, Icons []string }{[]string{"Добавить операцию", "Добавить параметр (недоступна)", "Изменить (недоступна)",
+		"Удалить (недоступна)", "Переместить вверх (недоступна)", "Переместить вниз (недоступна)", "Сортировать (недоступна)"}, []string{"Остаток"},
+		[]string{"#icon-web-service-operation-add", "#icon-parameter-add"}})
 	expect("a new operation", []any{steps.Operation.Rows, steps.Operation.Chosen, steps.Operation.Palette, steps.Operation.Type, steps.Operation.TypeChoice},
 		[]any{[]string{"Остаток", "Операция1"}, "Операция1", palette{"Свойства: Операция1", []string{"Основные", "Данные"},
 			[]string{"Имя", "Синоним", "Комментарий", "Тип возвращаемого значения", "Возможно пустое значение", "В транзакции", "Имя процедуры"}},

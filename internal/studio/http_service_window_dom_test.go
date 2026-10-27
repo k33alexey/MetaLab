@@ -123,12 +123,14 @@ const httpTemplatesWalk = `(async () => {
   const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
   const panel = () => [...host.querySelectorAll('.object-window-panel button')].map(item => item.title + (item.disabled ? ' (недоступна)' : ''));
   const press = title => [...host.querySelectorAll('.object-window-panel button')].find(item => item.title === title).click();
+  const icons = () => [...host.querySelectorAll('.object-window-panel button')].slice(0, 2).map(item => item.querySelector('use').getAttribute('href'));
   const rows = () => [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   const palette = () => ({title: document.querySelector('#inspector-title').textContent,
     rows: [...document.querySelectorAll('#properties .object-palette-row .object-palette-caption')].map(item => item.textContent)});
   await openObject('ОбменЗаказами');
   await windowPage('Шаблоны URL');
   steps.panel = panel();
+  steps.icons = icons();
   press('Добавить шаблон'); await settle();
   steps.template = {rows: rows(), palette: palette(), value: windowField('#properties', 'Шаблон').querySelector('input').value};
   press('Добавить метод'); await settle();
@@ -169,6 +171,7 @@ func TestTheTemplatesOfAnHTTPServiceAreThePrototypes(t *testing.T) {
 	}
 	var steps struct {
 		Panel    []string
+		Icons    []string
 		Template struct {
 			Rows    []string
 			Palette palette
@@ -195,6 +198,7 @@ func TestTheTemplatesOfAnHTTPServiceAreThePrototypes(t *testing.T) {
 	}
 	expect("the panel", steps.Panel, []string{"Добавить шаблон", "Добавить метод (недоступна)", "Изменить (недоступна)", "Удалить (недоступна)",
 		"Переместить вверх (недоступна)", "Переместить вниз (недоступна)", "Сортировать (недоступна)"})
+	expect("the signs of adding", steps.Icons, []string{"#icon-url-template-add", "#icon-http-method-add"})
 	expect("a new template", []any{steps.Template.Rows, steps.Template.Palette, steps.Template.Value},
 		[]any{[]string{"Заказы", "Получить", "ШаблонURL1"}, palette{"Свойства: ШаблонURL1", []string{"Имя", "Синоним", "Комментарий", "Шаблон"}}, "/*"})
 	expect("a new method", []any{steps.Method.Rows, steps.Method.Palette, steps.Method.Value, steps.Method.Choices},

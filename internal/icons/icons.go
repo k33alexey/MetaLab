@@ -130,6 +130,54 @@ func path(role Role, d string) Part {
 	return Part{Role: role, Path: d}
 }
 
+// urlTemplate is the sign of a URL template: the letters http with the
+// green spot of a method over the p (the owner's choice of 15.10.2026).
+func urlTemplate() []Part {
+	return append(httpLetters(0), circle(Accent, 13, 3, 2))
+}
+
+// httpLetters are the letters http of a URL template, moved down by dy: in
+// the template's own sign they leave the top right to the method's spot, in
+// adding a template they are raised to the top, leaving the lower right
+// corner to the star of the new (the owner's choice of 27.10.2026).
+func httpLetters(dy float64) []Part {
+	y := func(at float64) string { return number(at + dy) }
+	return []Part{
+		path(Detail, fmt.Sprintf("M1.5 %sV%sM1.5 %sQ1.5 %s 3 %sQ4.5 %s 4.5 %sV%s", y(4), y(12), y(8.5), y(7), y(7), y(7), y(8.5), y(12))),
+		path(Detail, fmt.Sprintf("M6.5 %sV%sQ6.5 %s 7.5 %sM5.5 %sH7.5M8.5 %sV%sQ8.5 %s 9.5 %sM8.5 %sH9.5",
+			y(5), y(11), y(12), y(12), y(7.5), y(5), y(11), y(12), y(12), y(7.5))),
+		path(Detail, fmt.Sprintf("M11.5 %sV%sM11.5 %sQ11.5 %s 12.75 %sQ14.5 %s 14.5 %sQ14.5 %s 12.75 %sQ11.5 %s 11.5 %s",
+			y(7.5), y(14.5), y(8.5), y(7.5), y(7.5), y(7.5), y(9.75), y(12), y(12), y(12), y(11))),
+	}
+}
+
+// httpMethod is the sign of an HTTP method: a green spot.
+func httpMethod() []Part { return []Part{circle(Accent, 8, 8, 3)} }
+
+// webServiceOperation is the sign of an operation of a web service: a brown
+// ball with a green spot over it.
+func webServiceOperation() []Part {
+	return []Part{circle(Accent, 7, 9, 5), colored(circle(Accent, 12, 4, 2), green)}
+}
+
+// parameter is the sign of a parameter: a spot between brackets.
+func parameter() []Part {
+	return []Part{path(Detail, "M5.5 2.5Q2.5 8 5.5 13.5M10.5 2.5Q13.5 8 10.5 13.5"), circle(Accent, 8, 8, 2)}
+}
+
+// newStar is the prototype's sign of adding a new part: a gold star of four
+// rays over the lower right of the part's sign, cleared from what lies under
+// it as the sparks of a wizard are.
+func newStar() []Part { return newStarAt(12, 12, 3.5) }
+
+// newStarAt is the star of the new centred at cx, cy, reaching r. Adding a URL
+// template takes a smaller one in the very corner, below the letters raised
+// to the top: the word http fills the width, and a star of the usual size
+// covered its p (the owner's choice of 27.10.2026).
+func newStarAt(cx, cy, r float64) []Part {
+	return cleared(colored(path(Accent, sparkle(cx, cy, r)), sparkGold))
+}
+
 // bar is the dash of an attribute and of everything drawn like one - a
 // resource, a characteristic, a standard attribute, an enumeration value: one
 // solid shape with the same rounding, told apart by its colour alone (the
@@ -449,25 +497,23 @@ var treeIcons = []Icon{
 	{ID: "ext-dimension-accounting-flag", Color: green, Accent: green, Parts: join([]Part{
 		path(Detail, "M1.5 2.5H8.5M1.5 5.5H8.5M1.5 8.5H5.5"),
 	}, []Part{path(Mark, "M6.5 10L9.5 13L14.5 7.5")})},
-	{ID: "url-template", Color: "#5d6b7a", Accent: green, Parts: []Part{
-		path(Detail, "M1.5 4V12M1.5 8.5Q1.5 7 3 7Q4.5 7 4.5 8.5V12"),
-		path(Detail, "M6.5 5V11Q6.5 12 7.5 12M5.5 7.5H7.5M8.5 5V11Q8.5 12 9.5 12M8.5 7.5H9.5"),
-		path(Detail, "M11.5 7.5V14.5M11.5 8.5Q11.5 7.5 12.75 7.5Q14.5 7.5 14.5 9.75Q14.5 12 12.75 12Q11.5 12 11.5 11"),
-		circle(Accent, 13, 3, 2),
-	}},
-	{ID: "http-method", Color: green, Accent: green, Parts: []Part{
-		circle(Accent, 8, 8, 3),
-	}},
-	{ID: "web-service-operation", Color: brown, Accent: brown, Parts: []Part{
-		circle(Accent, 7, 9, 5),
-		colored(circle(Accent, 12, 4, 2), green),
-	}},
+	{ID: "url-template", Color: "#5d6b7a", Accent: green, Parts: urlTemplate()},
+	{ID: "http-method", Color: green, Accent: green, Parts: httpMethod()},
+	{ID: "web-service-operation", Color: brown, Accent: brown, Parts: webServiceOperation()},
 	// One parameter, one sign: of a web service operation, of a data
 	// composition schema.
-	{ID: "parameter", Color: blue, Accent: green, Parts: []Part{
-		path(Detail, "M5.5 2.5Q2.5 8 5.5 13.5M10.5 2.5Q13.5 8 10.5 13.5"),
-		circle(Accent, 8, 8, 2),
-	}},
+	{ID: "parameter", Color: blue, Accent: green, Parts: parameter()},
+	// Adding one of them: its sign with the gold star of the new over the
+	// lower right, as the prototype's panels of the operations of a web
+	// service and the URL templates of an HTTP service draw it
+	// (web-servis/09, 14, http-servis/09, 13; the owner's answer В3 of
+	// 27.10.2026). Adding a parameter is the prototype's green spot, the
+	// same picture as adding a method, not the bracketed sign of a parameter
+	// (the owner's choice of 27.10.2026).
+	{ID: "url-template-add", Color: "#5d6b7a", Accent: green, Parts: join(httpLetters(-3), newStarAt(13, 13, 2.5))},
+	{ID: "http-method-add", Color: green, Accent: green, Parts: join(httpMethod(), newStar())},
+	{ID: "web-service-operation-add", Color: brown, Accent: brown, Parts: join(webServiceOperation(), newStar())},
+	{ID: "parameter-add", Color: green, Accent: green, Parts: join(httpMethod(), newStar())},
 	{ID: "document-movement", Color: slate, Accent: "#8fb8e0", Parts: []Part{
 		path(Body, "M1.5 5.5H6L8.5 8V14.5H1.5Z"),
 		rect(Accent, 9, 9, 6, 6),

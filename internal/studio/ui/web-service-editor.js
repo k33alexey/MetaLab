@@ -13,9 +13,9 @@ function createWebServiceEditor(host, onChange, around = {}) {
   const xmlString = () => ({namespace: 'http://www.w3.org/2001/XMLSchema', name: 'string'});
   return objectWindowEditor(host, onChange, around, {target: source => source.service, own: api => partsOfTwoLevels(api, 'operations', {
     list: 'operations', children: 'parameters',
-    upper: {kind: 'operation', icon: 'web-service-operation', add: ['add', 'Добавить операцию'], base: 'Операция',
+    upper: {kind: 'operation', icon: 'web-service-operation', add: ['web-service-operation-add', 'Добавить операцию'], base: 'Операция',
       fields: () => ({procedure: '', returnType: xmlString(), dataLockControl: 'managed'})},
-    lower: {kind: 'parameter', icon: 'parameter', add: ['attribute-add', 'Добавить параметр'], base: 'Параметр',
+    lower: {kind: 'parameter', icon: 'parameter', add: ['parameter-add', 'Добавить параметр'], base: 'Параметр',
       fields: () => ({type: xmlString(), direction: 'in'})},
   })});
 }
