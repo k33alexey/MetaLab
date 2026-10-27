@@ -12,8 +12,7 @@ import (
 // snapshots plan-obmena/01, 02, 10-13): a catalog's without «Иерархия»,
 // «Владельцы», «Нумерация» and «Обмен данными», read and written by the
 // common part of an object's window (readObjectWindow, saveObjectWindow).
-// The window «Состав», the menu of a plan and a new plan are items of
-// their own.
+// The window «Состав» and the menu of a plan are items of their own.
 
 // ExchangePlanEditorSource is an exchange plan as its window and palette
 // read and write it.
@@ -92,6 +91,13 @@ func (workspace *Workspace) SaveExchangePlanWindow(relative string, window Excha
 	}, workspace.readExchangePlanEditorLocked, exchangePlanShape)
 }
 
+// CreateExchangePlan makes the next exchange plan with the prototype's
+// values (plan-obmena.md, «Новый план») by the one way every object is
+// made (CreateObject) and opens its window.
+func (workspace *Workspace) CreateExchangePlan(name string) (ExchangePlanEditorSource, error) {
+	return createObjectAs(workspace, metadata.ExchangePlanKind, name, nil, workspace.readExchangePlanEditorLocked)
+}
+
 // DeleteExchangePlan removes an exchange plan's folder by the one order of
 // steps of every deletion.
 func (workspace *Workspace) DeleteExchangePlan(relative, expectedRevision string) error {
@@ -99,8 +105,6 @@ func (workspace *Workspace) DeleteExchangePlan(relative, expectedRevision string
 }
 
 func registerExchangePlanEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	// A new plan with the prototype's values is an item of its own («меню и
-	// новый план обмена»).
 	registerObjectEditor(routes, exchangePlanEditorAddress, workspace.ReadExchangePlanEditor, workspace.SaveExchangePlanWindow,
-		noNewObject[ExchangePlanEditorSource](metadata.ExchangePlanKind), workspace.DeleteExchangePlan)
+		workspace.CreateExchangePlan, workspace.DeleteExchangePlan)
 }

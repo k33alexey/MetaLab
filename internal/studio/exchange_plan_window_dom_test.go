@@ -115,3 +115,56 @@ func TestTheWindowOfAnExchangePlanIsThePrototypes(t *testing.T) {
 		t.Errorf("the plan written: %s", written)
 	}
 }
+
+// newExchangePlanWalk makes a plan by «Добавить» on the branch of exchange
+// plans and reads its window.
+const newExchangePlanWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  window.confirm = () => true;` + objectWindowSteps + `
+  const host = document.querySelector('#exchange-plan-editor');
+  await openObject('Планы обмена');
+  steps.adds = !document.querySelector('#tree-add').disabled;
+  document.querySelector('#tree-add').click(); await new Promise(resolve => setTimeout(resolve, 150)); await studio.settle();
+  steps.title = host.querySelector('.object-window-title')?.textContent || '';
+  steps.tree = !!treeRow('ПланОбмена1');
+  return steps;
+})()`
+
+// «Добавить» of exchange plans makes «ПланОбмена1» with the prototype's
+// values (docs/block-00/plan-obmena.md, «Новый план»): a string code of 9
+// of variable length, a description of 25, presented by the description,
+// the managed lock, the full-text search used, the history not used - and
+// opens its window. Expectations are written from the inventory.
+// Defects caught: «Добавить» unavailable; a new plan not the prototype's;
+// its window not opened.
+func TestANewExchangePlanIsThePrototypes(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	if err := os.MkdirAll(filepath.Join(root, "metadata", "exchange-plans"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, newExchangePlanWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Adds, Tree bool
+		Title      string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	if !steps.Adds || !steps.Tree || steps.Title != "План обмена ПланОбмена1" {
+		t.Errorf("«Добавить» %v, in the tree %v, the window %q", steps.Adds, steps.Tree, steps.Title)
+	}
+	written, err := os.ReadFile(filepath.Join(root, "metadata", "exchange-plans", "ПланОбмена1", "object.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"code:\n  type: string\n  length: 9\n", "description_length: 25", "default_presentation: as-description",
+		"data_lock: managed", "full_text_search: use", "data_history: dont-use"} {
+		if !strings.Contains(string(written), want) {
+			t.Errorf("the new plan has no %q:\n%s", want, written)
+		}
+	}
+}

@@ -14,7 +14,8 @@ import (
 // itself would refuse to read back. The values are written out here from the
 // inventory of block 00, not taken from kindNewObjectOf: spravochnik.md
 // («Новый справочник»), konstanta.md, obshchij-modul.md, gruppa-komand.md,
-// perechislenie.md, obshchaya-kartinka.md with the help's defaults.
+// perechislenie.md, obshchaya-kartinka.md, plan-obmena.md with the help's
+// defaults.
 func TestANewObjectHasThePrototypesValues(t *testing.T) {
 	t.Parallel()
 	configuration := project.Project{Format: 1, ID: uuid.MustNew(), Name: "Demo", Title: project.LocalizedText{"ru": "Demo"}, DefaultLanguage: "ru", Languages: []project.Language{{Code: "ru", Name: "Русский"}}}
@@ -35,6 +36,12 @@ func TestANewObjectHasThePrototypesValues(t *testing.T) {
 			DescriptionLength: 25,
 			Hierarchy:         Hierarchy{Enabled: false, Kind: "folders-and-items", FoldersOnTop: true, LimitLevels: false, LevelCount: 2},
 			Subordination:     "to-items",
+		}, nil},
+		// plan-obmena.md, «Новый план».
+		{ExchangePlanKind, ExchangePlanDefinition{
+			Format: CurrentFormat, ID: id, Name: "Новый",
+			ObjectChoice: ObjectChoice{DefaultPresentation: "as-description"}, Code: CatalogCode{Type: "string", Length: 9},
+			DescriptionLength: 25, DataLock: "managed", FullTextSearch: "use", DataHistorySettings: DataHistorySettings{DataHistory: "dont-use"},
 		}, nil},
 		{ConstantKind, Constant{
 			Format: CurrentFormat, ID: id, Name: "Новый",

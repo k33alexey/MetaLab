@@ -57,6 +57,20 @@ var kindNewObjectOf = map[Kind]newObject{
 			Subordination:     SubordinateToItems,
 		}}
 	},
+	// plan-obmena.md, «Новый план»: a string code of 9 of variable length,
+	// a description of 25, presented by the description, the managed lock,
+	// the full-text search used, the history not used.
+	ExchangePlanKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: ExchangePlanDefinition{
+			Format: CurrentFormat, ID: id, Name: name,
+			ObjectChoice:        ObjectChoice{DefaultPresentation: PresentAsDescription},
+			Code:                CatalogCode{Type: StringType, Length: 9},
+			DescriptionLength:   25,
+			DataLock:            project.ManagedDataLock,
+			FullTextSearch:      FullTextSearchUse,
+			DataHistorySettings: DataHistorySettings{DataHistory: DataHistoryDontUse},
+		}}
+	},
 	// konstanta.md, «Новая константа»: a string of 10 of variable length, the
 	// managed lock, the history not used, the standard commands on, the
 	// filling not checked, the quick choice and the history of choice left to
