@@ -1,7 +1,6 @@
 package studio
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -93,7 +92,5 @@ func registerHTTPServiceEditorRoutes(routes *http.ServeMux, workspace *Workspace
 	}) (any, error) {
 		return NameAnswer{Refusal: rootURLRefusals[metadata.RootURLFaultOf(input.Value)]}, nil
 	}))
-	registerObjectEditor(routes, httpServiceEditorAddress, workspace.ReadHTTPServiceEditor, workspace.SaveHTTPServiceWindow, func(string) (HTTPServiceEditorSource, error) {
-		return HTTPServiceEditorSource{}, fmt.Errorf("%w: %s", ErrNoNewObject, metadata.HTTPServiceKind)
-	}, workspace.DeleteHTTPService)
+	registerObjectEditor(routes, httpServiceEditorAddress, workspace.ReadHTTPServiceEditor, workspace.SaveHTTPServiceWindow, noNewObject[HTTPServiceEditorSource](metadata.HTTPServiceKind), workspace.DeleteHTTPService)
 }

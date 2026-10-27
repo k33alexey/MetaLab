@@ -16,6 +16,15 @@ import (
 // with its window or palette (owner, 26.10.2026).
 var ErrNoNewObject = fmt.Errorf("an object of this kind is not made by Studio yet")
 
+// noNewObject is «Добавить» of a kind Studio does not make yet, for the
+// window of the kind (registerObjectEditor): it answers ErrNoNewObject.
+func noNewObject[Window any](kind metadata.Kind) func(string) (Window, error) {
+	return func(string) (Window, error) {
+		var none Window
+		return none, fmt.Errorf("%w: %s", ErrNoNewObject, kind)
+	}
+}
+
 // CreateObject makes the next object of a kind - «<Вид>N» unless a name is
 // given - with the prototype's values of a new one (metadata.NewObject), and
 // answers where its description lies. It is the one way every object is

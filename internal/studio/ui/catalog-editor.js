@@ -1,10 +1,9 @@
 'use strict';
 
 /* Catalog editor: fields/checkboxes/lists instead of hand-edited YAML.
-   The model mutates `source.catalog` in place (no internal clone) so every
+   The model mutates the object (a catalog, an exchange plan) in place (no internal clone) so every
    render function can read straight from `source` and stay in sync. */
-function createCatalogModel(source) {
-  const catalog = source.catalog;
+function createCatalogModel(source, catalog = source.catalog) {
   catalog.attributes ||= [];
   catalog.tableParts ||= [];
   // What the window «Редактирование типа данных» offers for a field the
@@ -109,23 +108,34 @@ function createCatalogModel(source) {
    «Данные» and the two flags of «Нумерация»; a page whose item of the map is
    not done yet is listed and empty. around holds what the window stands
    among: palette - where the properties of the attribute or table part
-   pick.chosen in the window stand, as the prototype's palette shows them;
+   chosen in the window stand, as the prototype's palette shows them;
    actions() - the commands of the object's menu «Действия» offers; close() -
    «Закрыть». */
 function createCatalogEditor(host, onChange, around = {}) {
-  return objectWindowEditor(host, onChange, around, {target: opened => opened.catalog, own: api => catalogWindow(api, onChange, around, host)});
+  return objectWindowEditor(host, onChange, around, {target: opened => opened.catalog, own: api => referenceWindow(api, onChange, around, host)});
 }
 
-/* catalogWindow is what the window of a catalog adds to the window of an
-   object (objectWindowEditor): its own pages, the parts pick.chosen in it and
-   their palettes, what its fields open and offer, and the commands of the
-   tree inside it. */
-function catalogWindow(api, onChange, around, host) {
+/* The window of an exchange plan (docs/block-00/plan-obmena.md, «Окно»;
+   snapshots plan-obmena/01, 02, 10-13): a catalog's without «Иерархия»,
+   «Владельцы», «Нумерация» and «Обмен данными» - the pages its kind lists -
+   the flag of a distributed base and «Состав» on «Основные», no type of
+   the code on «Данные». */
+function createExchangePlanEditor(host, onChange, around = {}) {
+  return objectWindowEditor(host, onChange, around, {target: opened => opened.exchangePlan, own: api => referenceWindow(api, onChange, around, host)});
+}
+
+/* referenceWindow is what the window of an object stored as a reference
+   with attributes and table parts - a catalog, an exchange plan - adds to
+   the window of an object (objectWindowEditor): its own pages, the parts
+   chosen in it and their palettes, what its fields open and offer, and the
+   commands of the tree inside it. What differs between the kinds is their
+   data: the pages the kind lists, the rows of its window and palette. */
+function referenceWindow(api, onChange, around, host) {
   let source = null, model = null;
   // The part chosen in the window is the builder's (api.chosen), one for
   // the window's every page.
   const pick = {get chosen() { return api.chosen(); }, set chosen(choice) { api.setChosen(choice); }};
-  const catalog = () => source.catalog;
+  const catalog = () => api.object();
   const frame = {refresh: () => api.refresh(), show: key => api.show(key)};
   // A structural edit builds the page anew; typing does not - building the
   // field anew would drop its focus - it only renames what shows the name
@@ -165,6 +175,9 @@ function catalogWindow(api, onChange, around, host) {
     const page = node('div', undefined, 'object-window-fields');
     page.append(...nameAndSynonym(catalog(), value => model.setName(value), (language, value) => model.setTitle(language, value), undefined, api.cleanups()));
     page.append(labeledField('Комментарий', textInput(catalog().comment, value => { model.setComment(value); touch(); })));
+    // The rows a kind puts after the comment - an exchange plan's flag of a
+    // distributed base and «Состав» (kinds.WindowRows, «main»).
+    if (source.windowRows?.main) page.append(...api.rowsPage('main').childNodes);
     page.append(node('div', undefined, 'object-window-gap'));
     for (const [key, caption, options] of presentations) {
       page.append(labeledField(caption, localized(code => catalog()[key]?.[code], (language, value) => model.setPresentation(key, language, value), api.cleanups(), options),
@@ -215,8 +228,12 @@ function catalogWindow(api, onChange, around, host) {
     page.append(numberField('Длина кода', code.length, value => model.setCodeLength(value), 'code'));
     page.append(numberField('Длина наименования', catalog().descriptionLength, value => model.setDescriptionLength(value), 'description'));
     const frames = node('div', undefined, 'object-window-frames');
+    // «Тип кода» stands where the kind's palette has it: a catalog's, not an
+    // exchange plan's (plan-obmena/02).
+    if ((source.palette || []).some(tab => tab.rows?.some(row => row.key === 'code.type'))) {
+      frames.append(radioFrame('Тип кода', [['number', 'Число'], ['string', 'Строка']], code.type, value => { model.setCodeType(value); rerender(); }, !code.length));
+    }
     frames.append(
-      radioFrame('Тип кода', [['number', 'Число'], ['string', 'Строка']], code.type, value => { model.setCodeType(value); rerender(); }, !code.length),
       radioFrame('Основное представление', [['as-code', 'В виде кода'], ['as-description', 'В виде наименования']], catalog().defaultPresentation,
         value => { model.setDefaultPresentation(value); rerender(); }));
     page.append(frames, ...renderAttributesTree(), ...renderTablePartsTree());
@@ -314,7 +331,7 @@ function catalogWindow(api, onChange, around, host) {
   let membership = new Set();
   function renderSubsystemsPage() {
     const page = node('div', undefined, 'object-window-fields');
-    page.append(node('div', 'Подсистемы, в которых участвует справочник:', 'object-window-caption'), subsystemsTree(source.subsystems, membership, onChange));
+    page.append(node('div', `Подсистемы, в которых участвует ${source.kindTitle.toLowerCase()}:`, 'object-window-caption'), subsystemsTree(source.subsystems, membership, onChange));
     return page;
   }
   // «Функциональные опции»: the options of the project in a list of boxes
@@ -323,7 +340,7 @@ function catalogWindow(api, onChange, around, host) {
   // the subsystems are.
   let options = new Set();
   function renderOptionsPage() {
-    return optionsPage(source.functionalOptions, options, onChange, 'справочник');
+    return optionsPage(source.functionalOptions, options, onChange, source.kindTitle.toLowerCase());
   }
   /* What a palette edits: the catalog or a part of it chosen in the window
      (an attribute, a table part), each read and written by the key of a row
@@ -367,7 +384,7 @@ function catalogWindow(api, onChange, around, host) {
       data: renderDataPage, numbering: renderNumberingPage},
     open(opened) {
       source = opened;
-      model = createCatalogModel(source);
+      model = createCatalogModel(source, api.object());
       const marked = places => new Set((places || []).filter(place => place.member).map(place => place.id));
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);

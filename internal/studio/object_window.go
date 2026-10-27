@@ -55,6 +55,32 @@ type objectShape[T any] struct {
 	templates func(T) []metadata.ObjectTemplate
 }
 
+// referenceShape is the shape of an object of a kind stored as a reference
+// with parts - a catalog, an exchange plan: named names it, parts answers
+// its commands, attributes, table parts and templates.
+func referenceShape[T any](named func(T) (uuid.UUID, string),
+	parts func(T) ([]metadata.ObjectCommand, []metadata.Attribute, []metadata.TablePart, []metadata.ObjectTemplate)) objectShape[T] {
+	return objectShape[T]{
+		named: named,
+		commands: func(value T) []string {
+			commands, _, _, _ := parts(value)
+			names := make([]string, 0, len(commands))
+			for _, command := range commands {
+				names = append(names, command.Name)
+			}
+			return names
+		},
+		fields: func(value T) []string {
+			_, attributes, tableParts, _ := parts(value)
+			return metadata.DeclaredFieldKeys(attributes, tableParts)
+		},
+		templates: func(value T) []metadata.ObjectTemplate {
+			_, _, _, templates := parts(value)
+			return templates
+		},
+	}
+}
+
 // windowMarks are what the pages of a window that edit other objects mark,
 // of an object of Kind: «Подсистемы», «Функциональные опции», «Обмен
 // данными», «Является основанием для» of «Ввод на основании», «Права» -

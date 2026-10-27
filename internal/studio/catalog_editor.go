@@ -41,20 +41,9 @@ func (CatalogEditorSource) named(value metadata.CatalogDefinition) (uuid.UUID, s
 
 // catalogShape is how the window names a catalog and what its pages know
 // of it: its commands, the fields a right is given to, its templates.
-var catalogShape = objectShape[metadata.CatalogDefinition]{
-	named: CatalogEditorSource{}.named,
-	commands: func(value metadata.CatalogDefinition) []string {
-		names := make([]string, 0, len(value.Commands))
-		for _, command := range value.Commands {
-			names = append(names, command.Name)
-		}
-		return names
-	},
-	fields: func(value metadata.CatalogDefinition) []string {
-		return metadata.DeclaredFieldKeys(value.Attributes, value.TableParts)
-	},
-	templates: func(value metadata.CatalogDefinition) []metadata.ObjectTemplate { return value.Templates },
-}
+var catalogShape = referenceShape(CatalogEditorSource{}.named, func(value metadata.CatalogDefinition) ([]metadata.ObjectCommand, []metadata.Attribute, []metadata.TablePart, []metadata.ObjectTemplate) {
+	return value.Commands, value.Attributes, value.TableParts, value.Templates
+})
 
 // NamedPath is a part of an object kept in a file of its own: its name and
 // where the file lies.

@@ -1,7 +1,6 @@
 package studio
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
@@ -101,7 +100,5 @@ func (workspace *Workspace) DeleteWebService(relative, expectedRevision string) 
 }
 
 func registerWebServiceEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	registerObjectEditor(routes, webServiceEditorAddress, workspace.ReadWebServiceEditor, workspace.SaveWebServiceWindow, func(string) (WebServiceEditorSource, error) {
-		return WebServiceEditorSource{}, fmt.Errorf("%w: %s", ErrNoNewObject, metadata.WebServiceKind)
-	}, workspace.DeleteWebService)
+	registerObjectEditor(routes, webServiceEditorAddress, workspace.ReadWebServiceEditor, workspace.SaveWebServiceWindow, noNewObject[WebServiceEditorSource](metadata.WebServiceKind), workspace.DeleteWebService)
 }

@@ -104,7 +104,8 @@ type Node struct {
 // address each is read, written, made and deleted at. They give way to one
 // window built by the descriptor of the kind (BLOCKS 2с, «окно и свойства
 // объекта — один построитель»).
-var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.RoleKind: roleEditorAddress,
+var objectEditors = map[metadata.Kind]string{metadata.CatalogKind: catalogEditorAddress, metadata.ExchangePlanKind: exchangePlanEditorAddress,
+	metadata.RoleKind:     roleEditorAddress,
 	metadata.ConstantKind: constantEditorAddress, metadata.CommonPictureKind: pictureEditorAddress,
 	metadata.CommonTemplateKind: templateEditorAddress, metadata.WSReferenceKind: wsReferenceEditorAddress,
 	metadata.WebServiceKind: webServiceEditorAddress, metadata.HTTPServiceKind: httpServiceEditorAddress,
@@ -343,6 +344,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerRoleRoutes(routes, workspace)
 	registerRootModuleRoutes(routes, workspace)
 	registerCatalogEditorRoutes(routes, workspace)
+	registerExchangePlanEditorRoutes(routes, workspace)
 	registerConstantEditorRoutes(routes, workspace)
 	registerPictureEditorRoutes(routes, workspace)
 	registerTemplateEditorRoutes(routes, workspace)
