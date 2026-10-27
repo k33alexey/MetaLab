@@ -1149,6 +1149,17 @@ function paletteFields(context) {
       if (web) { link.href = address; link.target = '_blank'; link.rel = 'noopener'; }
       return link;
     }
+    // A picture: of the platform by its name, of the project by its own
+    // (metadata.PictureReference); «…» waits for the window «Выбор
+    // картинки», an item of its own; the cross takes it away.
+    if (row.field === 'picture') {
+      const picture = subject.get(row.key), shown = node('input');
+      shown.readOnly = true;
+      shown.value = picture ? picture.standard || context.project?.pictures?.find(item => item.id === picture.item)?.name || picture.item || '' : '';
+      const pick = fieldChoiceButton(row.title, () => {});
+      pick.disabled = true;
+      return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, !picture)]);
+    }
     if (row.field === 'module' || row.field === 'window') {
       const link = node('button', 'Открыть', 'object-palette-link');
       link.type = 'button';
@@ -1266,6 +1277,30 @@ function rowsPage(windowRows, palette, fields, subject, openModule) {
   return page;
 }
 
+/* optionsPage is the page «Функциональные опции» of the window of an
+   object (spravochnik.md, page 3; podsistema.md, «Окно»; snapshots
+   okno-03, podsistema/05): «Функциональные опции, в которых участвует
+   <вид>:» over the options of the project (places, MemberPlace) in the
+   order of the tree, a box at each marked where the object is in its
+   content (options, a Set the boxes change); changed() is called on every
+   mark. The first row stands chosen, and the row chosen keeps the focus
+   when the list is drawn anew. */
+function optionsPage(places, options, changed, kind) {
+  const page = node('div', undefined, 'object-window-fields');
+  let list, current = places?.[0]?.id ?? null;
+  const draw = () => {
+    const fresh = checkList((places || []).map(place => ({key: place.id, caption: place.name, checked: options.has(place.id)})), current,
+      (key, checked) => { if (checked) options.add(key); else options.delete(key); changed(); draw(); },
+      key => { current = key; draw(); });
+    fresh.classList.add('object-window-checks');
+    if (list) { const focused = list.contains(document.activeElement); list.replaceWith(fresh); if (focused) fresh.focus(); }
+    list = fresh;
+  };
+  draw();
+  page.append(node('div', `Функциональные опции, в которых участвует ${kind}:`, 'object-window-caption'), list);
+  return page;
+}
+
 /* subsystemsTree is the tree of the page «Подсистемы» of the window of an
    object (spravochnik.md, page 2; snapshot okno-02): the subsystems of the
    project by their parents (places, MemberPlace), a box at each marked
@@ -1326,7 +1361,7 @@ function windowHeadFields(source, object, typed, cleanups) {
    is left (paletteFields). around holds the palette, its title, the opening
    of a module, the actions and the closing of the window. */
 function objectWindowEditor(host, onChange, around, {target, own = () => ({pages: {}}), valueChecks}) {
-  let source = null, frame = null, marks = new Set(), cleanups = [];
+  let source = null, frame = null, marks = new Set(), options = new Set(), cleanups = [];
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
@@ -1349,6 +1384,11 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     cleanups.forEach(destroy => destroy());
     cleanups = [];
     if (kind.pages?.[key]) return kind.pages[key]();
+    // «Функциональные опции»: the options of the project, a box at each,
+    // marked where the object is in its content (podsistema.md, «Окно»;
+    // snapshot podsistema/05), written into the options as the
+    // subsystems are.
+    if (key === 'functional-options') return optionsPage(source.functionalOptions, options, onChange, source.kindTitle.toLowerCase());
     if (key === 'subsystems') {
       // The caption above the tree is not shot for any kind but a catalog
       // (series 2.584, В2): the tree stands alone.
@@ -1383,6 +1423,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       source = structuredClone(value);
       kind.reset?.();
       marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
+      options = new Set((source.functionalOptions || []).filter(place => place.member).map(place => place.id));
       frame = kind.draw ? pagelessWindow() : showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: 'main', page: renderPage});
       renderPalette();
     },
@@ -1390,7 +1431,11 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     // back leaves the window unchanged; a window of no pages marks none.
     value() {
       if (!source) return null;
-      return kind.value ? kind.value(structuredClone(object())) : {...structuredClone(object()), subsystems: [...marks].sort()};
+      if (kind.value) return kind.value(structuredClone(object()));
+      // A kind of the page «Функциональные опции» writes the options marked;
+      // its own subsystems are a property of its own, not marks of a page.
+      if (source.pages?.some(page => page.key === 'functional-options')) return {...structuredClone(object()), functionalOptions: [...options].sort()};
+      return {...structuredClone(object()), subsystems: [...marks].sort()};
     },
     // Shows the palette of the object itself, as a click on its node does.
     showPalette() {

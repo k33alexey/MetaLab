@@ -119,6 +119,11 @@ var kindNewObjectOf = map[Kind]newObject{
 		module, _ := project.ObjectModulePath(string(WebSocketClientKind), name, string(kinds.ClientModule)+".bsl")
 		return Fresh{Value: WebSocketClientDefinition{Format: CurrentFormat, ID: id, Name: name, Timeout: &timeout}, Files: []FreshFile{{Path: module}}}
 	},
+	// podsistema.md, «Новая подсистема»: in the command interface, not of
+	// one command, in the contents of the help.
+	SubsystemKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
+		return Fresh{Value: SubsystemDefinition{Format: CurrentFormat, ID: id, Name: name, IncludeInCommandInterface: true, IncludeHelpInContents: true}}
+	},
 	// paket-xdto.md, «Новый пакет»: the namespace
 	// «http://www.sample-package.org» and the body saying the qualified
 	// form of an element true, of an attribute false, in the prototype's

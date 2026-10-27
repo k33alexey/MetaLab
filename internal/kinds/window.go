@@ -20,6 +20,9 @@ var windowPages = map[Kind][]Page{
 	HTTPService: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"templates", "Шаблоны URL"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
 	},
+	// docs/block-00/podsistema.md, «Окно»; snapshots podsistema/04-07. «Состав»
+	// comes with its item.
+	Subsystem: {{"main", "Основные"}, {"functional-options", "Функциональные опции"}, {"other", "Прочее"}},
 	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01-04.
 	WebService: {
 		{"main", "Основные"}, {"subsystems", "Подсистемы"}, {"operations", "Операции"}, {"sessions", "Управление сеансами"}, {"other", "Прочее"},
@@ -68,6 +71,16 @@ var windowRows = map[Kind]map[string][]WindowRow{
 		"main":     append(slices.Clone(serviceIdentityRows), WindowRow{Key: "rootUrl", Title: "Корневой URL:"}),
 		"sessions": serviceSessionRows,
 		"other":    {{Key: string(ServiceModule), Title: "Модуль", Button: true}},
+	},
+	// docs/block-00/podsistema.md, «Окно»; snapshots podsistema/04, 05, 07:
+	// the flags under the comment, «Командный интерфейс» a button, the
+	// explanation and the picture; the help a button over its flag. The
+	// page of the options is the marks of the options (objectWindowEditor).
+	Subsystem: {
+		"main": append(slices.Clone(serviceIdentityRows), WindowRow{Key: "includeInCommandInterface", Title: "Включать в командный интерфейс"},
+			WindowRow{Key: "useOneCommand", Title: "Подсистема с одной командой"}, WindowRow{Key: "commandInterface", Title: "Командный интерфейс", Button: true},
+			WindowRow{Key: "explanation", Title: "Пояснение:", Above: true}, WindowRow{Key: "picture", Title: "Картинка:"}),
+		"other": {{Key: "help", Title: "Справочная информация", Button: true}, {Key: "includeHelpInContents", Title: "Включать в содержание справки"}},
 	},
 	// docs/block-00/web-servis.md, «Окно»; snapshots web-servis/01, 03, 04:
 	// the captions end in a colon, the reuse of sessions stands above its
@@ -217,6 +230,9 @@ const (
 	// XMLTypesField is a list of types named by the schema - the members of
 	// a union of an XDTO package.
 	XMLTypesField = "xml-types"
+	// PictureField is a picture - of the platform by its name, of the
+	// project by its own - chosen by the window «Выбор картинки».
+	PictureField = "picture"
 	// PackagesField is the XDTO packages a web service uses: the namespaces
 	// shown, «…» choosing them, the cross clearing them (web-servis.md).
 	PackagesField = "packages"
@@ -324,6 +340,30 @@ var palettes = map[Kind][]PaletteTab{
 			{Key: "availableForAppearance", Title: "Доступность для оформления", Field: FlagField, Important: true, Needs: []string{"availableForChoice"},
 				Description: "Картинку можно выбрать в приложении и для элемента условного оформления."},
 		})},
+	},
+	// docs/block-00/podsistema.md, «Палитра»; snapshots podsistema/17, 18:
+	// «Основные» with «Состав: Открыть» and the two flags, «Представление»
+	// with «Командный интерфейс: Открыть», the explanation and the picture,
+	// «Справочная информация» with its flag and «Открыть».
+	Subsystem: {
+		{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("подсистемы", "о подсистеме"), []PaletteRow{
+			{Field: SeparatorField, Important: true},
+			{Key: "members", Title: "Состав", Field: WindowField, Important: true, Description: "Объекты, которые входят в подсистему."},
+			{Key: "includeInCommandInterface", Title: "Включать в командный интерфейс", Field: FlagField, Important: true,
+				Description: "Становится ли подсистема разделом командного интерфейса."},
+			{Key: "useOneCommand", Title: "Подсистема с одной командой", Field: FlagField, Important: true,
+				Description: "Открывается ли раздел одной командой вместо панели своих команд."},
+		})},
+		{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
+			{Key: "commandInterface", Title: "Командный интерфейс", Field: WindowField, Important: true, Description: "Команды раздела, их группы и видимость."},
+			{Key: "explanation", Title: "Пояснение", Field: LocalizedField, Lines: 3, Important: true, Description: "Текст, которым раздел пояснён пользователю."},
+			{Key: "picture", Title: "Картинка", Field: PictureField, Important: true, Description: "Картинка раздела в панели разделов."},
+		}},
+		{Key: "help", Title: "Справочная информация", Important: true, Rows: []PaletteRow{
+			{Key: "includeHelpInContents", Title: "Включать в содержание справки", Field: FlagField, Important: true,
+				Description: "Входит ли справка подсистемы в содержание справки приложения."},
+			{Key: "help", Title: "Справочная информация", Field: WindowField, Important: true, Description: "Справка подсистемы."},
+		}},
 	},
 	// docs/block-00/paket-xdto.md, «Палитра»; snapshot paket-xdto/01: one
 	// tab - the name, the synonym, the comment, the namespace and «Пакет:

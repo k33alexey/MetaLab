@@ -413,21 +413,9 @@ function createCatalogEditor(host, onChange, around = {}) {
   // with a current row, marked where the catalog itself is in its content
   // (spravochnik.md, page 3; snapshot okno-03); written into the options as
   // the subsystems are.
-  let options = new Set(), currentOption = null;
+  let options = new Set();
   function renderOptionsPage() {
-    const page = node('div', undefined, 'object-window-fields'), places = source.functionalOptions || [];
-    let list;
-    const draw = () => {
-      const fresh = checkList(places.map(place => ({key: place.id, caption: place.name, checked: options.has(place.id)})), currentOption,
-        (key, checked) => { if (checked) options.add(key); else options.delete(key); onChange(); draw(); },
-        key => { currentOption = key; draw(); });
-      fresh.classList.add('object-window-checks');
-      if (list) { const focused = list.contains(document.activeElement); list.replaceWith(fresh); if (focused) fresh.focus(); }
-      list = fresh;
-    };
-    draw();
-    page.append(node('div', 'Функциональные опции, в которых участвует справочник:', 'object-window-caption'), list);
-    return page;
+    return optionsPage(source.functionalOptions, options, onChange, 'справочник');
   }
   // «Обмен данными»: the exchange plans of the project, a box and the icon
   // of a plan at each, marked where the plan registers the changes of the
@@ -640,7 +628,6 @@ function createCatalogEditor(host, onChange, around = {}) {
       const marked = places => new Set((places || []).filter(place => place.member).map(place => place.id));
       membership = marked(source.subsystems);
       options = marked(source.functionalOptions);
-      currentOption = source.functionalOptions?.[0]?.id ?? null;
       exchange = new Map((source.exchangePlans || []).filter(place => place.member).map(place => [place.id, place.autoRecord || '']));
       currentPlan = source.exchangePlans?.[0]?.id ?? null;
       basisFor = inTreeOrder(withSelf((source.basisFor || []).map(place => place.id), (source.catalog.basedOn || []).includes(source.catalog.id)));

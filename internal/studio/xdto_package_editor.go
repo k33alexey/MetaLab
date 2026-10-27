@@ -142,7 +142,7 @@ func (workspace *Workspace) SaveXDTOPackageWindow(relative string, window XDTOPa
 	}
 	// The description is compared at its own revision: the body is written
 	// by now, and a name of the package refused moves nothing.
-	written, err := saveObjectWindow(workspace, relative, description.Revision, window.XDTOPackageDefinition, nil,
+	written, err := saveObjectWindow(workspace, relative, description.Revision, window.XDTOPackageDefinition, windowMarks{},
 		func(string) (metadata.XDTOPackageDefinition, windowHead, error) {
 			head := opened.windowHead
 			head.Revision = description.Revision

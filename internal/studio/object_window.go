@@ -17,6 +17,18 @@ import (
 type windowHead struct {
 	objectHead
 	Subsystems []MemberPlace `json:"subsystems"`
+	// FunctionalOptions are the options of the project marked where the
+	// object is in their content - the page «Функциональные опции» of a
+	// kind whose window has it (a subsystem).
+	FunctionalOptions []MemberPlace `json:"functionalOptions,omitempty"`
+}
+
+// windowMarks are the marks of the pages of a window that edit other
+// objects: «Подсистемы», «Функциональные опции» of an object of Kind;
+// none where the page was not shown.
+type windowMarks struct {
+	Subsystems, FunctionalOptions *[]uuid.UUID
+	Kind                          metadata.Kind
 }
 
 // readObjectWindow reads the description of an object of a kind that has a
@@ -106,7 +118,7 @@ func saveObjectWindowAs[S objectWindowSource[T], T any](workspace *Workspace, re
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	var kind S
-	written, err := saveObjectWindow(workspace, relative, revision, value, subsystems, func(relative string) (T, windowHead, error) {
+	written, err := saveObjectWindow(workspace, relative, revision, value, windowMarks{Subsystems: subsystems}, func(relative string) (T, windowHead, error) {
 		opened, err := read(relative)
 		object, head := opened.windowOf()
 		return object, head, err
@@ -123,7 +135,7 @@ func saveObjectWindowAs[S objectWindowSource[T], T any](workspace *Workspace, re
 // by read, identity names an object by its identifier and name, subsystems
 // are the marks of the page «Подсистемы», none where it was not shown.
 // Answers where the description lies after.
-func saveObjectWindow[T any](workspace *Workspace, relative, revision string, value T, subsystems *[]uuid.UUID,
+func saveObjectWindow[T any](workspace *Workspace, relative, revision string, value T, marks windowMarks,
 	read func(string) (T, windowHead, error), identity func(T) (uuid.UUID, string)) (string, error) {
 	opened, head, err := read(relative)
 	if err != nil {
@@ -147,8 +159,11 @@ func saveObjectWindow[T any](workspace *Workspace, relative, revision string, va
 		return "", err
 	}
 	var pages []membership
-	if subsystems != nil {
-		pages = append(pages, subsystemMembership(id, head.Subsystems, *subsystems))
+	if marks.Subsystems != nil {
+		pages = append(pages, subsystemMembership(id, head.Subsystems, *marks.Subsystems))
+	}
+	if marks.FunctionalOptions != nil {
+		pages = append(pages, optionMembership(marks.Kind, id, head.FunctionalOptions, *marks.FunctionalOptions))
 	}
 	written, _, err := workspace.writeObjectWindowLocked(relative, openedName, name, encoded.String(), revision, pages, nil)
 	return written, err
