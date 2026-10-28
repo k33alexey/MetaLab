@@ -742,7 +742,7 @@ func TestAFieldRefusesWhatIsWrongAsAColumn(t *testing.T) {
 		"плотность варианта": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 90.png, density: 90}]}",
 			"items[0].header_picture.variants[0].density must be one of"},
 		"два варианта на место": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 100.png, density: 100}, {file: a.png, density: 100}]}",
-			"items[0].header_picture.variants[1] is a second image for the same density and interface"},
+			"items[0].header_picture.variants[1] is a second image for the same density, direction and browser"},
 		"набор и файл под одним именем": {"kind: input-field, header_picture: {file: Picture, variants: [{file: 100.png, density: 100}]}, footer_picture: {file: picture, variants: [{file: 100.png, density: 100}]}",
 			"items[0].footer_picture.file is the file of header_picture too"},
 	} {

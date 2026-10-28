@@ -83,7 +83,7 @@ type PictureImages struct {
 	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
 	// Variants say which file of the folder is drawn where. Left out, a file
 	// is named by the density it is drawn at, 100.png being the base, and
-	// stands for the current interface only.
+	// stands for any direction and any browser.
 	Variants []PictureVariant `yaml:"variants,omitempty" json:"variants,omitempty"`
 }
 
@@ -93,31 +93,42 @@ type PicturePixel struct {
 	Y int `yaml:"y" json:"y"`
 }
 
-// PictureInterface is the variant of the client's interface a picture variant
-// is drawn for. Empty is the current interface, Taxi; the other ML draws is
-// compact Taxi. The prototype draws four more - 8.2, 8.2 of the ordinary
-// application, 8.0 and mobile Taxi, kept in 832, 240 and 379 pictures of the
-// configurations being moved - and ML carries none of them: the looks of the
-// ordinary application, of old modes of compatibility and of the mobile
-// client (METADATA-OBJECTS, «Варианты»; the owner's decisions of 14 and
-// 15.10.2026). A description naming one is refused.
-type PictureInterface string
+// PictureDirection is the direction of writing a picture variant is drawn
+// for, spelled as the model spells an enumeration (help, form_ZipPictureEditor;
+// the configurator writes ltr, rtl, ltrCanFlipHorizontally and
+// rtlCanFlipHorizontally). Empty is any direction.
+type PictureDirection string
 
-const (
-	CurrentPictureInterface PictureInterface = ""
-	TaxiCompactInterface    PictureInterface = "taxi-compact"
-)
+var pictureDirections = []PictureDirection{"ltr", "rtl", "ltr-can-flip-horizontally", "rtl-can-flip-horizontally"}
 
-// PictureVariant is one image of a picture: the file, the density and the
-// interface it is drawn at, and how it is drawn.
+// PictureWebBrowser is the browser of the web client a picture variant is
+// drawn in. The configurator offers one besides any:
+// MicrosoftInternetExplorerMicrosoftEdgeHTML. Empty is any browser.
+type PictureWebBrowser string
+
+var pictureWebBrowsers = []PictureWebBrowser{"microsoft-internet-explorer-microsoft-edge-html"}
+
+// PictureVariant is one image of a picture: the file, and the density,
+// direction and browser it is drawn at - the three that tell one variant from
+// another - and how it is drawn.
+//
+// ML draws one interface, so a variant has no interface of its own. The
+// prototype names six a variant may be drawn for - its main one, its compact
+// and mobile ones, 8.2, 8.2 of the ordinary application and 8.0 - and ML
+// carries none of them: the looks of the ordinary application, of old modes of
+// compatibility and of the mobile client (the owner's decisions of 14 and
+// 15.10.2026), and the compact one (28.10.2026). A variant naming the main one
+// is a variant of ML's single interface (METADATA-OBJECTS, «Варианты»), and a
+// description naming an interface is refused.
 //
 // One file may stand for several variants - the configurations being moved
 // draw the 8.2 interface and the 8.2 ordinary application from one file in
 // most of their pictures - so the variant names the file rather than being it.
 type PictureVariant struct {
-	File      string           `yaml:"file" json:"file"`
-	Density   ScreenDensity    `yaml:"density" json:"density"`
-	Interface PictureInterface `yaml:"interface,omitempty" json:"interface,omitempty"`
+	File       string            `yaml:"file" json:"file"`
+	Density    ScreenDensity     `yaml:"density" json:"density"`
+	Direction  PictureDirection  `yaml:"direction,omitempty" json:"direction,omitempty"`
+	WebBrowser PictureWebBrowser `yaml:"web_browser,omitempty" json:"webBrowser,omitempty"`
 	// The flag «Шаблонная», drawing the image in the current colour in the
 	// mobile application on iOS (help, form_ZipPictureEditor), is not
 	// carried: ML has no mobile application (METADATA-OBJECTS, «Мобильное
@@ -166,19 +177,16 @@ func validatePictureImages(images PictureImages) []string {
 		if !slices.Contains(screenDensities, variant.Density) {
 			issues = append(issues, prefix+".density must be one of 85, 100, 125, 150, 175, 200, 300 or 400")
 		}
-		switch variant.Interface {
-		case CurrentPictureInterface, TaxiCompactInterface:
-		default:
-			issues = append(issues, prefix+".interface must be taxi-compact, or left out for the current interface")
-		}
+		issues = append(issues, oneOfList(prefix+".direction", variant.Direction, pictureDirections, false)...)
+		issues = append(issues, oneOfList(prefix+".web_browser", variant.WebBrowser, pictureWebBrowsers, false)...)
 		if variant.GlyphWidth < 0 || variant.GlyphHeight < 0 {
 			issues = append(issues, prefix+" must not have a negative glyph size")
 		}
-		// Two images for one density of one interface leave nothing to say
-		// which is drawn.
-		key := fmt.Sprintf("%d:%s", variant.Density, variant.Interface)
+		// Two images for one density, direction and browser leave nothing to
+		// say which is drawn.
+		key := fmt.Sprintf("%d:%s:%s", variant.Density, variant.Direction, variant.WebBrowser)
 		if seen[key] {
-			issues = append(issues, prefix+" is a second image for the same density and interface")
+			issues = append(issues, prefix+" is a second image for the same density, direction and browser")
 		}
 		seen[key] = true
 	}

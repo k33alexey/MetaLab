@@ -120,9 +120,9 @@ type PictureReference struct {
 	LoadTransparent  bool          `yaml:"load_transparent,omitempty" json:"loadTransparent,omitempty"`
 	TransparentPixel *PicturePixel `yaml:"transparent_pixel,omitempty" json:"transparentPixel,omitempty"`
 	// Variants make a picture of its own a set of images under different
-	// densities and interfaces, the way a common picture is one. File then
-	// names a folder rather than a file - an identifier, so never taken for
-	// an image - holding the files the variants name. The prototype keeps
+	// densities, directions and browsers, the way a common picture is one.
+	// File then names a folder rather than a file - an identifier, so never
+	// taken for an image - holding the files the variants name. The prototype keeps
 	// such a set as Picture.zip, eight densities, the 8.2 image and the
 	// description of the set: once in the configurations being moved, a
 	// button of lombard1. Only a picture of an element of a form carries one

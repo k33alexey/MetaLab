@@ -1,8 +1,10 @@
 package metadata
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -159,9 +161,9 @@ transparent_pixel: {x: 14, y: 8}
 variants:
   - {file: 100.png, density: 100, glyph_width: 16, glyph_height: 16}
   - {file: 200.png, density: 200}
-  - {file: Picture.png, density: 100, interface: taxi-compact, glyph_width: 16, glyph_height: 16}
+  - {file: Picture.png, density: 100, direction: rtl, glyph_width: 16, glyph_height: 16}
   - {file: picture.png, density: 150}
-  - {file: l.png, density: 150, interface: taxi-compact}
+  - {file: l.png, density: 150, web_browser: microsoft-internet-explorer-microsoft-edge-html}
 `)
 	// The prototype finds a file with case ignored, and keeps files no
 	// variant names.
@@ -180,9 +182,9 @@ variants:
 		t.Fatalf("the variants were lost: %+v", picture.Variants)
 	case picture.Variants[0].GlyphWidth != 16 || picture.Variants[0].GlyphHeight != 16:
 		t.Fatalf("the glyph size was lost: %+v", picture.Variants[0])
-	case picture.Variants[2].Interface != TaxiCompactInterface || picture.Variants[3].Interface != CurrentPictureInterface ||
-		picture.Variants[4].Interface != TaxiCompactInterface || picture.Variants[0].Interface != CurrentPictureInterface:
-		t.Fatalf("the interfaces were lost: %+v", picture.Variants)
+	case picture.Variants[2].Direction != "rtl" || picture.Variants[3].Direction != "" || picture.Variants[3].WebBrowser != "" ||
+		picture.Variants[4].WebBrowser != "microsoft-internet-explorer-microsoft-edge-html" || picture.Variants[0].Direction != "":
+		t.Fatalf("the directions and browsers were lost: %+v", picture.Variants)
 	}
 	picture.Variants[0].File = "Подменено"
 	picture.TransparentPixel.X = 0
@@ -234,16 +236,19 @@ func TestCommonPictureFilesDifferingInCaseAreRefused(t *testing.T) {
 func TestBrokenCommonPicturesAreRefused(t *testing.T) {
 	t.Parallel()
 	for name, broken := range map[string]struct{ body, want string }{
-		"пиксель без прозрачности": {"transparent_pixel: {x: 1, y: 1}", "belongs to a picture loaded transparent only"},
-		"пиксель за краем":         {"load_transparent: true\ntransparent_pixel: {x: -1, y: 1}", "must be a point inside the image"},
-		"плотность не с лестницы":  {"variants: [{file: 110.png, density: 110}]", "density must be one of"},
-		"интерфейс не существует":  {"variants: [{file: 100.png, density: 100, interface: windows-95}]", "interface must be"},
-		"глиф отрицательный":       {"variants: [{file: 100.png, density: 100, glyph_width: -1}]", "negative glyph size"},
-		"файл в чужой папке":       {"variants: [{file: ../100.png, density: 100}]", "must be the name of an image file"},
-		"файл не образ":            {"variants: [{file: 100.txt, density: 100}]", "must be the name of an image file"},
-		"описание вместо образа":   {"variants: [{file: object.yaml, density: 100}]", "must be the name of an image file"},
-		"два образа на одно место": {"variants:\n  - {file: a.png, density: 100, interface: \"8.2\"}\n  - {file: b.png, density: 100, interface: \"8.2\"}",
-			"second image for the same density and interface"},
+		"пиксель без прозрачности":  {"transparent_pixel: {x: 1, y: 1}", "belongs to a picture loaded transparent only"},
+		"пиксель за краем":          {"load_transparent: true\ntransparent_pixel: {x: -1, y: 1}", "must be a point inside the image"},
+		"плотность не с лестницы":   {"variants: [{file: 110.png, density: 110}]", "density must be one of"},
+		"направление не существует": {"variants: [{file: 100.png, density: 100, direction: up}]", "direction must be one of"},
+		"браузер не существует":     {"variants: [{file: 100.png, density: 100, web_browser: lynx}]", "web_browser must be one of"},
+		"глиф отрицательный":        {"variants: [{file: 100.png, density: 100, glyph_width: -1}]", "negative glyph size"},
+		"файл в чужой папке":        {"variants: [{file: ../100.png, density: 100}]", "must be the name of an image file"},
+		"файл не образ":             {"variants: [{file: 100.txt, density: 100}]", "must be the name of an image file"},
+		"описание вместо образа":    {"variants: [{file: object.yaml, density: 100}]", "must be the name of an image file"},
+		"два образа на одно место": {"variants:\n  - {file: a.png, density: 100, direction: rtl}\n  - {file: b.png, density: 100, direction: rtl}",
+			"second image for the same density, direction and browser"},
+		"два образа на один браузер": {"variants:\n  - {file: a.png, density: 150, web_browser: microsoft-internet-explorer-microsoft-edge-html}\n" +
+			"  - {file: b.png, density: 150, web_browser: microsoft-internet-explorer-microsoft-edge-html}", "second image for the same density, direction and browser"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -261,34 +266,37 @@ title: {ru: Печать}
 			}
 		})
 	}
-	// One file for two interfaces at one density is the ordinary case.
+	// One file for two directions or two browsers at one density is a set
+	// of three variants: the key is the density, the direction and the
+	// browser together.
 	if _, err := DecodeCommonPicture("object.yaml", strings.NewReader(`format: 1
 id: `+commonPictureID+`
 name: Печать
 title: {ru: Печать}
 variants:
   - {file: Picture.png, density: 100}
-  - {file: Picture.png, density: 100, interface: taxi-compact}
+  - {file: Picture.png, density: 100, direction: rtl}
+  - {file: Picture.png, density: 100, web_browser: microsoft-internet-explorer-microsoft-edge-html}
 `), metadataConfiguration()); err != nil {
-		t.Fatalf("one file for two interfaces: %v", err)
+		t.Fatalf("one file for two directions and a browser: %v", err)
 	}
 }
 
-// The looks of the ordinary application, of old modes of compatibility and
-// of the mobile client, and the flag drawing a variant in the current colour
-// in the mobile application on iOS, are not carried (METADATA-OBJECTS,
-// «Варианты» and «Мобильное приложение»): a variant naming one is refused.
-// The values are written here, from the help, not read from the code.
-// Defect caught: a variant of a look ML does not draw, or the flag of a
-// client it does not have, taken and carried.
+// ML draws one interface (METADATA-OBJECTS, «Варианты», the owner's decision
+// of 28.10.2026): a variant has no interface at all, and a description naming
+// one - the compact and the main one of the prototype included - is refused.
+// The flag drawing a variant in the current colour in the mobile application
+// on iOS is not carried either («Мобильное приложение»). The six interfaces
+// are the help's, written here rather than read from the code. Defect caught:
+// a second interface, or a look ML does not draw, taken and carried.
 func TestPictureVariantsOfLooksMLDoesNotDrawAreRefused(t *testing.T) {
 	t.Parallel()
 	body := func(variant string) string {
 		return "format: 1\nid: " + commonPictureID + "\nname: Печать\ntitle: {ru: Печать}\nvariants:\n  - {file: Picture.png, density: 100}\n  - " + variant + "\n"
 	}
-	for _, look := range []string{`"8.2"`, "8.2-ordinary-application", `"8.0"`, "taxi-mobile"} {
+	for _, look := range []string{"main", "compact", "mobile", `"8.2"`, "8.2-ordinary-application", `"8.0"`} {
 		_, err := DecodeCommonPicture("object.yaml", strings.NewReader(body("{file: Picture.png, density: 150, interface: "+look+"}")), metadataConfiguration())
-		if err == nil || !strings.Contains(err.Error(), "variants[1].interface must be taxi-compact, or left out for the current interface") {
+		if err == nil || !strings.Contains(err.Error(), "field interface not found") {
 			t.Errorf("interface %s: %v", look, err)
 		}
 	}
@@ -296,8 +304,61 @@ func TestPictureVariantsOfLooksMLDoesNotDrawAreRefused(t *testing.T) {
 		!strings.Contains(err.Error(), "field template not found") {
 		t.Errorf("the flag of a template: %v", err)
 	}
-	if _, err := DecodeCommonPicture("object.yaml", strings.NewReader(body("{file: Picture.png, density: 150, interface: taxi-compact}")), metadataConfiguration()); err != nil {
-		t.Errorf("compact Taxi: %v", err)
+}
+
+// A set of variants is read and written back the same: every direction the
+// configurator writes (ltr, rtl and both that can be flipped, in the
+// manifests it saved, docs/materials/block-00/obshchaya-kartinka/manifest),
+// its one browser, the glyph size of the mode of a collection, and a variant
+// for any direction and browser, which names neither. Defect caught: a
+// direction or a browser lost on the way through the description, or one
+// written where the variant had none.
+func TestPictureVariantsAreWrittenAsTheyWereRead(t *testing.T) {
+	t.Parallel()
+	source := `format: 1
+id: ` + commonPictureID + `
+name: Печать
+title:
+  ru: Печать
+variants:
+  - file: mc.png
+    density: 150
+    direction: rtl
+    web_browser: microsoft-internet-explorer-microsoft-edge-html
+    glyph_width: 16
+    glyph_height: 16
+  - file: l.png
+    density: 100
+    direction: ltr-can-flip-horizontally
+  - file: h.png
+    density: 200
+    direction: rtl-can-flip-horizontally
+  - file: m.png
+    density: 150
+    direction: ltr
+  - file: m.png
+    density: 100
+`
+	picture, err := DecodeCommonPicture("object.yaml", strings.NewReader(source), metadataConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []PictureVariant{
+		{File: "mc.png", Density: 150, Direction: "rtl", WebBrowser: "microsoft-internet-explorer-microsoft-edge-html", GlyphWidth: 16, GlyphHeight: 16},
+		{File: "l.png", Density: 100, Direction: "ltr-can-flip-horizontally"},
+		{File: "h.png", Density: 200, Direction: "rtl-can-flip-horizontally"},
+		{File: "m.png", Density: 150, Direction: "ltr"},
+		{File: "m.png", Density: 100},
+	}
+	if !reflect.DeepEqual(picture.Variants, want) {
+		t.Fatalf("variants = %+v", picture.Variants)
+	}
+	var written bytes.Buffer
+	if err := Encode(&written, picture); err != nil {
+		t.Fatal(err)
+	}
+	if written.String() != source {
+		t.Fatalf("written differently:\n%s", written.String())
 	}
 }
 
