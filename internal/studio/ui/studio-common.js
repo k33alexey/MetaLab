@@ -890,10 +890,12 @@ function choiceOrder(tree) {
    kinds offered - «Общие» holding its own, as the project tree - with a box
    at every object and none at a branch, «ОК» and «Отмена» in a column at the
    right. tree is the server's (objectChoiceTree): [{title, icon, children,
-   objects: [{id, name, icon}]}]; chosen are the identifiers marked first.
-   Answers the identifiers marked, in the order of the tree, on «ОК», and
-   null on «Отмена». */
-async function chooseObjects(title, tree, chosen) {
+   objects: [{id, name, icon}]}]; chosen are the identifiers marked first;
+   open shows the branches open, as «Выбор объекта: Роль» of «Отбор по
+   ролям» shows its root (snapshot series-2.603/45). Answers the
+   identifiers marked, in the order of the tree, on «ОК», and null on
+   «Отмена». */
+async function chooseObjects(title, tree, chosen, {open = false} = {}) {
   const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = choiceOrder(tree);
   const [searchRow, search] = searchField('object-choice-search', () => draw());
   const rows = node('div', undefined, 'object-choice-tree');
@@ -906,7 +908,7 @@ async function chooseObjects(title, tree, chosen) {
       });
       const children = [...(group.children || []).map(branch).filter(Boolean), ...objects];
       if (text && !children.length) return null;
-      return treeNode({icon: group.icon, caption: group.title, children, open: !!text}).element;
+      return treeNode({icon: group.icon, caption: group.title, children, open: open || !!text}).element;
     };
     rows.replaceChildren(...tree.map(branch).filter(Boolean));
   }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -140,23 +141,40 @@ const (
 
 // SectionSubsystem is a subsection of a section - a subsystem under the
 // subsystem in the command interface - under «Подразделы», by its synonym
-// or its name.
+// or its name, and the roles that open a command of its content or of the
+// content of a subsystem under it: «Отбор по ролям» leaves out a subsection
+// none of its roles opens anything of (obshchee.md, «Видимость по ролям»).
 type SectionSubsystem struct {
-	ID    uuid.UUID `json:"id"`
-	Title string    `json:"title"`
+	ID    uuid.UUID   `json:"id"`
+	Title string      `json:"title"`
+	Opens []uuid.UUID `json:"opens"`
+}
+
+// SectionRole is a role «Отбор по ролям» offers, by its name, in the order
+// of the tree, as «Выбор объекта: Роль» lists it (snapshot
+// series-2.603/45).
+type SectionRole struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	Icon string    `json:"icon"`
 }
 
 // SubsystemSectionAnswer is what the window «Командный интерфейс» of a
-// subsystem reads: the groups of the section and its subsections.
+// subsystem reads: the groups of the section, its subsections, the roles of
+// the project and its name, the root of «Выбор объекта: Роль».
 type SubsystemSectionAnswer struct {
 	Groups      []SectionGroup     `json:"groups"`
 	Subsections []SectionSubsystem `json:"subsections"`
+	Roles       []SectionRole      `json:"roles"`
+	Project     string             `json:"project"`
 }
 
-// SectionCommandLine is a command of a group and the sign of its kind.
+// SectionCommandLine is a command of a group, the sign of its kind and the
+// roles that open it (metadata.RoleDefinition.OpensSectionLine).
 type SectionCommandLine struct {
 	metadata.SectionLine
-	Icon string `json:"icon"`
+	Icon  string      `json:"icon"`
+	Opens []uuid.UUID `json:"opens"`
 }
 
 // sectionGroups are the groups of a section in the prototype's order:
@@ -196,7 +214,8 @@ func sectionGroups(loaded *metadata.Catalog, language string, members []uuid.UUI
 	for _, line := range loaded.SectionLines(members) {
 		for index := range groups {
 			if sameGroup(groups[index].Group, line.Group) {
-				groups[index].Commands = append(groups[index].Commands, SectionCommandLine{SectionLine: line, Icon: sectionIcon(line)})
+				groups[index].Commands = append(groups[index].Commands, SectionCommandLine{SectionLine: line, Icon: sectionIcon(line),
+					Opens: openingRoles(loaded, []metadata.SectionLine{line})})
 				break
 			}
 		}
@@ -231,8 +250,36 @@ func (workspace *Workspace) SubsystemSection(subsystem uuid.UUID, members []uuid
 	if err != nil {
 		return SubsystemSectionAnswer{}, err
 	}
+	roles := []SectionRole{}
+	for _, role := range loaded.KindObjects(metadata.RoleKind) {
+		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Icon: kinds.Must(metadata.RoleKind).Icon})
+	}
 	return SubsystemSectionAnswer{Groups: sectionGroups(loaded, configuration.DefaultLanguage, members),
-		Subsections: subsections(loaded, configuration.DefaultLanguage, subsystem)}, nil
+		Subsections: subsections(loaded, configuration.DefaultLanguage, subsystem), Roles: roles, Project: configuration.Name}, nil
+}
+
+// openingRoles are the roles of the project that open one of lines at least,
+// in the order of the project.
+func openingRoles(loaded *metadata.Catalog, lines []metadata.SectionLine) []uuid.UUID {
+	opening := []uuid.UUID{}
+	for _, role := range loaded.Roles {
+		if slices.ContainsFunc(lines, role.OpensSectionLine) {
+			opening = append(opening, role.ID)
+		}
+	}
+	return opening
+}
+
+// contentLines are the commands the content of a subsystem and of every
+// subsystem under it gives their sections.
+func contentLines(loaded *metadata.Catalog, subsystem metadata.SubsystemDefinition) []metadata.SectionLine {
+	lines := loaded.SectionLines(subsystem.Members)
+	for _, item := range loaded.Subsystems {
+		if item.Parent != nil && *item.Parent == subsystem.ID {
+			lines = append(lines, contentLines(loaded, item)...)
+		}
+	}
+	return lines
 }
 
 // subsections are the subsystems under subsystem that are in the command
@@ -250,7 +297,7 @@ func subsections(loaded *metadata.Catalog, language string, subsystem uuid.UUID)
 		if text := item.Title[language]; text != "" {
 			title = text
 		}
-		found = append(found, SectionSubsystem{ID: item.ID, Title: title})
+		found = append(found, SectionSubsystem{ID: item.ID, Title: title, Opens: openingRoles(loaded, contentLines(loaded, item))})
 	}
 	return found
 }

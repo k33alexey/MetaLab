@@ -128,6 +128,10 @@ async function moveSubsystem(path, projectName) {
   }
 }
 
+/* roleFilters are the values «Отбор по ролям» of the windows of a command
+   interface had before, the last first - its list offers them again. */
+const roleFilters = [];
+
 /* showSubsystemCommandInterface is the window «Командный интерфейс» of a
    subsystem (podsistema.md, «Окно», «Командный интерфейс…», «Досъёмка
    28.10.2026», «Досъёмка 28.10.2026, поздний вечер»; snapshots podsistema/13,
@@ -135,7 +139,7 @@ async function moveSubsystem(path, projectName) {
    команду в другую группу команд», up, down, «Установить свойства по
    умолчанию», «Скрыть команды, невидимые по умолчанию» - a command whose box
    is off leaves the tree while it is pressed (konfiguraciya.md, В14 of series
-   2.595) - and «Отбор по ролям», unavailable until its item. The tree
+   2.595) - and «Отбор по ролям» (below). The tree
    «Команда — Видимость»: the groups of the section in the prototype's order
    (server, sectionGroups), each command of the content of the window - saved
    or not - in the group its placement says, or else its own, with the box of
@@ -159,6 +163,17 @@ async function moveSubsystem(path, projectName) {
    порядок». The menu of a row is the buttons' and that; the keys
    Cmd+Shift+Up and Cmd+Shift+Down move.
 
+   «Отбор по ролям» (obshchee.md, «Видимость по ролям»; snapshots
+   series-2.603/44-47, vopr-2.636/02-06): a field of the roles chosen by
+   their names, «<Не установлен>» while none, its list the values it had
+   before (roleFilters), not cleared from the keyboard; «…» opens «Выбор
+   объекта: Роль» - the project and its roles with boxes, the search
+   (chooseObjects) - and OK without a role takes the filter away. The
+   filter only narrows: a command stays that one of the roles opens
+   (server, metadata.RoleDefinition.OpensSectionLine), a group without one
+   goes, a subsection stays that they open something of, and «Подразделы»
+   goes without one; the boxes stay the common visibility.
+
    OK writes into the subsystem what the window changed: the visibility that
    differs from the default, and of a command standing out of its group
    always (the prototype's); the placement of a command moved or brought
@@ -169,7 +184,7 @@ async function moveSubsystem(path, projectName) {
 async function showSubsystemCommandInterface(api) {
   const object = api.object();
   const answer = await postJSON('/api/subsystem/section', {subsystem: object.id, members: object.members || []});
-  const groups = answer.groups, subsections = answer.subsections || [];
+  const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
   const commandOf = line => Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
@@ -212,7 +227,8 @@ async function showSubsystemCommandInterface(api) {
     const manual = subsectionOrder || [];
     return [...manual, ...subsections.filter(item => !manual.includes(item)).sort((one, other) => one.title.localeCompare(other.title, 'ru'))];
   };
-  let hidden = false, current = null;
+  let hidden = false, current = null, filtering = [];
+  const opened = item => !filtering.length || (item.opens || []).some(role => filtering.includes(role));
   const isCurrent = which => !!current && Object.keys(which).every(key => current[key] === which[key]);
   const tree = node('div', undefined, 'object-window-tree section-commands');
   tree.tabIndex = 0;
@@ -224,7 +240,9 @@ async function showSubsystemCommandInterface(api) {
   const draw = () => {
     const rows = groups.map(group => {
       const key = groupKey(group.group);
-      const children = commandsOf(key).filter(line => !hidden || visible.get(line)).map(line => {
+      const lines = commandsOf(key).filter(opened);
+      if (filtering.length && !lines.length) return null;
+      const children = lines.filter(line => !hidden || visible.get(line)).map(line => {
         const box = node('input');
         box.type = 'checkbox';
         box.checked = visible.get(line);
@@ -238,9 +256,10 @@ async function showSubsystemCommandInterface(api) {
       const {element, row} = treeNode({icon: group.icon, caption: group.title + (orders.has(key) ? ' (ручной порядок)' : ''), children, open: true});
       chosen(row, {group: key});
       return element;
-    });
-    if (subsections.length) {
-      const children = subsectionsShown().map(item => {
+    }).filter(Boolean);
+    const under = subsectionsShown().filter(opened);
+    if (under.length) {
+      const children = under.map(item => {
         const {element, row} = treeNode({icon: 'subsystem', caption: item.title});
         chosen(row, {subsection: item});
         return element;
@@ -322,10 +341,28 @@ async function showSubsystemCommandInterface(api) {
   const move = panelButton('move-item', 'Переместить команду в другую группу команд', false, moveCommand);
   const up = panelButton('move-up', 'Переместить вверх', false, () => shift(-1)), down = panelButton('move-down', 'Переместить вниз', false, () => shift(1));
   const standard = panelButton('restore-values', 'Установить свойства по умолчанию', false, setDefault);
-  const filterRoles = selectInput([['', '<Не установлен>']], '', () => {}, 'Отбор по ролям');
-  filterRoles.disabled = true;
   const filter = node('label', undefined, 'section-commands-roles');
-  filter.append(node('span', 'Отбор по ролям:'), filterRoles);
+  const filterRoles = () => {
+    const names = new Map(projectRoles.map(role => [role.id, role.name]));
+    const text = ids => ids.map(id => names.get(id) || id).join(', ');
+    const choices = [['', '<Не установлен>'], ...roleFilters.map(ids => [ids.join(','), text(ids)])];
+    const field = selectInput(choices, filtering.join(','), key => { filtering = key ? key.split(',') : []; draw(); }, 'Отбор по ролям');
+    const choose = fieldChoiceButton('Выбор объекта: Роль', async () => {
+      const marked = await chooseObjects('Выбор объекта: Роль', [{title: answer.project, icon: 'configuration',
+        objects: projectRoles.map(role => ({id: role.id, name: role.name, icon: role.icon}))}], filtering, {open: true});
+      if (!marked) return;
+      filtering = marked;
+      if (marked.length) {
+        const at = roleFilters.findIndex(ids => ids.join(',') === marked.join(','));
+        if (at >= 0) roleFilters.splice(at, 1);
+        roleFilters.unshift(marked);
+      }
+      filter.replaceChildren(node('span', 'Отбор по ролям:'), filterRoles());
+      draw();
+    });
+    return fieldWithButtons(field, [choose]);
+  };
+  filter.append(node('span', 'Отбор по ролям:'), filterRoles());
   const bar = windowPanel([move, up, down, standard, hide, filter]);
   const head = node('div', undefined, 'section-commands-head');
   head.append(node('span', 'Команда'), node('span', 'Видимость'));

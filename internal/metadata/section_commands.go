@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -68,6 +69,36 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 		}
 	}
 	return lines
+}
+
+// OpensSectionLine says whether a role opens a command of a section - the
+// filter «Отбор по ролям» of the windows of a command interface keeps the
+// commands one of its roles opens (obshchee.md, «Видимость по ролям»;
+// snapshots vopr-2.636/02-06): a command to create one or a folder of it by
+// «Интерактивное добавление» of its object, its list by «Просмотр». The
+// prototype was seen on these two alone; every other command - an object
+// opened, an object's own command, a common command, a common form - is
+// taken by «Просмотр» of itself the same way until it is seen (question В5
+// of series 2.639). A right a role does not write is not granted.
+func (role RoleDefinition) OpensSectionLine(line SectionLine) bool {
+	right := PermissionView
+	if line.Standard == StandardCreate || line.Standard == StandardCreateFolder {
+		right = PermissionInteractiveInsert
+	}
+	for _, object := range role.Objects {
+		if line.Object != nil && object.Object == *line.Object || line.Command != nil && object.Object == *line.Command {
+			return slices.Contains(object.Operations, right)
+		}
+		if line.Command == nil {
+			continue
+		}
+		for _, field := range object.Fields {
+			if field.Field == line.Command.String() {
+				return slices.Contains(field.Operations, right)
+			}
+		}
+	}
+	return false
 }
 
 // sectionCondition says whether an object gives a command its kind gives
