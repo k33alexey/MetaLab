@@ -89,7 +89,8 @@ const xdtoIcons = {package: 'xdto-package', import: 'xdto-import', property: 'xd
 function xdtoTree(content, object) {
   const folder = (path, key, caption, items, make, adds, icon) => !items?.length ? [] : [{kind: 'folder', caption, icon, path: [...path, key], adds,
     children: items.map((item, index) => make(item, [...path, key, index], items, index))}];
-  const plain = (kind, palette, key, adds) => (item, path, list, index) => ({kind, caption: kind === 'enumeration' ? item.value : item, icon: xdtoIcons[kind], path, list, index, palette,
+  const plain = (kind, palette, key, adds) => (item, path, list, index) => ({kind, caption: kind === 'enumeration' ? item.value : kind === 'import' ? namespaceShown(item) : item,
+    icon: xdtoIcons[kind], path, list, index, palette,
     subject: kind === 'enumeration' ? xdtoSubject(() => item) : xdtoListSubject(list, index, key), adds, children: []});
   const property = (item, path, list, index) => {
     const own = {kind: 'property', caption: item.name || item.ref?.name || '', icon: xdtoIcons.property, path, list, index, palette: 'xdtoProperty', subject: xdtoSubject(() => item),
@@ -114,7 +115,7 @@ function xdtoTree(content, object) {
   const named = (kind, palette, adds, children) => (item, path, list, index) => ({kind, caption: item.name || '', icon: xdtoIcons[kind], path, list, index, palette,
     subject: xdtoSubject(() => item), adds: adds(item), children: children(item, path)});
   const rootAdds = {owner: content, kinds: ['import', 'property', 'valueType', 'objectType']};
-  return {kind: 'package', caption: `Пакет (${object.namespace || ''})`, icon: xdtoIcons.package, path: [], adds: rootAdds, children: [
+  return {kind: 'package', caption: `Пакет (${namespaceShown(object.namespace || '')})`, icon: xdtoIcons.package, path: [], adds: rootAdds, children: [
     ...folder([], 'imports', 'Директивы импорта', content.imports, plain('import', 'xdtoImport', 'namespace', rootAdds), rootAdds, xdtoIcons.import),
     ...folder([], 'properties', 'Свойства', content.properties, property, rootAdds, xdtoIcons.property),
     ...folder([], 'valueTypes', 'Типы значений', content.valueTypes, named('valueType', 'xdtoValueType', valueAdds, valueChildren), rootAdds, xdtoIcons.valueType),
@@ -174,7 +175,7 @@ function xdtoPanel(current, content, api, choose) {
     : current.kind === 'typeDef' ? [...current.path, 'value'] : containerPath(current);
   const items = () => adds.kinds.map(key => {
     if (key === 'typeDef') return ['Определение типа', async () => {
-      const answer = await askChoice('Выберите тип объекта', '', [['object', '{http://v8.1c.ru/8.1/xdto}ObjectType'], ['value', 'Тип значения'], [null, 'Отмена']]);
+      const answer = await askChoice('Выберите тип объекта', '', [['object', xmlTypeName({namespace: 'http://v8.1c.ru/8.1/xdto', name: 'ObjectType'})], ['value', 'Тип значения'], [null, 'Отмена']]);
       if (!answer) return;
       adds.owner.typeDef = answer === 'object' ? {object: {}} : {value: {}};
       choose([...current.path, 'typeDef']);

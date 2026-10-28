@@ -73,7 +73,7 @@ const xdtoPackageWalk = `(async () => {
   steps.propertyMenu = await menu();
   steps.propertySigns = menuSigns();
   await add('Определение типа');
-  steps.question = await answer('{http://v8.1c.ru/8.1/xdto}ObjectType');
+  steps.question = await answer('{xdto}ObjectType');
   await choose('ТипОбъекта1');
   await choose('Свойство1');
   steps.propertyMenuAfter = (await menu()).filter(item => item.startsWith('Определение'));

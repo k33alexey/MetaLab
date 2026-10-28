@@ -374,7 +374,7 @@ func CheckXDTOContent(content XDTOContent, catalog *Catalog) []XDTOSchemaIssue {
 	for _, property := range content.Properties {
 		if property.Type != nil && !check.found(*property.Type) {
 			check.issues = append(check.issues, XDTOSchemaIssue{Code: "xdto-package-4.4",
-				Text: "Тип глобального свойства '" + property.Name + "' не найден в пакете типов '" + content.Namespace + "' и его зависимостях"})
+				Text: "Тип глобального свойства '" + property.Name + "' не найден в пакете типов '" + XDTONamespaceShown(content.Namespace) + "' и его зависимостях"})
 		}
 		check.typeDef(property.TypeDef)
 	}
@@ -412,7 +412,7 @@ func (check *xdtoCheck) imported(name *XDTOName) {
 		return
 	}
 	check.issues = append(check.issues, XDTOSchemaIssue{
-		Text: "Пространство имен '" + name.Namespace + "' типа '" + name.Name + "' не импортировано пакетом '" + check.content.Namespace + "'"})
+		Text: "Пространство имен '" + XDTONamespaceShown(name.Namespace) + "' типа '" + name.Name + "' не импортировано пакетом '" + XDTONamespaceShown(check.content.Namespace) + "'"})
 }
 
 func (check *xdtoCheck) valueType(value XDTOValueType, name string) {
@@ -422,7 +422,7 @@ func (check *xdtoCheck) valueType(value XDTOValueType, name string) {
 		switch {
 		case !check.found(member):
 			check.issues = append(check.issues, XDTOSchemaIssue{Code: "xdto-valueType-4.1", Type: name,
-				Text: "Тип объединения '{" + member.Namespace + "}" + member.Name + "' отсутствует или не определен"})
+				Text: "Тип объединения '{" + XDTONamespaceShown(member.Namespace) + "}" + member.Name + "' отсутствует или не определен"})
 		case check.objects[member]:
 			check.issues = append(check.issues, XDTOSchemaIssue{Code: "xdto-valueType-4.1.2", Type: name, Text: "Тип объединения должен являться типом значения"})
 		}

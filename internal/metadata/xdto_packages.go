@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -213,6 +214,38 @@ func PlatformXDTONamespaces() []string {
 		namespaces[index] = "http://v8.1c.ru/" + tail
 	}
 	return namespaces
+}
+
+// platformXDTOPrefix is what every namespace of the platform begins with.
+const platformXDTOPrefix = "http://v8.1c.ru/"
+
+// XDTONamespaceShown is how Studio names a namespace (ML-STUDIO.md,
+// «Пространства платформы — коротким именем»; decision of the owner
+// 28.10.2026): one of the platform's by its address with neither
+// http://v8.1c.ru/ nor the version after it - «data/core» -, any other
+// whole. The model, the files and what is exchanged keep the address
+// whole.
+func XDTONamespaceShown(namespace string) string {
+	tail, platform := strings.CutPrefix(namespace, platformXDTOPrefix)
+	if !platform || !slices.Contains(platformXDTONamespaces, tail) {
+		return namespace
+	}
+	for _, version := range []string{"8.1/", "8.2/", "8.3/"} {
+		if short, cut := strings.CutPrefix(tail, version); cut {
+			return short
+		}
+	}
+	return tail
+}
+
+// PlatformXDTONamespaceNames answers the short name of each namespace of the
+// platform by its address, for Studio to show it by and to take it typed.
+func PlatformXDTONamespaceNames() map[string]string {
+	names := make(map[string]string, len(platformXDTONamespaces))
+	for _, namespace := range PlatformXDTONamespaces() {
+		names[namespace] = XDTONamespaceShown(namespace)
+	}
+	return names
 }
 
 // newXDTONamespace is the namespace of a new package, the prototype's

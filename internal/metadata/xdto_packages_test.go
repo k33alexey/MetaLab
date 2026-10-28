@@ -149,3 +149,43 @@ func TestXDTOPackageLiesInAFolderNamedAfterIt(t *testing.T) {
 		t.Fatalf("the error does not say where the package lies: %v", err)
 	}
 }
+
+// Studio names a namespace of the platform by its address without
+// http://v8.1c.ru/ and the version, any other whole (ML-STUDIO.md,
+// «Пространства платформы — коротким именем»). The defects caught: a
+// namespace of the project or another one under v8.1c.ru cut as if it were
+// the platform's, a version left in the short name, and two namespaces of
+// the platform under one short name, which typing it could not tell apart.
+func TestXDTONamespaceShownShortensThePlatformsAlone(t *testing.T) {
+	t.Parallel()
+	for namespace, want := range map[string]string{
+		"http://v8.1c.ru/8.1/data/core":                      "data/core",
+		"http://v8.1c.ru/8.1/data/enterprise/current-config": "data/enterprise/current-config",
+		"http://v8.1c.ru/8.1/data-composition-system/schema": "data-composition-system/schema",
+		"http://v8.1c.ru/8.2/bsl":                            "bsl",
+		"http://v8.1c.ru/8.3/xcf/enums":                      "xcf/enums",
+		"http://v8.1c.ru/edi/edi_stnd/EnterpriseData/1.8":    "http://v8.1c.ru/edi/edi_stnd/EnterpriseData/1.8",
+		"http://v8.1c.ru/8.1/data/core/extra":                "http://v8.1c.ru/8.1/data/core/extra",
+		"http://www.sample-package.org":                      "http://www.sample-package.org",
+		"http://www.w3.org/2001/XMLSchema":                   "http://www.w3.org/2001/XMLSchema",
+		"":                                                   "",
+	} {
+		if got := XDTONamespaceShown(namespace); got != want {
+			t.Errorf("XDTONamespaceShown(%q) = %q, want %q", namespace, got, want)
+		}
+	}
+	names := PlatformXDTONamespaceNames()
+	if len(names) != 66 {
+		t.Fatalf("short names of %d namespaces of the platform, want 66", len(names))
+	}
+	seen := map[string]string{}
+	for namespace, short := range names {
+		if strings.Contains(short, "v8.1c.ru") || strings.HasPrefix(short, "8.") {
+			t.Errorf("%s is shown as %q, the platform's prefix left", namespace, short)
+		}
+		if other, taken := seen[short]; taken {
+			t.Errorf("%s and %s share the short name %q", namespace, other, short)
+		}
+		seen[short] = namespace
+	}
+}

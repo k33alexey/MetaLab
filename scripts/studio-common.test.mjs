@@ -247,3 +247,21 @@ test('fontPresentation: the base or the face, the size, the switches on in order
   assert.equal(fontPresentation({source:'system',system:'DefaultGUIFont',size:10,bold:true,scale:100},base),'Шрифт диалогов и меню, 10, полужирный');
   assert.equal(fontPresentation({source:'style',from:{item:'x'}},()=>''),'');
 });
+
+// A namespace of the platform is shown by its short name in every place -
+// a type in a field, a member of a union - and taken typed short or whole,
+// written whole (ML-STUDIO.md, «Пространства платформы — коротким именем»).
+// The defects caught: an address shown whole where its short name is known,
+// a short name typed written as typed, and a key of the object's prototype
+// («constructor») taken for a namespace of the platform.
+test('a namespace of the platform is shown and typed by its short name',()=>{
+  vm.runInContext('Object.assign(PlatformNamespaces, {"http://v8.1c.ru/8.1/data/core": "data/core"})',context);
+  const {namespaceShown,namespaceTyped,xmlTypeText,xmlTypeName}=context;
+  assert.equal(xmlTypeText({namespace:'http://v8.1c.ru/8.1/data/core',name:'UUID'}),'UUID (data/core)');
+  assert.equal(xmlTypeName({namespace:'http://v8.1c.ru/8.1/data/core',name:'UUID'}),'{data/core}UUID');
+  assert.equal(xmlTypeText({namespace:'http://www.sample-package.org',name:'Тип'}),'Тип (http://www.sample-package.org)');
+  assert.equal(namespaceShown('constructor'),'constructor');
+  assert.equal(namespaceTyped(' data/core '),'http://v8.1c.ru/8.1/data/core');
+  assert.equal(namespaceTyped('http://v8.1c.ru/8.1/data/core'),'http://v8.1c.ru/8.1/data/core');
+  assert.equal(namespaceTyped('urn:example'),'urn:example');
+});

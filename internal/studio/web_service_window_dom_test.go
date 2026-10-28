@@ -46,12 +46,12 @@ const webServiceWindowWalk = `(async () => {
   steps.choice = {title: choice().querySelector('h3').textContent, count: rows().length,
     first: rows()[0].textContent, last: rows().at(-2).textContent, own: rows().at(-1).textContent, indented: rows().at(-1).classList.contains('xdto-packages-own'),
     marked: rows().filter(row => row.querySelector('input').checked).map(row => row.textContent)};
-  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/xdto').querySelector('input').click();
+  rows().find(row => row.textContent === 'xdto').querySelector('input').click();
   answer('Отмена'); await settle();
   steps.cancelled = packagesField().querySelector('input').value;
   packagesField().querySelector('button').click(); await settle();
-  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/xdto').querySelector('input').click();
-  rows().find(row => row.textContent === 'http://v8.1c.ru/8.1/data/core').querySelector('input').click();
+  rows().find(row => row.textContent === 'xdto').querySelector('input').click();
+  rows().find(row => row.textContent === 'data/core').querySelector('input').click();
   answer('OK'); await settle();
   steps.chosen = packagesField().querySelector('input').value;
   steps.palette = {title: document.querySelector('#inspector-title').textContent,
@@ -152,16 +152,16 @@ func TestTheWindowOfAWebServiceIsThePrototypes(t *testing.T) {
 		Choose            bool
 		File              string
 	}{
-		[]string{"URI пространства имен:", "Пакеты XDTO:", "Имя файла публикации:"}, []string{"Модуль"}, "http://example.org/goods,http://v8.1c.ru/8.1/data/core", false, "stock.1cws"})
+		[]string{"URI пространства имен:", "Пакеты XDTO:", "Имя файла публикации:"}, []string{"Модуль"}, "http://example.org/goods,data/core", false, "stock.1cws"})
 	expect("«Выбор пакетов XDTO»", steps.Choice, struct {
 		Title, First, Last, Own string
 		Count                   int
 		Indented                bool
 		Marked                  []string
-	}{"Выбор пакетов XDTO", "http://v8.1c.ru/8.1/data-composition-system/appearance-template", "http://v8.1c.ru/8.3/xcf/enums",
-		"http://example.org/goods", 67, true, []string{"http://v8.1c.ru/8.1/data/core", "http://example.org/goods"}})
-	expect("«Отмена» changes nothing", steps.Cancelled, "http://example.org/goods,http://v8.1c.ru/8.1/data/core")
-	expect("chosen: the kept in their order, the new after", steps.Chosen, "http://example.org/goods,http://v8.1c.ru/8.1/xdto")
+	}{"Выбор пакетов XDTO", "data-composition-system/appearance-template", "xcf/enums",
+		"http://example.org/goods", 67, true, []string{"data/core", "http://example.org/goods"}})
+	expect("«Отмена» changes nothing", steps.Cancelled, "http://example.org/goods,data/core")
+	expect("chosen: the kept in their order, the new after", steps.Chosen, "http://example.org/goods,xdto")
 	expect("the palette", steps.Palette, struct {
 		Title string
 		Rows  []string
@@ -316,7 +316,7 @@ func TestTheOperationsOfAWebServiceAreThePrototypes(t *testing.T) {
 		Title, First, Marked string
 		Namespaces           []string
 		OK                   bool
-	}{"Выбор пакетов XDTO", "all", "string", []string{"http://example.org/goods 0", "http://v8.1c.ru/8.1/data/core 46",
+	}{"Выбор пакетов XDTO", "all", "string", []string{"http://example.org/goods 0", "data/core 46",
 		"http://www.w3.org/2001/XMLSchema 91 (раскрыто)"}, true})
 	expect("a type chosen", steps.ChosenType, "int (http://www.w3.org/2001/XMLSchema)")
 	expect("the lock of an operation", steps.Lock, struct {

@@ -321,6 +321,10 @@ const (
 	// FormField is a main form of the object, chosen among its forms,
 	// cleared, and opened by the magnifier.
 	FormField = "form"
+	// NamespaceField is a namespace typed in: one of the platform's shown
+	// by its short name and taken typed short or whole, written whole
+	// (ML-STUDIO.md, «Пространства платформы — коротким именем»).
+	NamespaceField = "namespace"
 	// LinkField is an address shown as a link and not edited: the source of
 	// a WS reference, which its import alone writes (ws-ssylka.md).
 	LinkField = "link"
@@ -372,7 +376,7 @@ var palettes = map[Kind][]PaletteTab{
 			{Key: "packages", Title: "Пакеты XDTO", Field: PackagesField, Important: true,
 				Description: "Пакеты XDTO, типы которых сервис принимает и возвращает."},
 			{Field: SeparatorField, Important: true},
-			{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
+			{Key: "namespace", Title: "URI пространства имен", Field: NamespaceField, Important: true,
 				Description: "Пространство имён сервиса в его описании WSDL."},
 			{Key: string(ServiceModule), Title: "Модуль", Field: ModuleField, Important: true,
 				Description: "Код сервиса: процедуры, которые исполняют его операции."},
@@ -962,7 +966,7 @@ var (
 	usage = [][2]string{{"use", "Использовать"}, {"dont-use", "Не использовать"}}
 	// xdtoNamespaceRow is the namespace of an XDTO package, one row in the
 	// palette of the package and of the root of its tree.
-	xdtoNamespaceRow = PaletteRow{Key: "namespace", Title: "URI пространства имен", Field: TextField, Important: true,
+	xdtoNamespaceRow = PaletteRow{Key: "namespace", Title: "URI пространства имен", Field: NamespaceField, Important: true,
 		Description: "Пространство имён, которому принадлежат типы пакета; им их называет другая сторона обмена."}
 	// xdtoFlag is a flag of a node of an XDTO package, as its palette
 	// names it - a list, not a box (snapshot series-2.584/143).
@@ -1094,7 +1098,7 @@ var partPalettes = map[string][]PaletteTab{
 	},
 	"xdtoImport": {
 		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
-			{Key: "namespace", Title: "Пространство имен", Field: TextField, Important: true,
+			{Key: "namespace", Title: "Пространство имен", Field: NamespaceField, Important: true,
 				Description: "Пространство имён другого пакета, типы которого использует этот."},
 		}},
 	},
@@ -1192,7 +1196,7 @@ var partPalettes = map[string][]PaletteTab{
 	},
 	"wsService": {
 		{Key: "other", Title: "Другие", Important: true, Rows: []PaletteRow{
-			{Key: "namespace", Title: "Пространство имен", Field: TextField, Important: true, Description: "Пространство имён описания сервиса."},
+			{Key: "namespace", Title: "Пространство имен", Field: NamespaceField, Important: true, Description: "Пространство имён описания сервиса."},
 			{Key: "name", Title: "Имя", Field: TextField, Important: true, Description: "Имя сервиса в описании."},
 			{Key: "documentation", Title: "Описание Web-сервиса", Field: TextField, Important: true, Description: "Описание сервиса из описания WSDL."},
 		}},

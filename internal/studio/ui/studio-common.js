@@ -117,6 +117,26 @@ function labeledField(label, control, className = 'catalog-field') {
    number of its own. */
 const StudioLimits = {};
 
+/* PlatformNamespaces are the short names of the namespaces of the platform
+   by their address, as the server sends them with the project (metadata.
+   PlatformXDTONamespaceNames; ML-STUDIO.md, «Пространства платформы —
+   коротким именем»): a window shows a namespace by namespaceShown and takes
+   one typed by namespaceTyped, and keeps no list of its own. */
+const PlatformNamespaces = {};
+
+/* namespaceShown is how a namespace is shown: one of the platform's by its
+   short name - «data/core» -, any other whole. */
+function namespaceShown(namespace) {
+  return Object.hasOwn(PlatformNamespaces, namespace) ? PlatformNamespaces[namespace] : namespace;
+}
+
+/* namespaceTyped is the namespace typed: the short name of one of the
+   platform's gives its address, anything else stays as typed. */
+function namespaceTyped(text) {
+  const typed = text.trim();
+  return Object.keys(PlatformNamespaces).find(namespace => PlatformNamespaces[namespace] === typed) || text;
+}
+
 /* limited answers the options of a field with the model's ceiling of what
    it holds - a text by its length, a number by its value; a field the model
    sets no ceiling on is given none. */
@@ -1115,6 +1135,11 @@ function paletteFields(context) {
       if (row.key === 'title') synonym = field;
       return field;
     }
+    // A namespace is shown and typed by its short name where it is the
+    // platform's, and written whole (namespaceShown, namespaceTyped).
+    if (row.field === 'namespace') {
+      return textInput(namespaceShown(subject.get(row.key) || ''), value => { subject.set(row.key, namespaceTyped(value)); context.typed(); });
+    }
     if (row.field === 'text') {
       const input = textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
       // A value the server checks when its field is left - the root of an
@@ -1170,7 +1195,7 @@ function paletteFields(context) {
     if (row.field === 'packages') {
       const items = subject.get(row.key) || [], shown = node('input'), off = !available(subject, row);
       shown.readOnly = true; shown.disabled = off;
-      shown.value = items.map(item => item.package ? context.packages?.find(own => own.id === item.package)?.namespace || item.package : item.namespace).join(',');
+      shown.value = items.map(item => item.package ? context.packages?.find(own => own.id === item.package)?.namespace || item.package : namespaceShown(item.namespace)).join(',');
       const pick = fieldChoiceButton(row.title, async () => {
         const chosen = await chooseXDTOPackages(items, context.platformNamespaces, context.packages);
         if (chosen) { subject.set(row.key, chosen); context.changed(); }
@@ -2305,7 +2330,7 @@ function askCancelInput() {
    «Отмена». */
 async function chooseXDTOPackages(items, platform, packages) {
   const key = item => item.package ? 'package:' + item.package : 'namespace:' + item.namespace;
-  const rows = [...platform.map(namespace => ({item: {namespace}, caption: namespace})),
+  const rows = [...platform.map(namespace => ({item: {namespace}, caption: namespaceShown(namespace)})),
     ...packages.map(own => ({item: {package: own.id}, caption: own.namespace, own: true}))];
   const marked = new Set(items.map(key));
   const content = node('div', undefined, 'xdto-packages-choice');
@@ -2325,9 +2350,9 @@ async function chooseXDTOPackages(items, platform, packages) {
 }
 
 /* xmlTypeText is how a field shows a type named by the schema: «string
-   (http://www.w3.org/2001/XMLSchema)». */
+   (http://www.w3.org/2001/XMLSchema)», «UUID (data/core)». */
 function xmlTypeText(type) {
-  return `${type.name}${type.namespace ? ` (${type.namespace})` : ''}`;
+  return `${type.name}${type.namespace ? ` (${namespaceShown(type.namespace)})` : ''}`;
 }
 
 /* readOnlyPalette draws the rows of a palette (kinds.PaletteTab) that shows
@@ -2345,6 +2370,7 @@ function readOnlyPalette(tabs, get) {
       if (row.field === 'switch') text = (row.choices || []).find(([key]) => key === String(!!value))?.[1] || '';
       else if (row.field === 'choice') text = (row.choices || []).find(([key]) => key === value)?.[1] || value;
       else if (row.field === 'xml-type') text = value.name ? xmlTypeText(value) : '';
+      else if (row.field === 'namespace') text = namespaceShown(value);
       else if (row.field === 'xml-types') text = value.map(xmlTypeText).join(', ');
       else text = String(value);
     } else if (row.default !== undefined) text = (row.choices || []).find(([key]) => key === row.default)?.[1] ?? row.default;
@@ -2414,9 +2440,10 @@ async function editValueList(items, text, choose) {
 }
 
 /* xmlTypeName writes a type named by the schema as the prototype writes a
-   member of a union: «{namespace}name» (snapshot series-2.603/21). */
+   member of a union: «{namespace}name» (snapshot series-2.603/21), a
+   namespace of the platform by its short name. */
 function xmlTypeName(type) {
-  return `{${type.namespace}}${type.name}`;
+  return `{${namespaceShown(type.namespace)}}${type.name}`;
 }
 
 /* chooseXMLType is the window choosing a type named by the schema - of an
@@ -2441,7 +2468,7 @@ async function chooseXMLType(current, namespaces, types) {
         row.addEventListener('click', () => { marked = {namespace: space, name}; render(); });
         return element;
       });
-      return treeNode({caption: space, children: rows, open: space === current?.namespace}).element;
+      return treeNode({caption: namespaceShown(space), children: rows, open: space === current?.namespace}).element;
     }));
   }
   render();
