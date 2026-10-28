@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/atomicfile"
@@ -25,10 +26,11 @@ import (
 // The window of a common picture (docs/block-00/obshchaya-kartinka.md,
 // «Окно»): the name, the synonym, the comment, the subsystems, the two
 // flags of availability, and the picture with «Выбрать из файла»,
-// «Очистить» and «Сохранить в файл» beside it and its type below. The set of
-// variants, its editor and the transparency are items of their own; their
-// buttons stand unavailable until then. There is no editor of pictures
-// (the owner, 15.10.2026, ML-STUDIO.md, «Окно общей картинки»).
+// «Очистить», the set of variants and «Сохранить в файл» beside it and its
+// type below. The transparency is an item of its own; its buttons stand
+// unavailable until then. There is no editor of pictures (the owner,
+// 15.10.2026, ML-STUDIO.md, «Окно общей картинки»): «Редактировать» opens
+// the editor of a set only.
 
 // PictureEditorSource is a common picture as its window reads and writes it.
 type PictureEditorSource struct {
@@ -45,6 +47,14 @@ type PictureEditorSource struct {
 	// without variants is the picture the window shows, more or variants
 	// make a set.
 	Images []string `json:"images"`
+	// Set is the picture's set of variants as its editor shows it: the
+	// variants of the description, or, without them, one variant of each
+	// image named by its density. A picture of one image or none has none.
+	Set []metadata.PictureVariant `json:"set,omitempty"`
+	// VariantChoices are the captions the editor of a set shows, Formats
+	// the formats an image is taken in (metadata.PictureFormats).
+	VariantChoices PictureVariantChoices `json:"variantChoices"`
+	Formats        []string              `json:"formats"`
 	// Subsystems are the subsystems of the project, those holding the
 	// picture marked: the field «Подсистемы» lists them.
 	Subsystems []MemberPlace `json:"subsystems"`
@@ -54,18 +64,56 @@ type PictureEditorSource struct {
 }
 
 // PictureWindowValue is what the window of a picture writes: the picture
-// and, when «Выбрать из файла» or «Очистить» was pressed, its new image.
+// and, when «Выбрать из файла», «Очистить» or «Выключить набор вариантов»
+// was pressed, its new image, or, when the set was turned on or edited, its
+// new set of variants. Neither leaves the images as they are.
 type PictureWindowValue struct {
 	metadata.CommonPictureDefinition
-	Image *PictureImage `json:"image,omitempty"`
+	Image *PictureImage       `json:"image,omitempty"`
+	Set   []PictureSetVariant `json:"set,omitempty"`
 }
 
 // PictureImage is the image a window gives a picture: a file of a format a
-// picture is kept in, by the extension of its name, with its content; no
-// content clears the picture.
+// picture is kept in, by the extension of its name, with its content, or an
+// image of the picture's folder by its name, File - the variant a set turned
+// off leaves; neither clears the picture.
 type PictureImage struct {
 	Format  string `json:"format,omitempty"`
 	Content []byte `json:"content,omitempty"`
+	File    string `json:"file,omitempty"`
+}
+
+// PictureSetVariant is a variant of a set as its editor gives it: the
+// variant drawing an image of the folder by its name, File, or a new image,
+// Image, whose file the save names.
+type PictureSetVariant struct {
+	metadata.PictureVariant
+	Image *PictureImage `json:"image,omitempty"`
+}
+
+// PictureVariantChoices are the captions the editor of a set of variants
+// shows for the values the model takes, in the order of the prototype's
+// lists (snapshots obshchaya-kartinka/04, 05, 07): the eight densities by
+// their names and letters, the directions and the browsers - «Любое» and
+// «Любой» are the empty value, any.
+type PictureVariantChoices struct {
+	Densities  []PictureDensityChoice `json:"densities"`
+	Directions [][2]string            `json:"directions"`
+	Browsers   [][2]string            `json:"browsers"`
+}
+
+// PictureDensityChoice is a density and its caption.
+type PictureDensityChoice struct {
+	Density metadata.ScreenDensity `json:"density"`
+	Caption string                 `json:"caption"`
+}
+
+var pictureVariantChoices = PictureVariantChoices{
+	Densities: []PictureDensityChoice{{85, "Очень малая (bldpi)"}, {100, "Малая (ldpi)"}, {125, "Выше малой (aldpi)"}, {150, "Средняя (mdpi)"},
+		{175, "Выше среднего (amdpi)"}, {200, "Большая (hdpi)"}, {300, "Очень большая (xdpi)"}, {400, "Ультра большая (udpi)"}},
+	Directions: [][2]string{{"", "Любое"}, {"ltr-can-flip-horizontally", "Слева направо, можно переворачивать"},
+		{"rtl-can-flip-horizontally", "Справа налево, можно переворачивать"}, {"ltr", "Слева направо"}, {"rtl", "Справа налево"}},
+	Browsers: [][2]string{{"", "Любой"}, {"microsoft-internet-explorer-microsoft-edge-html", "Microsoft Internet Explorer и Microsoft Edge (EdgeHTML)"}},
 }
 
 // pictureEditorAddress is where the window of a picture is read and
@@ -112,8 +160,24 @@ func (workspace *Workspace) readPictureEditorLocked(relative string) (PictureEdi
 		Path: relative, Revision: hex.EncodeToString(revision.Sum(nil)), description: file.Revision, Picture: value, Images: images,
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
 		KindTitle: kinds.Must(metadata.CommonPictureKind).Title, Palette: kinds.Must(metadata.CommonPictureKind).Palette(),
-		Subsystems: subsystemPlaces(loaded, value.ID),
+		Set: pictureSet(value.Variants, images), VariantChoices: pictureVariantChoices, Formats: metadata.PictureFormats(), Subsystems: subsystemPlaces(loaded, value.ID),
 	}, nil
+}
+
+// pictureSet is the set of variants of a picture as its editor shows it:
+// the variants of the description, or one variant of each image named by
+// its density when there is more than one image.
+func pictureSet(variants []metadata.PictureVariant, images []string) []metadata.PictureVariant {
+	if len(variants) > 0 || len(images) < 2 {
+		return variants
+	}
+	set := []metadata.PictureVariant{}
+	for _, name := range images {
+		if density, ok := metadata.PictureDensity(name); ok {
+			set = append(set, metadata.PictureVariant{File: name, Density: density})
+		}
+	}
+	return set
 }
 
 // pictureImagesLocked lists the images in the folder of the picture
@@ -170,13 +234,13 @@ func (workspace *Workspace) ReadPictureImage(relative, name string) ([]byte, str
 	return content, mime.TypeByExtension(strings.ToLower(filepath.Ext(name))), nil
 }
 
-// SavePictureEditor writes the picture and its new image, if the window
-// gave one, as one save: a refusal halfway puts back the images, the
+// SavePictureEditor writes the picture and its new image or set, if the
+// window gave one, as one save: a refusal halfway puts back the images, the
 // description and the folder. «Выбрать из файла» makes the image the one
 // image of the picture, its base drawn at density 100 (metadata.
-// PictureDensity); «Очистить» leaves the picture with none, which the model
-// accepts. A picture keeping a set of variants is not given an image here:
-// the set is changed by its own editor.
+// PictureDensity), in place of a set too; «Очистить» leaves the picture with
+// none, which the model accepts; a set turned off leaves the image of one
+// of its variants. A set written is pictureSetFiles'.
 func (workspace *Workspace) SavePictureEditor(relative string, window PictureWindowValue, revision string) (PictureEditorSource, error) {
 	value := window.CommonPictureDefinition
 	workspace.mu.Lock()
@@ -196,15 +260,30 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 			return PictureEditorSource{}, err
 		}
 	}
-	// The window changes what it shows, not the drawing of the files:
-	// variants and transparency stay as the description has them.
+	// The transparency stays as the description has it; the variants are
+	// the image's or the set's the window gave.
 	value.PictureImages = opened.Picture.PictureImages
-	if window.Image != nil {
-		if len(opened.Picture.Variants) > 0 || len(opened.Images) > 1 {
-			return PictureEditorSource{}, fmt.Errorf("the picture keeps a set of variants: its images are changed by the editor of the set")
+	if window.Set != nil && len(window.Set) == 0 {
+		// A set left with no variant is a picture of no image.
+		window.Image, window.Set = &PictureImage{}, nil
+	}
+	var remove []string
+	var write []pictureFile
+	switch {
+	case window.Image != nil && window.Set != nil:
+		return PictureEditorSource{}, fmt.Errorf("a picture is given either an image or a set of variants")
+	case window.Image != nil:
+		image, err := workspace.pictureImageLocked(relative, opened.Images, *window.Image)
+		if err != nil {
+			return PictureEditorSource{}, err
 		}
-		if len(window.Image.Content) > 0 && !metadata.PictureFile(baseImage(window.Image.Format)) {
-			return PictureEditorSource{}, fmt.Errorf("an image of a picture is one of %s", strings.Join(metadata.PictureFormats(), ", "))
+		value.Variants, remove = nil, opened.Images
+		if len(image.Content) > 0 {
+			write = []pictureFile{{baseImage(image.Format), image.Content}}
+		}
+	case window.Set != nil:
+		if value.Variants, remove, write, err = pictureSetFiles(opened, window.Set); err != nil {
+			return PictureEditorSource{}, err
 		}
 	}
 	var encoded bytes.Buffer
@@ -222,8 +301,8 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 	if _, err := workspace.saveSourceLocked(written, encoded.String(), opened.description); err != nil {
 		return PictureEditorSource{}, errors.Join(err, moveBack())
 	}
-	if window.Image != nil {
-		if err := workspace.replacePictureImageLocked(written, opened.Images, *window.Image); err != nil {
+	if window.Image != nil || window.Set != nil {
+		if err := workspace.replacePictureImagesLocked(written, remove, write); err != nil {
 			// The description goes back as it was read, then the folder.
 			restored := atomicfile.Write(filepath.Join(workspace.root, filepath.FromSlash(written)), ".ml-write-*", 0o644, atomicfile.Bytes([]byte(original.Content)))
 			workspace.invalidateStudioIndexesLocked()
@@ -237,20 +316,123 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 // image drawn at density 100.
 func baseImage(format string) string { return "100." + strings.ToLower(format) }
 
-// replacePictureImageLocked puts image in place of the images of the
-// picture described at relative: the new one is written beside them first,
-// they are set aside, and it takes its name; a refusal on the way brings
-// them back. No content leaves the picture with no image.
-func (workspace *Workspace) replacePictureImageLocked(relative string, images []string, image PictureImage) error {
+// pictureFile is an image a save writes into the folder of a picture.
+type pictureFile struct {
+	name    string
+	content []byte
+}
+
+// pictureImageLocked is the image a window gives a picture, its content read
+// from the folder when it names an image there. A format no picture is kept
+// in, or a name that is not an image of the picture, is refused.
+func (workspace *Workspace) pictureImageLocked(relative string, images []string, image PictureImage) (PictureImage, error) {
+	if image.File != "" {
+		name, ok := pictureImageNamed(images, image.File)
+		if !ok {
+			return PictureImage{}, fmt.Errorf("%s is not an image of the picture", image.File)
+		}
+		content, err := os.ReadFile(filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)), name))
+		if err != nil {
+			return PictureImage{}, err
+		}
+		return PictureImage{Format: strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), "."), Content: content}, nil
+	}
+	if len(image.Content) > 0 && !metadata.PictureFile(baseImage(image.Format)) {
+		return PictureImage{}, fmt.Errorf("an image of a picture is one of %s", strings.Join(metadata.PictureFormats(), ", "))
+	}
+	return image, nil
+}
+
+// pictureImageNamed finds an image of the folder by name, case ignored, as
+// the model finds the file a variant names (metadata.PictureVariant).
+func pictureImageNamed(images []string, name string) (string, bool) {
+	for _, image := range images {
+		if strings.EqualFold(image, name) {
+			return image, true
+		}
+	}
+	return "", false
+}
+
+// pictureSetFiles turns the set the editor gave into the variants of the
+// description, the images it no longer draws and the new ones it writes. A
+// variant keeping a file names an image of the folder; one with a new image
+// has its file named by its key - density, direction, browser, as 150-rtl.png
+// - and a number after it when an image keeps that name. An image the old
+// set drew and the new one does not is taken away; an image no variant of
+// the old set named is left as it lies, as the prototype keeps such files;
+// without variants every image was the set's, named by its density.
+func pictureSetFiles(opened PictureEditorSource, set []PictureSetVariant) ([]metadata.PictureVariant, []string, []pictureFile, error) {
+	variants := make([]metadata.PictureVariant, len(set))
+	kept := map[string]bool{}
+	for index, item := range set {
+		variants[index] = item.PictureVariant
+		if item.Image != nil {
+			continue
+		}
+		name, ok := pictureImageNamed(opened.Images, item.File)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("variant %d draws %s, which is not an image of the picture", index+1, item.File)
+		}
+		variants[index].File = name
+		kept[strings.ToLower(name)] = true
+	}
+	drawn := map[string]bool{}
+	for _, variant := range opened.Picture.Variants {
+		drawn[strings.ToLower(variant.File)] = true
+	}
+	var remove []string
+	taken := map[string]bool{}
+	for _, image := range opened.Images {
+		folded := strings.ToLower(image)
+		if !kept[folded] && (len(opened.Picture.Variants) == 0 || drawn[folded]) {
+			remove = append(remove, image)
+			continue
+		}
+		taken[folded] = true
+	}
+	var write []pictureFile
+	for index, item := range set {
+		if item.Image == nil {
+			continue
+		}
+		if item.Image.File != "" || len(item.Image.Content) == 0 || !metadata.PictureFile(baseImage(item.Image.Format)) {
+			return nil, nil, nil, fmt.Errorf("variant %d has no image of one of %s", index+1, strings.Join(metadata.PictureFormats(), ", "))
+		}
+		key := []string{strconv.Itoa(int(item.Density))}
+		for _, part := range []string{string(item.Direction), string(item.WebBrowser)} {
+			if part != "" {
+				key = append(key, part)
+			}
+		}
+		base, name := strings.Join(key, "-"), ""
+		for number := 1; name == "" || taken[strings.ToLower(name)]; number++ {
+			name = base + "." + strings.ToLower(item.Image.Format)
+			if number > 1 {
+				name = fmt.Sprintf("%s-%d.%s", base, number, strings.ToLower(item.Image.Format))
+			}
+		}
+		taken[strings.ToLower(name)] = true
+		variants[index].File = name
+		write = append(write, pictureFile{name, item.Image.Content})
+	}
+	return variants, remove, write, nil
+}
+
+// replacePictureImagesLocked takes the images remove away from the folder of
+// the picture described at relative and writes the images write: the new
+// ones are written beside the old first, the old are set aside, and the new
+// take their names; a refusal on the way brings the old back.
+func (workspace *Workspace) replacePictureImagesLocked(relative string, remove []string, write []pictureFile) error {
 	directory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
 	defer workspace.invalidateStudioIndexesLocked()
-	var prepared string
-	if len(image.Content) > 0 {
+	prepared := make([]string, len(write))
+	for index, image := range write {
 		var err error
-		if prepared, err = atomicfile.Prepare(directory, ".ml-write-*", 0o644, atomicfile.Bytes(image.Content)); err != nil {
+		if prepared[index], err = atomicfile.Prepare(directory, ".ml-write-*", 0o644, atomicfile.Bytes(image.content)); err != nil {
 			return err
 		}
-		defer os.Remove(prepared)
+		defer os.Remove(prepared[index])
 	}
 	type aside struct{ name, temporary string }
 	var set []aside
@@ -263,16 +445,20 @@ func (workspace *Workspace) replacePictureImageLocked(relative string, images []
 		}
 		return failed
 	}
-	for _, name := range images {
+	for _, name := range remove {
 		temporary := filepath.Join(directory, ".ml-old-"+name)
 		if err := renameFolder(filepath.Join(directory, name), temporary); err != nil {
 			return errors.Join(err, putBack())
 		}
 		set = append(set, aside{name, temporary})
 	}
-	// The name of the new image is free now: the old ones are aside.
-	if prepared != "" {
-		if err := renameFolder(prepared, filepath.Join(directory, baseImage(image.Format))); err != nil {
+	// The names of the new images are free now: the old ones are aside. A
+	// new image renamed in place is taken away again if a later one fails.
+	for index, image := range write {
+		if err := renameFolder(prepared[index], filepath.Join(directory, image.name)); err != nil {
+			for _, done := range write[:index] {
+				_ = os.Remove(filepath.Join(directory, done.name))
+			}
 			return errors.Join(err, putBack())
 		}
 	}

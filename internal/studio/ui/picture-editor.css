@@ -24,3 +24,21 @@
 .picture-library-right button:last-child{margin-top:auto}
 .picture-library-bottom{grid-column:1;grid-row:2;display:flex;gap:6px}
 .picture-library-arrows button{width:26px;height:26px;padding:0}
+/* Редактор набора вариантов (obshchaya-kartinka/03, 09; v1-nabor-variantov/
+   045): панель над таблицей, «Режим коллекции» под ней. */
+.picture-set-dialog{min-width:760px}
+.picture-set{display:flex;flex-direction:column;gap:6px}
+.picture-set-table{width:100%;border-collapse:collapse;font-size:12px}
+.picture-set-table th{text-align:left;font-weight:normal;color:#aeb1b8;padding:3px 6px;border-bottom:1px solid #4a4d54;white-space:nowrap}
+.picture-set-table td{padding:2px 4px}
+.picture-set-table td select,.picture-set-table td input{width:100%;box-sizing:border-box}
+.picture-set-table tr.selected td{background:rgba(88,157,246,.18)}
+/* Окно варианта (v1-nabor-variantov/022, 024): просмотр с размером под ним,
+   пустой — перечёркнутый квадрат; кнопки столбцом справа. */
+.picture-variant{display:flex;gap:10px}
+.picture-variant-shown{display:flex;flex-direction:column;align-items:center;gap:4px}
+.picture-variant-image{width:300px;height:200px;display:flex;align-items:center;justify-content:center;border:1px solid #4a4d54;background:var(--panel-bg,#2b2d30)}
+.picture-variant-image img{max-width:100%;max-height:100%}
+.picture-variant-image.empty{background:linear-gradient(to top right,transparent calc(50% - 1px),#6f737a,transparent calc(50% + 1px)),linear-gradient(to bottom right,transparent calc(50% - 1px),#6f737a,transparent calc(50% + 1px)),var(--panel-bg,#2b2d30)}
+.picture-variant-size{min-height:16px;font-size:12px}
+.picture-variant .picture-window-buttons{width:160px}

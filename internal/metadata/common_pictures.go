@@ -108,6 +108,13 @@ type PictureWebBrowser string
 
 var pictureWebBrowsers = []PictureWebBrowser{"microsoft-internet-explorer-microsoft-edge-html"}
 
+// ScreenDensities, PictureDirections and PictureWebBrowsers are what a
+// variant of a picture is drawn at, besides the empty direction and browser,
+// which stand for any.
+func ScreenDensities() []ScreenDensity        { return slices.Clone(screenDensities) }
+func PictureDirections() []PictureDirection   { return slices.Clone(pictureDirections) }
+func PictureWebBrowsers() []PictureWebBrowser { return slices.Clone(pictureWebBrowsers) }
+
 // PictureVariant is one image of a picture: the file, and the density,
 // direction and browser it is drawn at - the three that tell one variant from
 // another - and how it is drawn.

@@ -17,10 +17,12 @@ const pagePath = "ui/index.html"
 
 // SetPolicy sets the security headers of an ML page on an answer: scripts,
 // styles and requests of its own origin only (inline ones allowed, as the pages
-// are written so), no plugins, no other base, no framing, no guessing of the
+// are written so), images of its own origin and of the page itself - an image
+// a window has read from a file and not yet saved is drawn from its content,
+// data: - no plugins, no other base, no framing, no guessing of the
 // content type and no referrer.
 func SetPolicy(header http.Header) {
-	header.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+	header.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Frame-Options", "DENY")

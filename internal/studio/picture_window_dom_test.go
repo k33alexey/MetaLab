@@ -53,9 +53,10 @@ const pictureWindowWalk = `(async () => {
 // 02-okno): «Добавить» opens it on ОбщаяКартинка1 - «Общая картинка
 // ОбщаяКартинка1», the name, synonym, comment and subsystems, the two flags,
 // «Доступность для оформления» unavailable until the picture is available
-// for choice; the buttons in the prototype's order but «Редактировать» -
-// Studio has no editor of pictures (the owner, 15.10.2026) - of which a
-// picture of no image has only «Выбрать из файла»; the palette of one tab beside it.
+// for choice; the buttons in the prototype's order, «Редактировать» only
+// for a set - Studio has no editor of pictures (the owner, 15.10.2026) - of
+// which a picture of no image has «Выбрать из файла» and «Включить набор
+// вариантов»; the palette of one tab beside it.
 // A picture with an image shows it and its type; a flag marked in the window
 // is the palette's; «Очистить» and «Сохранить» leave no image, on disk too.
 // Defects caught: a caption, a button or its order not the prototype's; a
@@ -108,7 +109,7 @@ func TestTheWindowOfAPictureIsThePrototypes(t *testing.T) {
 	captions := []string{"Имя:", "Синоним:", "Комментарий:", "Подсистемы:", "Доступность для выбора", "Доступность для оформления"}
 	unavailable := func(enabled ...string) []string {
 		all := []string{"Выбрать из файла", "Очистить", "Установить прозрачный фон", "Убрать прозрачность", "Включить набор вариантов",
-			"Выключить набор вариантов", "Сохранить в файл"}
+			"Выключить набор вариантов", "Редактировать", "Сохранить в файл"}
 		for index, caption := range all {
 			on := false
 			for _, item := range enabled {
@@ -120,16 +121,16 @@ func TestTheWindowOfAPictureIsThePrototypes(t *testing.T) {
 		}
 		return all
 	}
-	expect("the new picture", steps.Created, window{Title: "Общая картинка ОбщаяКартинка1", Captions: captions, Buttons: unavailable("Выбрать из файла"),
+	expect("the new picture", steps.Created, window{Title: "Общая картинка ОбщаяКартинка1", Captions: captions, Buttons: unavailable("Выбрать из файла", "Включить набор вариантов"),
 		Appearance: true, Subsystems: true})
 	expect("its node", steps.Tree, true)
 	expect("the palette", []any{steps.PaletteTitle, steps.Tabs, steps.Palette, steps.PaletteAppearance},
 		[]any{"Свойства: ОбщаяКартинка1", []string{"Основные"}, []string{"Имя", "Синоним", "Комментарий", "Картинка", "Доступность для выбора", "Доступность для оформления"}, true})
 	expect("a picture with an image", steps.Star, window{Title: "Общая картинка Звезда", Type: "png", Captions: captions,
-		Buttons: unavailable("Выбрать из файла", "Очистить", "Сохранить в файл"), Appearance: true, Subsystems: true, Image: true})
+		Buttons: unavailable("Выбрать из файла", "Очистить", "Включить набор вариантов", "Сохранить в файл"), Appearance: true, Subsystems: true, Image: true})
 	expect("drawn", steps.Drawn, 24)
 	expect("marked for choice", steps.Marked, struct{ Appearance, Palette, Unsaved bool }{false, true, true})
-	expect("cleared", steps.Cleared, window{Title: "Общая картинка Звезда", Captions: captions, Buttons: unavailable("Выбрать из файла"), Subsystems: true})
+	expect("cleared", steps.Cleared, window{Title: "Общая картинка Звезда", Captions: captions, Buttons: unavailable("Выбрать из файла", "Включить набор вариантов"), Subsystems: true})
 	expect("saved", steps.Saved.Unsaved, false)
 	expect("saved window", steps.Saved.After.Image, false)
 	if _, err := os.Stat(filepath.Join(root, "metadata", "common-pictures", "Звезда", "100.png")); !os.IsNotExist(err) {

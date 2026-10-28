@@ -14,7 +14,7 @@ import (
 // loosened: the values are written out here, not read from SetPolicy.
 func TestSecuredAnswersUnderThePolicy(t *testing.T) {
 	want := map[string]string{
-		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+		"Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
 		"X-Content-Type-Options":  "nosniff",
 		"Referrer-Policy":         "no-referrer",
 		"X-Frame-Options":         "DENY",

@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -38,8 +39,9 @@ func pngImage(t *testing.T, w, h int, shade uint8) []byte {
 // one, 100.png, with the flag; an image changed on disk since the window
 // read it refuses the save; a new name takes the folder along while
 // «Очистить» leaves no image; a file of a format no picture is kept in is
-// refused with nothing changed; a picture of a set is not given an image by
-// the window. The project loads after each.
+// refused with nothing changed; «Очистить» at a set of two images takes the
+// set away, as the prototype's (obshchaya-kartinka.md, «Досъёмка
+// 28.10.2026»). The project loads after each.
 func TestTheWindowOfAPictureWritesItsImage(t *testing.T) {
 	t.Parallel()
 	workspace, err := Open(copyDemoProjectForStudioTest(t))
@@ -113,11 +115,125 @@ func TestTheWindowOfAPictureWritesItsImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workspace.SavePictureEditor(set.Path, PictureWindowValue{CommonPictureDefinition: set.Picture, Image: &PictureImage{}}, set.Revision); err == nil {
-		t.Fatal("the window cleared a set of two images")
+	if len(set.Set) != 2 || set.Set[0] != (metadata.PictureVariant{File: "100.png", Density: 100}) || set.Set[1].Density != 200 {
+		t.Fatalf("the set of two images named by density: %+v", set.Set)
+	}
+	if emptied, err := workspace.SavePictureEditor(set.Path, PictureWindowValue{CommonPictureDefinition: set.Picture, Image: &PictureImage{}}, set.Revision); err != nil ||
+		len(emptied.Images) != 0 || emptied.Set != nil {
+		t.Fatalf("«Очистить» at a set left %v, %+v (%v)", emptied.Images, emptied.Set, err)
 	}
 	if _, err := metadata.Load(workspace.root); err != nil {
 		t.Fatalf("the project does not load: %v", err)
+	}
+}
+
+// TestTheWindowOfAPictureWritesItsSetOfVariants catches the set of
+// variants of a picture saved wrong (ML-STUDIO.md, «Набор вариантов»):
+// «Включить набор вариантов» keeps the one image as the one variant at
+// density 100; the editor's set - the kept file with a direction, a new
+// image for a browser, a new image at a density whose name a kept file
+// takes - writes the variants and names the new files by their key; a file
+// no variant of the old set named stays; a variant naming a file the folder
+// does not have, and two variants of one key, are refused with nothing
+// changed; «Выключить набор вариантов» makes the image of a variant the base
+// image and takes every other image of the set away. The project loads
+// after each.
+func TestTheWindowOfAPictureWritesItsSetOfVariants(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := workspace.CreatePicture("Звезда")
+	if err != nil {
+		t.Fatal(err)
+	}
+	small, large, third := pngImage(t, 16, 16, 250), pngImage(t, 32, 32, 20), pngImage(t, 24, 24, 90)
+	single, err := workspace.SavePictureEditor(created.Path, PictureWindowValue{CommonPictureDefinition: created.Picture,
+		Image: &PictureImage{Format: "png", Content: small}}, created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if single.Set != nil {
+		t.Fatalf("a picture of one image shows a set: %+v", single.Set)
+	}
+	loads := func(when string) {
+		t.Helper()
+		if _, err := metadata.Load(workspace.root); err != nil {
+			t.Fatalf("%s: the project does not load: %v", when, err)
+		}
+	}
+	enabled, err := workspace.SavePictureEditor(single.Path, PictureWindowValue{CommonPictureDefinition: single.Picture,
+		Set: []PictureSetVariant{{PictureVariant: metadata.PictureVariant{File: "100.png", Density: 100}}}}, single.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []metadata.PictureVariant{{File: "100.png", Density: 100}}; !reflect.DeepEqual(enabled.Picture.Variants, want) ||
+		!slices.Equal(enabled.Images, []string{"100.png"}) || !reflect.DeepEqual(enabled.Set, want) {
+		t.Fatalf("turned on: %+v, images %v, set %+v", enabled.Picture.Variants, enabled.Images, enabled.Set)
+	}
+	loads("turned on")
+	folder := filepath.Join(workspace.root, "metadata", "common-pictures", "Звезда")
+	// A file no variant names lies in the folder, as the prototype keeps.
+	if err := os.WriteFile(filepath.Join(folder, "старый.png"), third, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadPictureEditor(enabled.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser := metadata.PictureWebBrowser("microsoft-internet-explorer-microsoft-edge-html")
+	edited, err := workspace.SavePictureEditor(opened.Path, PictureWindowValue{CommonPictureDefinition: opened.Picture, Set: []PictureSetVariant{
+		{PictureVariant: metadata.PictureVariant{File: "100.PNG", Density: 100, Direction: "rtl", GlyphWidth: 16, GlyphHeight: 16}},
+		{PictureVariant: metadata.PictureVariant{Density: 200, WebBrowser: browser}, Image: &PictureImage{Format: "png", Content: large}},
+		{PictureVariant: metadata.PictureVariant{Density: 100}, Image: &PictureImage{Format: "PNG", Content: third}},
+	}}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []metadata.PictureVariant{{File: "100.png", Density: 100, Direction: "rtl", GlyphWidth: 16, GlyphHeight: 16},
+		{File: "200-microsoft-internet-explorer-microsoft-edge-html.png", Density: 200, WebBrowser: browser},
+		{File: "100-2.png", Density: 100}}
+	if !reflect.DeepEqual(edited.Picture.Variants, want) || !slices.Equal(edited.Images,
+		[]string{"100-2.png", "100.png", "200-microsoft-internet-explorer-microsoft-edge-html.png", "старый.png"}) {
+		t.Fatalf("edited: %+v, images %v", edited.Picture.Variants, edited.Images)
+	}
+	for name, content := range map[string][]byte{"100.png": small, "200-microsoft-internet-explorer-microsoft-edge-html.png": large, "100-2.png": third} {
+		if read, _, err := workspace.ReadPictureImage(edited.Path, name); err != nil || !bytes.Equal(read, content) {
+			t.Errorf("%s reads %d bytes (%v)", name, len(read), err)
+		}
+	}
+	loads("edited")
+
+	for what, set := range map[string][]PictureSetVariant{
+		"a file not in the folder": {{PictureVariant: metadata.PictureVariant{File: "300.png", Density: 300}}},
+		"two variants of one key": {{PictureVariant: metadata.PictureVariant{File: "100.png", Density: 100}},
+			{PictureVariant: metadata.PictureVariant{Density: 100}, Image: &PictureImage{Format: "png", Content: large}}},
+		"an image of no format": {{PictureVariant: metadata.PictureVariant{Density: 150}, Image: &PictureImage{Format: "exe", Content: []byte("MZ")}}},
+	} {
+		if _, err := workspace.SavePictureEditor(edited.Path, PictureWindowValue{CommonPictureDefinition: edited.Picture, Set: set}, edited.Revision); err == nil {
+			t.Errorf("%s was taken", what)
+		}
+		if again, err := workspace.ReadPictureEditor(edited.Path); err != nil || again.Revision != edited.Revision {
+			t.Errorf("%s changed the picture (%v)", what, err)
+		}
+	}
+
+	off, err := workspace.SavePictureEditor(edited.Path, PictureWindowValue{CommonPictureDefinition: edited.Picture,
+		Image: &PictureImage{File: "200-microsoft-internet-explorer-microsoft-edge-html.png"}}, edited.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.Picture.Variants != nil || off.Set != nil || !slices.Equal(off.Images, []string{"100.png"}) {
+		t.Fatalf("turned off: %+v, images %v", off.Picture.Variants, off.Images)
+	}
+	if read, _, _ := workspace.ReadPictureImage(off.Path, "100.png"); !bytes.Equal(read, large) {
+		t.Error("turned off: the base image is not the variant's")
+	}
+	loads("turned off")
+	if _, err := workspace.SavePictureEditor(off.Path, PictureWindowValue{CommonPictureDefinition: off.Picture,
+		Image: &PictureImage{File: "../object.yaml"}}, off.Revision); err == nil {
+		t.Error("an image named outside the images of the picture was taken")
 	}
 }
 
