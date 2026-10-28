@@ -358,4 +358,5 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .section-commands-head{display:flex;justify-content:space-between;padding:2px 8px;border-bottom:1px solid #4a4d54;color:#aeb1b8;font-size:12px}
 .section-commands{height:380px;overflow:auto}
 .section-commands .studio-tree-row input[type=checkbox]{margin-left:auto}
+.command-group-choice-dialog{min-width:360px}.command-group-choice{display:flex;flex-direction:column;min-height:300px}.command-group-choice-head{padding:2px 8px;border-bottom:1px solid #4a4d54;color:#aeb1b8;font-size:12px}.command-group-choice .object-window-list{min-height:280px;margin-top:0}
 .object-window-panel button.pressed{background:rgba(88,157,246,.25)}

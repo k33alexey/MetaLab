@@ -33,6 +33,7 @@ const sectionCommandsWalk = `(async () => {
   const button = [...host.querySelectorAll('.object-window-button')].find(item => item.textContent === 'Командный интерфейс');
   steps.button = !!button && !button.disabled;
   button.click(); await settle();
+  if (!dialog()) return {problem: JSON.stringify(studio.problems)};
   steps.title = dialog().querySelector('h3').textContent;
   steps.panel = [...dialog().querySelectorAll('.object-window-panel button')].map(item => item.title + (item.disabled ? ' (недоступна)' : ''));
   steps.first = read();
@@ -132,7 +133,7 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 	}
 	expect("opened by the button", []any{steps.Button, steps.Title}, []any{true, "Командный интерфейс"})
 	expect("the panel", steps.Panel, []string{"Переместить команду в другую группу команд (недоступна)", "Переместить вверх (недоступна)",
-		"Переместить вниз (недоступна)", "Скрыть команды, невидимые по умолчанию"})
+		"Переместить вниз (недоступна)", "Установить свойства по умолчанию (недоступна)", "Скрыть команды, невидимые по умолчанию"})
 	groups := func(ordinary, create, tools []string) [][]string {
 		return [][]string{{"Панель навигации.Важное"}, append([]string{"Панель навигации.Обычное"}, ordinary...), {"Панель навигации.См. также"},
 			append([]string{"Панель действий.Создать"}, create...), {"Панель действий.Отчеты"}, append([]string{"Панель действий.Сервис"}, tools...)}

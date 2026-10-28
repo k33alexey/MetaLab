@@ -118,13 +118,39 @@ const (
 
 // SectionGroup is a group of the section of a subsystem as the window
 // «Командный интерфейс» lists it (podsistema.md, «Командный интерфейс…»;
-// snapshots series-2.603/42, 43): the group, its caption and its sign, and
-// the commands the content gives it (metadata.SectionLines).
+// snapshots series-2.603/42, 43): the group, its caption and its sign, the
+// panel it is of - «Выбор группы команд» offers a command the groups of the
+// panel it stands in by default (podsistema.md, «Досъёмка 28.10.2026, поздний
+// вечер») - and the commands the content gives it (metadata.SectionLines).
 type SectionGroup struct {
 	Group    metadata.InterfaceGroup `json:"group"`
 	Title    string                  `json:"title"`
 	Icon     string                  `json:"icon"`
+	Panel    SectionPanel            `json:"panel"`
 	Commands []SectionCommandLine    `json:"commands"`
+}
+
+// SectionPanel is the panel of a section a group is of.
+type SectionPanel string
+
+const (
+	NavigationPanel SectionPanel = "navigation"
+	ActionsPanel    SectionPanel = "actions"
+)
+
+// SectionSubsystem is a subsection of a section - a subsystem under the
+// subsystem in the command interface - under «Подразделы», by its synonym
+// or its name.
+type SectionSubsystem struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+}
+
+// SubsystemSectionAnswer is what the window «Командный интерфейс» of a
+// subsystem reads: the groups of the section and its subsections.
+type SubsystemSectionAnswer struct {
+	Groups      []SectionGroup     `json:"groups"`
+	Subsections []SectionSubsystem `json:"subsections"`
 }
 
 // SectionCommandLine is a command of a group and the sign of its kind.
@@ -140,10 +166,10 @@ type SectionCommandLine struct {
 // actions panel. A project's group is captioned by its synonym, or its
 // name.
 func sectionGroups(loaded *metadata.Catalog, language string, members []uuid.UUID) []SectionGroup {
-	standard := func(kind metadata.InterfaceGroupKind, title, icon string) SectionGroup {
-		return SectionGroup{Group: metadata.InterfaceGroup{Standard: kind}, Title: title, Icon: icon}
+	standard := func(kind metadata.InterfaceGroupKind, title, icon string, panel SectionPanel) SectionGroup {
+		return SectionGroup{Group: metadata.InterfaceGroup{Standard: kind}, Title: title, Icon: icon, Panel: panel}
 	}
-	project := func(category metadata.CommandCategory, panel string) []SectionGroup {
+	project := func(category metadata.CommandCategory, panel string, of SectionPanel) []SectionGroup {
 		var groups []SectionGroup
 		for _, item := range loaded.CommandGroups {
 			if item.Category != category {
@@ -153,20 +179,20 @@ func sectionGroups(loaded *metadata.Catalog, language string, members []uuid.UUI
 			if text := item.Title[language]; text != "" {
 				title = text
 			}
-			groups = append(groups, SectionGroup{Group: metadata.InterfaceGroup{Group: &id}, Title: panel + "." + title, Icon: "command-group"})
+			groups = append(groups, SectionGroup{Group: metadata.InterfaceGroup{Group: &id}, Title: panel + "." + title, Icon: "command-group", Panel: of})
 		}
 		return groups
 	}
 	// The signs of the groups are the set's own until the icons of the
 	// window are drawn (the owner's eye): a group, «+», a report, a gear.
-	groups := []SectionGroup{standard(metadata.NavigationPanelImportant, "Панель навигации.Важное", "command-group"),
-		standard(metadata.NavigationPanelOrdinary, "Панель навигации.Обычное", "command-group")}
-	groups = append(groups, project(metadata.NavigationPanelCategory, "Панель навигации")...)
-	groups = append(groups, standard(metadata.NavigationPanelSeeAlso, "Панель навигации.См. также", "command-group"),
-		standard(metadata.ActionsPanelCreate, "Панель действий.Создать", "add"),
-		standard(metadata.ActionsPanelReports, "Панель действий.Отчеты", "report"),
-		standard(metadata.ActionsPanelTools, "Панель действий.Сервис", "settings"))
-	groups = append(groups, project(metadata.ActionsPanelCategory, "Панель действий")...)
+	groups := []SectionGroup{standard(metadata.NavigationPanelImportant, "Панель навигации.Важное", "command-group", NavigationPanel),
+		standard(metadata.NavigationPanelOrdinary, "Панель навигации.Обычное", "command-group", NavigationPanel)}
+	groups = append(groups, project(metadata.NavigationPanelCategory, "Панель навигации", NavigationPanel)...)
+	groups = append(groups, standard(metadata.NavigationPanelSeeAlso, "Панель навигации.См. также", "command-group", NavigationPanel),
+		standard(metadata.ActionsPanelCreate, "Панель действий.Создать", "add", ActionsPanel),
+		standard(metadata.ActionsPanelReports, "Панель действий.Отчеты", "report", ActionsPanel),
+		standard(metadata.ActionsPanelTools, "Панель действий.Сервис", "settings", ActionsPanel))
+	groups = append(groups, project(metadata.ActionsPanelCategory, "Панель действий", ActionsPanel)...)
 	for _, line := range loaded.SectionLines(members) {
 		for index := range groups {
 			if sameGroup(groups[index].Group, line.Group) {
@@ -192,20 +218,41 @@ func sectionIcon(line metadata.SectionLine) string {
 	return kinds.Must(line.Kind).Icon
 }
 
-// SubsystemSection answers the groups of the section of a subsystem whose
-// content is members - the window's, saved or not.
-func (workspace *Workspace) SubsystemSection(members []uuid.UUID) ([]SectionGroup, error) {
+// SubsystemSection answers the groups of the section of the subsystem whose
+// content is members - the window's, saved or not - and its subsections.
+func (workspace *Workspace) SubsystemSection(subsystem uuid.UUID, members []uuid.UUID) (SubsystemSectionAnswer, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
-		return nil, err
+		return SubsystemSectionAnswer{}, err
 	}
 	loaded, err := metadata.Load(workspace.root)
 	if err != nil {
-		return nil, err
+		return SubsystemSectionAnswer{}, err
 	}
-	return sectionGroups(loaded, configuration.DefaultLanguage, members), nil
+	return SubsystemSectionAnswer{Groups: sectionGroups(loaded, configuration.DefaultLanguage, members),
+		Subsections: subsections(loaded, configuration.DefaultLanguage, subsystem)}, nil
+}
+
+// subsections are the subsystems under subsystem that are in the command
+// interface, as the project reads them - the window orders them: a
+// subsystem not in it is no
+// section (help, Подсистема.ВключатьВКомандныйИнтерфейс), and «Все
+// подсистемы» leaves it out too (podsistema.md, «Предсъёмка 28.10.2026»).
+func subsections(loaded *metadata.Catalog, language string, subsystem uuid.UUID) []SectionSubsystem {
+	var found []SectionSubsystem
+	for _, item := range loaded.Subsystems {
+		if item.Parent == nil || *item.Parent != subsystem || !item.IncludeInCommandInterface {
+			continue
+		}
+		title := item.Name
+		if text := item.Title[language]; text != "" {
+			title = text
+		}
+		found = append(found, SectionSubsystem{ID: item.ID, Title: title})
+	}
+	return found
 }
 
 func registerSubsystemEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
@@ -216,9 +263,10 @@ func registerSubsystemEditorRoutes(routes *http.ServeMux, workspace *Workspace) 
 		return workspace.MoveSubsystem(input)
 	}))
 	routes.HandleFunc("POST "+subsystemSectionAddress, answerStudio(0, writeSourceError, func(input struct {
-		Members []uuid.UUID `json:"members"`
+		Subsystem uuid.UUID   `json:"subsystem"`
+		Members   []uuid.UUID `json:"members"`
 	}) (any, error) {
-		return workspace.SubsystemSection(input.Members)
+		return workspace.SubsystemSection(input.Subsystem, input.Members)
 	}))
 	registerObjectEditor(routes, subsystemEditorAddress, workspace.ReadSubsystemEditor, workspace.SaveSubsystemWindow, workspace.CreateSubsystem,
 		workspace.DeleteSubsystem)

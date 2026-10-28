@@ -784,6 +784,18 @@ function moveInCircle(list, index, by) {
   return to;
 }
 
+/* moveWithin moves the item at index of list one place up (by -1) or down
+   (by 1) in place, nothing at the ends - as the windows of a command
+   interface move a command or a subsection (podsistema.md, «Досъёмка
+   28.10.2026, поздний вечер»; konfiguraciya.md, «Рабочая область…»: the
+   arrows at the ends do nothing). Answers whether it moved. */
+function moveWithin(list, index, by) {
+  const to = index + by;
+  if (index < 0 || to < 0 || to >= list.length) return false;
+  [list[index], list[to]] = [list[to], list[index]];
+  return true;
+}
+
 /* radioFrame is a frame of the prototype's window with its caption on the
    border and a choice of one in it: choices are [value, text] in their
    order, value the one chosen - none while the object says none - and
@@ -902,6 +914,22 @@ async function chooseObjects(title, tree, chosen) {
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
   search.focus();
   return await answer === 'ok' ? order.filter(id => marked.has(id)) : null;
+}
+
+/* chooseCommandGroup is the platform's window «Выбор группы команд» of the
+   windows of a command interface (podsistema.md, «Досъёмка 28.10.2026,
+   поздний вечер»; konfiguraciya.md, «Досъёмка 27.10.2026»; snapshots
+   vopr-2.636/07, 09, 26): the list «Имя» of the groups offered, the first
+   current, OK and «Отмена». groups are [key, caption] in their order.
+   Answers the key of the group current on OK, null on «Отмена». */
+async function chooseCommandGroup(groups) {
+  let current = groups[0]?.[0];
+  const content = node('div', undefined, 'command-group-choice'), rows = node('div');
+  const draw = () => rows.replaceChildren(objectRows(groups, current, key => { current = key; draw(); }));
+  content.append(node('div', 'Имя', 'command-group-choice-head'), rows);
+  draw();
+  return await showDialog({title: 'Выбор группы команд', content, className: 'command-group-choice-dialog',
+    answers: [['ok', 'OK'], [null, 'Отмена']]}) === 'ok' ? current : null;
 }
 
 /* PaletteView is how the palette of properties is shown, the same for every

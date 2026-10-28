@@ -130,60 +130,203 @@ async function moveSubsystem(path, projectName) {
 
 /* showSubsystemCommandInterface is the window «Командный интерфейс» of a
    subsystem (podsistema.md, «Окно», «Командный интерфейс…», «Досъёмка
-   28.10.2026»; snapshots podsistema/13, 14, series-2.603/42, 43): over the
-   tree, «Переместить команду в другую группу команд», up, down - items of
-   their own, unavailable - «Скрыть команды, невидимые по умолчанию» -
-   a command whose box is off leaves the tree while it is pressed
-   (konfiguraciya.md, В14 of series 2.595) - and
-   «Отбор по ролям» - unavailable until its item; the tree «Команда —
-   Видимость»: the groups of the section in the prototype's order (server,
-   sectionGroups), a group with commands open, the commands of the content
-   of the window - saved or not - by the alphabet of their presentation,
-   each with the box of its visibility: the command interface's, or else
-   the default of its kind (metadata.SectionLines). OK writes into the
-   subsystem the visibility that differs from the default, and takes away
-   what was said and is the default again unless roles are said for it;
-   «Отмена» changes nothing. */
+   28.10.2026», «Досъёмка 28.10.2026, поздний вечер»; snapshots podsistema/13,
+   14, series-2.603/42, 43, vopr-2.636/07-28). Over the tree: «Переместить
+   команду в другую группу команд», up, down, «Установить свойства по
+   умолчанию», «Скрыть команды, невидимые по умолчанию» - a command whose box
+   is off leaves the tree while it is pressed (konfiguraciya.md, В14 of series
+   2.595) - and «Отбор по ролям», unavailable until its item. The tree
+   «Команда — Видимость»: the groups of the section in the prototype's order
+   (server, sectionGroups), each command of the content of the window - saved
+   or not - in the group its placement says, or else its own, with the box of
+   its visibility: the command interface's, or else the default of its kind
+   (metadata.SectionLines); under «Подразделы» the subsystems under it in the
+   command interface (server, subsections).
+
+   The order of a group is automatic - its own commands by the alphabet of
+   their presentation, then those moved into it in the order they came - or
+   manual, «(ручной порядок)», as its CommandsOrder lists them, the commands
+   come later at its end; «Подразделы» alike by the alphabet or by
+   SubsystemsOrder. The row clicked is current. On a command the four
+   buttons act: the move offers the groups of the panel the command stands in
+   by default (chooseCommandGroup) and puts it at the end of the group chosen;
+   up and down swap it with its neighbour - not round the ends - and make its
+   group manual; the default brings back its group, its place and its
+   visibility, common and by roles. On a subsection up and down order
+   «Подразделы» and the default is offered and does nothing known (question
+   В2 of series 2.639). On a group or «Подразделы» the buttons are
+   unavailable and the menu of the row offers «Восстановить автоматический
+   порядок». The menu of a row is the buttons' and that; the keys
+   Cmd+Shift+Up and Cmd+Shift+Down move.
+
+   OK writes into the subsystem what the window changed: the visibility that
+   differs from the default, and of a command standing out of its group
+   always (the prototype's); the placement of a command moved or brought
+   back; the whole order of a group ordered or brought back to automatic,
+   GroupsOrder - the groups with an order - with it; the order of
+   «Подразделы». What it did not change is written as it was; «Отмена»
+   changes nothing. */
 async function showSubsystemCommandInterface(api) {
   const object = api.object();
-  const groups = await postJSON('/api/subsystem/section', {members: object.members || []});
+  const answer = await postJSON('/api/subsystem/section', {subsystem: object.id, members: object.members || []});
+  const groups = answer.groups, subsections = answer.subsections || [];
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
-  const said = object.commandInterface?.commandsVisibility || [];
+  const commandOf = line => Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
+  const groupKey = group => [group.standard, group.group, group.written].map(part => part || '').join('|');
+  const said = object.commandInterface || {};
+  const visibilities = said.commandsVisibility || [];
   const lines = groups.flatMap(group => group.commands || []);
-  const visible = new Map(lines.map(line => [line, said.find(item => same(item, line))?.visibility.common ?? line.visible]));
+  const byKey = new Map(groups.map(group => [groupKey(group.group), group]));
+  const home = new Map(lines.map(line => [line, groupKey(line.group)]));
+  const lineOf = item => lines.find(line => same(line, item));
+  const place = new Map(lines.map(line => [line, home.get(line)]));
+  const arrivals = [];
+  for (const item of said.commandsPlacement || []) {
+    const line = lineOf(item), key = groupKey(item.group);
+    if (line && byKey.has(key)) { place.set(line, key); arrivals.push(line); }
+  }
+  const visible = new Map(lines.map(line => [line, visibilities.find(item => same(item, line))?.visibility.common ?? line.visible]));
+  const roles = new Map(lines.map(line => [line, visibilities.find(item => same(item, line))?.visibility.roles]));
+  const orders = new Map();
+  for (const item of said.commandsOrder || []) {
+    const line = lineOf(item), key = groupKey(item.group);
+    if (!line || !byKey.has(key)) continue;
+    if (!orders.has(key)) orders.set(key, []);
+    orders.get(key).push(line);
+  }
+  let subsectionOrder = said.subsystemsOrder?.length ? said.subsystemsOrder.map(id => subsections.find(item => item.id === id)).filter(Boolean) : null;
+  const placedLines = new Set(), orderedGroups = new Set();
+  let subsectionsTouched = false;
   const actions = {create: ': создать', 'create-folder': ': создать группу'};
   const caption = line => localizedTitle({title: line.title}, api.source().defaultLanguage) + (actions[line.standard] || '');
-  let hidden = false;
+  const alphabet = (one, other) => caption(one).localeCompare(caption(other), 'ru');
+  const commandsOf = key => {
+    const members = lines.filter(line => place.get(line) === key);
+    const manual = (orders.get(key) || []).filter(line => members.includes(line));
+    const rest = members.filter(line => !manual.includes(line));
+    const come = rest.filter(line => home.get(line) !== key).sort((one, other) => arrivals.indexOf(one) - arrivals.indexOf(other));
+    return [...manual, ...rest.filter(line => home.get(line) === key).sort(alphabet), ...come];
+  };
+  const subsectionsShown = () => {
+    const manual = subsectionOrder || [];
+    return [...manual, ...subsections.filter(item => !manual.includes(item)).sort((one, other) => one.title.localeCompare(other.title, 'ru'))];
+  };
+  let hidden = false, current = null;
+  const isCurrent = which => !!current && Object.keys(which).every(key => current[key] === which[key]);
   const tree = node('div', undefined, 'object-window-tree section-commands');
+  tree.tabIndex = 0;
+  const chosen = (row, which) => {
+    row.classList.toggle('selected', isCurrent(which));
+    row.addEventListener('click', event => { if (!(event.target instanceof HTMLInputElement)) { current = which; draw(); } });
+    row.addEventListener('contextmenu', event => { current = which; draw(); menu(event); });
+  };
   const draw = () => {
-    tree.replaceChildren(...groups.map(group => {
-      const commands = (group.commands || []).filter(line => !hidden || visible.get(line))
-        .sort((one, other) => caption(one).localeCompare(caption(other), 'ru'));
-      const children = commands.map(line => {
+    const rows = groups.map(group => {
+      const key = groupKey(group.group);
+      const children = commandsOf(key).filter(line => !hidden || visible.get(line)).map(line => {
         const box = node('input');
         box.type = 'checkbox';
         box.checked = visible.get(line);
         box.setAttribute('aria-label', 'Видимость: ' + caption(line));
-        box.addEventListener('change', () => visible.set(line, box.checked));
+        box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; draw(); });
         const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
         row.append(box);
+        chosen(row, {line});
         return element;
       });
-      return treeNode({icon: group.icon, caption: group.title, children, open: true}).element;
-    }));
+      const {element, row} = treeNode({icon: group.icon, caption: group.title + (orders.has(key) ? ' (ручной порядок)' : ''), children, open: true});
+      chosen(row, {group: key});
+      return element;
+    });
+    if (subsections.length) {
+      const children = subsectionsShown().map(item => {
+        const {element, row} = treeNode({icon: 'subsystem', caption: item.title});
+        chosen(row, {subsection: item});
+        return element;
+      });
+      const {element, row} = treeNode({caption: 'Подразделы' + (subsectionOrder ? ' (ручной порядок)' : ''), children, open: true});
+      chosen(row, {subsections: true});
+      rows.push(element);
+    }
+    tree.replaceChildren(...rows);
+    const command = !!current?.line, movable = command || !!current?.subsection;
+    move.disabled = !command;
+    up.disabled = down.disabled = standard.disabled = !movable;
   };
+  async function moveCommand() {
+    const line = current?.line;
+    if (!line) return;
+    const panel = byKey.get(home.get(line)).panel;
+    const to = await chooseCommandGroup(groups.filter(group => group.panel === panel).map(group => [groupKey(group.group), group.title]));
+    if (to == null || to === place.get(line)) return;
+    place.set(line, to);
+    if (arrivals.includes(line)) arrivals.splice(arrivals.indexOf(line), 1);
+    arrivals.push(line);
+    placedLines.add(line);
+    draw();
+  }
+  function shift(by) {
+    if (current?.line) {
+      const key = place.get(current.line), list = commandsOf(key);
+      if (!moveWithin(list, list.indexOf(current.line), by)) return;
+      orders.set(key, list);
+      orderedGroups.add(key);
+    } else if (current?.subsection) {
+      const list = subsectionsShown();
+      if (!moveWithin(list, list.indexOf(current.subsection), by)) return;
+      subsectionOrder = list;
+      subsectionsTouched = true;
+    }
+    draw();
+  }
+  function setDefault() {
+    const line = current?.line;
+    if (!line) return;
+    place.set(line, home.get(line));
+    placedLines.add(line);
+    visible.set(line, line.visible);
+    roles.set(line, undefined);
+    for (const [key, list] of orders) {
+      if (!list.includes(line)) continue;
+      const rest = list.filter(item => item !== line);
+      if (rest.length) orders.set(key, rest); else orders.delete(key);
+      orderedGroups.add(key);
+    }
+    draw();
+  }
+  function restore() {
+    if (current?.group) { orders.delete(current.group); orderedGroups.add(current.group); }
+    else if (current?.subsections) { subsectionOrder = null; subsectionsTouched = true; }
+    draw();
+  }
+  const menu = event => showContextMenu(event, [
+    ['Переместить команду', moveCommand, !!current?.line, '', 'move-item'],
+    ['Переместить вверх', () => shift(-1), !!(current?.line || current?.subsection), 'Cmd+Shift+Up', 'move-up'],
+    ['Переместить вниз', () => shift(1), !!(current?.line || current?.subsection), 'Cmd+Shift+Down', 'move-down'],
+    null,
+    ['Установить свойства по умолчанию', setDefault, !!(current?.line || current?.subsection), '', 'restore-values'],
+    ['Восстановить автоматический порядок', restore, !!(current?.group || current?.subsections)],
+  ]);
+  tree.addEventListener('keydown', event => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      shift(event.key === 'ArrowUp' ? -1 : 1);
+    }
+  });
   const hide = panelButton('filter-by-current-value', 'Скрыть команды, невидимые по умолчанию', true, () => {
     hidden = !hidden;
     hide.classList.toggle('pressed', hidden);
     draw();
   });
-  const roles = selectInput([['', '<Не установлен>']], '', () => {}, 'Отбор по ролям');
-  roles.disabled = true;
+  const move = panelButton('move-item', 'Переместить команду в другую группу команд', false, moveCommand);
+  const up = panelButton('move-up', 'Переместить вверх', false, () => shift(-1)), down = panelButton('move-down', 'Переместить вниз', false, () => shift(1));
+  const standard = panelButton('restore-values', 'Установить свойства по умолчанию', false, setDefault);
+  const filterRoles = selectInput([['', '<Не установлен>']], '', () => {}, 'Отбор по ролям');
+  filterRoles.disabled = true;
   const filter = node('label', undefined, 'section-commands-roles');
-  filter.append(node('span', 'Отбор по ролям:'), roles);
-  const bar = windowPanel([panelButton('move-item', 'Переместить команду в другую группу команд', false, () => {}),
-    panelButton('move-up', 'Переместить вверх', false, () => {}), panelButton('move-down', 'Переместить вниз', false, () => {}), hide, filter]);
+  filter.append(node('span', 'Отбор по ролям:'), filterRoles);
+  const bar = windowPanel([move, up, down, standard, hide, filter]);
   const head = node('div', undefined, 'section-commands-head');
   head.append(node('span', 'Команда'), node('span', 'Видимость'));
   const content = node('div', undefined, 'section-commands-window');
@@ -191,14 +334,27 @@ async function showSubsystemCommandInterface(api) {
   draw();
   if (await showDialog({title: 'Командный интерфейс', content, className: 'section-commands-dialog', help: 'subsystem-command-interface',
     answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
-  const kept = said.filter(item => !lines.some(line => same(item, line)));
+  const commandInterface = {...said};
+  const shown = line => place.get(line) !== home.get(line);
+  const kept = visibilities.filter(item => !lineOf(item));
   for (const line of lines) {
-    const before = said.find(item => same(item, line)), now = visible.get(line);
-    const command = Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
-    if (before?.visibility.roles?.length || now !== line.visible) kept.push({...command, visibility: {...before?.visibility, common: now}});
+    const now = visible.get(line), byRoles = roles.get(line);
+    if (byRoles?.length || now !== line.visible || shown(line)) kept.push({...commandOf(line), visibility: {common: now, ...(byRoles?.length ? {roles: byRoles} : {})}});
   }
-  const commandInterface = {...object.commandInterface};
-  if (kept.length) commandInterface.commandsVisibility = kept; else delete commandInterface.commandsVisibility;
+  commandInterface.commandsVisibility = kept;
+  commandInterface.commandsPlacement = [...(said.commandsPlacement || []).filter(item => !placedLines.has(lineOf(item))),
+    ...[...placedLines].filter(shown).map(line => ({...commandOf(line), group: byKey.get(place.get(line)).group, placement: 'auto'}))];
+  if (orderedGroups.size) {
+    const order = [...(said.commandsOrder || []).filter(item => !orderedGroups.has(groupKey(item.group))),
+      ...[...orderedGroups].filter(key => orders.has(key)).flatMap(key => commandsOf(key).map(line => ({...commandOf(line), group: byKey.get(key).group})))];
+    const seen = new Map(order.map(item => [groupKey(item.group), item.group]));
+    commandInterface.commandsOrder = order;
+    commandInterface.groupsOrder = [...seen.values()];
+  }
+  if (subsectionsTouched) commandInterface.subsystemsOrder = subsectionOrder ? subsectionsShown().map(item => item.id) : [];
+  for (const key of ['commandsVisibility', 'commandsPlacement', 'commandsOrder', 'groupsOrder', 'subsystemsOrder']) {
+    if (!commandInterface[key]?.length) delete commandInterface[key];
+  }
   if (Object.keys(commandInterface).length) object.commandInterface = commandInterface; else delete object.commandInterface;
   api.changed();
   return true;
