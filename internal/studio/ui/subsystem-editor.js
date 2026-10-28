@@ -174,6 +174,17 @@ const roleFilters = [];
    goes, a subsection stays that they open something of, and «Подразделы»
    goes without one; the boxes stay the common visibility.
 
+   The columns of the roles (obshchee.md, «Список команд», «Видимость по
+   ролям»; snapshots vopr-2.636/01, 17, predsyomka-1/02, 03): under
+   «Видимость по ролям» a column a role, by its synonym, in the order of
+   the project - every role, or the roles of the filter; «Команда» stays
+   where it is while they scroll under it. A command has a box in each:
+   grey and marked while the role says nothing - the default, even with
+   the common box off - and a click goes round, as the box of «Настройка
+   видимости» does: off, on, the default again. Only the columns in sight
+   are drawn - a project has a thousand roles. OK writes what the roles
+   say into visibility.roles, in the order they were said.
+
    OK writes into the subsystem what the window changed: the visibility that
    differs from the default, and of a command standing out of its group
    always (the prototype's); the placement of a command moved or brought
@@ -232,12 +243,65 @@ async function showSubsystemCommandInterface(api) {
   const isCurrent = which => !!current && Object.keys(which).every(key => current[key] === which[key]);
   const tree = node('div', undefined, 'object-window-tree section-commands');
   tree.tabIndex = 0;
+  const roleWidth = 120, rolesInSight = 3;
+  const columns = () => filtering.length ? projectRoles.filter(role => filtering.includes(role.id)) : projectRoles;
+  let strips = [], offset = 0;
+  const strip = fill => {
+    const element = node('div', undefined, 'section-roles-strip');
+    strips.push({element, fill});
+    return element;
+  };
+  const paint = () => {
+    const shown = columns(), sight = Math.min(shown.length, rolesInSight) * roleWidth;
+    offset = Math.max(0, Math.min(offset, shown.length * roleWidth - sight));
+    const from = Math.floor(offset / roleWidth), to = Math.min(shown.length, Math.ceil((offset + sight) / roleWidth));
+    for (const {element, fill} of strips) {
+      const cells = [];
+      for (let at = from; at < to; at++) {
+        const cell = node('span', undefined, 'section-role-cell');
+        cell.style.left = (at * roleWidth - offset) + 'px';
+        fill(shown[at], cell);
+        cells.push(cell);
+      }
+      element.replaceChildren(...cells);
+    }
+    content.style.setProperty('--roles-sight', sight + 'px');
+    spacer.style.width = shown.length * roleWidth + 'px';
+    scroller.hidden = shown.length <= rolesInSight;
+    if (scroller.scrollLeft !== offset) scroller.scrollLeft = offset;
+  };
+  const roleState = (line, role) => {
+    const said = roles.get(line)?.find(item => item.role === role.id);
+    return said ? (said.visible ? 'on' : 'off') : 'default';
+  };
+  const roleBox = (line, role, cell) => {
+    const box = node('span', undefined, 'role-visibility'), state = roleState(line, role);
+    box.dataset.state = state;
+    box.setAttribute('role', 'checkbox');
+    box.setAttribute('aria-checked', {default: 'mixed', on: 'true', off: 'false'}[state]);
+    box.setAttribute('aria-label', 'Видимость: ' + role.title + ': ' + caption(line));
+    box.addEventListener('click', event => {
+      event.stopPropagation();
+      const said = [...(roles.get(line) || [])], at = said.findIndex(item => item.role === role.id);
+      if (at < 0) said.push({role: role.id, visible: false});
+      else if (!said[at].visible) said[at] = {role: role.id, visible: true};
+      else said.splice(at, 1);
+      roles.set(line, said.length ? said : undefined);
+      current = {line};
+      draw();
+    });
+    cell.append(box);
+  };
   const chosen = (row, which) => {
     row.classList.toggle('selected', isCurrent(which));
     row.addEventListener('click', event => { if (!(event.target instanceof HTMLInputElement)) { current = which; draw(); } });
     row.addEventListener('contextmenu', event => { current = which; draw(); menu(event); });
   };
   const draw = () => {
+    strips = [];
+    const rolesHead = node('div', undefined, 'section-roles-head');
+    rolesHead.append(node('span', 'Видимость по ролям'), strip((role, cell) => { cell.textContent = role.title; cell.title = role.title; }));
+    head.replaceChildren(node('span', 'Команда', 'section-commands-caption'), node('span', 'Видимость', 'section-commands-visibility'), rolesHead);
     const rows = groups.map(group => {
       const key = groupKey(group.group);
       const lines = commandsOf(key).filter(opened);
@@ -249,7 +313,7 @@ async function showSubsystemCommandInterface(api) {
         box.setAttribute('aria-label', 'Видимость: ' + caption(line));
         box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; draw(); });
         const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
-        row.append(box);
+        row.append(box, strip((role, cell) => roleBox(line, role, cell)));
         chosen(row, {line});
         return element;
       });
@@ -269,6 +333,7 @@ async function showSubsystemCommandInterface(api) {
       rows.push(element);
     }
     tree.replaceChildren(...rows);
+    paint();
     const command = !!current?.line, movable = command || !!current?.subsection;
     move.disabled = !command;
     up.disabled = down.disabled = standard.disabled = !movable;
@@ -365,9 +430,17 @@ async function showSubsystemCommandInterface(api) {
   filter.append(node('span', 'Отбор по ролям:'), filterRoles());
   const bar = windowPanel([move, up, down, standard, hide, filter]);
   const head = node('div', undefined, 'section-commands-head');
-  head.append(node('span', 'Команда'), node('span', 'Видимость'));
+  const scroller = node('div', undefined, 'section-roles-scroll'), spacer = node('div');
+  scroller.append(spacer);
+  scroller.addEventListener('scroll', () => { offset = scroller.scrollLeft; paint(); });
+  // The wheel and the trackpad sideways over the tree scroll the columns too.
+  tree.addEventListener('wheel', event => {
+    if (!event.deltaX || scroller.hidden) return;
+    event.preventDefault();
+    scroller.scrollLeft += event.deltaX;
+  }, {passive: false});
   const content = node('div', undefined, 'section-commands-window');
-  content.append(bar, head, tree);
+  content.append(bar, head, tree, scroller);
   draw();
   if (await showDialog({title: 'Командный интерфейс', content, className: 'section-commands-dialog', help: 'subsystem-command-interface',
     answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;

@@ -150,13 +150,15 @@ type SectionSubsystem struct {
 	Opens []uuid.UUID `json:"opens"`
 }
 
-// SectionRole is a role «Отбор по ролям» offers, by its name, in the order
-// of the tree, as «Выбор объекта: Роль» lists it (snapshot
-// series-2.603/45).
+// SectionRole is a role of the project in the order of the tree: by its
+// name «Выбор объекта: Роль» lists it (snapshot series-2.603/45), by its
+// synonym, or its name, its column of visibility is captioned
+// (obshchee.md, «Список команд»).
 type SectionRole struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
-	Icon string    `json:"icon"`
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Title string    `json:"title"`
+	Icon  string    `json:"icon"`
 }
 
 // SubsystemSectionAnswer is what the window «Командный интерфейс» of a
@@ -193,11 +195,9 @@ func sectionGroups(loaded *metadata.Catalog, language string, members []uuid.UUI
 			if item.Category != category {
 				continue
 			}
-			id, title := item.ID, item.Name
-			if text := item.Title[language]; text != "" {
-				title = text
-			}
-			groups = append(groups, SectionGroup{Group: metadata.InterfaceGroup{Group: &id}, Title: panel + "." + title, Icon: "command-group", Panel: of})
+			id := item.ID
+			groups = append(groups, SectionGroup{Group: metadata.InterfaceGroup{Group: &id}, Title: panel + "." + item.Title.Presentation(language, item.Name),
+				Icon: "command-group", Panel: of})
 		}
 		return groups
 	}
@@ -252,7 +252,8 @@ func (workspace *Workspace) SubsystemSection(subsystem uuid.UUID, members []uuid
 	}
 	roles := []SectionRole{}
 	for _, role := range loaded.KindObjects(metadata.RoleKind) {
-		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Icon: kinds.Must(metadata.RoleKind).Icon})
+		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Title: role.Title.Presentation(configuration.DefaultLanguage, role.Name),
+			Icon: kinds.Must(metadata.RoleKind).Icon})
 	}
 	return SubsystemSectionAnswer{Groups: sectionGroups(loaded, configuration.DefaultLanguage, members),
 		Subsections: subsections(loaded, configuration.DefaultLanguage, subsystem), Roles: roles, Project: configuration.Name}, nil
@@ -293,11 +294,8 @@ func subsections(loaded *metadata.Catalog, language string, subsystem uuid.UUID)
 		if item.Parent == nil || *item.Parent != subsystem || !item.IncludeInCommandInterface {
 			continue
 		}
-		title := item.Name
-		if text := item.Title[language]; text != "" {
-			title = text
-		}
-		found = append(found, SectionSubsystem{ID: item.ID, Title: title, Opens: openingRoles(loaded, contentLines(loaded, item))})
+		found = append(found, SectionSubsystem{ID: item.ID, Title: item.Title.Presentation(language, item.Name),
+			Opens: openingRoles(loaded, contentLines(loaded, item))})
 	}
 	return found
 }
