@@ -254,7 +254,7 @@ func (writer *xdtoSchemaWriter) objectType(depth int, object XDTOObjectType) {
 			elements = append(elements, property)
 		}
 	}
-	open := object.Open != nil && *object.Open
+	open := writer.open(object, 0)
 	if text != nil && len(elements) == 0 && !open {
 		writer.line(depth, head+">")
 		writer.line(depth+1, "<xs:simpleContent>")
@@ -321,22 +321,47 @@ func (writer *xdtoSchemaWriter) objectType(depth int, object XDTOObjectType) {
 // object type of the package (CML208.xsd: a type extending Контрагент).
 func (writer *xdtoSchemaWriter) unordered(object XDTOObjectType, depth int) bool {
 	if object.Ordered == nil || object.Sequenced == nil {
-		if object.Base != nil && object.Base.Namespace == writer.content.Namespace && depth < len(writer.content.ObjectTypes) {
-			for _, base := range writer.content.ObjectTypes {
-				if base.Name == object.Base.Name {
-					inherited := base
-					if object.Ordered != nil {
-						inherited.Ordered = object.Ordered
-					}
-					if object.Sequenced != nil {
-						inherited.Sequenced = object.Sequenced
-					}
-					return writer.unordered(inherited, depth+1)
-				}
+		if base, ok := writer.base(object, depth); ok {
+			if object.Ordered != nil {
+				base.Ordered = object.Ordered
 			}
+			if object.Sequenced != nil {
+				base.Sequenced = object.Sequenced
+			}
+			return writer.unordered(base, depth+1)
 		}
 	}
 	return object.Sequenced != nil && *object.Sequenced && object.Ordered != nil && !*object.Ordered
+}
+
+// open reports whether an object type is open - any element and any
+// attribute after its own. A type that does not say takes it from its base,
+// an object type of the package: the extension of an open type is open too
+// (paket-xdto.md, «Досъёмка 28.10.2026, вечер»; configurator-2026-10-28/
+// seriya-2631/10-v5-open-inherit.xsd).
+func (writer *xdtoSchemaWriter) open(object XDTOObjectType, depth int) bool {
+	if object.Open == nil {
+		if base, ok := writer.base(object, depth); ok {
+			return writer.open(base, depth+1)
+		}
+		return false
+	}
+	return *object.Open
+}
+
+// base answers the object type of the package an object type extends,
+// whose flags it takes where it says none; depth, the bases walked so far,
+// stops a loop of bases.
+func (writer *xdtoSchemaWriter) base(object XDTOObjectType, depth int) (XDTOObjectType, bool) {
+	if object.Base == nil || object.Base.Namespace != writer.content.Namespace || depth >= len(writer.content.ObjectTypes) {
+		return XDTOObjectType{}, false
+	}
+	for _, base := range writer.content.ObjectTypes {
+		if base.Name == object.Base.Name {
+			return base, true
+		}
+	}
+	return XDTOObjectType{}, false
 }
 
 // xmlQuoted is a value of an attribute in double quotes, escaped as the

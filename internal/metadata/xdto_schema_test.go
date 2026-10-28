@@ -23,7 +23,8 @@ func schemaLines(lines ...string) string { return "\uFEFF" + strings.Join(lines,
 // prototype's form="qualified", which XML Schema does not allow on a global
 // declaration (paket-xdto.md, «Расхождения с ML»). Defects caught: the
 // declarations, the prefixes, the forms of the package, the order of the
-// facets, the line breaks or the mark of byte order not the prototype's.
+// facets, the line breaks or the mark of byte order not the prototype's; an
+// extension of an open type written closed.
 func TestTheSchemaOfAPackageIsThePrototypes(t *testing.T) {
 	t.Parallel()
 	const soap, sample = "http://schemas.xmlsoap.org/soap/envelope/", "http://www.sample-package.org"
@@ -69,6 +70,43 @@ func TestTheSchemaOfAPackageIsThePrototypes(t *testing.T) {
 		`</xs:schema>`); string(schema) != want || issues != nil {
 		t.Errorf("tmp-paket:\n%s\nissues %v", schema, issues)
 	}
+
+	// An extension of an open type that says nothing of its own openness
+	// is open too: any element after its own and any attribute in the
+	// extension (configurator-2026-10-28/seriya-2631/10-v5-open-inherit.xsd);
+	// a type said not open is closed.
+	inherited := XDTOContent{Namespace: sample, ElementFormQualified: boolPointer(true), AttributeFormQualified: boolPointer(false),
+		ObjectTypes: []XDTOObjectType{{Name: "ТипОбъекта1", Open: boolPointer(true)},
+			{Name: "ТипОбъекта2", Base: &XDTOName{sample, "ТипОбъекта1"}, Properties: []XDTOProperty{{Name: "Свойство1"}}},
+			{Name: "ТипОбъекта3", Open: boolPointer(false), Properties: []XDTOProperty{{Name: "Свойство1"}}}}}
+	schema, issues = ExportXDTOSchema(inherited, xdtoCatalog(inherited))
+	if want := schemaLines(
+		`<xs:schema xmlns:tns="http://www.sample-package.org" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.sample-package.org" attributeFormDefault="unqualified" elementFormDefault="qualified">`,
+		"\t"+`<xs:complexType name="ТипОбъекта1">`,
+		"\t\t"+`<xs:sequence>`,
+		"\t\t\t"+`<xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>`,
+		"\t\t"+`</xs:sequence>`,
+		"\t\t"+`<xs:anyAttribute namespace="##any" processContents="lax"/>`,
+		"\t"+`</xs:complexType>`,
+		"\t"+`<xs:complexType name="ТипОбъекта2">`,
+		"\t\t"+`<xs:complexContent>`,
+		"\t\t\t"+`<xs:extension base="tns:ТипОбъекта1">`,
+		"\t\t\t\t"+`<xs:sequence>`,
+		"\t\t\t\t\t"+`<xs:element name="Свойство1"/>`,
+		"\t\t\t\t\t"+`<xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>`,
+		"\t\t\t\t"+`</xs:sequence>`,
+		"\t\t\t\t"+`<xs:anyAttribute namespace="##any" processContents="lax"/>`,
+		"\t\t\t"+`</xs:extension>`,
+		"\t\t"+`</xs:complexContent>`,
+		"\t"+`</xs:complexType>`,
+		"\t"+`<xs:complexType name="ТипОбъекта3">`,
+		"\t\t"+`<xs:sequence>`,
+		"\t\t\t"+`<xs:element name="Свойство1"/>`,
+		"\t\t"+`</xs:sequence>`,
+		"\t"+`</xs:complexType>`,
+		`</xs:schema>`); string(schema) != want || issues != nil {
+		t.Errorf("open-inherit:\n%s\nissues %v", schema, issues)
+	}
 }
 
 // xdtoCatalog is a project of the packages given.
@@ -89,7 +127,7 @@ func xdtoCatalog(packages ...XDTOContent) *Catalog {
 // bound of -1 unbounded; a type of no type written as none; an attribute of
 // no lower bound required, of 0 not; an object type sequenced and not
 // ordered a choice, and a type extending it too; an open one any element and
-// any attribute after its own; an abstract one marked; a mixed anonymous
+// any attribute after its own, and a type extending it too; an abstract one marked; a mixed anonymous
 // one; text and attributes alone a simple content; an extension of nothing
 // more empty; a reference and a local name; a list, a union, length facets,
 // a pattern, digits and enumerations in the prototype's order. Defects
@@ -173,9 +211,11 @@ func TestTheSchemaOfAPackageWritesEveryConstruction(t *testing.T) {
 		"\t\t\t\t\t\t\t"+`</xs:sequence>`,
 		"\t\t\t\t\t\t"+`</xs:complexType>`,
 		"\t\t\t\t\t"+`</xs:element>`,
+		"\t\t\t\t\t"+`<xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>`,
 		"\t\t\t\t"+`</xs:choice>`,
 		"\t\t\t\t"+`<xs:attribute name="Признак" type="xs:boolean" use="required"/>`,
 		"\t\t\t\t"+`<xs:attribute name="Пометка" type="xs:boolean"/>`,
+		"\t\t\t\t"+`<xs:anyAttribute namespace="##any" processContents="lax"/>`,
 		"\t\t\t"+`</xs:extension>`,
 		"\t\t"+`</xs:complexContent>`,
 		"\t"+`</xs:complexType>`,
