@@ -12,13 +12,16 @@ import (
 // inventory walks the editor: «Добавить ▾» at the root - every node - at a
 // value type, at an object type, at a property; ✓ and ✕ of a value; a node
 // deleted after the question, one moved up; «Сохранить»; the editor opened
-// again.
+// again. The signs of the rows and of the items of «Добавить ▾» are read as
+// the names of their icons.
 const xdtoPackageWalk = `(async () => {
   const studio = window.__studio, steps = {};
   window.confirm = () => true;` + objectWindowSteps + `
   const settle = () => new Promise(resolve => setTimeout(resolve, 80)).then(() => studio.settle());
   const host = document.querySelector('#xdto-package-editor');
   const rows = () => [...host.querySelectorAll('.studio-tree-row')];
+  const sign = element => (element.querySelector('use')?.getAttribute('href') || '').replace('#icon-', '');
+  const menuSigns = () => [...document.querySelectorAll('.context-menu-item')].map(sign);
   const tree = () => rows().map(row => '  '.repeat(row.closest('.xdto-tree') ? (() => { let depth = 0, at = row.parentElement; while (at && !at.classList.contains('xdto-tree')) { if (at.classList.contains('studio-tree-children')) depth++; at = at.parentElement; } return depth; })() : 0) + row.textContent);
   const choose = async caption => { rows().filter(row => row.textContent === caption).pop().click(); await settle(); };
   const menu = async () => {
@@ -51,11 +54,13 @@ const xdtoPackageWalk = `(async () => {
   steps.rootChosen = rows().filter(row => row.classList.contains('selected')).map(row => row.textContent);
   steps.rootPalette = palette();
   steps.rootMenu = await menu();
+  steps.rootSigns = menuSigns();
   document.body.click(); await settle();
   for (const caption of ['Директива импорта', 'Свойство', 'Тип значения', 'Тип объекта']) { await choose('Пакет (http://example.org/goods)'); await add(caption); }
   steps.added = tree();
   await choose('ТипЗначения1');
   steps.valueMenu = await menu();
+  steps.valueSigns = menuSigns();
   await add('Образец');
   await choose('ТипЗначения1');
   await add('Перечисление');
@@ -66,6 +71,7 @@ const xdtoPackageWalk = `(async () => {
   await add('Свойство');
   steps.innerProperty = palette();
   steps.propertyMenu = await menu();
+  steps.propertySigns = menuSigns();
   await add('Определение типа');
   steps.question = await answer('{http://v8.1c.ru/8.1/xdto}ObjectType');
   await choose('ТипОбъекта1');
@@ -90,6 +96,7 @@ const xdtoPackageWalk = `(async () => {
   await add('Свойство');
   await panel('Переместить вверх');
   steps.moved = tree();
+  steps.signs = rows().map(row => row.textContent + ': ' + sign(row));
   await choose('НовыйЭлемент1');
   await panel('Удалить');
   steps.deleteQuestion = await answer('Да');
@@ -125,10 +132,17 @@ const xdtoPackageWalk = `(async () => {
 // пакет»).
 // Its menu opens with «Открыть пакет» in bold, «Проверить пакет» and
 // «Экспорт XML-схемы…» unavailable until their item.
+// Every node bears the sign of its kind, as the prototype's tree draws it
+// (snapshots paket-xdto/02, series-2.584/172, 176), a folder the sign of
+// what it holds, «Определения типов» a T with two squares, a definition
+// under a property the ball with the square below; every item of
+// «Добавить ▾» the sign of what it adds (paket-xdto/04, series-2.584/159,
+// 174), «Образец» too.
 // Defects caught: a new package not the prototype's; the menu not the
 // prototype's; a node, a folder, a caption or a name not the
 // prototype's, or out of its order; «Добавить» offering what the node does
-// not hold; a value not said written, or said and not written; the body not
+// not hold; a node or an item of «Добавить ▾» without its sign or with
+// the sign of another kind; a value not said written, or said and not written; the body not
 // written, written in another form, or read again otherwise.
 func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
@@ -142,7 +156,7 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		Title                                                              string
 		Opened, RootPalette, RootMenu, Added, ValueMenu, ObjectMenu        []string
 		InnerProperty, PropertyMenu, PropertyMenuAfter, Said, Taken, Moved []string
-		Deleted, Reopened                                                  []string
+		Deleted, Reopened, Signs, RootSigns, ValueSigns, PropertySigns     []string
 		Question, DeleteQuestion                                           string
 		PackagePalette                                                     struct {
 			Title string
@@ -213,6 +227,17 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 	expect("deleted", steps.Deleted, []string{"Пакет (http://example.org/goods)", "  Директивы импорта", "    http://www.imported-package.org",
 		"  Свойства", "    Свойство2", "    Свойство1", "  Типы значений", "    ТипЗначения1", "      Определения типов", "        Определение типа",
 		"      Образец", "        НовыйЭлемент1", "  Типы объектов", "    ТипОбъекта1", "      Свойство1", "        Определение типа"})
+	expect("the signs of the nodes", steps.Signs, []string{"Пакет (http://example.org/goods): xdto-package",
+		"Директивы импорта: xdto-import", "http://www.imported-package.org: xdto-import",
+		"Свойства: xdto-property", "Свойство2: xdto-property", "Свойство1: xdto-property",
+		"Типы значений: xdto-value-type", "ТипЗначения1: xdto-value-type", "Определения типов: xdto-type-definitions",
+		"Определение типа: xdto-value-type", "Образец: xdto-pattern", "НовыйЭлемент1: xdto-pattern",
+		"Перечисление: xdto-enumeration", "НовыйЭлемент1: xdto-enumeration",
+		"Типы объектов: xdto-object-type", "ТипОбъекта1: xdto-object-type", "Свойство1: xdto-property",
+		"Определение типа: xdto-property-type-definition"})
+	expect("the signs of «Добавить» at the root", steps.RootSigns, []string{"xdto-import", "xdto-property", "xdto-value-type", "xdto-object-type"})
+	expect("the signs of «Добавить» at a value type", steps.ValueSigns, []string{"xdto-value-type", "xdto-pattern", "xdto-enumeration"})
+	expect("the signs of «Добавить» at a property", steps.PropertySigns, []string{"xdto-property-type-definition"})
 	expect("saved", steps.Unsaved, false)
 	expect("reopened", steps.Reopened, steps.Deleted)
 	expect("a new package", steps.Created, struct {

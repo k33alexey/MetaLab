@@ -1,6 +1,9 @@
 package icons
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // The pictures inside the editors' windows: the property palette, the window
 // of a type, the module editor with its completion list and its panel, as the
@@ -36,6 +39,44 @@ func funnel(left, top, width float64) string {
 // to its top.
 func slashes() Part {
 	return path(Mark, "M2.5 14.5L7 1.5M8.5 14.5L13 1.5")
+}
+
+// slantedT is the slanted T with serifs of a font and of a value type of
+// XDTO, the left end of its top at x, y: 11 points wide and 12 high, its
+// flat edges on whole pixels when y is whole.
+func slantedT(x, y float64) string {
+	points := [][2]float64{{1, 0}, {11, 0}, {10.4, 3}, {9.4, 3}, {9.2, 2}, {6.5, 2}, {4.5, 10}, {6, 10},
+		{5.6, 12}, {0, 12}, {0.4, 10}, {2, 10}, {4, 2}, {1.6, 2}, {1, 3}, {0.4, 3}}
+	moved := make([][2]float64, len(points))
+	for index, point := range points {
+		moved[index] = [2]float64{math.Round((x+point[0])*100) / 100, y + point[1]}
+	}
+	return polygon(moved...)
+}
+
+// xdtoSpot is the small yellow square of the signs of the nodes of an XDTO
+// package, x, y its upper left corner: solid, with a darker rim.
+func xdtoSpot(x, y, size float64) []Part {
+	return []Part{rect(Accent, x, y, size, size), rect(Rim, x+0.5, y+0.5, size-1, size-1)}
+}
+
+// xdtoBall is the solid blue ball of a property of XDTO, lit at its upper
+// left.
+func xdtoBall(cx, cy, r float64) []Part {
+	return []Part{colored(circle(Accent, cx, cy, r), blue), colored(circle(Accent, cx-r/3, cy-r/3, r/3.5), "#a9d0f5")}
+}
+
+// dashedSquare is the dotted frame of a pattern of XDTO, on the half-pixel
+// grid from low to high: dashes of two points with gaps of one.
+func dashedSquare(low, high float64) string {
+	var out string
+	for at := low; at < high; at += 3 {
+		end := min(at+2, high)
+		out += fmt.Sprintf("M%s %sH%sM%s %sH%sM%s %sV%sM%s %sV%s",
+			number(at), number(low), number(end), number(at), number(high), number(end),
+			number(low), number(at), number(end), number(high), number(at), number(end))
+	}
+	return out
 }
 
 var editorIcons = []Icon{
@@ -167,4 +208,36 @@ var editorIcons = []Icon{
 	// was lost in them (the owner's choice of 17.10.2026).
 	{ID: "query-designer-processing", Color: slate, Parts: join(list(true), wizardSparks(),
 		cleared(colored(path(Accent, wideArrow(8, 12, 1, 0, 7)), brightGreen)))},
+	// The signs of the nodes of the editor of an XDTO package, as the
+	// prototype's tree and its «Добавить ▾» draw them (docs/block-00/
+	// paket-xdto.md; snapshots paket-xdto/02, 04, series-2.584/159, 172,
+	// 174, 176): a blue sign with the small yellow square of the package -
+	// an import a sheet with a slanted i, its corners sharp and none folded,
+	// a property a ball with a flat tag,
+	// a value type a slanted T, its definitions of types a T with two
+	// squares, a pattern a dotted frame round the square, an enumeration
+	// braces round it, the definition of a type of a property a ball with
+	// the square below; an object type the T of a value type over the ball
+	// of a property, without the square (the owner's choice of 28.10.2026
+	// instead of the prototype's slanted P). The root is the
+	// package itself (xdto-package), a folder the sign of what it holds.
+	{ID: "xdto-import", Color: slate, Accent: blue, Parts: []Part{
+		box(Plate, 2.5, 1.5, 11, 13), box(Body, 2.5, 1.5, 11, 13),
+		circle(Accent, 9, 5.5, 1.25), path(Accent, "M7 8H9.5L8.6 12H9.6L9.4 13H5.9L6.1 12H7.1L7.7 9H6.8Z"),
+	}},
+	{ID: "xdto-property", Color: blue, Accent: "#efc23a", Parts: join(xdtoBall(6.5, 9.5, 5.5), []Part{
+		rect(Accent, 9, 2, 6, 3), rect(Rim, 9.5, 2.5, 5, 2),
+	})},
+	{ID: "xdto-value-type", Color: blue, Accent: "#efc23a", Parts: join([]Part{
+		colored(path(Accent, slantedT(0, 3)), blue),
+	}, xdtoSpot(11, 1, 4))},
+	{ID: "xdto-type-definitions", Color: blue, Accent: "#efc23a", Parts: join([]Part{
+		colored(path(Accent, slantedT(0, 3)), blue),
+	}, xdtoSpot(10, 0, 4), xdtoSpot(12, 3, 4))},
+	{ID: "xdto-object-type", Color: blue, Parts: join(xdtoBall(10, 10, 5.5), cleared(colored(path(Accent, slantedT(0, 2)), blue)))},
+	{ID: "xdto-pattern", Color: blue, Accent: "#efc23a", Parts: join([]Part{
+		path(Detail, dashedSquare(1.5, 14.5)),
+	}, xdtoSpot(5, 5, 6))},
+	{ID: "xdto-enumeration", Color: blue, Accent: "#efc23a", Parts: join(braces(1.5, 14.5, 2, 14), xdtoSpot(5, 5, 6))},
+	{ID: "xdto-property-type-definition", Color: blue, Accent: "#efc23a", Parts: join(xdtoBall(6.5, 6.5, 5.5), xdtoSpot(10, 10, 5))},
 }

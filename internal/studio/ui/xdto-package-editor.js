@@ -15,8 +15,9 @@
    every value but a namespace said by ✓ (paletteFields, row.optional). A new
    node is named by the prototype: «Свойство1», «ТипЗначения1»,
    «ТипОбъекта1», «НовыйЭлемент1», an import of
-   «http://www.imported-package.org». The signs of the nodes are an item of
-   their own (the owner's eye). */
+   «http://www.imported-package.org». Every node and every item of
+   «Добавить ▾» bears the sign of its kind (xdtoIcons; ICONS.md, «Редактор
+   пакета XDTO»). */
 function createXDTOPackageEditor(host, onChange, around = {}) {
   return objectWindowEditor(host, onChange, around, {target: source => source.package,
     own: api => {
@@ -68,19 +69,28 @@ function xdtoListSubject(list, index, key) {
   return {target: {}, get: wanted => wanted === key ? list[index] : undefined, set: (wanted, value) => { if (wanted === key) list[index] = value ?? ''; }};
 }
 
+/* xdtoIcons are the signs of the nodes by their kind, as the prototype's
+   tree and its «Добавить ▾» draw them: a definition of a type under a value
+   type is drawn as a value type, under a property as the ball of a
+   property with the square below. */
+const xdtoIcons = {package: 'xdto-package', import: 'xdto-import', property: 'xdto-property', valueType: 'xdto-value-type',
+  objectType: 'xdto-object-type', pattern: 'xdto-pattern', enumeration: 'xdto-enumeration', valueTypeDef: 'xdto-value-type',
+  typeDef: 'xdto-property-type-definition'};
+
 /* xdtoTree is the tree of the body of a package: nodes {kind, caption,
-   path, children, palette, subject, list, index, adds} - kind package,
+   icon, path, children, palette, subject, list, index, adds} - kind package,
    folder, import, property, valueType, objectType, typeDef, pattern,
    enumeration; path the keys and indexes from the body down to it; list
    and index where it stands among its siblings; adds what «Добавить» adds
-   under it (xdtoAdds by the container it belongs to). */
+   under it (xdtoAdds by the container it belongs to). A folder bears the
+   sign of what it holds, «Определения типов» a T with two squares. */
 function xdtoTree(content, object) {
-  const folder = (path, key, caption, items, make, adds) => !items?.length ? [] : [{kind: 'folder', caption, path: [...path, key], adds,
+  const folder = (path, key, caption, items, make, adds, icon) => !items?.length ? [] : [{kind: 'folder', caption, icon, path: [...path, key], adds,
     children: items.map((item, index) => make(item, [...path, key, index], items, index))}];
-  const plain = (kind, palette, key, adds) => (item, path, list, index) => ({kind, caption: kind === 'enumeration' ? item.value : item, path, list, index, palette,
+  const plain = (kind, palette, key, adds) => (item, path, list, index) => ({kind, caption: kind === 'enumeration' ? item.value : item, icon: xdtoIcons[kind], path, list, index, palette,
     subject: kind === 'enumeration' ? xdtoSubject(() => item) : xdtoListSubject(list, index, key), adds, children: []});
   const property = (item, path, list, index) => {
-    const own = {kind: 'property', caption: item.name || item.ref?.name || '', path, list, index, palette: 'xdtoProperty', subject: xdtoSubject(() => item),
+    const own = {kind: 'property', caption: item.name || item.ref?.name || '', icon: xdtoIcons.property, path, list, index, palette: 'xdtoProperty', subject: xdtoSubject(() => item),
       adds: {owner: item, kinds: ['typeDef']}, children: []};
     if (item.typeDef) own.children.push(definition(item.typeDef, [...path, 'typeDef'], own));
     return own;
@@ -88,24 +98,25 @@ function xdtoTree(content, object) {
   const valueAdds = value => ({owner: value, kinds: ['valueTypeDef', 'pattern', 'enumeration']});
   const objectAdds = object => ({owner: object, kinds: ['innerProperty']});
   const valueChildren = (value, path) => [
-    ...folder(path, 'typeDefs', 'Определения типов', value.typeDefs, (inner, at, list, index) => ({...definition(inner, at), list, index}), valueAdds(value)),
-    ...folder(path, 'patterns', 'Образец', value.patterns, plain('pattern', 'xdtoPattern', 'value', valueAdds(value)), valueAdds(value)),
-    ...folder(path, 'enumerations', 'Перечисление', value.enumerations, plain('enumeration', 'xdtoEnumeration', 'value', valueAdds(value)), valueAdds(value)),
+    ...folder(path, 'typeDefs', 'Определения типов', value.typeDefs, (inner, at, list, index) => ({...definition(inner, at), icon: xdtoIcons.valueTypeDef, list, index}),
+      valueAdds(value), 'xdto-type-definitions'),
+    ...folder(path, 'patterns', 'Образец', value.patterns, plain('pattern', 'xdtoPattern', 'value', valueAdds(value)), valueAdds(value), xdtoIcons.pattern),
+    ...folder(path, 'enumerations', 'Перечисление', value.enumerations, plain('enumeration', 'xdtoEnumeration', 'value', valueAdds(value)), valueAdds(value), xdtoIcons.enumeration),
   ];
   const objectChildren = (object, path) => (object.properties || []).map((inner, index) => property(inner, [...path, 'properties', index], object.properties, index));
   const definition = (inner, path, owner) => inner.object
-    ? {kind: 'typeDef', caption: 'Определение типа', path, palette: 'xdtoObjectType', subject: xdtoSubject(() => inner.object), adds: objectAdds(inner.object),
+    ? {kind: 'typeDef', caption: 'Определение типа', icon: xdtoIcons.typeDef, path, palette: 'xdtoObjectType', subject: xdtoSubject(() => inner.object), adds: objectAdds(inner.object),
       owner, children: objectChildren(inner.object, [...path, 'object'])}
-    : {kind: 'typeDef', caption: 'Определение типа', path, palette: 'xdtoValueType', subject: xdtoSubject(() => inner.value ||= {}), adds: valueAdds(inner.value ||= {}),
+    : {kind: 'typeDef', caption: 'Определение типа', icon: xdtoIcons.typeDef, path, palette: 'xdtoValueType', subject: xdtoSubject(() => inner.value ||= {}), adds: valueAdds(inner.value ||= {}),
       owner, children: valueChildren(inner.value, [...path, 'value'])};
-  const named = (kind, palette, adds, children) => (item, path, list, index) => ({kind, caption: item.name || '', path, list, index, palette,
+  const named = (kind, palette, adds, children) => (item, path, list, index) => ({kind, caption: item.name || '', icon: xdtoIcons[kind], path, list, index, palette,
     subject: xdtoSubject(() => item), adds: adds(item), children: children(item, path)});
   const rootAdds = {owner: content, kinds: ['import', 'property', 'valueType', 'objectType']};
-  return {kind: 'package', caption: `Пакет (${object.namespace || ''})`, path: [], adds: rootAdds, children: [
-    ...folder([], 'imports', 'Директивы импорта', content.imports, plain('import', 'xdtoImport', 'namespace', rootAdds), rootAdds),
-    ...folder([], 'properties', 'Свойства', content.properties, property, rootAdds),
-    ...folder([], 'valueTypes', 'Типы значений', content.valueTypes, named('valueType', 'xdtoValueType', valueAdds, valueChildren), rootAdds),
-    ...folder([], 'objectTypes', 'Типы объектов', content.objectTypes, named('objectType', 'xdtoObjectType', objectAdds, objectChildren), rootAdds),
+  return {kind: 'package', caption: `Пакет (${object.namespace || ''})`, icon: xdtoIcons.package, path: [], adds: rootAdds, children: [
+    ...folder([], 'imports', 'Директивы импорта', content.imports, plain('import', 'xdtoImport', 'namespace', rootAdds), rootAdds, xdtoIcons.import),
+    ...folder([], 'properties', 'Свойства', content.properties, property, rootAdds, xdtoIcons.property),
+    ...folder([], 'valueTypes', 'Типы значений', content.valueTypes, named('valueType', 'xdtoValueType', valueAdds, valueChildren), rootAdds, xdtoIcons.valueType),
+    ...folder([], 'objectTypes', 'Типы объектов', content.objectTypes, named('objectType', 'xdtoObjectType', objectAdds, objectChildren), rootAdds, xdtoIcons.objectType),
   ]};
 }
 
@@ -119,7 +130,7 @@ function xdtoFind(root, path) {
 /* xdtoRow draws a node of the tree with what lies under it, open, the node
    chosen marked. */
 function xdtoRow(item, current, choose) {
-  const {element, row} = treeNode({caption: item.caption, children: item.children.map(child => xdtoRow(child, current, choose)), open: true});
+  const {element, row} = treeNode({icon: item.icon, caption: item.caption, children: item.children.map(child => xdtoRow(child, current, choose)), open: true});
   row.classList.toggle('selected', item === current);
   row.addEventListener('click', () => choose(item));
   return element;
@@ -130,7 +141,9 @@ function xdtoRow(item, current, choose) {
    редактора»): under the root an import, a property, a value type, an
    object type; under a value type a definition of a type, a pattern, an
    enumeration; under an object type a property; under a property its one
-   definition of a type, asked «Выберите тип объекта». */
+   definition of a type, asked «Выберите тип объекта». Each item bears the
+   sign of what it adds (xdtoIcons by the key), «Образец» too, which the
+   prototype's menu leaves without one though its tree draws it. */
 const xdtoAddable = {
   import: ['Директива импорта', owner => (owner.imports ||= []).push('http://www.imported-package.org') - 1, 'imports'],
   property: ['Свойство', owner => xdtoNamed(owner.properties ||= [], 'Свойство'), 'properties'],
@@ -164,13 +177,13 @@ function xdtoPanel(current, content, api, choose) {
       adds.owner.typeDef = answer === 'object' ? {object: {}} : {value: {}};
       choose([...current.path, 'typeDef']);
       api.changed();
-    }, !adds.owner.typeDef];
+    }, !adds.owner.typeDef, undefined, xdtoIcons.typeDef];
     const [caption, make, list] = xdtoAddable[key];
     return [caption, () => {
       const index = make(adds.owner);
       choose([...ownerPath, list, index]);
       api.changed();
-    }];
+    }, true, undefined, xdtoIcons[key === 'innerProperty' ? 'property' : key]];
   });
   const listed = !!current.list;
   const remove = async () => {

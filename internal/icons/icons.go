@@ -708,7 +708,7 @@ var treeIcons = []Icon{
 		colored(circle(Accent, 11, 10.5, 4), blue),
 	}},
 	{ID: "style-item-font", Color: blue, Parts: []Part{
-		path(Accent, "M5 2H15L14.4 5H13.4L13.2 4H10.5L8.5 12H10L9.6 14H4L4.4 12H6L8 4H5.6L5 5H4.4Z"),
+		path(Accent, slantedT(4, 2)),
 	}},
 	{ID: "style-item-border", Color: gray, Parts: []Part{
 		rect(Body, 2.5, 2.5, 11, 11),
