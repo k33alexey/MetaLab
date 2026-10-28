@@ -170,7 +170,46 @@ func (workspace *Workspace) DeleteXDTOPackage(relative, expectedRevision string)
 	return deleteObjectFolder(workspace, metadata.XDTOPackageKind, relative, expectedRevision, workspace.readXDTOPackageEditorLocked)
 }
 
+// XDTOSchemaExport is what «Экспорт XML-схемы…» answers: the schema of the
+// package, or the issues that keep it from being written.
+type XDTOSchemaExport struct {
+	Schema []byte                     `json:"schema,omitempty"`
+	Issues []metadata.XDTOSchemaIssue `json:"issues,omitempty"`
+}
+
+// ExportXDTOSchema writes the XML schema of the package described at
+// relative (metadata.ExportXDTOSchema): of the body its editor holds, given
+// as content - the prototype exports what the editor shows, saved or not -
+// or, with none, of the body on disk, as «Экспорт XML-схемы…» of the tree.
+// Its types are checked against the other packages of the project as they
+// are saved.
+func (workspace *Workspace) ExportXDTOSchema(relative string, content *metadata.XDTOContent) (XDTOSchemaExport, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	opened, err := workspace.readXDTOPackageEditorLocked(relative)
+	if err != nil {
+		return XDTOSchemaExport{}, err
+	}
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		return XDTOSchemaExport{}, err
+	}
+	body := opened.Content
+	if content != nil {
+		body = *content
+		body.Namespace = opened.Package.Namespace
+	}
+	schema, issues := metadata.ExportXDTOSchema(body, loaded)
+	return XDTOSchemaExport{Schema: schema, Issues: issues}, nil
+}
+
 func registerXDTOPackageEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
+	routes.HandleFunc("POST "+xdtoPackageEditorAddress+"/schema", answerStudio(0, writeSourceError, func(input struct {
+		Path    string                `json:"path"`
+		Content *metadata.XDTOContent `json:"content"`
+	}) (any, error) {
+		return workspace.ExportXDTOSchema(input.Path, input.Content)
+	}))
 	registerObjectEditor(routes, xdtoPackageEditorAddress, workspace.ReadXDTOPackageEditor, workspace.SaveXDTOPackageWindow, workspace.CreateXDTOPackage,
 		workspace.DeleteXDTOPackage)
 }

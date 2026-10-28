@@ -4,8 +4,10 @@
    paket-xdto.md, «Окно — редактор пакета», «Узлы редактора»; snapshots
    paket-xdto/02-04, series-2.584/139-178): the window «XDTO пакет <Имя>:
    Пакет», a panel - «Добавить ▾» by the node chosen, «Удалить» asking
-   «Удалить элемент?», up and down round the ends, «Проверить пакет» and «Экспорт
-   XML-схемы…» unavailable until their item - and the tree of the body of
+   «Удалить элемент?», up and down round the ends, «Проверить пакет» -
+   unavailable until the panel «Служебные сообщения» it writes to - and
+   «Экспорт XML-схемы…» of the body as the editor holds it (exportXDTOSchema)
+   - and the tree of the body of
    the package (source.content, metadata.XDTOContent): the root «Пакет
    (<пространство>)», a folder a kind of node appearing with its first node -
    «Директивы импорта», «Свойства», «Типы значений», «Типы объектов»; under a
@@ -206,7 +208,7 @@ function xdtoPanel(current, content, api, choose) {
     panelButton('move-up', 'Переместить вверх', listed, () => move(-1)),
     panelButton('move-down', 'Переместить вниз', listed, () => move(1)),
     panelButton('check-package', 'Проверить пакет', false, () => {}),
-    panelButton('save', 'Экспорт XML-схемы...', false, () => {}),
+    panelButton('save', 'Экспорт XML-схемы...', true, () => exportXDTOSchema(api.source().path, content)),
   ]);
 }
 
@@ -216,4 +218,29 @@ function xdtoRemoveAt(content, path) {
   let holder = content;
   for (const key of path.slice(0, -1)) holder = holder[key];
   delete holder[path.at(-1)];
+}
+
+/* exportXDTOSchema is «Экспорт XML-схемы…» of a package (paket-xdto.md,
+   «Проверить пакет, экспорт схемы, окно типа»; snapshots series-2.603/26,
+   27): the schema of the body given - the editor's, saved or not - or, with
+   none, of the body on disk (the command of the tree). A package with
+   issues is not exported: «При экспорте схемы XML были обнаружены ошибки.
+   Экспорт невозможен»; else the file is saved as the browser saves a
+   download, named as the prototype's dialog names it, «Без названия.xsd»,
+   and «Экспорт схемы XML успешно завершен». The issues themselves go to
+   «Служебные сообщения» with «Проверить пакет». Answers whether the schema
+   was written. */
+async function exportXDTOSchema(path, content) {
+  const answer = await postJSON('/api/xdto-package/schema', {path, content});
+  if (!answer) return false;
+  if (answer.issues?.length) {
+    await showDialog({title: 'При экспорте схемы XML были обнаружены ошибки. Экспорт невозможен', caption: questionCaption, answers: [['ok', 'OK']]});
+    return false;
+  }
+  const link = node('a');
+  link.href = `data:application/xml;base64,${answer.schema}`;
+  link.download = 'Без названия.xsd';
+  link.click();
+  await showDialog({title: 'Экспорт схемы XML успешно завершен', caption: questionCaption, answers: [['ok', 'OK']]});
+  return true;
 }

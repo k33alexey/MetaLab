@@ -130,8 +130,9 @@ const xdtoPackageWalk = `(async () => {
 // «http://www.sample-package.org», its body saying the qualified form of an
 // element, not of an attribute, and opens its editor (paket-xdto.md, «Новый
 // пакет»).
-// Its menu opens with «Открыть пакет» in bold, «Проверить пакет» and
-// «Экспорт XML-схемы…» unavailable until their item.
+// Its menu opens with «Открыть пакет» in bold, «Проверить пакет»
+// unavailable until the panel «Служебные сообщения» and «Экспорт
+// XML-схемы…».
 // Every node bears the sign of its kind, as the prototype's tree draws it
 // (snapshots paket-xdto/02, series-2.584/172, 176), a folder the sign of
 // what it holds, «Определения типов» a T with two squares, a definition
@@ -189,7 +190,7 @@ func TestTheEditorOfAnXDTOPackageIsThePrototypes(t *testing.T) {
 		}
 	}
 	expect("the title", steps.Title, "XDTO пакет Обмен: Пакет")
-	expect("the menu of the package", steps.Menu, []string{"Открыть пакет (жирный)", "Проверить пакет (недоступна)", "Экспорт XML-схемы… (недоступна)"})
+	expect("the menu of the package", steps.Menu, []string{"Открыть пакет (жирный)", "Проверить пакет (недоступна)", "Экспорт XML-схемы…"})
 	expect("opened", steps.Opened, []string{"Пакет (http://example.org/goods)"})
 	expect("the palette of the package", steps.PackagePalette, struct {
 		Title string
