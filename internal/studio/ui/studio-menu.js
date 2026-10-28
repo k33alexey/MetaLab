@@ -52,7 +52,7 @@ const studioMainMenuTable = `
   ---
   Загрузить из XML...                  |                     | load-xml
   ---
-  Git ▸                                |                     | git-branch
+  Git ▸                                |                     | git
     Получить                           |                     | git-pull
     Зафиксировать...                   |                     | git-commit
     Отправить                          |                     | git-push
