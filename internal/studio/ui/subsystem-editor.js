@@ -7,15 +7,19 @@
    «Функциональные опции» - the options of the project marked where the
    subsystem is in their content - «Состав» and «Прочее» with the help -
    and its palette of three tabs, whose «Состав: Открыть» shows the page
-   «Состав». The window «Командный интерфейс» is an item of its own: its
-   button stands unavailable; the picture is chosen by «Выбор картинки»
-   (choosePicture). */
+   «Состав». «Командный интерфейс» - the button of «Основные» and the link
+   of the palette - opens its window (showSubsystemCommandInterface); the
+   picture is chosen by «Выбор картинки» (choosePicture). */
 function createSubsystemEditor(host, onChange, around = {}) {
   return objectWindowEditor(host, onChange, around, {target: source => source.subsystem, own: api => {
     const opened = new Set();
     let chosen = null;
     return {pages: {composition: () => subsystemComposition(api, opened, () => chosen, id => { chosen = id; })},
-      context: () => ({windows: ['members'], openWindow: () => api.show('composition')}), reset() { chosen = null; }};
+      context: () => ({windows: ['members', 'commandInterface'],
+        openWindow: key => key === 'commandInterface' ? showSubsystemCommandInterface(api) : api.show('composition')}), reset() { chosen = null; },
+      // «Открыть командный интерфейс» of the menu of the tree, once the
+      // window of the subsystem is open.
+      methods: {openCommandInterface: () => showSubsystemCommandInterface(api)}};
   }});
 }
 
@@ -69,17 +73,19 @@ function subsystemComposition(api, opened, chosen, choose) {
 
 /* subsystemCommands are the commands of the menu of a subsystem of its own
    (podsistema.md, «Команды»; snapshot podsistema/15): «Открыть командный
-   интерфейс» and «Справочная информация», unavailable until their windows;
+   интерфейс» - the window of the subsystem and its «Командный интерфейс»
+   (actions.openInterface) - and «Справочная информация», unavailable until
+   its window;
    «Объекты подсистемы» - the tree filtered by this subsystem alone, the
    objects of the subsystems beneath and above it not taken in
    (podsistema.md, «Командный интерфейс, „Объекты подсистемы“, „Все
    подсистемы“»; snapshots series-2.603/49, 50); «Добавить ▸» - «Подчиненная
    подсистема», «Подсистема»; «Переместить подсистему». node is the
-   subsystem in the tree; actions are {create(make) - makes a subsystem by
+   subsystem in the tree; actions are {openInterface(), create(make) - makes a subsystem by
    make() and opens it, moved() - draws the tree anew, filter(chosen) -
    puts the tree's filter by subsystems in force}. */
 function subsystemCommands(node, actions) {
-  return [['Открыть командный интерфейс', () => {}, false],
+  return [['Открыть командный интерфейс', () => actions.openInterface()],
     ['Объекты подсистемы', () => actions.filter({chosen: new Set([node.id]), children: false, parents: false})], null,
     ['Добавить', [['Подчиненная подсистема', () => actions.create(() => postJSON('/api/subsystem/child', {parent: node.id}))],
       ['Подсистема', () => actions.create(() => postJSON('/api/subsystem', {}))]]], null,
@@ -120,4 +126,79 @@ async function moveSubsystem(path, projectName) {
     await askChoice(String(error.message || error).trim(), '', [['ok', 'ОК']]);
     return false;
   }
+}
+
+/* showSubsystemCommandInterface is the window «Командный интерфейс» of a
+   subsystem (podsistema.md, «Окно», «Командный интерфейс…», «Досъёмка
+   28.10.2026»; snapshots podsistema/13, 14, series-2.603/42, 43): over the
+   tree, «Переместить команду в другую группу команд», up, down - items of
+   their own, unavailable - «Скрыть команды, невидимые по умолчанию» -
+   a command whose box is off leaves the tree while it is pressed
+   (konfiguraciya.md, В14 of series 2.595) - and
+   «Отбор по ролям» - unavailable until its item; the tree «Команда —
+   Видимость»: the groups of the section in the prototype's order (server,
+   sectionGroups), a group with commands open, the commands of the content
+   of the window - saved or not - by the alphabet of their presentation,
+   each with the box of its visibility: the command interface's, or else
+   the default of its kind (metadata.SectionLines). OK writes into the
+   subsystem the visibility that differs from the default, and takes away
+   what was said and is the default again unless roles are said for it;
+   «Отмена» changes nothing. */
+async function showSubsystemCommandInterface(api) {
+  const object = api.object();
+  const groups = await postJSON('/api/subsystem/section', {members: object.members || []});
+  const identity = ['command', 'object', 'standard', 'written'];
+  const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
+  const said = object.commandInterface?.commandsVisibility || [];
+  const lines = groups.flatMap(group => group.commands || []);
+  const visible = new Map(lines.map(line => [line, said.find(item => same(item, line))?.visibility.common ?? line.visible]));
+  const caption = line => localizedTitle({title: line.title}, api.source().defaultLanguage) + (line.create ? ': создать' : '');
+  let hidden = false;
+  const tree = node('div', undefined, 'object-window-tree section-commands');
+  const draw = () => {
+    tree.replaceChildren(...groups.map(group => {
+      const commands = (group.commands || []).filter(line => !hidden || visible.get(line))
+        .sort((one, other) => caption(one).localeCompare(caption(other), 'ru'));
+      const children = commands.map(line => {
+        const box = node('input');
+        box.type = 'checkbox';
+        box.checked = visible.get(line);
+        box.setAttribute('aria-label', 'Видимость: ' + caption(line));
+        box.addEventListener('change', () => visible.set(line, box.checked));
+        const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
+        row.append(box);
+        return element;
+      });
+      return treeNode({icon: group.icon, caption: group.title, children, open: true}).element;
+    }));
+  };
+  const hide = panelButton('filter-by-current-value', 'Скрыть команды, невидимые по умолчанию', true, () => {
+    hidden = !hidden;
+    hide.classList.toggle('pressed', hidden);
+    draw();
+  });
+  const roles = selectInput([['', '<Не установлен>']], '', () => {}, 'Отбор по ролям');
+  roles.disabled = true;
+  const filter = node('label', undefined, 'section-commands-roles');
+  filter.append(node('span', 'Отбор по ролям:'), roles);
+  const bar = windowPanel([panelButton('move-item', 'Переместить команду в другую группу команд', false, () => {}),
+    panelButton('move-up', 'Переместить вверх', false, () => {}), panelButton('move-down', 'Переместить вниз', false, () => {}), hide, filter]);
+  const head = node('div', undefined, 'section-commands-head');
+  head.append(node('span', 'Команда'), node('span', 'Видимость'));
+  const content = node('div', undefined, 'section-commands-window');
+  content.append(bar, head, tree);
+  draw();
+  if (await showDialog({title: 'Командный интерфейс', content, className: 'section-commands-dialog', help: 'subsystem-command-interface',
+    answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
+  const kept = said.filter(item => !lines.some(line => same(item, line)));
+  for (const line of lines) {
+    const before = said.find(item => same(item, line)), now = visible.get(line);
+    const command = Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
+    if (before?.visibility.roles?.length || now !== line.visible) kept.push({...command, visibility: {...before?.visibility, common: now}});
+  }
+  const commandInterface = {...object.commandInterface};
+  if (kept.length) commandInterface.commandsVisibility = kept; else delete commandInterface.commandsVisibility;
+  if (Object.keys(commandInterface).length) object.commandInterface = commandInterface; else delete object.commandInterface;
+  api.changed();
+  return true;
 }

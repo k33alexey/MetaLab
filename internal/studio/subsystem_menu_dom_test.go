@@ -37,8 +37,8 @@ const subsystemMenuWalk = `(async () => {
 })()`
 
 // The menu of a subsystem is the prototype's (docs/block-00/podsistema.md,
-// «Команды»; snapshots podsistema/15, 16): «Открыть командный интерфейс»
-// unavailable, «Объекты подсистемы», «Добавить ▸» of «Подчиненная
+// «Команды»; snapshots podsistema/15, 16): «Открыть командный интерфейс»,
+// «Объекты подсистемы», «Добавить ▸» of «Подчиненная
 // подсистема» and «Подсистема», «Переместить подсистему», «Справочная
 // информация» unavailable. «Подчиненная подсистема» of Продажи makes
 // «Подсистема1» under it; «Переместить подсистему» of Склад opens «Выбор
@@ -74,7 +74,7 @@ func TestTheMenuOfASubsystemIsThePrototypes(t *testing.T) {
 			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
 		}
 	}
-	expect("the menu", steps.Menu, []string{"Открыть командный интерфейс (недоступна)", "Объекты подсистемы", "|", "Добавить", "|",
+	expect("the menu", steps.Menu, []string{"Открыть командный интерфейс", "Объекты подсистемы", "|", "Добавить", "|",
 		"Переместить подсистему", "|", "Справочная информация (недоступна)"})
 	expect("«Добавить ▸»", steps.Submenu, []string{"Подчиненная подсистема", "Подсистема"})
 	expect("a subordinate subsystem", steps.Created, "Подсистема Подсистема1")

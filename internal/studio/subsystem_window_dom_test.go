@@ -63,7 +63,7 @@ const subsystemWindowWalk = `(async () => {
 // podsistema.md, «Окно», «Палитра», «Новая подсистема»; snapshots
 // podsistema/04-07, 17, 18): «Основные» - the name, the synonym, the
 // comment, «Включать в командный интерфейс», «Подсистема с одной командой»,
-// «Командный интерфейс» unavailable until its window, the explanation, the
+// «Командный интерфейс» opening its window, the explanation, the
 // picture; «Функциональные опции» - every option, marked where the
 // subsystem is in its content, a mark written into the option by
 // «Сохранить»; «Состав» - the objects of the project by their branches,
@@ -115,7 +115,7 @@ func TestTheWindowOfASubsystemIsThePrototypes(t *testing.T) {
 	expect("the title", steps.Title, "Подсистема Продажи")
 	expect("the pages", steps.Pages, []string{"Основные", "Функциональные опции", "Состав", "Прочее"})
 	main := []string{"Имя:", "Синоним:", "Комментарий:", "Включать в командный интерфейс [ ]", "Подсистема с одной командой [ ]",
-		"Командный интерфейс (недоступна)", "Пояснение:", "Картинка:"}
+		"Командный интерфейс", "Пояснение:", "Картинка:"}
 	expect("«Основные»", steps.Main, main)
 	expect("«Функциональные опции»", steps.Options, []string{"Функциональные опции, в которых участвует подсистема:", "Артикулы [ ]", "Склады [ ]"})
 	expect("«Прочее»", steps.Other, []string{"Справочная информация (недоступна)", "Включать в содержание справки [ ]"})

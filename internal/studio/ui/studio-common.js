@@ -1306,10 +1306,12 @@ function paletteFields(context) {
    rows (kinds.WindowRows): each row of the page takes its field from the
    palette's row of the same key (palette, fields of paletteFields for
    subject) with the window's caption; a flag stands with its caption after
-   it, a row of a module is a button opening it (openModule), a row in a
+   it, a row of a module is a button opening it (openModule), a row of a
+   window a button opening it where the kind has it (context.windows,
+   context.openWindow - the palette's own), a row in a
    frame stands in a frame of its caption, a caption above stands above its
    field. */
-function rowsPage(windowRows, palette, fields, subject, openModule) {
+function rowsPage(windowRows, palette, fields, subject, openModule, context = {}) {
   const page = node('div', undefined, 'object-window-fields');
   const paletteRows = (palette || []).flatMap(tab => tab.rows || []);
   let frame = null;
@@ -1320,8 +1322,11 @@ function rowsPage(windowRows, palette, fields, subject, openModule) {
     if (row.button) {
       element = node('button', row.title, 'object-window-button');
       element.type = 'button';
-      element.disabled = base.field === 'window';
-      element.addEventListener('click', () => openModule(row.key));
+      // A button of a window opens it where the kind has it, as the link
+      // of the palette does (paletteFields).
+      const opens = base.field === 'window';
+      element.disabled = opens && !context.windows?.includes(row.key);
+      element.addEventListener('click', () => opens ? context.openWindow(row.key) : openModule(row.key));
     } else if (row.radio) {
       // A list of values drawn as the frame of radio buttons of its title
       // (snapshot dokument/03, «Тип номера»).
@@ -1493,8 +1498,9 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   // the subject of the palette.
   function rowsOf(key) {
     if (!source.windowRows?.[key]) return null;
-    return rowsPage(source.windowRows[key], source.palette, paletteFields(context(() => cleanups)), kind.subject?.(source) || ownSubject(source, object()),
-      role => around.openModule?.(role));
+    const own = context(() => cleanups);
+    return rowsPage(source.windowRows[key], source.palette, paletteFields(own), kind.subject?.(source) || ownSubject(source, object()),
+      role => around.openModule?.(role), own);
   }
   // The window of no pages: its title over the body draw fills.
   function pagelessWindow() {
