@@ -48,7 +48,7 @@ func catalogHasDescription(definition CatalogDefinition) bool {
 }
 
 func catalogHasFolders(definition CatalogDefinition) bool {
-	return definition.Hierarchy.Enabled && definition.Hierarchy.Kind == FoldersAndItemsHierarchy
+	return definition.Hierarchy.HasFolders()
 }
 
 func catalogHasOwner(definition CatalogDefinition) bool { return len(definition.Owners) > 0 }
@@ -257,7 +257,7 @@ func (repository *CatalogRepository) checkOwnerRow(ctx context.Context, transact
 		return fmt.Errorf("catalog %s owner %s is not an object of the project", definition.Name, record.Owner.Object)
 	}
 	hierarchy := repository.catalog.ownerHierarchy(kind, record.Owner.Object)
-	hasFolders := hierarchy.Enabled && hierarchy.Kind == FoldersAndItemsHierarchy
+	hasFolders := hierarchy.HasFolders()
 	folder, found, err := repository.rowIsFolder(ctx, transaction, record.Owner.Object, hasFolders, rowID)
 	if err != nil {
 		return fmt.Errorf("catalog %s owner: %w", definition.Name, err)

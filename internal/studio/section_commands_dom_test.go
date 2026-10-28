@@ -64,7 +64,10 @@ const sectionCommandsWalk = `(async () => {
 // the prototype's order, the commands of the content - a catalog's list by
 // its presentation of a list, visible, and its creation by its synonym with
 // «: создать», unseen; a register of accumulation's list, unseen - with
-// their boxes; a box taken off hides its command with «Скрыть…»; OK and
+// their boxes; a catalog of folders and items also its folder's creation
+// with «: создать группу», unseen; a common form of standard commands its
+// opening in «Сервис» by its synonym, visible (podsistema.md, «Досъёмка
+// 28.10.2026, вечер»); a box taken off hides its command with «Скрыть…»; OK and
 // «Сохранить» write the visibility that differs from the default. Defects
 // caught: the window not opened from either place, a group out of the
 // prototype's order, a command in the wrong group, titled or seen wrongly,
@@ -74,6 +77,7 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 	for path, said := range map[string]string{
 		filepath.Join(root, "metadata", "catalogs", "Товары", "object.yaml"):                       "use_standard_commands: true\nlist_presentation: {ru: Список товаров}\n",
 		filepath.Join(root, "metadata", "accumulation-registers", "ОстаткиТоваров", "object.yaml"): "use_standard_commands: true\n",
+		filepath.Join(root, "metadata", "catalogs", "Контрагенты", "object.yaml"):                  "use_standard_commands: true\nhierarchy: {enabled: true, kind: folders-and-items}\n",
 	} {
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -85,6 +89,8 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 	}
 	products, _ := uuid.Parse("10000000-0000-4000-8000-000000000101")
 	stock, _ := uuid.Parse("10000000-0000-4000-8000-000000000301")
+	parties, _ := uuid.Parse("10000000-0000-4000-8000-000000000102")
+	productForm, _ := uuid.Parse("10000000-0000-4000-8000-000000000501")
 	var path string
 	ctx, browser, page := openStudioInBrowser(t, root, func(workspace *Workspace) {
 		created, err := workspace.CreateSubsystem("Склад")
@@ -93,7 +99,7 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 			t.Fatal(err)
 		}
 		value := created.Subsystem
-		value.Members = []uuid.UUID{products, stock}
+		value.Members = []uuid.UUID{products, stock, parties, productForm}
 		if _, err := workspace.SaveSubsystemWindow(created.Path, SubsystemWindowValue{SubsystemDefinition: value}, created.Revision); err != nil {
 			t.Fatal(err)
 		}
@@ -127,12 +133,13 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 	expect("opened by the button", []any{steps.Button, steps.Title}, []any{true, "Командный интерфейс"})
 	expect("the panel", steps.Panel, []string{"Переместить команду в другую группу команд (недоступна)", "Переместить вверх (недоступна)",
 		"Переместить вниз (недоступна)", "Скрыть команды, невидимые по умолчанию"})
-	groups := func(ordinary []string, create []string) [][]string {
+	groups := func(ordinary, create, tools []string) [][]string {
 		return [][]string{{"Панель навигации.Важное"}, append([]string{"Панель навигации.Обычное"}, ordinary...), {"Панель навигации.См. также"},
-			append([]string{"Панель действий.Создать"}, create...), {"Панель действий.Отчеты"}, {"Панель действий.Сервис"}}
+			append([]string{"Панель действий.Создать"}, create...), {"Панель действий.Отчеты"}, append([]string{"Панель действий.Сервис"}, tools...)}
 	}
-	expect("the commands", steps.First, groups([]string{"Остатки товаров", "Список товаров ✓"}, []string{"Товары: создать"}))
-	expect("hidden", steps.Hidden, groups(nil, nil))
+	created := []string{"Контрагенты: создать", "Контрагенты: создать группу", "Товары: создать"}
+	expect("the commands", steps.First, groups([]string{"Контрагенты ✓", "Остатки товаров", "Список товаров ✓"}, created, []string{"Демо формы товара ✓"}))
+	expect("hidden", steps.Hidden, groups([]string{"Контрагенты ✓"}, nil, []string{"Демо формы товара ✓"}))
 	expect("unsaved", steps.Unsaved, true)
 	if len(steps.Written.CommandsVisibility) != 1 {
 		t.Fatalf("written: %+v", steps.Written)
@@ -141,7 +148,7 @@ func TestTheCommandInterfaceOfASubsystemIsThePrototypes(t *testing.T) {
 	if written.Object == nil || *written.Object != products || written.Standard != metadata.StandardOpenList || written.Common || len(written.Roles) != 0 {
 		t.Errorf("written: %+v", written)
 	}
-	expect("from the menu", []any{steps.Menu, steps.FromMenu}, []any{true, groups([]string{"Остатки товаров", "Список товаров"}, []string{"Товары: создать"})})
+	expect("from the menu", []any{steps.Menu, steps.FromMenu}, []any{true, groups([]string{"Контрагенты ✓", "Остатки товаров", "Список товаров"}, created, []string{"Демо формы товара ✓"})})
 	if strings.Contains(string(result), "Ошибка") {
 		t.Errorf("the walk met an error: %s", result)
 	}

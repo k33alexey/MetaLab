@@ -171,7 +171,7 @@ func (catalog *Catalog) validateCatalogOwners() error {
 				continue
 			}
 			hierarchy := catalog.ownerHierarchy(kind, id)
-			if !hierarchy.Enabled || hierarchy.Kind != FoldersAndItemsHierarchy {
+			if !hierarchy.HasFolders() {
 				return fmt.Errorf("catalog %s is subordinate to folders of %s %s, which has none",
 					definition.Name, kind, catalog.ownerName(id))
 			}

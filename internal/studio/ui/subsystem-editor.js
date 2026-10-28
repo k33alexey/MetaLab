@@ -152,7 +152,8 @@ async function showSubsystemCommandInterface(api) {
   const said = object.commandInterface?.commandsVisibility || [];
   const lines = groups.flatMap(group => group.commands || []);
   const visible = new Map(lines.map(line => [line, said.find(item => same(item, line))?.visibility.common ?? line.visible]));
-  const caption = line => localizedTitle({title: line.title}, api.source().defaultLanguage) + (line.create ? ': создать' : '');
+  const actions = {create: ': создать', 'create-folder': ': создать группу'};
+  const caption = line => localizedTitle({title: line.title}, api.source().defaultLanguage) + (actions[line.standard] || '');
   let hidden = false;
   const tree = node('div', undefined, 'object-window-tree section-commands');
   const draw = () => {

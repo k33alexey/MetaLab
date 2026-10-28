@@ -10,7 +10,8 @@ import "slices"
 // whether it is visible there by default, and how it is titled. When says
 // which objects of the kind give it: a register of information gives its
 // list visible and a command to create a record only when it is
-// independent, and its list unseen when a recorder writes it.
+// independent, and its list unseen when a recorder writes it; a catalog
+// gives a command to create a folder only when it has folders.
 type SectionCommand struct {
 	Standard string
 	Group    string
@@ -22,7 +23,9 @@ type SectionCommand struct {
 // SectionCommandTitle is how a standard command is titled: by the
 // presentation of the list, or else the synonym («Список замовлень
 // клієнтів», «Валюти»); by the presentation of an object, or else the
-// synonym, with «: создать» («Замовлення клієнта: создать»); by the synonym.
+// synonym, with «: создать» or «: создать группу» after it by the command
+// («Замовлення клієнта: создать», «Бригади: создать группу»); by the
+// synonym.
 type SectionCommandTitle string
 
 const (
@@ -32,13 +35,15 @@ const (
 )
 
 // SectionCommandCondition is which objects of a kind give a command: every
-// one, or only an independent register or only one a recorder writes.
+// one, or only an independent register or only one a recorder writes, or
+// only one with folders.
 type SectionCommandCondition string
 
 const (
 	EveryObject       SectionCommandCondition = ""
 	IndependentObject SectionCommandCondition = "independent"
 	RecordedObject    SectionCommandCondition = "recorded"
+	FolderObject      SectionCommandCondition = "folders"
 )
 
 // The groups a standard command stands in (metadata.InterfaceGroupKind).
@@ -56,11 +61,15 @@ var (
 )
 
 // sectionCommands are the standard commands of each kind; a kind not here
-// gives a section none. The commands the inventory has not shot - a folder
-// of a catalog, a common form, a table of an external source - are not
-// here yet (question В6 of series 2.631).
+// gives a section none. A catalog of folders and items adds the creation of
+// a folder, unseen, and a common form of standard commands is opened from
+// «Сервис», visible, by its synonym (podsistema.md, «Досъёмка 28.10.2026,
+// вечер»; snapshots seriya-2631/07, 08). The commands the inventory has not
+// shot - a folder of another kind, a table of an external source - are not
+// here yet (question В6 of series 2.631, В4 of series 2.636).
 var sectionCommands = map[Kind][]SectionCommand{
-	Catalog: listAndCreate, Document: listAndCreate, ChartOfCharacteristicTypes: listAndCreate, ChartOfAccounts: listAndCreate,
+	Catalog:  {listAndCreate[0], listAndCreate[1], {Standard: "create-folder", Group: actionsCreate, Title: CreateTitle, When: FolderObject}},
+	Document: listAndCreate, ChartOfCharacteristicTypes: listAndCreate, ChartOfAccounts: listAndCreate,
 	ChartOfCalculationTypes: listAndCreate, ExchangePlan: listAndCreate, BusinessProcess: listAndCreate, Task: listAndCreate,
 	DocumentJournal: {{Standard: "open-list", Group: navigationOrdinary, Visible: true, Title: ListTitle}},
 	InformationRegister: {{Standard: "open-list", Group: navigationOrdinary, Visible: true, Title: ListTitle, When: IndependentObject},
@@ -70,12 +79,13 @@ var sectionCommands = map[Kind][]SectionCommand{
 	Constant:      {{Standard: "open", Group: actionsTools, Visible: true, Title: SynonymTitle}},
 	Report:        {{Standard: "open", Group: actionsReports, Visible: true, Title: SynonymTitle}},
 	DataProcessor: {{Standard: "open", Group: actionsTools, Visible: true, Title: SynonymTitle}},
+	CommonForm:    {{Standard: "open", Group: actionsTools, Visible: true, Title: SynonymTitle}},
 }
 
 // withoutSectionCommands are the kinds whose objects give a section no
 // standard command: said here so that every kind says what it gives.
 var withoutSectionCommands = []Kind{Role, Subsystem, SessionParameter, CommonAttribute, CommonModule, EventSubscription, ScheduledJob,
-	CommandGroup, CommonCommand, CommonForm, CommonTemplate, XDTOPackage, WebService, WSReference, WebSocketClient, ExternalDataSource,
+	CommandGroup, CommonCommand, CommonTemplate, XDTOPackage, WebService, WSReference, WebSocketClient, ExternalDataSource,
 	ExternalDataSourceTable, ExternalCube, ExternalDimensionTable, ExternalFunction, HTTPService, CommonPicture, StyleItem, Style,
 	FunctionalOption, FunctionalOptionParameter, SettingsStorage, FilterCriterion, DefinedType, Language, Numerator, Sequence,
 	Recalculation}

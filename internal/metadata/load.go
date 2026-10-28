@@ -2109,6 +2109,8 @@ func (catalog *Catalog) indexCommonForms(root string) error {
 	for _, form := range forms {
 		catalog.commonFormNames[strings.ToLower(form.Name)] = true
 		catalog.objects[form.ID] = indexedObject{kind: CommonFormKind, name: form.Name}
+		catalog.commonFormHeads = append(catalog.commonFormHeads,
+			commonFormHead{Format: form.Format, ID: form.ID, Name: form.Name, Title: form.Title, UseStandardCommands: form.UseStandardCommands})
 	}
 	return nil
 }

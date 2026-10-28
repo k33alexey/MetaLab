@@ -12,14 +12,13 @@ import (
 // «Командный интерфейс…», «Досъёмка 28.10.2026»): a standard command of an
 // object of its content (kinds.SectionCommand), an object's own command or a
 // common command of its content in the group its property names - visible -
-// and where it stands. Title is its presentation; a command to create one
-// adds «: создать» to it (Create).
+// and where it stands. Title is its presentation; a command to create one or
+// a folder of it adds «: создать» or «: создать группу» by its Standard.
 type SectionLine struct {
 	InterfaceCommand
 	Group   InterfaceGroup `json:"group"`
 	Kind    Kind           `json:"kind"`
 	Title   LocalizedText  `json:"title"`
-	Create  bool           `json:"create,omitempty"`
 	Visible bool           `json:"visible"`
 }
 
@@ -49,7 +48,6 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 				if said := field(presentation); presentation != "" && said.IsValid() && len(said.Interface().(LocalizedText)) > 0 {
 					line.Title = said.Interface().(LocalizedText)
 				}
-				line.Create = command.Title == kinds.CreateTitle
 				lines = append(lines, line)
 			}
 		}
@@ -74,10 +72,14 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 
 // sectionCondition says whether an object gives a command its kind gives
 // only some objects: an independent register of information, or one a
-// recorder writes.
+// recorder writes; a catalog with folders.
 func sectionCondition(when kinds.SectionCommandCondition, object reflect.Value) bool {
-	if when == kinds.EveryObject {
+	switch when {
+	case kinds.EveryObject:
 		return true
+	case kinds.FolderObject:
+		hierarchy := object.FieldByName("Hierarchy")
+		return hierarchy.IsValid() && hierarchy.Interface().(Hierarchy).HasFolders()
 	}
 	mode := object.FieldByName("WriteMode")
 	independent := mode.IsValid() && InformationRegisterWriteMode(mode.String()) == InformationRegisterIndependent
@@ -99,7 +101,8 @@ func (catalog *Catalog) sectionGroup(group string, groupRef *uuid.UUID) (Interfa
 }
 
 // objectByID finds an object of any kind the catalog keeps a list of by its
-// identifier: its kind and its description.
+// identifier: its kind and its description; a common form, which the load
+// reads as a form and keeps no list of, by the head kept of it.
 func (catalog *Catalog) objectByID(id uuid.UUID) (Kind, reflect.Value, bool) {
 	for _, info := range kindInfos {
 		list, ok := catalog.objectsOf(info.kind)
@@ -110,6 +113,11 @@ func (catalog *Catalog) objectByID(id uuid.UUID) (Kind, reflect.Value, bool) {
 			if item := list.Index(index); headOf(item.Interface()).id == id {
 				return info.kind, item, true
 			}
+		}
+	}
+	for _, form := range catalog.commonFormHeads {
+		if form.ID == id {
+			return CommonFormKind, reflect.ValueOf(form), true
 		}
 	}
 	return "", reflect.Value{}, false

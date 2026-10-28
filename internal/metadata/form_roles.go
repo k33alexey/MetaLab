@@ -151,7 +151,7 @@ func validateFormSlots(slots []formSlot) []string {
 // form nothing ever opens - it reads as working and does nothing, the same way
 // a level count nobody limits does.
 func validateFolderForms(forms HierarchicalObjectForms, hierarchy Hierarchy) []string {
-	if hierarchy.Enabled && hierarchy.Kind == FoldersAndItemsHierarchy {
+	if hierarchy.HasFolders() {
 		return nil
 	}
 	var issues []string

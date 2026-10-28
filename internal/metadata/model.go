@@ -481,6 +481,23 @@ type Hierarchy struct {
 	LevelCount  int  `yaml:"level_count,omitempty" json:"levelCount,omitempty"`
 }
 
+// commonFormHead is a common form as a section reads it (SectionLines):
+// its head - its format too, as every head has one (headOf) - and whether
+// it gives the command opening it.
+type commonFormHead struct {
+	Format              int
+	ID                  uuid.UUID
+	Name                string
+	Title               LocalizedText
+	UseStandardCommands bool
+}
+
+// HasFolders reports whether an object of the hierarchy has folders: it is
+// on, and of folders and items.
+func (hierarchy Hierarchy) HasFolders() bool {
+	return hierarchy.Enabled && hierarchy.Kind == FoldersAndItemsHierarchy
+}
+
 // PredefinedCatalogItem binds configuration identity to one stable catalog reference.
 type PredefinedCatalogItem struct {
 	ID          uuid.UUID `yaml:"id" json:"id"`
@@ -681,6 +698,9 @@ type Catalog struct {
 	// until their attributes are checked; formTypeLists are the type
 	// descriptions of the attributes of every form, kept for the notes.
 	commonFormsRead []ManagedForm
+	// commonFormHeads are what is kept of every common form past the load,
+	// which keeps no list of them: what a section reads of one.
+	commonFormHeads []commonFormHead
 	formTypeLists   []formTypeList
 	// formAttributeNames are the names of the attributes of every form, by
 	// the address of its module folded (foldedModuleAddress), for the
@@ -1482,7 +1502,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	}
 	issues = append(issues, validateTableParts(shape.tableParts, attributeNames, configuration, reserved, tablePartRules{
 		stored: true, use: shape.attributeUse,
-		folders: shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy,
+		folders: shape.hierarchy.HasFolders(),
 	})...)
 	issues = append(issues, validateStandardAttributes("standard_attributes", shape.standardAttributes, standardFieldsOfKind(shape.kind), configuration)...)
 	issues = append(issues, validateStandardTableParts("standard_table_parts", shape.standardTableParts, standardTablePartsOfKind(shape.kind), configuration)...)
@@ -1492,7 +1512,7 @@ func validateReferenceObjectShape(shape referenceObjectShape, configuration proj
 	fields := append([]fieldGroup{{"attributes", shape.attributes}}, shape.extraFields...)
 	issues = append(issues, validateFieldLinks(standardFieldsOfKind(shape.kind), fields, shape.tableParts, links...)...)
 	issues = append(issues, validateAttributeUse([]fieldGroup{{"attributes", shape.attributes}}, shape.tableParts,
-		shape.attributeUse, shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy)...)
+		shape.attributeUse, shape.hierarchy.HasFolders())...)
 	issues = append(issues, validateFormSlots(shape.forms.slots())...)
 	issues = append(issues, validateFolderForms(shape.forms, shape.hierarchy)...)
 	return append(issues, validatePredefinedItems(shape)...)
@@ -1637,7 +1657,7 @@ func validatePredefinedItems(shape referenceObjectShape) []string {
 		prefix := fmt.Sprintf("predefined[%d]", index)
 		// The kind alone does not make folders: a flat object carries the kind
 		// of the hierarchy it would have, the way the prototype writes it.
-		if item.IsFolder && !(shape.hierarchy.Enabled && shape.hierarchy.Kind == FoldersAndItemsHierarchy) {
+		if item.IsFolder && !(shape.hierarchy.HasFolders()) {
 			issues = append(issues, prefix+".is_folder needs a hierarchy of folders and items")
 		}
 		if item.Parent != "" && !shape.hierarchy.Enabled {
