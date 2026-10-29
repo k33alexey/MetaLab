@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,7 +62,8 @@ right:
 left:
   - {id: 49451a1e-9d1c-420b-b1e9-dd0e9c09e93b, panel: b553047f-c9aa-4157-978d-448ecad24248, height: 1}
 bottom:
-  - {id: bf5d77c2-c159-4afc-9f96-de953b83dfd6, panel: 00000000-0000-0000-0000-000000000000}
+  - {id: bf5d77c2-c159-4afc-9f96-de953b83dfd6, panel: not-chosen}
+  - {id: c0e6bbc8-b074-4d27-a123-9fc84db93826, panel: 00000000-0000-0000-0000-000000000000}
 panels:
   - {id: b553047f-c9aa-4157-978d-448ecad24248, representation: picture-on-top-and-text}
   - {id: cbab57f2-a0f3-4f0a-89ea-4cb19570ab75}
@@ -95,9 +98,9 @@ commands_visibility:
 		t.Fatalf("the panel inside the groups was lost: %+v", panels.Top)
 	case len(panels.Left) != 1 || panels.Left[0].Height != 1 || len(panels.Panels) != 2:
 		t.Fatalf("the left side or the panels defined were lost: %+v", panels)
-	case len(panels.Bottom) != 1 || panels.Bottom[0].Panel == nil || !panels.Bottom[0].Panel.IsZero():
+	case len(panels.Bottom) != 2 || panels.Bottom[0].Panel == nil || panels.Bottom[0].Panel.Chosen() || panels.Bottom[1].Panel == nil || panels.Bottom[1].Panel.Chosen():
 		t.Fatalf("the panel not chosen was lost or taken for a group: %+v", panels.Bottom)
-	case panels.Panels[0].Representation != "picture-on-top-and-text" || panels.Panels[1].Representation != "":
+	case panels.Panels[0].PanelRepresentation != "picture-on-top-and-text" || panels.Panels[1].PanelRepresentation != "":
 		t.Fatalf("the representation of the panel of sections was lost: %+v", panels.Panels)
 	}
 	commands := catalog.MainSectionCommandInterface
@@ -235,5 +238,34 @@ func TestRootInterfaceIsOptional(t *testing.T) {
 	}
 	if catalog.HomePage != nil || catalog.ClientInterface != nil || !catalog.MainSectionCommandInterface.IsEmpty() {
 		t.Fatalf("a root without its interface came back with one: %+v %+v", catalog.HomePage, catalog.ClientInterface)
+	}
+}
+
+// A panel not chosen is written as the project keeps it and read back a
+// panel not chosen. Defect caught (found by 2.650): the zero identifier,
+// which uuid.UUID neither writes to JSON nor keeps in YAML (it says IsZero
+// and omitempty leaves it out), turned the panel into an empty group on the
+// first write and failed every answer of Studio carrying it.
+func TestAPanelNotChosenIsWrittenAndReadBack(t *testing.T) {
+	t.Parallel()
+	id := uuid.MustNew()
+	value := ClientInterface{Bottom: []ClientInterfaceItem{{ID: &id, Panel: &PanelID{}}}}
+	var written bytes.Buffer
+	if err := Encode(&written, value); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(written.String(), "panel: not-chosen") {
+		t.Fatalf("the panel not chosen is written as %q", written.String())
+	}
+	read, err := DecodeRootDescription(project.ClientInterfaceFile, &written)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bottom := read.(ClientInterface).Bottom; len(bottom) != 1 || bottom[0].Panel == nil || bottom[0].Panel.Chosen() {
+		t.Fatalf("the panel not chosen came back as %+v", bottom)
+	}
+	answer, err := json.Marshal(value)
+	if err != nil || !strings.Contains(string(answer), `"panel":"not-chosen"`) {
+		t.Fatalf("the panel not chosen is not answered: %s %v", answer, err)
 	}
 }

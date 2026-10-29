@@ -84,14 +84,50 @@ type ClientInterface struct {
 // ClientInterfaceItem is a panel or a group of them. A panel names the panel
 // it shows and may have a height; a group holds items. The prototype gives an
 // outer group and every panel an identifier of its own and leaves the groups
-// inside without one. A panel added and not yet chosen («Стандартная панель:
-// Не выбрана» in the window of the interface) names the zero identifier, as
-// the export writes it (opis of 29.10.2026, docs/block-00/konfiguraciya.md).
+// inside without one.
 type ClientInterfaceItem struct {
 	ID     *uuid.UUID            `yaml:"id,omitempty" json:"id,omitempty"`
-	Panel  *uuid.UUID            `yaml:"panel,omitempty" json:"panel,omitempty"`
+	Panel  *PanelID              `yaml:"panel,omitempty" json:"panel,omitempty"`
 	Height int                   `yaml:"height,omitempty" json:"height,omitempty"`
 	Items  []ClientInterfaceItem `yaml:"items,omitempty" json:"items,omitempty"`
+}
+
+// PanelID is the panel of the platform an element of the client interface
+// shows. The zero one is a panel added and not yet chosen («Стандартная
+// панель: Не выбрана» in the window of the interface): the export writes it
+// as the zero identifier (opis of 29.10.2026, docs/block-00/konfiguraciya.md),
+// the project as not-chosen - a zero uuid.UUID is written by nothing, and
+// one that says IsZero is left out of the file. Read, the zero identifier is
+// taken as not-chosen too.
+type PanelID uuid.UUID
+
+const notChosenPanel = "not-chosen"
+
+// Chosen answers whether the panel names a panel of the platform.
+func (id PanelID) Chosen() bool { return !uuid.UUID(id).IsZero() }
+
+func (id PanelID) String() string {
+	if !id.Chosen() {
+		return notChosenPanel
+	}
+	return uuid.UUID(id).String()
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (id PanelID) MarshalText() ([]byte, error) { return []byte(id.String()), nil }
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (id *PanelID) UnmarshalText(data []byte) error {
+	if string(data) == notChosenPanel {
+		*id = PanelID{}
+		return nil
+	}
+	parsed, err := uuid.Parse(string(data))
+	if err != nil {
+		return err
+	}
+	*id = PanelID(parsed)
+	return nil
 }
 
 // ClientInterfacePanel is a panel the configuration defines, with how it is
@@ -100,8 +136,8 @@ type ClientInterfaceItem struct {
 // export writes it on the panel's definition (panelDef, spr) and leaves it
 // out at «Картинка и текст», which empty is too.
 type ClientInterfacePanel struct {
-	ID             uuid.UUID                   `yaml:"id" json:"id"`
-	Representation SectionsPanelRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
+	ID                  uuid.UUID                   `yaml:"id" json:"id"`
+	PanelRepresentation SectionsPanelRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
 }
 
 // SectionsPanelRepresentation is how the panel of sections shows a section:
@@ -121,6 +157,29 @@ const (
 // panel with a representation (export after the edit of 29.10.2026, the
 // panel's name in «Описание панели» - ПанельРазделов).
 var SectionsPanel = uuid.MustParse("b553047f-c9aa-4157-978d-448ecad24248")
+
+// StandardPanel is a panel of the platform an element of the client
+// interface shows: its identifier, its name («Описание панели», «Имя») and
+// its caption in the window of the interface.
+type StandardPanel struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Title string    `json:"title"`
+}
+
+// StandardPanels are the panels of the platform in the order of the list of
+// the window and of panelDef in every export (snapshot konfiguraciya/23;
+// names by «Описание панели» and the export after the edit of 29.10.2026,
+// docs/block-00/konfiguraciya.md). The panel 8e10648b… the exports place
+// and define is not one of them: 8.3.27 lists it nowhere and shows its row
+// empty.
+var StandardPanels = []StandardPanel{
+	{SectionsPanel, "ПанельРазделов", "Панель разделов"},
+	{uuid.MustParse("13322b22-3960-4d68-93a6-fe2dd7f28ca3"), "ПанельИзбранного", "Панель избранного"},
+	{uuid.MustParse("c933ac92-92cd-459d-81cc-e0c8a83ced99"), "ПанельИстории", "Панель истории"},
+	{uuid.MustParse("cbab57f2-a0f3-4f0a-89ea-4cb19570ab75"), "ПанельОткрытых", "Панель открытых"},
+	{uuid.MustParse("b2735bd3-d822-4430-ba59-c9e869693b24"), "ПанельФункцийТекущегоРаздела", "Панель функций текущего раздела"},
+}
 
 type homePageColumn struct {
 	name  string
@@ -190,7 +249,7 @@ func validateClientInterface(value ClientInterface) []string {
 		if panel.ID.IsZero() {
 			issues = append(issues, prefix+".id must be a non-zero UUID")
 		}
-		switch panel.Representation {
+		switch panel.PanelRepresentation {
 		case "":
 		case SectionsPanelPicture, SectionsPanelPictureAndText, SectionsPanelPictureOnTopAndText,
 			SectionsPanelPictureOnLeftAndText, SectionsPanelText:

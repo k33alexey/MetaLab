@@ -362,7 +362,13 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .section-roles-scroll{align-self:flex-end;width:var(--roles-sight);min-height:12px;overflow-x:scroll;overflow-y:hidden;margin-right:8px}.section-roles-scroll>div{height:1px}.section-commands-roles{flex-wrap:nowrap;white-space:nowrap}.section-commands-roles .field-with-buttons{width:280px;flex:none}.section-commands-roles .field-with-buttons select{width:100%;box-sizing:border-box}
 .section-commands{height:380px;overflow:auto}
 .section-commands .studio-tree-row input[type=checkbox]{margin-left:auto}
-.command-group-choice-dialog{min-width:360px}.command-group-choice{display:flex;flex-direction:column;min-height:300px}.command-group-choice-head{padding:2px 8px;border-bottom:1px solid #4a4d54;color:#aeb1b8;font-size:12px}.command-group-choice .object-window-list{min-height:280px;margin-top:0}
+.list-choice-dialog{min-width:360px}.list-choice{display:flex;flex-direction:column;min-height:300px}.list-choice-head{padding:2px 8px;border-bottom:1px solid #4a4d54;color:#aeb1b8;font-size:12px}.list-choice .object-window-list{min-height:280px;margin-top:0}
+.object-window-list-row:has(.client-interface-placed){display:flex;align-items:center;gap:6px}.object-window-list-row:has(.client-interface-placed) span:not(.client-interface-placed){flex:1}.client-interface-placed{flex:none;width:7px;height:7px;background:#8b8e95;border:1px solid #6f7278}
+#client-interface{display:flex;flex:1;min-height:0;gap:6px;padding:6px;overflow:auto;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5)}
+#client-interface[hidden]{display:none}
+.client-interface-tree,.client-interface-list{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1}
+.client-interface-tree .object-window-list,.client-interface-list .object-window-list{margin-top:0}
+.client-interface-row{white-space:nowrap;min-height:1.4em}
 .object-window-panel button.pressed{background:rgba(88,157,246,.25)}
 /* «Все подсистемы» (predsyomka-1/02): слева дерево подсистем и под ним
    «Состав» выбранной, справа её командный интерфейс. */

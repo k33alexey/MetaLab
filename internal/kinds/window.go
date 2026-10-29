@@ -264,7 +264,8 @@ type PaletteRow struct {
 	// Shown are what the row stands by at all, unlike Needs, which leave it
 	// standing unavailable: type=<kind> - the kind of the one type of the
 	// part (string, number, reference), owner=<kind> - the kind of the
-	// object the part belongs to.
+	// object the part belongs to, panel=<identifier> - the panel of the
+	// platform a definition of the client interface describes.
 	Shown []string `json:"shown,omitempty"`
 }
 

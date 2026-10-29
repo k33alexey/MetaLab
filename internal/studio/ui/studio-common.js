@@ -855,15 +855,16 @@ function objectList(caption, items, current, choose, change, remove) {
 }
 
 /* objectRows is the list of rows of objectList, without its head: items are
-   [key, caption] or [key, caption, sign] - an element drawn before the
-   caption, an icon or an image - one of them current; choose(key) makes a
-   row current, open() is a double click on a row. */
+   [key, caption] or [key, caption, sign, mark] - sign an element drawn
+   before the caption, an icon or an image, mark one at the right end of the
+   row - one of them current; choose(key) makes a row current, open() is a
+   double click on a row. */
 function objectRows(items, current, choose, open = () => {}) {
   const list = node('div', undefined, 'object-window-list');
   list.setAttribute('role', 'listbox');
-  for (const [key, text, sign] of items) {
-    const row = node('div', sign ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
-    if (sign) row.append(sign, node('span', text));
+  for (const [key, text, sign, mark] of items) {
+    const row = node('div', sign || mark ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    if (sign || mark) row.append(...(sign ? [sign] : []), node('span', text), ...(mark ? [mark] : []));
     row.title = text;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
@@ -1035,20 +1036,33 @@ async function showVisibilitySettings(visibility, roles) {
   return {common, ...(said.length ? {roles: said} : {})};
 }
 
-/* chooseCommandGroup is the platform's window «Выбор группы команд» of the
-   windows of a command interface (podsistema.md, «Досъёмка 28.10.2026,
-   поздний вечер»; konfiguraciya.md, «Досъёмка 27.10.2026»; snapshots
-   vopr-2.636/07, 09, 26): the list «Имя» of the groups offered, the first
-   current, OK and «Отмена». groups are [key, caption] in their order.
-   Answers the key of the group current on OK, null on «Отмена». */
-async function chooseCommandGroup(groups) {
-  let current = groups[0]?.[0];
-  const content = node('div', undefined, 'command-group-choice'), rows = node('div');
-  const draw = () => rows.replaceChildren(objectRows(groups, current, key => { current = key; draw(); }));
-  content.append(node('div', 'Имя', 'command-group-choice-head'), rows);
+/* chooseFromList is the platform's window of a choice of one from a list:
+   title, the caption head over the list, items [key, caption, sign, mark]
+   in their order (objectRows), current the row current at first - the
+   first without it; OK is unavailable on a row available(key) refuses; a
+   double click is OK. The windows: «Выбор группы команд» (podsistema.md,
+   «Досъёмка 28.10.2026, поздний вечер»; snapshots vopr-2.636/07, 09, 26),
+   «Тип элемента» and «Выбор стандартной панели» of the client interface
+   (konfiguraciya.md, «Досъёмка 27.10.2026»; series-2.595/54, 55). Answers
+   the key of the row current on OK, null on «Отмена». */
+async function chooseFromList({title, head, items, current = items[0]?.[0], available = () => true, help}) {
+  const content = node('div', undefined, 'list-choice'), rows = node('div');
+  let accept = () => {};
+  const draw = () => rows.replaceChildren(objectRows(items, current, key => { current = key; draw(); }, () => accept()));
+  content.append(...(head ? [node('div', head, 'list-choice-head')] : []), rows);
   draw();
-  return await showDialog({title: 'Выбор группы команд', content, className: 'command-group-choice-dialog',
-    answers: [['ok', 'OK'], [null, 'Отмена']]}) === 'ok' ? current : null;
+  const answer = showDialog({title, content, className: 'list-choice-dialog', help,
+    answers: [['ok', 'OK', {enabled: () => available(current)}], [null, 'Отмена']]});
+  const ok = [...content.closest('dialog').querySelectorAll('button')].find(button => button.textContent === 'OK');
+  accept = () => { if (available(current)) ok.click(); };
+  return await answer === 'ok' ? current : null;
+}
+
+/* chooseCommandGroup is «Выбор группы команд» of the windows of a command
+   interface: the list «Имя» of the groups offered, [key, caption] in their
+   order. */
+function chooseCommandGroup(groups) {
+  return chooseFromList({title: 'Выбор группы команд', head: 'Имя', items: groups});
 }
 
 /* PaletteView is how the palette of properties is shown, the same for every
@@ -1205,10 +1219,14 @@ function valueSubject(target, offer, setTypes, own) {
 /* paletteShown answers whether a row stands for a subject at all: one of
    the conditions it is shown by holds - type=<kind> by any type of a value,
    so a composite type shows the rows of each of its kinds once, owner=<kind>
-   by the object a part belongs to (kinds.PaletteRow.Shown). */
+   by the object a part belongs to, any other <key>=<value> by that
+   property of the subject - the panel of the window of the client interface
+   (kinds.PaletteRow.Shown). */
 function paletteShown(subject) {
-  return row => !row.shown?.length || row.shown.some(condition =>
-    condition === `owner=${subject.owner}` || condition.startsWith('type=') && (subject.types || []).includes(condition.slice(5)));
+  return row => !row.shown?.length || row.shown.some(condition => {
+    const [key, value] = condition.split('=');
+    return key === 'type' ? (subject.types || []).includes(value) : subject[key] === value;
+  });
 }
 
 /* paletteFields answers the builder of the field of a row of a palette by
@@ -1289,6 +1307,7 @@ function paletteFields(context) {
     }
     if (row.field === 'text') {
       const input = textInput(subject.get(row.key), value => { subject.set(row.key, value); context.typed(); });
+      input.disabled = !!row.fixed;
       // A value the server checks when its field is left - the root of an
       // HTTP service (context.valueChecks, by the key of the row).
       if (context.valueChecks?.[row.key]) watchValue(input, context.valueChecks[row.key], () => ({value: input.value}));
@@ -1364,6 +1383,15 @@ function paletteFields(context) {
     // объекта» of the row offers (context.choices), the cross taking it
     // away; which window «…» opens the inventory does not show (series
     // 2.618, question): it stands unavailable.
+    // A standard panel of the window of the client interface
+    // (konfiguraciya.md, «Предсъёмка 28.10.2026»; predsyomka-1/42): the
+    // panel by its caption (context.standardPanel), «…» choosing another
+    // (context.chooseStandardPanel), no cross.
+    if (row.field === 'standard-panel') {
+      const shown = node('input');
+      shown.readOnly = true; shown.value = context.standardPanel(subject.get(row.key));
+      return fieldWithButtons(shown, [fieldChoiceButton(row.title, () => context.chooseStandardPanel())]);
+    }
     if (row.field === 'object') {
       const id = subject.get(row.key), shown = node('input'), off = !available(subject, row);
       shown.readOnly = true; shown.disabled = off;

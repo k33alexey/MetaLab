@@ -154,10 +154,11 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	// Available: the modules and the windows Studio has (the command
 	// interface of the root, TestTheCommandInterfaceOfTheRootIsThePrototypes;
 	// the work area of the home page, TestTheHomePageWindowIsThePrototypes;
-	// the main section, TestTheMainSectionIsThePrototypes);
-	// the rest wait for their windows.
+	// the main section, TestTheMainSectionIsThePrototypes; the client
+	// interface, TestTheClientInterfaceWindowIsThePrototypes); the rest wait
+	// for their windows.
 	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Открыть командный интерфейс проекта",
-		"Открыть рабочую область начальной страницы", "Открыть командный интерфейс основного раздела", "Все подсистемы",
+		"Открыть рабочую область начальной страницы", "Открыть командный интерфейс основного раздела", "Открыть интерфейс клиентского приложения", "Все подсистемы",
 		"Все роли", "Все ограничения доступа", "Все картинки", "Добавить▸"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
 		t.Errorf("the root's menu offers %v and «Все картинки» opens %q, want %v and the library", got.RootAvailable, got.Library, want)
 	}

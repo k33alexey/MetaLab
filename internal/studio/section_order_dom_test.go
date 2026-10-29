@@ -60,11 +60,11 @@ const sectionOrderWalk = `(async () => {
   row('Список товаров').click(); await settle();
   steps.onCommand = panel();
   button('Переместить команду в другую группу команд').click(); await settle();
-  const choice = document.querySelector('dialog.command-group-choice-dialog');
+  const choice = document.querySelector('dialog.list-choice-dialog');
   steps.choiceTitle = choice.querySelector('h3').textContent;
   steps.offered = [...choice.querySelectorAll('.object-window-list-row')].map(item => item.textContent + (item.classList.contains('current') ? ' •' : ''));
   [...choice.querySelectorAll('.object-window-list-row')].find(item => item.textContent === 'Панель навигации.Важное').click(); await settle();
-  await answer('dialog.command-group-choice-dialog', 'OK');
+  await answer('dialog.list-choice-dialog', 'OK');
   steps.moved = read();
   row('Контрагенты: создать').click(); await settle();
   button('Переместить вверх').click(); await settle();
@@ -93,10 +93,10 @@ const sectionOrderWalk = `(async () => {
   await open();
   row('Контрагенты: создать').click(); await settle();
   button('Переместить команду в другую группу команд').click(); await settle();
-  const second = document.querySelector('dialog.command-group-choice-dialog');
+  const second = document.querySelector('dialog.list-choice-dialog');
   steps.offeredActions = [...second.querySelectorAll('.object-window-list-row')].map(item => item.textContent);
   [...second.querySelectorAll('.object-window-list-row')].find(item => item.textContent === 'Панель действий.Сервис').click(); await settle();
-  await answer('dialog.command-group-choice-dialog', 'OK');
+  await answer('dialog.list-choice-dialog', 'OK');
   steps.toTools = read()[5];
   await answer('dialog.section-commands-dialog', 'Отмена');
   return steps;
