@@ -207,6 +207,25 @@ func (descriptor Descriptor) NewName() (string, bool) {
 	return name, ok
 }
 
+// rootAddOrder is the submenu «Добавить ▸» of the menu of the root, in the
+// prototype's order (docs/block-00/konfiguraciya.md, «Команды»; snapshot
+// configurator-2026-10-27/series-2.595/35) - not the order of the tree:
+// the common kinds from «Язык» to «Определяемый тип». The prototype's
+// «Бот» is not carried (owner, 30.09.2026); a common form, a common
+// command, a group of commands, a style and the applied kinds it does not
+// offer there.
+var rootAddOrder = []Kind{
+	Language, Subsystem, StyleItem, CommonPicture, SessionParameter, Role, CommonTemplate, FilterCriterion, CommonModule,
+	CommonAttribute, ExchangePlan, XDTOPackage, WebService, HTTPService, WSReference, WebSocketClient, EventSubscription,
+	ScheduledJob, SettingsStorage, FunctionalOption, FunctionalOptionParameter, DefinedType,
+}
+
+// RootAddKinds are the kinds «Добавить ▸» of the menu of the root offers, in
+// its order (rootAddOrder).
+func RootAddKinds() []Kind {
+	return slices.Clone(rootAddOrder)
+}
+
 // referenceOrder is the order the prototype's window «Редактирование типа
 // данных» lists the reference types of the configuration in - not the order
 // of the tree, where an exchange plan stands among the common objects and the

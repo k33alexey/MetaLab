@@ -669,11 +669,12 @@ function showHelp(key) {
    prototype's menus; a sixth, true, marks the action of the object itself,
    done by a double click, bold, as the prototype's «Открыть модуль» of a
    common module; null is a line between groups. */
-function showContextMenu(event, items) {
-  event.preventDefault();
-  closeContextMenu();
-  const menu = node('div', undefined, 'context-menu');
-  menu.setAttribute('role', 'menu');
+/* menuItems puts items into a menu or a submenu, one way for both: an item
+   is [text, act, enabled, key, icon, main] - bold where main - and null a
+   line; the icons stand where one item has one. act an array is a submenu -
+   «Добавить ▸» of a subsystem (podsistema/15), of the root
+   (series-2.595/35) - of items alike, opened beside its item. */
+function menuItems(menu, items) {
   const icons = items.some(item => item?.[4]);
   for (const item of items) {
     if (!item) { menu.append(node('div', undefined, 'context-menu-separator')); continue; }
@@ -684,8 +685,6 @@ function showContextMenu(event, items) {
     if (key) button.append(node('span', key, 'context-menu-key'));
     button.disabled = !enabled;
     button.setAttribute('role', 'menuitem');
-    // A submenu - «Добавить ▸» of a subsystem (podsistema/15): its items,
-    // [text, act, enabled], open beside the item.
     if (Array.isArray(act)) {
       button.classList.add('context-menu-parent');
       button.append(node('span', '▸', 'context-menu-key'));
@@ -693,25 +692,25 @@ function showContextMenu(event, items) {
         menu.querySelector('.context-submenu')?.remove();
         const submenu = node('div', undefined, 'context-menu context-submenu');
         submenu.setAttribute('role', 'menu');
-        for (const [text, inner, on = true] of act) {
-          const entry = node('button', text, 'context-menu-item');
-          entry.type = 'button';
-          entry.disabled = !on;
-          entry.setAttribute('role', 'menuitem');
-          entry.addEventListener('click', () => { closeContextMenu(); inner(); });
-          submenu.append(entry);
-        }
+        menuItems(submenu, act);
         submenu.style.top = `${button.offsetTop}px`;
         submenu.style.left = `${button.offsetWidth}px`;
         menu.append(submenu);
         submenu.querySelector('button:not(:disabled)')?.focus();
       });
-      menu.append(button);
-      continue;
+    } else {
+      button.addEventListener('click', () => { closeContextMenu(); act(); });
     }
-    button.addEventListener('click', () => { closeContextMenu(); act(); });
     menu.append(button);
   }
+}
+
+function showContextMenu(event, items) {
+  event.preventDefault();
+  closeContextMenu();
+  const menu = node('div', undefined, 'context-menu');
+  menu.setAttribute('role', 'menu');
+  menuItems(menu, items);
   const commands = [...menu.querySelectorAll('.context-menu-item')].filter(button => !button.disabled);
   menu.addEventListener('keydown', key => {
     const at = commands.indexOf(document.activeElement);

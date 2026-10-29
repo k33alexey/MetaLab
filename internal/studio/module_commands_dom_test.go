@@ -142,19 +142,19 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	// The root's own part of the menu (konfiguraciya.md, «Команды»;
 	// snapshot konfiguraciya/15-menyu), in the prototype's order and
 	// groups, «конфигурации» said as «проекта»; the mobile client's
-	// composition is not carried, «Добавить ▸» waits for its list.
+	// composition is not carried; «Добавить ▸» last (TestTheRootAddsAsThePrototype).
 	wantRoot := []string{"#icon-open-module Открыть модуль приложения 400", "#icon-open-module Открыть модуль сеанса 400",
 		"#icon-open-module Открыть модуль внешнего соединения 400", "|",
 		" Открыть командный интерфейс проекта 400", " Открыть рабочую область начальной страницы 400",
 		" Открыть командный интерфейс основного раздела 400", " Открыть интерфейс клиентского приложения 400", "|",
-		" Справочная информация 400", "|", " Все подсистемы 400", " Все роли 400", " Все ограничения доступа 400", " Все картинки 400"}
+		" Справочная информация 400", "|", " Все подсистемы 400", " Все роли 400", " Все ограничения доступа 400", " Все картинки 400", "|", " Добавить 400"}
 	if !slices.Equal(got.RootMenu, wantRoot) {
 		t.Errorf("the root's menu is %v, want %v", got.RootMenu, wantRoot)
 	}
 	// Available: the modules and the windows Studio has; the rest wait
 	// for their windows.
 	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Все подсистемы",
-		"Все роли", "Все ограничения доступа", "Все картинки"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
+		"Все роли", "Все ограничения доступа", "Все картинки", "Добавить▸"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
 		t.Errorf("the root's menu offers %v and «Все картинки» opens %q, want %v and the library", got.RootAvailable, got.Library, want)
 	}
 	if got.External.Path != project.ExternalConnectionModuleFile || !strings.Contains(got.External.Text, "ПриНачалеРаботыСистемы") {

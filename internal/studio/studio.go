@@ -101,6 +101,28 @@ type Node struct {
 	// make yet (metadata.NewObject).
 	Editor string `json:"editor,omitempty"`
 	Adds   bool   `json:"adds,omitempty"`
+	// Creates are the kinds «Добавить ▸» of the menu of the root offers, in
+	// its order (kinds.RootAddKinds): the branch of each, whose «Добавить»
+	// the item is, its caption and its sign.
+	Creates []NodeCreate `json:"creates,omitempty"`
+}
+
+// NodeCreate is an item of «Добавить ▸» of the root: the kind's word for one
+// object, its sign and its branch of the tree, whose «Добавить» it does.
+type NodeCreate struct {
+	Branch string `json:"branch"`
+	Title  string `json:"title"`
+	Icon   string `json:"icon"`
+}
+
+// rootCreates are the items of «Добавить ▸» of the root.
+func rootCreates() []NodeCreate {
+	var creates []NodeCreate
+	for _, kind := range kinds.RootAddKinds() {
+		descriptor := kinds.Must(kind)
+		creates = append(creates, NodeCreate{Branch: branchOf(string(kind)), Title: descriptor.Title, Icon: descriptor.Icon})
+	}
+	return creates
 }
 
 // objectEditors are the windows Studio has for the objects of a kind, by the
@@ -276,6 +298,7 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 		Properties: properties,
 	}
 	root.Modules = rootModuleCommands()
+	root.Creates = rootCreates()
 	root.Children = append(root.Children, workspace.rootPictureNodesLocked()...)
 	// A tree listing must stay usable even while some object's metadata
 	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
