@@ -1546,6 +1546,18 @@ function optionsPage(places, options, changed, kind) {
   return page;
 }
 
+/* subsystemsPage is the page «Подсистемы» of the window of an object, one
+   for every kind (obshchee.md, «Окно объекта»; snapshots
+   configurator-2026-10-27/series-2.584/): «Подсистемы, в которых участвует
+   <вид>:» over the tree (subsystemsTree) - the prototype's web and HTTP
+   services word it otherwise, ML has one form - the word of the kind the
+   server's (source.memberWord, kinds.Descriptor.MemberWord). */
+function subsystemsPage(source, marks, changed) {
+  const page = node('div', undefined, 'object-window-fields');
+  page.append(node('div', `Подсистемы, в которых участвует ${source.memberWord}:`, 'object-window-caption'), subsystemsTree(source.subsystems, marks, changed));
+  return page;
+}
+
 /* subsystemsTree is the tree of the page «Подсистемы» of the window of an
    object (spravochnik.md, page 2; snapshot okno-02): the subsystems of the
    project by their parents (places, MemberPlace), a box at each marked
@@ -1656,14 +1668,8 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     // marked where the object is in its content (podsistema.md, «Окно»;
     // snapshot podsistema/05), written into the options as the
     // subsystems are.
-    if (key === 'functional-options') return optionsPage(source.functionalOptions, options, onChange, source.kindTitle.toLowerCase());
-    if (key === 'subsystems') {
-      // The caption above the tree is not shot for any kind but a catalog
-      // (series 2.584, В2): the tree stands alone.
-      const page = node('div', undefined, 'object-window-fields');
-      page.append(subsystemsTree(source.subsystems, marks, onChange));
-      return page;
-    }
+    if (key === 'functional-options') return optionsPage(source.functionalOptions, options, onChange, source.memberWord);
+    if (key === 'subsystems') return subsystemsPage(source, marks, onChange);
     return rowsOf(key);
   }
   // A page built of the palette's rows (kinds.WindowRows), each the field of

@@ -570,3 +570,17 @@ func TestThePaletteOfARoleIsThePrototypes(t *testing.T) {
 		t.Errorf("the rows of the palette of a role are %q, want %q", rows, want)
 	}
 }
+
+// The captions of the pages «Подсистемы» and «Функциональные опции» name
+// the object by the word the prototype puts there (obshchee.md, «Окно
+// объекта»; series-2.584): the word of the kind in small letters, «вид
+// расчета» for a chart of calculation types, a word of Latin letters as
+// written. Defects caught: «план видов расчета»; «http-сервис».
+func TestTheWordOfTheCaptionsOfAWindow(t *testing.T) {
+	for kind, want := range map[Kind]string{Catalog: "справочник", InformationRegister: "регистр сведений",
+		ChartOfCalculationTypes: "вид расчета", WebService: "Web-сервис", HTTPService: "HTTP-сервис", Subsystem: "подсистема"} {
+		if got := Must(kind).MemberWord(); got != want {
+			t.Errorf("%s: %q, want %q", kind, got, want)
+		}
+	}
+}

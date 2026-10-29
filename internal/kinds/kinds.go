@@ -16,6 +16,8 @@ package kinds
 import (
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Kind identifies a kind of metadata object. It is the name of the folder its
@@ -205,6 +207,28 @@ var newNames = map[Kind]string{CommonTemplate: "Макет"}
 func (descriptor Descriptor) NewName() (string, bool) {
 	name, ok := newNames[descriptor.Kind]
 	return name, ok
+}
+
+// memberWords are the words a caption of the window of an object names one
+// of its kind by where it is not the kind's word for one object in small
+// letters: «Подсистемы, в которых участвует вид расчета» of a chart of
+// calculation types (docs/block-00/obshchee.md, «Окно объекта», snapshots
+// configurator-2026-10-27/series-2.584/).
+var memberWords = map[Kind]string{ChartOfCalculationTypes: "вид расчета"}
+
+// MemberWord is how the captions «Подсистемы, в которых участвует …» and
+// «Функциональные опции, в которых участвует …» name an object of the kind:
+// its word in small letters, but a word of Latin letters as it is written -
+// the prototype writes «Web-сервис», «HTTP-сервис» there.
+func (descriptor Descriptor) MemberWord() string {
+	if word, ok := memberWords[descriptor.Kind]; ok {
+		return word
+	}
+	first, size := utf8.DecodeRuneInString(descriptor.Title)
+	if first < unicode.MaxASCII {
+		return descriptor.Title
+	}
+	return string(unicode.ToLower(first)) + descriptor.Title[size:]
 }
 
 // rootAddOrder is the submenu «Добавить ▸» of the menu of the root, in the

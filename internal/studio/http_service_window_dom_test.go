@@ -31,6 +31,8 @@ const httpServiceWindowWalk = `(async () => {
   steps.pages = [...host.querySelectorAll('.object-window-page')].map(item => item.textContent);
   steps.main = {captions: captions(), root: windowField('#http-service-editor', 'Корневой URL:').querySelector('input').value};
   steps.refusals = [await typeRoot('a/b'), await typeRoot(''), await typeRoot('обмен')];
+  await windowPage('Подсистемы');
+  steps.subsystems = host.querySelector('.object-window-body .object-window-caption')?.textContent;
   await windowPage('Шаблоны URL');
   steps.templates = [...host.querySelectorAll('.object-window-body .studio-tree-row')].map(item => item.textContent.trim());
   await windowPage('Управление сеансами');
@@ -72,6 +74,7 @@ func TestTheWindowOfAnHTTPServiceIsThePrototypes(t *testing.T) {
 			Root     string
 		}
 		Templates       []string
+		Subsystems      string
 		Sessions, Other []string
 		Palette         struct {
 			Title string
@@ -97,6 +100,10 @@ func TestTheWindowOfAnHTTPServiceIsThePrototypes(t *testing.T) {
 		Root     string
 	}{[]string{"Имя:", "Синоним:", "Комментарий:", "Корневой URL:"}, "orders"})
 	expect("the root typed", steps.Refusals, []string{"Некорректный корневой URL", "Корневой URL должен быть заполнен", ""})
+	// One form of the caption of «Подсистемы» for every kind, the word of
+	// Latin letters as written (obshchee.md, «Окно объекта»): the
+	// prototype's «… HTTP-сервис участвует:» is not carried.
+	expect("«Подсистемы»", steps.Subsystems, "Подсистемы, в которых участвует HTTP-сервис:")
 	expect("«Шаблоны URL»", steps.Templates, []string{"Заказы", "Получить"})
 	expect("«Управление сеансами»", steps.Sessions, []string{"Повторное использование сеансов:", "Время жизни сеанса:"})
 	expect("«Прочее»", steps.Other, []string{"Модуль"})

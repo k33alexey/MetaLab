@@ -307,18 +307,14 @@ function referenceWindow(api, onChange, around, host) {
   // «Сохранить» with the catalog (SaveCatalogWindow); a subsystem holding a
   // marked one beneath stands open.
   let membership = new Set();
-  function renderSubsystemsPage() {
-    const page = node('div', undefined, 'object-window-fields');
-    page.append(node('div', `Подсистемы, в которых участвует ${source.kindTitle.toLowerCase()}:`, 'object-window-caption'), subsystemsTree(source.subsystems, membership, onChange));
-    return page;
-  }
+  function renderSubsystemsPage() { return subsystemsPage(source, membership, onChange); }
   // «Функциональные опции»: the options of the project in a list of boxes
   // with a current row, marked where the catalog itself is in its content
   // (spravochnik.md, page 3; snapshot okno-03); written into the options as
   // the subsystems are.
   let options = new Set();
   function renderOptionsPage() {
-    return optionsPage(source.functionalOptions, options, onChange, source.kindTitle.toLowerCase());
+    return optionsPage(source.functionalOptions, options, onChange, source.memberWord);
   }
   /* What a palette edits: the catalog or a part of it chosen in the window
      (an attribute, a table part), each read and written by the key of a row
