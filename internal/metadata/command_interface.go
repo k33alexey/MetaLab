@@ -52,6 +52,14 @@ type InterfaceCommand struct {
 	Written  string          `yaml:"written,omitempty" json:"written,omitempty"`
 }
 
+// Same says two commands are one: the same command, object, standard
+// command and written name.
+func (command InterfaceCommand) Same(other InterfaceCommand) bool {
+	same := func(one, two *uuid.UUID) bool { return (one == nil) == (two == nil) && (one == nil || *one == *two) }
+	return same(command.Command, other.Command) && same(command.Object, other.Object) && command.Standard == other.Standard &&
+		command.Written == other.Written
+}
+
 // StandardCommand is a command the platform gives an object by itself. The set
 // is the one the configurations being moved place in their sections.
 type StandardCommand string

@@ -2211,6 +2211,23 @@ function windowPanel(buttons) {
   return bar;
 }
 
+/* transferButtons is the prototype's column of «>» and «<» between two
+   lists (the work area of the home page, the main section; snapshots
+   series-2.595/41, 50): onward and back are [title, act, enabled]. Answers
+   the column, of className. */
+function transferButtons(className, onward, back) {
+  const column = node('div', undefined, className);
+  for (const [text, [title, act, enabled]] of [['>', onward], ['<', back]]) {
+    const button = node('button', text);
+    button.type = 'button';
+    button.title = title;
+    button.disabled = !enabled;
+    button.addEventListener('click', act);
+    column.append(button);
+  }
+  return column;
+}
+
 /* partButtons are the buttons a panel of a tree of parts shares, acting on
    the part chosen (on): «Изменить» (change), «Удалить» after the question
    of every deletion (remove), «Переместить вверх» and «вниз» (move(by)) -

@@ -234,10 +234,21 @@ async function commandInterfaceWindow(pane, help) {
    said the command interface the subsystem says now, language the one its
    titles are shown in, and changed() is called after every edit. The
    root's window has no move into another group (moves) and words its
-   hiding otherwise (hideTitle) - snapshot series-2.595/36. Answers
-   {element, value()}: value is the command interface the list says - what
-   OK of the window writes - or null where it says nothing. */
-function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию'} = {}) {
+   hiding otherwise (hideTitle) - snapshot series-2.595/36. The main section
+   is its placed commands (content): add(line, key, first) puts a command in
+   at the start or the end of a group, visible as the line says, current -
+   one already in is made current - and remove() takes the current one out,
+   the next becoming current, and «Удалить команду из основного раздела»
+   (Del) of the menu does it (konfiguraciya.md, «Досъёмка 27.10.2026»,
+   «Предсъёмка 28.10.2026»; snapshots series-2.595/69, 70,
+   predsyomka-1/37); a command added stands where it was put until the
+   window is opened again, the group staying automatic; every command is
+   written with its placement and its visibility, as the configurations
+   being moved write them. Answers {element, value(), add, remove, at()}:
+   value is the command interface the list says - what OK of the window
+   writes - or null where it says nothing; at() is the group the row
+   current is or stands in, {key, panel}, or null. */
+function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию', content = false} = {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
@@ -265,6 +276,10 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   }
   let subsectionOrder = said.subsystemsOrder?.length ? said.subsystemsOrder.map(id => subsections.find(item => item.id === id)).filter(Boolean) : null;
   const placedLines = new Set(), orderedGroups = new Set();
+  // The commands added to the main section, at the start of their group
+  // (first) or at its end, and those taken out of it.
+  const added = new Set(), first = [], removedLines = [];
+  const removedHere = item => removedLines.some(line => same(line, item));
   let subsectionsTouched = false;
   const actions = {create: ': создать', 'create-folder': ': создать группу'};
   // A section of the root comes by its presentation already (server,
@@ -275,8 +290,10 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     const members = lines.filter(line => place.get(line) === key);
     const manual = (orders.get(key) || []).filter(line => members.includes(line));
     const rest = members.filter(line => !manual.includes(line));
-    const come = rest.filter(line => home.get(line) !== key).sort((one, other) => arrivals.indexOf(one) - arrivals.indexOf(other));
-    return [...manual, ...rest.filter(line => home.get(line) === key).sort(alphabet), ...come];
+    const come = rest.filter(line => home.get(line) !== key || added.has(line)).sort((one, other) => arrivals.indexOf(one) - arrivals.indexOf(other));
+    const leading = first.filter(line => come.includes(line));
+    return [...manual, ...leading, ...rest.filter(line => home.get(line) === key && !added.has(line)).sort(alphabet),
+      ...come.filter(line => !leading.includes(line))];
   };
   const subsectionsShown = () => {
     const manual = subsectionOrder || [];
@@ -309,7 +326,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
       }
       element.replaceChildren(...cells);
     }
-    content.style.setProperty('--roles-sight', sight + 'px');
+    windowContent.style.setProperty('--roles-sight', sight + 'px');
     spacer.style.width = shown.length * roleWidth + 'px';
     scroller.hidden = shown.length <= rolesInSight;
     if (scroller.scrollLeft !== offset) scroller.scrollLeft = offset;
@@ -415,6 +432,37 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     else if (current?.subsections) { subsectionOrder = null; subsectionsTouched = true; }
     edited();
   }
+  function add(line, key, atStart) {
+    const known = lines.find(item => same(item, line));
+    if (known) { current = {line: known}; draw(); return; }
+    lines.push(line);
+    home.set(line, groupKey(line.group));
+    place.set(line, key);
+    visible.set(line, line.visible);
+    roles.set(line, undefined);
+    added.add(line);
+    arrivals.push(line);
+    if (atStart) first.unshift(line);
+    const at = removedLines.findIndex(item => same(item, line));
+    if (at >= 0) removedLines.splice(at, 1);
+    current = {line};
+    edited();
+  }
+  function remove() {
+    const line = current?.line;
+    if (!line) return;
+    const key = place.get(line), list = commandsOf(key), at = list.indexOf(line);
+    lines.splice(lines.indexOf(line), 1);
+    removedLines.push(line);
+    for (const [group, order] of orders) {
+      if (!order.includes(line)) continue;
+      orders.set(group, order.filter(item => item !== line));
+      orderedGroups.add(group);
+    }
+    const next = list[at + 1] || list[at - 1];
+    current = next ? {line: next} : {group: key};
+    edited();
+  }
   const menu = event => showContextMenu(event, [
     ...(moves ? [['Переместить команду', moveCommand, !!current?.line, '', 'move-item']] : []),
     ['Переместить вверх', () => shift(-1), !!(current?.line || current?.subsection), 'Cmd+Shift+Up', 'move-up'],
@@ -422,11 +470,15 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     null,
     ['Установить свойства по умолчанию', setDefault, !!(current?.line || current?.subsection), '', 'restore-values'],
     ['Восстановить автоматический порядок', restore, !!(current?.group || current?.subsections)],
+    ...(content ? [null, ['Удалить команду из основного раздела', remove, !!current?.line, 'Del', 'delete']] : []),
   ]);
   tree.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault();
       shift(event.key === 'ArrowUp' ? -1 : 1);
+    } else if (content && event.key === 'Delete') {
+      event.preventDefault();
+      remove();
     }
   });
   const hide = panelButton('filter-by-current-value', hideTitle, true, () => {
@@ -470,23 +522,32 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     event.preventDefault();
     scroller.scrollLeft += event.deltaX;
   }, {passive: false});
-  const content = node('div', undefined, 'section-commands-window');
-  content.append(bar, head, tree, scroller);
+  const windowContent = node('div', undefined, 'section-commands-window');
+  windowContent.append(bar, head, tree, scroller);
   draw();
-  return {element: content, value};
+  const at = () => {
+    const key = current?.group || (current?.line && place.get(current.line));
+    return key ? {key, panel: byKey.get(key)?.panel} : null;
+  };
+  return {element: windowContent, value, add, remove, at};
   function value() {
   const commandInterface = {...said};
-  const shown = line => place.get(line) !== home.get(line);
-  const kept = visibilities.filter(item => !lineOf(item));
+  const shown = line => content || place.get(line) !== home.get(line);
+  const kept = visibilities.filter(item => !lineOf(item) && !removedHere(item));
   for (const line of lines) {
     const now = visible.get(line), byRoles = roles.get(line);
     if (byRoles?.length || now !== line.visible || shown(line)) kept.push({...commandOf(line), visibility: {common: now, ...(byRoles?.length ? {roles: byRoles} : {})}});
   }
   commandInterface.commandsVisibility = kept;
-  commandInterface.commandsPlacement = [...(said.commandsPlacement || []).filter(item => !placedLines.has(lineOf(item))),
-    ...[...placedLines].filter(shown).map(line => ({...commandOf(line), group: byKey.get(place.get(line)).group, placement: 'auto'}))];
+  const saidPlacement = line => (said.commandsPlacement || []).find(item => same(item, line))?.placement || 'auto';
+  commandInterface.commandsPlacement = content
+    ? [...(said.commandsPlacement || []).filter(item => !lineOf(item) && !removedHere(item)),
+      ...lines.map(line => ({...commandOf(line), group: byKey.get(place.get(line)).group, placement: saidPlacement(line)}))]
+    : [...(said.commandsPlacement || []).filter(item => !placedLines.has(lineOf(item))),
+      ...[...placedLines].filter(shown).map(line => ({...commandOf(line), group: byKey.get(place.get(line)).group, placement: 'auto'}))];
+  if (removedLines.length) commandInterface.commandsOrder = (said.commandsOrder || []).filter(item => !removedHere(item));
   if (orderedGroups.size) {
-    const order = [...(said.commandsOrder || []).filter(item => !orderedGroups.has(groupKey(item.group))),
+    const order = [...(commandInterface.commandsOrder || []).filter(item => !orderedGroups.has(groupKey(item.group))),
       ...[...orderedGroups].filter(key => orders.has(key)).flatMap(key => commandsOf(key).map(line => ({...commandOf(line), group: byKey.get(key).group})))];
     const seen = new Map(order.map(item => [groupKey(item.group), item.group]));
     commandInterface.commandsOrder = order;
@@ -528,4 +589,68 @@ async function showProjectCommandInterface(configuration, language, set) {
   set((value.commandsOrder || []).map(item => item.object), (value.commandsVisibility || []).map(item => ({subsystem: item.object,
     common: item.visibility.common, ...(item.visibility.roles ? {roles: item.visibility.roles} : {})})));
   return true;
+}
+
+/* showMainSectionCommandInterface is the window «Командный интерфейс
+   основного раздела» of the root (konfiguraciya.md, «Окна», «Досъёмка
+   27.10.2026», «Предсъёмка 28.10.2026»; snapshots konfiguraciya/21, 22,
+   series-2.595/50-52, 69, 70, predsyomka-1/34-38), modal. At the left
+   «Доступные команды:» - the project open, its branches holding the
+   objects that give a section a command, by their names, and under each
+   its commands by their titles (server, mainSectionAvailable); no menu.
+   Between, «>» and «<». At the right the list of every window of a command
+   interface (sectionCommandsPane) over the commands placed in the main
+   section, «Переместить команду» first. «>» puts the command chosen at the
+   left in: a command to create one at the start of «Панель
+   действий.Создать», unseen, whatever is chosen at the right; a list at the
+   end of the group of the navigation panel chosen at the right - its own
+   group where none is - visible; any other command at the end of its own
+   group, as its kind shows it (question В2 of series 2.646). «<» and Del
+   take the command current out. OK writes the command interface into the
+   project's file of it (/api/project/main-section) at the revision read:
+   the window has no editor behind it to hold the change till «Сохранить».
+   Answers the error of the writing, or null; «Отмена» writes nothing. */
+async function showMainSectionCommandInterface() {
+  const response = await fetch('/api/project/main-section');
+  if (!response.ok) return new Error((await response.text()).trim());
+  const answer = await response.json();
+  const language = answer.defaultLanguage;
+  const actions = {create: ': создать', 'create-folder': ': создать группу'};
+  const caption = line => localizedTitle({title: line.title}, language) + (actions[line.standard] || '');
+  const pane = sectionCommandsPane({...answer, subsections: []}, answer.commandInterface || {}, language, () => {},
+    {hideTitle: 'Скрыть невидимые по умолчанию', content: true});
+  let chosen = null;
+  const tree = node('div', undefined, 'object-window-tree main-section-available');
+  const keyOf = group => [group.standard, group.group, group.written].map(part => part || '').join('|');
+  const object = item => treeNode({icon: item.icon, caption: item.name, children: (answer.commands[item.id] || []).map(line => {
+    const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
+    row.addEventListener('click', () => {
+      chosen = line;
+      for (const other of tree.querySelectorAll('.studio-tree-row.selected')) other.classList.remove('selected');
+      row.classList.add('selected');
+    });
+    return element;
+  })}).element;
+  const branch = group => treeNode({icon: group.icon, caption: group.title,
+    children: [...(group.children || []).map(branch), ...(group.objects || []).map(object)]}).element;
+  tree.replaceChildren(treeNode({icon: 'configuration', caption: answer.project, children: answer.available.map(branch), open: true}).element);
+  const put = () => {
+    if (!chosen) return;
+    const line = {...chosen, visible: chosen.visible};
+    if (line.standard === 'create' || line.standard === 'create-folder') { pane.add(line, keyOf({standard: 'actions-panel-create'}), true); return; }
+    const at = pane.at();
+    const navigation = line.standard === 'open-list' && at?.panel === 'navigation' ? at.key : keyOf(line.group);
+    pane.add({...line, visible: line.standard === 'open-list' ? true : line.visible}, navigation, false);
+  };
+  const moves = transferButtons('main-section-moves', ['Добавить команду в основной раздел', put, true],
+    ['Удалить команду из основного раздела', () => pane.remove(), true]);
+  const available = node('div', undefined, 'main-section-left');
+  available.append(node('div', 'Доступные команды:', 'main-section-caption'), tree);
+  const content = node('div', undefined, 'main-section');
+  content.append(available, moves, pane.element);
+  if (await showDialog({title: 'Командный интерфейс основного раздела', content, className: 'section-commands-dialog main-section-dialog',
+    help: 'main-section-command-interface', answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return null;
+  const saved = await studioRequest('/api/project/main-section', {method: 'PUT', body: {value: pane.value() || {}, expectedRevision: answer.revision}});
+  if (saved.status === 409) return new Error('Командный интерфейс основного раздела изменён вне Studio. Откройте окно заново и повторите правку.');
+  return saved.ok ? null : new Error((await saved.text()).trim());
 }

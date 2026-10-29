@@ -398,3 +398,13 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .localized-title-dialog label.visibility-settings-common{display:flex;align-items:center;gap:6px;font-size:13px;color:inherit}.localized-title-dialog .visibility-settings-common input{padding:0;margin:0;accent-color:#589df6}
 .visibility-settings-roles{height:260px;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 4px}
 .visibility-settings-role{display:flex;align-items:center;gap:8px;padding:1px 0}
+/* «Командный интерфейс основного раздела» (series-2.595/50): слева
+   доступные команды, между «>» и «<», справа список команд раздела. */
+.main-section{display:flex;gap:6px;align-items:stretch}
+.main-section-left{flex:0 0 260px;display:flex;flex-direction:column;min-width:0}
+.main-section-caption{font-size:12px;color:#aeb1b8;padding:2px 0}
+.main-section-available{flex:1;min-height:380px;overflow:auto}
+.main-section-moves{display:flex;flex-direction:column;gap:4px;padding-top:52px}.main-section-moves button{min-width:26px}
+.main-section-dialog{width:min(1180px,96vw);max-width:none}
+.main-section .section-commands-window{flex:1;min-width:0}
+.main-section .section-commands{height:380px;max-height:none;flex:none}

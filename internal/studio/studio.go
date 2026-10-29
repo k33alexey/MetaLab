@@ -387,6 +387,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerSubsystemEditorRoutes(routes, workspace)
 	registerSubsystemOverviewRoutes(routes, workspace)
 	registerHomePageRoutes(routes, workspace)
+	registerMainSectionRoutes(routes, workspace)
 	registerCommonAttributeEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)

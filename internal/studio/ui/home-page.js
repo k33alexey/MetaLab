@@ -162,14 +162,8 @@ function createHomePageEditor(host, around) {
     const body = node('div', undefined, 'home-page-columns' + (oneColumn() ? ' one-column' : ''));
     body.append(column('left', columns[0][1]));
     if (!oneColumn()) {
-      const moves = node('div', undefined, 'home-page-moves');
-      const right = node('button', '>'), left = node('button', '<');
-      right.type = left.type = 'button';
-      right.title = 'Перенести в правую колонку'; left.title = 'Перенести в левую колонку';
-      right.disabled = !page.left.length; left.disabled = !page.right.length;
-      right.addEventListener('click', () => carry('left', 'right'));
-      left.addEventListener('click', () => carry('right', 'left'));
-      moves.append(right, left);
+      const moves = transferButtons('home-page-moves', ['Перенести в правую колонку', () => carry('left', 'right'), page.left.length > 0],
+        ['Перенести в левую колонку', () => carry('right', 'left'), page.right.length > 0]);
       body.append(moves, column('right', columns[1][1]));
     }
     const settings = node('div', undefined, 'home-page-settings');
@@ -208,6 +202,6 @@ function createHomePageEditor(host, around) {
     open,
     title() { return 'Рабочая область начальной страницы'; },
     changed() { return !!page && JSON.stringify(value()) !== initial; },
-    value() { return {page: value(), expectedRevision: source.revision}; },
+    value() { return {value: value(), expectedRevision: source.revision}; },
   });
 }

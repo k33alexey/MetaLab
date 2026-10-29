@@ -58,11 +58,9 @@ func (workspace *Workspace) readHomePageLocked() (HomePageWindow, error) {
 		Roles: projectRoles(loaded, configuration.DefaultLanguage)}
 	if loaded.HomePage != nil {
 		window.Page = *loaded.HomePage
-		file, err := workspace.readSource(project.HomePageFile)
-		if err != nil {
-			return HomePageWindow{}, err
-		}
-		window.Revision = file.Revision
+	}
+	if window.Revision, err = workspace.rootDescriptionRevisionLocked(project.HomePageFile); err != nil {
+		return HomePageWindow{}, err
 	}
 	window.Forms, window.Names = homePageFormTree(loaded)
 	return window, nil
@@ -102,54 +100,84 @@ func homePageFormTree(loaded *metadata.Catalog) ([]ObjectChoiceBranch, map[uuid.
 	return tree, names
 }
 
-// SaveHomePage writes the page the window holds, at the revision read - none
-// for a project that had no page, whose file it makes - checked as the
-// loader reads it (validateYAMLSource).
+// SaveHomePage writes the page the window holds, at the revision read
+// (saveRootDescription).
 func (workspace *Workspace) SaveHomePage(page metadata.HomePage, expectedRevision string) (HomePageWindow, error) {
+	return saveRootDescription(workspace, project.HomePageFile, page, expectedRevision, workspace.readHomePageLocked)
+}
+
+// saveRootDescription writes value into a description of the root's
+// interface (saveRootDescriptionLocked) and reads the window of it again.
+func saveRootDescription[W any](workspace *Workspace, file string, value any, expectedRevision string, read func() (W, error)) (W, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	var encoded bytes.Buffer
-	if err := metadata.Encode(&encoded, page); err != nil {
-		return HomePageWindow{}, err
+	if err := workspace.saveRootDescriptionLocked(file, value, expectedRevision); err != nil {
+		var none W
+		return none, err
 	}
-	if _, err := workspace.readSource(project.HomePageFile); !errors.Is(err, ErrSourceNotFound) {
+	return read()
+}
+
+// registerRootDescriptionWindow serves the window of a description of the
+// root's interface at address: GET reads it, PUT writes {value,
+// expectedRevision} - the value a T - and answers it read again.
+func registerRootDescriptionWindow[T, W any](routes *http.ServeMux, address string, read func() (W, error), save func(T, string) (W, error)) {
+	routes.HandleFunc("GET "+address, answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return read()
+	}))
+	routes.HandleFunc("PUT "+address, answerStudio(0, writeSourceError, func(input struct {
+		Value            T      `json:"value"`
+		ExpectedRevision string `json:"expectedRevision"`
+	}) (any, error) {
+		return save(input.Value, input.ExpectedRevision)
+	}))
+}
+
+// saveRootDescriptionLocked writes one of the descriptions of the root's
+// interface (project.RootDescriptionFiles) at the revision read - none for a
+// project that had no such file, which it makes - checked as the loader
+// reads it (validateYAMLSource). A file made meanwhile is somebody else's.
+func (workspace *Workspace) saveRootDescriptionLocked(file string, value any, expectedRevision string) error {
+	var encoded bytes.Buffer
+	if err := metadata.Encode(&encoded, value); err != nil {
+		return err
+	}
+	if _, err := workspace.readSource(file); !errors.Is(err, ErrSourceNotFound) {
 		if err != nil {
-			return HomePageWindow{}, err
+			return err
 		}
-		// A page read where there was none is made: one made meanwhile
-		// is somebody else's.
 		if expectedRevision == "" {
-			return HomePageWindow{}, ErrSourceChanged
+			return ErrSourceChanged
 		}
-		if _, err := workspace.saveSourceLocked(project.HomePageFile, encoded.String(), expectedRevision); err != nil {
-			return HomePageWindow{}, err
-		}
-		return workspace.readHomePageLocked()
+		_, err := workspace.saveSourceLocked(file, encoded.String(), expectedRevision)
+		return err
 	}
 	if expectedRevision != "" {
-		return HomePageWindow{}, ErrSourceChanged
+		return ErrSourceChanged
 	}
-	content, err := workspace.validateYAMLSource(project.HomePageFile, encoded.Bytes())
+	content, err := workspace.validateYAMLSource(file, encoded.Bytes())
 	if err != nil {
-		return HomePageWindow{}, err
+		return err
 	}
-	if err := writeNewFile(filepath.Join(workspace.root, project.HomePageFile), content); errors.Is(err, fs.ErrExist) {
-		return HomePageWindow{}, ErrSourceChanged
+	if err := writeNewFile(filepath.Join(workspace.root, file), content); errors.Is(err, fs.ErrExist) {
+		return ErrSourceChanged
 	} else if err != nil {
-		return HomePageWindow{}, err
+		return err
 	}
 	workspace.invalidateStudioIndexesLocked()
-	return workspace.readHomePageLocked()
+	return nil
+}
+
+// rootDescriptionRevisionLocked is the revision of a description of the
+// root's interface, "" where the project has none.
+func (workspace *Workspace) rootDescriptionRevisionLocked(file string) (string, error) {
+	source, err := workspace.readSource(file)
+	if errors.Is(err, ErrSourceNotFound) {
+		return "", nil
+	}
+	return source.Revision, err
 }
 
 func registerHomePageRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+homePageAddress, answerQuery(writeSourceError, func(*http.Request) (any, error) {
-		return workspace.ReadHomePage()
-	}))
-	routes.HandleFunc("PUT "+homePageAddress, answerStudio(0, writeSourceError, func(input struct {
-		Page             metadata.HomePage `json:"page"`
-		ExpectedRevision string            `json:"expectedRevision"`
-	}) (any, error) {
-		return workspace.SaveHomePage(input.Page, input.ExpectedRevision)
-	}))
+	registerRootDescriptionWindow(routes, homePageAddress, workspace.ReadHomePage, workspace.SaveHomePage)
 }

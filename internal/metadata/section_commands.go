@@ -62,8 +62,11 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 			own(command.ID, command.Title, command.Group, command.GroupRef)
 			continue
 		}
+		// A role's Commands are its rights on commands, not commands of its
+		// own: only an object's own commands are the section's.
 		if commands := field("Commands"); commands.IsValid() {
-			for _, command := range commands.Interface().([]ObjectCommand) {
+			objectCommands, _ := commands.Interface().([]ObjectCommand)
+			for _, command := range objectCommands {
 				own(command.ID, command.Title, command.Group, command.GroupRef)
 			}
 		}
