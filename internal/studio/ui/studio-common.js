@@ -892,25 +892,27 @@ function choiceOrder(tree) {
    right. tree is the server's (objectChoiceTree): [{title, icon, children,
    objects: [{id, name, icon}]}]; chosen are the identifiers marked first;
    open shows the branches open, as «Выбор объекта: Роль» of «Отбор по
-   ролям» shows its root (snapshot series-2.603/45). Answers the
-   identifiers marked, in the order of the tree, on «ОК», and null on
-   «Отмена». */
-async function chooseObjects(title, tree, chosen, {open = false} = {}) {
+   ролям» shows its root (snapshot series-2.603/45); first shows the first
+   branch open at each level, as «Редактировать состав…» of «Все подсистемы»
+   opens the root, «Общие» and «Общие модули» (snapshot predsyomka-1/25).
+   Answers the identifiers marked, in the order of the tree, on «ОК», and
+   null on «Отмена». */
+async function chooseObjects(title, tree, chosen, {open = false, first = false} = {}) {
   const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = choiceOrder(tree);
   const [searchRow, search] = searchField('object-choice-search', () => draw());
   const rows = node('div', undefined, 'object-choice-tree');
   content.append(searchRow, rows);
   function draw() {
     const text = search.value.trim().toLocaleLowerCase();
-    const branch = group => {
+    const branch = (group, leading) => {
       const objects = (group.objects || []).filter(item => !text || item.name.toLocaleLowerCase().includes(text)).map(item => {
         return treeNode({icon: item.icon, caption: item.name, mark: markBox(item.name, marked, item.id)}).element;
       });
-      const children = [...(group.children || []).map(branch).filter(Boolean), ...objects];
+      const children = [...(group.children || []).map((inner, at) => branch(inner, leading && at === 0)).filter(Boolean), ...objects];
       if (text && !children.length) return null;
-      return treeNode({icon: group.icon, caption: group.title, children, open: open || !!text}).element;
+      return treeNode({icon: group.icon, caption: group.title, children, open: open || !!text || leading}).element;
     };
-    rows.replaceChildren(...tree.map(branch).filter(Boolean));
+    rows.replaceChildren(...tree.map((group, at) => branch(group, first && at === 0)).filter(Boolean));
   }
   draw();
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
@@ -2096,16 +2098,19 @@ function windowPanel(buttons) {
 
 /* partButtons are the buttons a panel of a tree of parts shares, acting on
    the part chosen (on): «Изменить» (change), «Удалить» after the question
-   of every deletion (remove), «Переместить вверх» and «вниз» (move(by)),
-   and «Сортировать», unavailable until the window «Сортировка метаданных»
-   (the item of the map «порядок объектов»). */
-function partButtons(on, {change, remove, move}) {
+   of every deletion (remove), «Переместить вверх» and «вниз» (move(by)) -
+   unavailable where there is no move yet - and «Сортировать», unavailable
+   until the window «Сортировка метаданных» (the item of the map «порядок
+   объектов»), where the panel has it (sort). titles name the buttons where
+   the panel's prototype words them otherwise. */
+function partButtons(on, {change, remove, move, sort = true, titles = {}}) {
+  const title = key => titles[key] || {change: 'Изменить', remove: 'Удалить', up: 'Переместить вверх', down: 'Переместить вниз'}[key];
   return [
-    panelButton('change', 'Изменить', on, change),
-    panelButton('delete', 'Удалить', on, async () => { if (await askDeleteObject()) remove(); }),
-    panelButton('move-up', 'Переместить вверх', on, () => move(-1)),
-    panelButton('move-down', 'Переместить вниз', on, () => move(1)),
-    panelButton('sort', 'Сортировать', false, () => {}),
+    panelButton('change', title('change'), on, change),
+    panelButton('delete', title('remove'), on, async () => { if (await askDeleteObject()) remove(); }),
+    panelButton('move-up', title('up'), on && !!move, () => move(-1)),
+    panelButton('move-down', title('down'), on && !!move, () => move(1)),
+    ...(sort ? [panelButton('sort', 'Сортировать', false, () => {})] : []),
   ];
 }
 

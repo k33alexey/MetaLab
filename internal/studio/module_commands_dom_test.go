@@ -153,8 +153,8 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	}
 	// Available: the modules and the windows Studio has; the rest wait
 	// for their windows.
-	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Все роли",
-		"Все ограничения доступа", "Все картинки"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
+	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Все подсистемы",
+		"Все роли", "Все ограничения доступа", "Все картинки"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
 		t.Errorf("the root's menu offers %v and «Все картинки» opens %q, want %v and the library", got.RootAvailable, got.Library, want)
 	}
 	if got.External.Path != project.ExternalConnectionModuleFile || !strings.Contains(got.External.Text, "ПриНачалеРаботыСистемы") {

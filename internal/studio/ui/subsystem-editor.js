@@ -41,27 +41,12 @@ function subsystemComposition(api, opened, chosen, choose) {
     api.changed();
   };
   const holds = branch => (branch.objects || []).some(item => held.has(item.id)) || (branch.children || []).some(holds);
-  // A branch of the objects offered stands whether it holds objects or not,
-  // as the branches of the project tree do; one of the objects held only
-  // where it holds one.
-  const branchNode = (branch, row, every) => {
-    const children = [...(branch.children || []).flatMap(inner => branchNode(inner, row, every)), ...(branch.objects || []).flatMap(row)];
-    if (!children.length && !every) return [];
-    return [treeNode({icon: branch.icon, caption: branch.title, children, open: opened.has(branch.title) || holds(branch),
-      toggled: open => { if (open) opened.add(branch.title); else opened.delete(branch.title); }}).element];
-  };
+  const open = branch => opened.has(branch.title) || holds(branch);
   const offered = node('div', undefined, 'object-window-tree object-window-tree-tall subsystem-composition');
-  offered.append(...api.source().composition.flatMap(branch => branchNode(branch,
-    item => [treeNode({icon: item.icon, caption: item.name, mark: markBox(item.name, held, item.id, changed)}).element], true)));
-  const heldBranches = branches => branches.map(branch => ({...branch, objects: (branch.objects || []).filter(item => held.has(item.id)),
-    children: heldBranches(branch.children || [])}));
+  offered.append(...compositionBranches(api.source().composition, true, open, opened,
+    item => treeNode({icon: item.icon, caption: item.name, mark: markBox(item.name, held, item.id, changed)}).element));
   const below = node('div', undefined, 'object-window-tree subsystem-composition-held');
-  below.append(...heldBranches(api.source().composition).flatMap(branch => branchNode(branch, item => {
-    const {element, row} = treeNode({icon: item.icon, caption: item.name});
-    row.classList.toggle('selected', item.id === chosen());
-    row.addEventListener('click', () => { choose(item.id); api.refresh(); });
-    return [element];
-  }, false)));
+  below.append(...heldComposition(api.source().composition, held, open, opened, chosen(), id => { choose(id); api.refresh(); }));
   const remove = clearButton('Удалить из состава', () => { held.delete(chosen()); choose(null); changed(); });
   remove.disabled = !held.has(chosen());
   const caption = node('div', undefined, 'object-window-caption subsystem-composition-caption');
@@ -69,6 +54,37 @@ function subsystemComposition(api, opened, chosen, choose) {
   const page = node('div', undefined, 'object-window-fields');
   page.append(offered, caption, below);
   return page;
+}
+
+/* compositionBranches are the nodes of the branches of a tree of objects of
+   «Выбор объекта» (objectChoiceTree): a branch stands whether it holds
+   objects or not where every is set, as the branches of the project tree
+   do, else only where it holds one; open(branch) says it stands open, and
+   opened - the titles of the branches opened by hand - follows the hand.
+   row(item) is the node of an object. */
+function compositionBranches(branches, every, open, opened, row) {
+  const branchNode = branch => {
+    const children = [...(branch.children || []).flatMap(branchNode), ...(branch.objects || []).map(row)];
+    if (!children.length && !every) return [];
+    return [treeNode({icon: branch.icon, caption: branch.title, children, open: open(branch),
+      toggled: state => { if (state) opened.add(branch.title); else opened.delete(branch.title); }}).element];
+  };
+  return branches.flatMap(branchNode);
+}
+
+/* heldComposition are the nodes of the objects a subsystem holds (held), by
+   the branches of composition they are of - «Входящие в подсистему
+   объекты:» of its window and «Состав» of «Все подсистемы» - the one
+   chosen selected; a click on an object chooses it (choose(id)). */
+function heldComposition(composition, held, open, opened, chosen, choose) {
+  const heldBranches = branches => branches.map(branch => ({...branch, objects: (branch.objects || []).filter(item => held.has(item.id)),
+    children: heldBranches(branch.children || [])}));
+  return compositionBranches(heldBranches(composition), false, open, opened, item => {
+    const {element, row} = treeNode({icon: item.icon, caption: item.name});
+    row.classList.toggle('selected', item.id === chosen);
+    row.addEventListener('click', () => choose(item.id));
+    return element;
+  });
 }
 
 /* subsystemCommands are the commands of the menu of a subsystem of its own
@@ -195,12 +211,29 @@ const roleFilters = [];
 async function showSubsystemCommandInterface(api) {
   const object = api.object();
   const answer = await postJSON('/api/subsystem/section', {subsystem: object.id, members: object.members || []});
+  const pane = sectionCommandsPane(answer, object.commandInterface || {}, api.source().defaultLanguage);
+  if (await showDialog({title: 'Командный интерфейс', content: pane.element, className: 'section-commands-dialog', help: 'subsystem-command-interface',
+    answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
+  const commandInterface = pane.value();
+  if (commandInterface) object.commandInterface = commandInterface; else delete object.commandInterface;
+  api.changed();
+  return true;
+}
+
+/* sectionCommandsPane is the list of the commands of the section of a
+   subsystem with its panel - the body of the window «Командный интерфейс»
+   (showSubsystemCommandInterface) and the right of «Все подсистемы»
+   (createSubsystemOverview): answer is the server's (/api/subsystem/section),
+   said the command interface the subsystem says now, language the one its
+   titles are shown in, and changed() is called after every edit. Answers
+   {element, value()}: value is the command interface the list says - what
+   OK of the window writes - or null where it says nothing. */
+function sectionCommandsPane(answer, said, language, changed = () => {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
   const commandOf = line => Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
   const groupKey = group => [group.standard, group.group, group.written].map(part => part || '').join('|');
-  const said = object.commandInterface || {};
   const visibilities = said.commandsVisibility || [];
   const lines = groups.flatMap(group => group.commands || []);
   const byKey = new Map(groups.map(group => [groupKey(group.group), group]));
@@ -225,7 +258,7 @@ async function showSubsystemCommandInterface(api) {
   const placedLines = new Set(), orderedGroups = new Set();
   let subsectionsTouched = false;
   const actions = {create: ': создать', 'create-folder': ': создать группу'};
-  const caption = line => localizedTitle({title: line.title}, api.source().defaultLanguage) + (actions[line.standard] || '');
+  const caption = line => localizedTitle({title: line.title}, language) + (actions[line.standard] || '');
   const alphabet = (one, other) => caption(one).localeCompare(caption(other), 'ru');
   const commandsOf = key => {
     const members = lines.filter(line => place.get(line) === key);
@@ -288,7 +321,7 @@ async function showSubsystemCommandInterface(api) {
       else said.splice(at, 1);
       roles.set(line, said.length ? said : undefined);
       current = {line};
-      draw();
+      edited();
     });
     cell.append(box);
   };
@@ -311,7 +344,7 @@ async function showSubsystemCommandInterface(api) {
         box.type = 'checkbox';
         box.checked = visible.get(line);
         box.setAttribute('aria-label', 'Видимость: ' + caption(line));
-        box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; draw(); });
+        box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; edited(); });
         const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
         row.append(box, strip((role, cell) => roleBox(line, role, cell)));
         chosen(row, {line});
@@ -338,6 +371,7 @@ async function showSubsystemCommandInterface(api) {
     move.disabled = !command;
     up.disabled = down.disabled = standard.disabled = !movable;
   };
+  function edited() { draw(); changed(); }
   async function moveCommand() {
     const line = current?.line;
     if (!line) return;
@@ -348,7 +382,7 @@ async function showSubsystemCommandInterface(api) {
     if (arrivals.includes(line)) arrivals.splice(arrivals.indexOf(line), 1);
     arrivals.push(line);
     placedLines.add(line);
-    draw();
+    edited();
   }
   function shift(by) {
     if (current?.line) {
@@ -362,7 +396,7 @@ async function showSubsystemCommandInterface(api) {
       subsectionOrder = list;
       subsectionsTouched = true;
     }
-    draw();
+    edited();
   }
   function setDefault() {
     const line = current?.line;
@@ -377,12 +411,12 @@ async function showSubsystemCommandInterface(api) {
       if (rest.length) orders.set(key, rest); else orders.delete(key);
       orderedGroups.add(key);
     }
-    draw();
+    edited();
   }
   function restore() {
     if (current?.group) { orders.delete(current.group); orderedGroups.add(current.group); }
     else if (current?.subsections) { subsectionOrder = null; subsectionsTouched = true; }
-    draw();
+    edited();
   }
   const menu = event => showContextMenu(event, [
     ['Переместить команду', moveCommand, !!current?.line, '', 'move-item'],
@@ -442,8 +476,8 @@ async function showSubsystemCommandInterface(api) {
   const content = node('div', undefined, 'section-commands-window');
   content.append(bar, head, tree, scroller);
   draw();
-  if (await showDialog({title: 'Командный интерфейс', content, className: 'section-commands-dialog', help: 'subsystem-command-interface',
-    answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
+  return {element: content, value};
+  function value() {
   const commandInterface = {...said};
   const shown = line => place.get(line) !== home.get(line);
   const kept = visibilities.filter(item => !lineOf(item));
@@ -465,7 +499,6 @@ async function showSubsystemCommandInterface(api) {
   for (const key of ['commandsVisibility', 'commandsPlacement', 'commandsOrder', 'groupsOrder', 'subsystemsOrder']) {
     if (!commandInterface[key]?.length) delete commandInterface[key];
   }
-  if (Object.keys(commandInterface).length) object.commandInterface = commandInterface; else delete object.commandInterface;
-  api.changed();
-  return true;
+  return Object.keys(commandInterface).length ? commandInterface : null;
+  }
 }
