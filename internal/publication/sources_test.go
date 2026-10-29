@@ -735,7 +735,7 @@ func rootFileContent(file, word string) string {
 		return "template: one-column\nleft:\n  - {form: 5b000000-0000-4000-8000-000000000001, height: " +
 			map[string]string{"первая": "1", "вторая": "2"}[word] + ", visibility: {common: true}}\n"
 	case file == project.ClientInterfaceFile:
-		return "panels: [5b000000-0000-4000-8000-00000000000" + map[string]string{"первая": "1", "вторая": "2"}[word] + "]\n"
+		return "panels: [{id: 5b000000-0000-4000-8000-00000000000" + map[string]string{"первая": "1", "вторая": "2"}[word] + "}]\n"
 	case file == project.MainSectionCommandInterfaceFile:
 		return "groups_order: [{standard: " + map[string]string{"первая": "navigation-panel-ordinary", "вторая": "actions-panel-tools"}[word] + "}]\n"
 	default:

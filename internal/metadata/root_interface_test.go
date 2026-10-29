@@ -36,7 +36,9 @@ func rootInterfaceProject(t *testing.T) string {
 // the forms of the home page with their heights and who sees them, the panels
 // of the main window and the commands of the main section. Defect caught: none
 // of the three had a place, and the home page of every configuration moved
-// arrived empty.
+// arrived empty; the representation of the panel of sections the export
+// writes (spr) had no place, and a panel added and not chosen - the zero
+// identifier the export writes - was refused (opis of 29.10.2026).
 //
 // The vendor's support settings are not carried (owner, 15.10.2026): a file of
 // their name at the project root is nothing the load reads, so even a folder
@@ -57,7 +59,11 @@ right:
           - {id: 1c6905f0-bef8-4e56-958c-25c457268b87, panel: 8e10648b-f52d-4ec2-b4dd-87de33778d95}
 left:
   - {id: 49451a1e-9d1c-420b-b1e9-dd0e9c09e93b, panel: b553047f-c9aa-4157-978d-448ecad24248, height: 1}
-panels: [b553047f-c9aa-4157-978d-448ecad24248, cbab57f2-a0f3-4f0a-89ea-4cb19570ab75]
+bottom:
+  - {id: bf5d77c2-c159-4afc-9f96-de953b83dfd6, panel: 00000000-0000-0000-0000-000000000000}
+panels:
+  - {id: b553047f-c9aa-4157-978d-448ecad24248, representation: picture-on-top-and-text}
+  - {id: cbab57f2-a0f3-4f0a-89ea-4cb19570ab75}
 `)
 	writeText(t, root, "", project.MainSectionCommandInterfaceFile, `groups_order:
   - {standard: navigation-panel-important}
@@ -89,6 +95,10 @@ commands_visibility:
 		t.Fatalf("the panel inside the groups was lost: %+v", panels.Top)
 	case len(panels.Left) != 1 || panels.Left[0].Height != 1 || len(panels.Panels) != 2:
 		t.Fatalf("the left side or the panels defined were lost: %+v", panels)
+	case len(panels.Bottom) != 1 || panels.Bottom[0].Panel == nil || !panels.Bottom[0].Panel.IsZero():
+		t.Fatalf("the panel not chosen was lost or taken for a group: %+v", panels.Bottom)
+	case panels.Panels[0].Representation != "picture-on-top-and-text" || panels.Panels[1].Representation != "":
+		t.Fatalf("the representation of the panel of sections was lost: %+v", panels.Panels)
 	}
 	commands := catalog.MainSectionCommandInterface
 	if len(commands.GroupsOrder) != 1 || len(commands.CommandsVisibility) != 1 {
@@ -134,7 +144,9 @@ func TestRootInterfaceNamesWhatPointsAtNothing(t *testing.T) {
 // Each description is checked for what its format can hold. Defects caught:
 // a template nobody offers, a right column on a page of one, a panel holding
 // items, a height on a group, the order of the sections on the main section,
-// a form with no identifier, a description that is a folder.
+// a form with no identifier, a description that is a folder, a representation
+// the help does not list or on a panel other than that of sections, a panel
+// defined with no identifier.
 func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 	t.Parallel()
 	for name, test := range map[string]struct {
@@ -157,6 +169,12 @@ func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 		"порядок разделов у основного раздела": {project.MainSectionCommandInterfaceFile, "subsystems_order: [" + rootInterfaceForm + "]\n",
 			"subsystems_order lies on the project, not on its main section"},
 		"неизвестное поле": {project.ClientInterfaceFile, "middle: []\n", "field middle not found"},
+		"отображение не из пяти": {project.ClientInterfaceFile, "panels:\n  - {id: b553047f-c9aa-4157-978d-448ecad24248, representation: picture-under-text}\n",
+			"panels[0].representation must be picture, picture-and-text, picture-on-top-and-text, picture-on-left-and-text or text"},
+		"отображение не у панели разделов": {project.ClientInterfaceFile, "panels:\n  - {id: cbab57f2-a0f3-4f0a-89ea-4cb19570ab75, representation: text}\n",
+			"panels[0].representation belongs to the panel of sections"},
+		"определение панели без идентификатора": {project.ClientInterfaceFile, "panels:\n  - {representation: text}\n",
+			"panels[0].id must be a non-zero UUID"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -55,6 +55,17 @@ func MustNew() UUID {
 	return id
 }
 
+// MustParse parses an identifier fixed in the code and panics if it is not
+// one.
+func MustParse(value string) UUID {
+	id, err := Parse(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return id
+}
+
 // Parse validates and parses the canonical UUID representation.
 func Parse(value string) (UUID, error) {
 	if len(value) != stringLength {

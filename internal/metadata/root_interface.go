@@ -74,23 +74,53 @@ type HomePageForm struct {
 // of a panel of the platform - the panel of sections, of open windows, of the
 // functions of the current section.
 type ClientInterface struct {
-	Top    []ClientInterfaceItem `yaml:"top,omitempty" json:"top,omitempty"`
-	Left   []ClientInterfaceItem `yaml:"left,omitempty" json:"left,omitempty"`
-	Right  []ClientInterfaceItem `yaml:"right,omitempty" json:"right,omitempty"`
-	Bottom []ClientInterfaceItem `yaml:"bottom,omitempty" json:"bottom,omitempty"`
-	Panels []uuid.UUID           `yaml:"panels,omitempty" json:"panels,omitempty"`
+	Top    []ClientInterfaceItem  `yaml:"top,omitempty" json:"top,omitempty"`
+	Left   []ClientInterfaceItem  `yaml:"left,omitempty" json:"left,omitempty"`
+	Right  []ClientInterfaceItem  `yaml:"right,omitempty" json:"right,omitempty"`
+	Bottom []ClientInterfaceItem  `yaml:"bottom,omitempty" json:"bottom,omitempty"`
+	Panels []ClientInterfacePanel `yaml:"panels,omitempty" json:"panels,omitempty"`
 }
 
 // ClientInterfaceItem is a panel or a group of them. A panel names the panel
 // it shows and may have a height; a group holds items. The prototype gives an
 // outer group and every panel an identifier of its own and leaves the groups
-// inside without one.
+// inside without one. A panel added and not yet chosen («Стандартная панель:
+// Не выбрана» in the window of the interface) names the zero identifier, as
+// the export writes it (opis of 29.10.2026, docs/block-00/konfiguraciya.md).
 type ClientInterfaceItem struct {
 	ID     *uuid.UUID            `yaml:"id,omitempty" json:"id,omitempty"`
 	Panel  *uuid.UUID            `yaml:"panel,omitempty" json:"panel,omitempty"`
 	Height int                   `yaml:"height,omitempty" json:"height,omitempty"`
 	Items  []ClientInterfaceItem `yaml:"items,omitempty" json:"items,omitempty"`
 }
+
+// ClientInterfacePanel is a panel the configuration defines, with how it is
+// shown: «Описание панели» in the window of the interface gives the panel of
+// sections its «Отображение», and no other panel (opis of 27.10.2026). The
+// export writes it on the panel's definition (panelDef, spr) and leaves it
+// out at «Картинка и текст», which empty is too.
+type ClientInterfacePanel struct {
+	ID             uuid.UUID                   `yaml:"id" json:"id"`
+	Representation SectionsPanelRepresentation `yaml:"representation,omitempty" json:"representation,omitempty"`
+}
+
+// SectionsPanelRepresentation is how the panel of sections shows a section:
+// the five values of ОтображениеПанелиРазделов in the help, the five the
+// window of the interface offers.
+type SectionsPanelRepresentation string
+
+const (
+	SectionsPanelPicture              SectionsPanelRepresentation = "picture"
+	SectionsPanelPictureAndText       SectionsPanelRepresentation = "picture-and-text"
+	SectionsPanelPictureOnTopAndText  SectionsPanelRepresentation = "picture-on-top-and-text"
+	SectionsPanelPictureOnLeftAndText SectionsPanelRepresentation = "picture-on-left-and-text"
+	SectionsPanelText                 SectionsPanelRepresentation = "text"
+)
+
+// SectionsPanel is the identifier of the platform's panel of sections, the one
+// panel with a representation (export after the edit of 29.10.2026, the
+// panel's name in «Описание панели» - ПанельРазделов).
+var SectionsPanel = uuid.MustParse("b553047f-c9aa-4157-978d-448ecad24248")
 
 type homePageColumn struct {
 	name  string
@@ -140,9 +170,6 @@ func validateClientInterface(value ClientInterface) []string {
 				issues = append(issues, prefix+".id must be a non-zero UUID")
 			}
 			if item.Panel != nil {
-				if item.Panel.IsZero() {
-					issues = append(issues, prefix+".panel must be a non-zero UUID")
-				}
 				if len(item.Items) > 0 {
 					issues = append(issues, prefix+" is a panel and holds no items")
 				}
@@ -159,8 +186,20 @@ func validateClientInterface(value ClientInterface) []string {
 	walk("right", value.Right)
 	walk("bottom", value.Bottom)
 	for index, panel := range value.Panels {
-		if panel.IsZero() {
-			issues = append(issues, fmt.Sprintf("panels[%d] must be a non-zero UUID", index))
+		prefix := fmt.Sprintf("panels[%d]", index)
+		if panel.ID.IsZero() {
+			issues = append(issues, prefix+".id must be a non-zero UUID")
+		}
+		switch panel.Representation {
+		case "":
+		case SectionsPanelPicture, SectionsPanelPictureAndText, SectionsPanelPictureOnTopAndText,
+			SectionsPanelPictureOnLeftAndText, SectionsPanelText:
+			if panel.ID != SectionsPanel {
+				issues = append(issues, prefix+".representation belongs to the panel of sections")
+			}
+		default:
+			issues = append(issues, prefix+".representation must be picture, picture-and-text, "+
+				"picture-on-top-and-text, picture-on-left-and-text or text")
 		}
 	}
 	return issues
