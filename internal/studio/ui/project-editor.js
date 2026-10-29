@@ -25,6 +25,13 @@ function createProjectModel(source) {
       else configuration[field] = text;
     },
     setDefaultLanguage(code) { configuration.defaultLanguage = code; },
+    /* The root's half of the command interface - the order of the sections
+       and their visibility - as its window «Командный интерфейс» writes it
+       (showProjectCommandInterface): nothing said, nothing kept. */
+    setSections(order, visibility) {
+      if (order.length) configuration.subsystemsOrder = order; else delete configuration.subsystemsOrder;
+      if (visibility.length) configuration.subsystemsVisibility = visibility; else delete configuration.subsystemsVisibility;
+    },
     /* Роли перечислены в том порядке, в каком их перечислила конфигурация, и
        порядок сохраняется: снятая и снова поставленная роль встаёт в конец,
        потому что это и есть «добавили её сейчас». Роль, выданная дважды, не
@@ -291,5 +298,10 @@ function createProjectEditor(host, onChange) {
       render();
     },
     value() { return model?.value(); },
+    // «Открыть командный интерфейс проекта» of the menu of the root.
+    async openCommandInterface() {
+      const configuration = model.value();
+      if (await showProjectCommandInterface(configuration, configuration.defaultLanguage, (order, visibility) => model.setSections(order, visibility))) touch();
+    },
   });
 }

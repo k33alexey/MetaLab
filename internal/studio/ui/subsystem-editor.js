@@ -212,12 +212,19 @@ async function showSubsystemCommandInterface(api) {
   const object = api.object();
   const answer = await postJSON('/api/subsystem/section', {subsystem: object.id, members: object.members || []});
   const pane = sectionCommandsPane(answer, object.commandInterface || {}, api.source().defaultLanguage);
-  if (await showDialog({title: 'Командный интерфейс', content: pane.element, className: 'section-commands-dialog', help: 'subsystem-command-interface',
-    answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return false;
+  if (!await commandInterfaceWindow(pane, 'subsystem-command-interface')) return false;
   const commandInterface = pane.value();
   if (commandInterface) object.commandInterface = commandInterface; else delete object.commandInterface;
   api.changed();
   return true;
+}
+
+/* commandInterfaceWindow is the modal window «Командный интерфейс» of a
+   subsystem and of the root around the list pane (sectionCommandsPane): OK,
+   «Отмена», «Справка» - the page help. Answers whether OK was pressed. */
+async function commandInterfaceWindow(pane, help) {
+  return await showDialog({title: 'Командный интерфейс', content: pane.element, className: 'section-commands-dialog', help,
+    answers: [['ok', 'OK'], [null, 'Отмена']]}) === 'ok';
 }
 
 /* sectionCommandsPane is the list of the commands of the section of a
@@ -225,10 +232,12 @@ async function showSubsystemCommandInterface(api) {
    (showSubsystemCommandInterface) and the right of «Все подсистемы»
    (createSubsystemOverview): answer is the server's (/api/subsystem/section),
    said the command interface the subsystem says now, language the one its
-   titles are shown in, and changed() is called after every edit. Answers
+   titles are shown in, and changed() is called after every edit. The
+   root's window has no move into another group (moves) and words its
+   hiding otherwise (hideTitle) - snapshot series-2.595/36. Answers
    {element, value()}: value is the command interface the list says - what
    OK of the window writes - or null where it says nothing. */
-function sectionCommandsPane(answer, said, language, changed = () => {}) {
+function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию'} = {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
@@ -258,7 +267,9 @@ function sectionCommandsPane(answer, said, language, changed = () => {}) {
   const placedLines = new Set(), orderedGroups = new Set();
   let subsectionsTouched = false;
   const actions = {create: ': создать', 'create-folder': ': создать группу'};
-  const caption = line => localizedTitle({title: line.title}, language) + (actions[line.standard] || '');
+  // A section of the root comes by its presentation already (server,
+  // SectionSubsystem), a command by its title in every language.
+  const caption = line => (typeof line.title === 'string' ? line.title : localizedTitle({title: line.title}, language)) + (actions[line.standard] || '');
   const alphabet = (one, other) => caption(one).localeCompare(caption(other), 'ru');
   const commandsOf = key => {
     const members = lines.filter(line => place.get(line) === key);
@@ -419,7 +430,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}) {
     edited();
   }
   const menu = event => showContextMenu(event, [
-    ['Переместить команду', moveCommand, !!current?.line, '', 'move-item'],
+    ...(moves ? [['Переместить команду', moveCommand, !!current?.line, '', 'move-item']] : []),
     ['Переместить вверх', () => shift(-1), !!(current?.line || current?.subsection), 'Cmd+Shift+Up', 'move-up'],
     ['Переместить вниз', () => shift(1), !!(current?.line || current?.subsection), 'Cmd+Shift+Down', 'move-down'],
     null,
@@ -432,7 +443,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}) {
       shift(event.key === 'ArrowUp' ? -1 : 1);
     }
   });
-  const hide = panelButton('filter-by-current-value', 'Скрыть команды, невидимые по умолчанию', true, () => {
+  const hide = panelButton('filter-by-current-value', hideTitle, true, () => {
     hidden = !hidden;
     hide.classList.toggle('pressed', hidden);
     draw();
@@ -462,7 +473,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}) {
     return fieldWithButtons(field, [choose]);
   };
   filter.append(node('span', 'Отбор по ролям:'), filterRoles());
-  const bar = windowPanel([move, up, down, standard, hide, filter]);
+  const bar = windowPanel([...(moves ? [move] : []), up, down, standard, hide, filter]);
   const head = node('div', undefined, 'section-commands-head');
   const scroller = node('div', undefined, 'section-roles-scroll'), spacer = node('div');
   scroller.append(spacer);
@@ -501,4 +512,34 @@ function sectionCommandsPane(answer, said, language, changed = () => {}) {
   }
   return Object.keys(commandInterface).length ? commandInterface : null;
   }
+}
+
+/* showProjectCommandInterface is the window «Командный интерфейс» of the
+   root (konfiguraciya.md, «Окна», «Досъёмка 27.10.2026», «Предсъёмка
+   28.10.2026»; snapshots konfiguraciya/16, 17, series-2.595/36-40, 66-68):
+   the list of every window of a command interface (sectionCommandsPane)
+   with one group, «Разделы» - the subsystems of the root in the command
+   interface, by their synonyms (server, ProjectSections), visible by
+   default - and no move into another group; «Скрыть невидимые по
+   умолчанию». configuration is the root as its editor holds it; OK gives
+   set(order, visibility) the order of the sections and their visibility,
+   common and by roles - project.Project SubsystemsOrder and
+   SubsystemsVisibility - what the list does not show kept as it was;
+   «Отмена» changes nothing. Answers whether OK was pressed. */
+async function showProjectCommandInterface(configuration, language, set) {
+  const answer = await (await fetch('/api/project/sections')).json();
+  const group = {standard: 'sections'};
+  const lines = (answer.subsections || []).map(item => ({object: item.id, title: item.title, icon: 'subsystem', visible: true, opens: item.opens, group}));
+  const said = {
+    commandsVisibility: (configuration.subsystemsVisibility || []).map(item => ({object: item.subsystem,
+      visibility: {common: item.common, ...(item.roles?.length ? {roles: item.roles} : {})}})),
+    commandsOrder: (configuration.subsystemsOrder || []).map(id => ({object: id, group})),
+  };
+  const pane = sectionCommandsPane({...answer, groups: [{group, title: 'Разделы', panel: 'sections', commands: lines}], subsections: []}, said, language,
+    () => {}, {moves: false, hideTitle: 'Скрыть невидимые по умолчанию'});
+  if (!await commandInterfaceWindow(pane, 'project-command-interface')) return false;
+  const value = pane.value() || {};
+  set((value.commandsOrder || []).map(item => item.object), (value.commandsVisibility || []).map(item => ({subsystem: item.object,
+    common: item.visibility.common, ...(item.visibility.roles ? {roles: item.visibility.roles} : {})})));
+  return true;
 }

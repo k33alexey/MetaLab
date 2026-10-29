@@ -110,11 +110,13 @@ func (workspace *Workspace) DeleteSubsystem(relative, expectedRevision string) e
 
 // subsystemChildAddress and subsystemMoveAddress are where a subsystem is
 // made under another and moved, subsystemSectionAddress where the window
-// «Командный интерфейс» reads the groups of its section.
+// «Командный интерфейс» reads the groups of its section, and
+// projectSectionsAddress where the root's reads its sections.
 const (
 	subsystemChildAddress   = "/api/subsystem/child"
 	subsystemMoveAddress    = "/api/subsystem/move"
 	subsystemSectionAddress = "/api/subsystem/section"
+	projectSectionsAddress  = "/api/project/sections"
 )
 
 // SectionGroup is a group of the section of a subsystem as the window
@@ -240,6 +242,25 @@ func sectionIcon(line metadata.SectionLine) string {
 // SubsystemSection answers the groups of the section of the subsystem whose
 // content is members - the window's, saved or not - and its subsections.
 func (workspace *Workspace) SubsystemSection(subsystem uuid.UUID, members []uuid.UUID) (SubsystemSectionAnswer, error) {
+	return workspace.sectionAnswer(func(loaded *metadata.Catalog, language string) ([]SectionGroup, []SectionSubsystem) {
+		return sectionGroups(loaded, language, members), subsections(loaded, language, &subsystem)
+	})
+}
+
+// ProjectSections answers the sections of the application - the subsystems
+// of the root in the command interface - the window «Командный интерфейс»
+// of the root lists (konfiguraciya.md, «Окна»; snapshots konfiguraciya/16,
+// 17, series-2.595/36-40): no groups of commands.
+func (workspace *Workspace) ProjectSections() (SubsystemSectionAnswer, error) {
+	return workspace.sectionAnswer(func(loaded *metadata.Catalog, language string) ([]SectionGroup, []SectionSubsystem) {
+		return []SectionGroup{}, subsections(loaded, language, nil)
+	})
+}
+
+// sectionAnswer is what a window of a command interface reads: the groups
+// and the sections of (the project loaded, its main language), the roles of
+// the project and its name, the root of «Выбор объекта: Роль».
+func (workspace *Workspace) sectionAnswer(of func(*metadata.Catalog, string) ([]SectionGroup, []SectionSubsystem)) (SubsystemSectionAnswer, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	configuration, err := project.ValidateLayout(workspace.root)
@@ -255,8 +276,8 @@ func (workspace *Workspace) SubsystemSection(subsystem uuid.UUID, members []uuid
 		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Title: role.Title.Presentation(configuration.DefaultLanguage, role.Name),
 			Icon: kinds.Must(metadata.RoleKind).Icon})
 	}
-	return SubsystemSectionAnswer{Groups: sectionGroups(loaded, configuration.DefaultLanguage, members),
-		Subsections: subsections(loaded, configuration.DefaultLanguage, subsystem), Roles: roles, Project: configuration.Name}, nil
+	groups, sections := of(loaded, configuration.DefaultLanguage)
+	return SubsystemSectionAnswer{Groups: groups, Subsections: sections, Roles: roles, Project: configuration.Name}, nil
 }
 
 // openingRoles are the roles of the project that open one of lines at least,
@@ -283,15 +304,15 @@ func contentLines(loaded *metadata.Catalog, subsystem metadata.SubsystemDefiniti
 	return lines
 }
 
-// subsections are the subsystems under subsystem that are in the command
-// interface, as the project reads them - the window orders them: a
-// subsystem not in it is no
-// section (help, Подсистема.ВключатьВКомандныйИнтерфейс), and «Все
-// подсистемы» leaves it out too (podsistema.md, «Предсъёмка 28.10.2026»).
-func subsections(loaded *metadata.Catalog, language string, subsystem uuid.UUID) []SectionSubsystem {
+// subsections are the subsystems under parent - the root where none - that
+// are in the command interface, as the project reads them - the window
+// orders them: a subsystem not in it is no section (help,
+// Подсистема.ВключатьВКомандныйИнтерфейс), and «Все подсистемы» leaves it
+// out too (podsistema.md, «Предсъёмка 28.10.2026»).
+func subsections(loaded *metadata.Catalog, language string, parent *uuid.UUID) []SectionSubsystem {
 	var found []SectionSubsystem
 	for _, item := range loaded.Subsystems {
-		if item.Parent == nil || *item.Parent != subsystem || !item.IncludeInCommandInterface {
+		if !sameParent(item.Parent, parent) || !item.IncludeInCommandInterface {
 			continue
 		}
 		found = append(found, SectionSubsystem{ID: item.ID, Title: item.Title.Presentation(language, item.Name),
@@ -312,6 +333,9 @@ func registerSubsystemEditorRoutes(routes *http.ServeMux, workspace *Workspace) 
 		Members   []uuid.UUID `json:"members"`
 	}) (any, error) {
 		return workspace.SubsystemSection(input.Subsystem, input.Members)
+	}))
+	routes.HandleFunc("GET "+projectSectionsAddress, answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.ProjectSections()
 	}))
 	registerObjectEditor(routes, subsystemEditorAddress, workspace.ReadSubsystemEditor, workspace.SaveSubsystemWindow, workspace.CreateSubsystem,
 		workspace.DeleteSubsystem)
