@@ -105,7 +105,7 @@ function subsystemCommands(node, actions) {
     ['Объекты подсистемы', () => actions.filter({chosen: new Set([node.id]), children: false, parents: false})], null,
     ['Добавить', [['Подчиненная подсистема', () => actions.create(() => postJSON('/api/subsystem/child', {parent: node.id}))],
       ['Подсистема', () => actions.create(() => postJSON('/api/subsystem', {}))]]], null,
-    ['Переместить подсистему', async () => { if (await moveSubsystem(node.path, actions.projectName())) actions.moved(); }], null,
+    ['Переместить подсистему', async () => { if (await moveSubsystem(node.path, actions.projectName())) actions.moved(); }, true, '', 'move-subsystem'], null,
     ['Справочная информация', () => {}, false]];
 }
 

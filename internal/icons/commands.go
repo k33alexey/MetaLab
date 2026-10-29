@@ -517,6 +517,15 @@ var commandIcons = []Icon{
 	{ID: "delete", Color: red, Accent: red, Parts: []Part{
 		path(Mark, cross),
 	}},
+	// «Переместить подсистему» of the menu of a subsystem and of the panel
+	// of «Все подсистемы»: two yellow places and the green arrow from one to
+	// the other, filling the space between them, its head just touching
+	// the place it goes to (snapshots predsyomka-1/02, 13; the
+	// owner's reading and remarks of 29.10.2026).
+	{ID: "move-subsystem", Color: yellow, Accent: yellow, Parts: []Part{
+		circle(Accent, 3.5, 12.5, 3), circle(Accent, 12, 4, 3),
+		colored(path(Mark, "M6 10L8.5 7.5"), green), colored(path(Accent, head(10, 6, 1, -1, 2)), green),
+	}},
 	{ID: "move-up", Color: blue, Accent: blue, Parts: solidArrow(0)},
 	{ID: "move-down", Color: blue, Accent: blue, Parts: solidArrow(180)},
 	{ID: "sort", Color: slate, Accent: blue, Parts: []Part{

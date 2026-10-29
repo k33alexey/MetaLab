@@ -18,16 +18,16 @@ const subsystemMenuWalk = `(async () => {
   const row = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => item.querySelector(':scope > span:not(.studio-tree-sign)')?.textContent === text);
   const menu = async text => { row(text).dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle(); };
   const items = within => [...within.children].filter(item => item.matches('.context-menu-item, .context-menu-separator'))
-    .map(item => item.matches('.context-menu-separator') ? '|' : item.childNodes[0].textContent + (item.disabled ? ' (недоступна)' : ''));
+    .map(item => item.matches('.context-menu-separator') ? '|' : [...item.childNodes].find(child => child.nodeType === 3).textContent + (item.disabled ? ' (недоступна)' : ''));
   await openObject('Подсистемы');
   await menu('Продажи');
   steps.menu = items(document.querySelector('.context-menu')).slice(0, 9);
-  [...document.querySelectorAll('.context-menu-item')].find(item => item.childNodes[0].textContent === 'Добавить').click(); await settle();
+  [...document.querySelectorAll('.context-menu-item')].find(item => [...item.childNodes].find(child => child.nodeType === 3).textContent === 'Добавить').click(); await settle();
   steps.submenu = items(document.querySelector('.context-submenu'));
   [...document.querySelectorAll('.context-submenu .context-menu-item')].find(item => item.textContent === 'Подчиненная подсистема').click(); await settle();
   steps.created = document.querySelector('#subsystem-editor .object-window-title')?.textContent || '';
   await menu('Склад');
-  [...document.querySelectorAll('.context-menu-item')].find(item => item.childNodes[0].textContent === 'Переместить подсистему').click(); await settle();
+  [...document.querySelectorAll('.context-menu-item')].find(item => [...item.childNodes].find(child => child.nodeType === 3).textContent === 'Переместить подсистему').click(); await settle();
   const dialog = document.querySelector('dialog.subsystem-move-dialog');
   steps.window = {title: dialog.querySelector('h3').textContent, rows: [...dialog.querySelectorAll('.studio-tree-row')].map(item => item.textContent),
     chosen: dialog.querySelector('.studio-tree-row.selected')?.textContent || ''};
@@ -108,7 +108,7 @@ const subsystemObjectsWalk = `(async () => {
   const row = text => [...document.querySelectorAll('#tree .studio-tree-row')].find(item => name(item) === text);
   const objects = async text => {
     row(text).dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle();
-    [...document.querySelectorAll('.context-menu-item')].find(item => item.childNodes[0].textContent === 'Объекты подсистемы').click(); await settle();
+    [...document.querySelectorAll('.context-menu-item')].find(item => [...item.childNodes].find(child => child.nodeType === 3).textContent === 'Объекты подсистемы').click(); await settle();
     return {rows: [...document.querySelectorAll('#tree .studio-tree-row')].map(name), pressed: document.querySelector('#tree-subsystems').getAttribute('aria-pressed')};
   };
   await openObject('Подсистемы');

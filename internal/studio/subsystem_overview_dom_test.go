@@ -12,7 +12,7 @@ import (
 // «Подсистемы», reads the tree and the panes before a click, clicks Склад,
 // reads its content and command interface, takes Товары out of its content,
 // adds Контрагенты by «Редактировать состав…», takes a command's box off,
-// saves; then deletes Сервис by the panel.
+// saves; then moves Склад to the root by «Переместить подсистему».
 const subsystemOverviewWalk = `(async () => {
   const studio = window.__studio, steps = {};
   window.confirm = () => true;` + objectWindowSteps + `
@@ -54,6 +54,12 @@ const subsystemOverviewWalk = `(async () => {
   [...host.querySelectorAll('.subsystem-overview-tree .studio-tree-row')].find(item => item.textContent === 'Продажи').click(); await settle();
   const removeButton = [...panels[0].querySelectorAll('button')].find(item => item.title === 'Удалить текущий элемент');
   steps.deleteOn = !removeButton.disabled;
+  [...host.querySelectorAll('.subsystem-overview-tree .studio-tree-row')].find(item => item.textContent === 'Склад').click(); await settle();
+  [...panels[0].querySelectorAll('button')].find(item => item.title === 'Переместить подсистему').click(); await settle();
+  const move = document.querySelector('dialog.subsystem-move-dialog');
+  move.querySelector('.studio-tree-row').click(); await settle();
+  [...move.querySelectorAll('button')].find(item => item.textContent === 'OK').click(); await settle(); await settle();
+  steps.moved = rows('.subsystem-overview-tree');
   return steps;
 })()`
 
@@ -72,7 +78,8 @@ const subsystemOverviewWalk = `(async () => {
 // panes filled before a click; a deletion from the content not written, or
 // written to another subsystem; the command interface read for the content
 // saved rather than the one shown; up and down acting before the order of
-// the objects of the tree is written (the item «порядок объектов»).
+// the objects of the tree is written (the item «порядок объектов»); a
+// subsystem not moved by «Переместить подсистему», or the row clicked lost.
 func TestAllSubsystemsIsThePrototypes(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	directory := filepath.Join(root, "metadata", "subsystems")
@@ -116,6 +123,7 @@ func TestAllSubsystemsIsThePrototypes(t *testing.T) {
 			Open  []string
 		}
 		Dirty, Saved, DeleteOn bool
+		Moved                  []string
 		Box                    *bool
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
@@ -152,9 +160,16 @@ func TestAllSubsystemsIsThePrototypes(t *testing.T) {
 	expect("the command of Контрагенты, visible by default", steps.Box != nil && *steps.Box, true)
 	expect("saved", steps.Saved, true)
 	expect("delete on Продажи", steps.DeleteOn, true)
+	// «Переместить подсистему» - the window of the menu, the root chosen:
+	// Склад stands in the root, current still (owner, 29.10.2026: the
+	// prototype's button did not act, its meaning is the menu's).
+	expect("moved to the root", steps.Moved, []string{"Продажи", "Склад *"})
 	description, _ := os.ReadFile(filepath.Join(directory, treeWarehouseSubsystem+".yaml"))
 	if !strings.Contains(string(description), "members:\n  - 10000000-0000-4000-8000-000000000102\n") || strings.Contains(string(description), "000000000101") {
 		t.Errorf("the content of Склад is not written:\n%s", description)
+	}
+	if strings.Contains(string(description), "\nparent:") {
+		t.Errorf("Склад is not moved to the root:\n%s", description)
 	}
 	if !strings.Contains(string(description), "\ncommand_interface:") {
 		t.Errorf("the command interface of Склад is not written:\n%s", description)

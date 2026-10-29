@@ -165,6 +165,41 @@ func parameter() []Part {
 	return []Part{path(Detail, "M5.5 2.5Q2.5 8 5.5 13.5M10.5 2.5Q13.5 8 10.5 13.5"), circle(Accent, 8, 8, 2)}
 }
 
+// The colours of the sign of a subsystem, of the deep amber of its family:
+// the top plate darker than those under it, each with its shade below, the
+// branches dark - saturated enough to read at 16 px on a light page (the
+// owner's choice of 29.10.2026: no cheap brown and grey, no outline).
+const (
+	subsystemRoot       = "#b8600a"
+	subsystemRootShade  = "#8f4a08"
+	subsystemPlate      = "#e08a1a"
+	subsystemPlateShade = "#b86e12"
+	subsystemBranch     = "#9a6a2a"
+)
+
+// subsystemTree is the sign of a subsystem as the prototype draws it: five
+// flat plates of one size on one lattice - the top one, two under it a step
+// to each side, two under the right one alike, so that the lower left
+// stands straight under the top - and the branches between them (the
+// owner's remarks and choice of 29.10.2026: the plates alike, the tree
+// even, plates as flat as pancakes).
+func subsystemTree() []Part {
+	return join(
+		[]Part{colored(path(Line, "M6.5 4L3.5 7M6.5 4L9.5 7M9.5 9L6.5 12M9.5 9L12.5 12"), subsystemBranch)},
+		plate(4, 2, subsystemRoot, subsystemRootShade), plate(1, 7, subsystemPlate, subsystemPlateShade),
+		plate(7, 7, subsystemPlate, subsystemPlateShade), plate(4, 12, subsystemPlate, subsystemPlateShade),
+		plate(10, 12, subsystemPlate, subsystemPlateShade),
+	)
+}
+
+// plate is a plate of the sign of a subsystem at x, y, 5 by 2: a capsule of
+// its shade, its upper row of its colour.
+func plate(x, y float64, fill, shade string) []Part {
+	upper := fmt.Sprintf("M%s %sH%sQ%s %s %s %sH%sQ%s %s %s %sZ", number(x+1), number(y), number(x+4), number(x+5), number(y), number(x+5), number(y+1),
+		number(x), number(x), number(y), number(x+1), number(y))
+	return []Part{colored(bar(x, y, 5, 2), shade), colored(path(Accent, upper), fill)}
+}
+
 // newStar is the prototype's sign of adding a new part: a gold star of four
 // rays over the lower right of the part's sign, cleared from what lies under
 // it as the sparks of a wizard are.
@@ -427,12 +462,10 @@ var treeIcons = []Icon{
 		colored(circle(Accent, 4, 11, 3), green),
 		colored(circle(Accent, 11, 10, 3), brown),
 	}},
-	{ID: "subsystem", Color: amber, Parts: []Part{
-		rect(Body, 5.5, 1.5, 6, 4),
-		path(Detail, "M8.5 5.5V8.5M4.5 10.5V8.5H12.5V10.5"),
-		rect(Body, 2.5, 10.5, 4, 4),
-		rect(Body, 10.5, 10.5, 4, 4),
-	}},
+	// A subsystem as the prototype draws it (podsistema/03, predsyomka-1/25):
+	// a tree of five plates - one on top, two under it, two under the right
+	// one - in the deep amber of its family (the owner's choice of 29.10.2026).
+	{ID: "subsystem", Color: amber, Accent: amber, Parts: subsystemTree()},
 	// A common module and a module are one picture, the page with the
 	// brackets of code: the prototype draws the module alike for both too,
 	// though as a window - the page is the owner's choice of 17.10.2026.

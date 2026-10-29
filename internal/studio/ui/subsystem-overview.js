@@ -72,7 +72,7 @@ function createSubsystemOverview(host, around) {
       ...partButtons(on, {change: () => around.open(row), remove: () => around.remove(row), sort: false,
         titles: {change: 'Изменить (или открыть) текущий элемент', remove: 'Удалить текущий элемент', up: 'Переместить текущий элемент вверх',
           down: 'Переместить текущий элемент вниз'}}),
-      panelButton('move-item', 'Переместить подсистему', on, () => around.move(row)),
+      panelButton('move-subsystem', 'Переместить подсистему', on, () => around.move(row)),
     ]));
   }
 
