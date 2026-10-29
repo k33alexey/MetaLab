@@ -3,7 +3,6 @@ package studio
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -221,27 +220,9 @@ func (workspace *Workspace) createFormModuleLocked(relative, content string) (So
 		return SourceFile{}, ErrInvalidSourcePath
 	}
 	target := filepath.Join(workspace.root, filepath.FromSlash(canonical))
-	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := writeNewFile(target, []byte(content)); err != nil {
 		return SourceFile{}, fmt.Errorf("create form module: %w", err)
 	}
-	failed := true
-	defer func() {
-		_ = file.Close()
-		if failed {
-			_ = os.Remove(target)
-		}
-	}()
-	if _, err := file.WriteString(content); err != nil {
-		return SourceFile{}, fmt.Errorf("write form module: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		return SourceFile{}, fmt.Errorf("sync form module: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return SourceFile{}, fmt.Errorf("close form module: %w", err)
-	}
-	failed = false
 	workspace.invalidateStudioIndexesLocked()
 	return sourceFile(canonical, language, []byte(content)), nil
 }

@@ -172,24 +172,8 @@ func (workspace *Workspace) OpenModule(relative string) (SourceFile, error) {
 			return SourceFile{}, fmt.Errorf("create %s: %w", relative, err)
 		}
 	}
-	created, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := writeNewFile(target, []byte(stub)); err != nil {
 		return SourceFile{}, fmt.Errorf("create %s: %w", relative, err)
-	}
-	defer func() {
-		_ = created.Close()
-		if failed {
-			_ = os.Remove(target)
-		}
-	}()
-	if _, err := created.WriteString(stub); err != nil {
-		return SourceFile{}, fmt.Errorf("write %s: %w", relative, err)
-	}
-	if err := created.Sync(); err != nil {
-		return SourceFile{}, fmt.Errorf("sync %s: %w", relative, err)
-	}
-	if err := created.Close(); err != nil {
-		return SourceFile{}, fmt.Errorf("close %s: %w", relative, err)
 	}
 	failed = false
 	workspace.invalidateStudioIndexesLocked()

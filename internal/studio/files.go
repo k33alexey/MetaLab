@@ -224,6 +224,9 @@ func validateEditablePath(relative string) (string, string, error) {
 	if project.IsRootModuleFile(relative) {
 		return relative, "bsl", nil
 	}
+	if slices.Contains(project.RootDescriptionFiles(), relative) {
+		return relative, "yaml", nil
+	}
 	parts := strings.Split(relative, "/")
 	if len(parts) == 2 {
 		extension := path.Ext(parts[1])
@@ -346,6 +349,18 @@ func (workspace *Workspace) validateYAMLSource(relative string, content []byte) 
 		}
 		var canonical bytes.Buffer
 		if err := project.Encode(&canonical, configuration); err != nil {
+			return nil, err
+		}
+		return canonical.Bytes(), nil
+	}
+	// A description of the root's interface is read as the loader reads it.
+	if slices.Contains(project.RootDescriptionFiles(), relative) {
+		value, err := metadata.DecodeRootDescription(relative, bytes.NewReader(content))
+		if err != nil {
+			return nil, err
+		}
+		var canonical bytes.Buffer
+		if err := metadata.Encode(&canonical, value); err != nil {
 			return nil, err
 		}
 		return canonical.Bytes(), nil

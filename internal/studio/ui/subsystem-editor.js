@@ -314,27 +314,13 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     scroller.hidden = shown.length <= rolesInSight;
     if (scroller.scrollLeft !== offset) scroller.scrollLeft = offset;
   };
-  const roleState = (line, role) => {
-    const said = roles.get(line)?.find(item => item.role === role.id);
-    return said ? (said.visible ? 'on' : 'off') : 'default';
-  };
   const roleBox = (line, role, cell) => {
-    const box = node('span', undefined, 'role-visibility'), state = roleState(line, role);
-    box.dataset.state = state;
-    box.setAttribute('role', 'checkbox');
-    box.setAttribute('aria-checked', {default: 'mixed', on: 'true', off: 'false'}[state]);
-    box.setAttribute('aria-label', 'Видимость: ' + role.title + ': ' + caption(line));
-    box.addEventListener('click', event => {
-      event.stopPropagation();
-      const said = [...(roles.get(line) || [])], at = said.findIndex(item => item.role === role.id);
-      if (at < 0) said.push({role: role.id, visible: false});
-      else if (!said[at].visible) said[at] = {role: role.id, visible: true};
-      else said.splice(at, 1);
+    cell.append(roleVisibilityBox(roleVisibilityState(roles.get(line), role.id), 'Видимость: ' + role.title + ': ' + caption(line), () => {
+      const said = turnRoleVisibility(roles.get(line), role.id);
       roles.set(line, said.length ? said : undefined);
       current = {line};
       edited();
-    });
-    cell.append(box);
+    }));
   };
   const chosen = (row, which) => {
     row.classList.toggle('selected', isCurrent(which));

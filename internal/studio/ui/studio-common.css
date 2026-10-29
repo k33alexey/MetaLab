@@ -374,3 +374,27 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 .subsystem-overview-tree{flex:3;min-height:120px;overflow:auto}
 .subsystem-overview-composition{flex:2;min-height:100px;overflow:auto}
 .subsystem-overview-commands{flex:1;min-height:0}.subsystem-overview-commands .section-commands{height:auto;min-height:300px;max-height:calc(100vh - 260px)}
+/* «Рабочая область начальной страницы» (konfiguraciya/18, series-2.595/41,
+   46): две колонки форм с «>» и «<» между ними, под ними два поля; при
+   одной колонке левая на всю ширину. */
+#home-page{display:flex;flex-direction:column;flex:1;min-height:0;gap:8px;padding:6px;overflow:auto;background:var(--editor-bg,#1e1f22);color:var(--text,#dfe1e5)}
+#home-page[hidden]{display:none}
+.home-page-columns{display:flex;gap:6px;flex:1;min-height:260px}
+.home-page-column{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.home-page-columns:not(.one-column) .home-page-left{flex:1.1}
+.home-page-caption{font-size:12px;color:#aeb1b8;padding:2px 0}
+.home-page-column .object-window-panel{margin-top:0}
+.home-page-moves{display:flex;flex-direction:column;gap:4px;padding-top:52px}.home-page-moves button{min-width:26px}
+.home-page-list{flex:1;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;outline:none}
+.home-page-head,.home-page-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 120px;align-items:center;gap:4px;padding:1px 6px}
+.home-page-head{color:#aeb1b8;font-size:12px;border-bottom:1px solid #4a4d54;position:sticky;top:0;background:var(--editor-bg,#1e1f22)}
+.home-page-row.current{background:#2f4a6d}
+.home-page-form{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.home-page-height{width:100%;box-sizing:border-box;text-align:right;background:transparent;border:1px solid transparent;color:inherit;font:inherit;padding:0 2px}.home-page-height:focus{border-color:#589df6;outline:none}
+.home-page-visibility{display:flex;align-items:center;gap:4px;white-space:nowrap}.home-page-roles{color:inherit}
+.home-page-settings{display:grid;grid-template-columns:max-content minmax(0,360px);align-items:center;gap:4px 8px}
+.home-page-field{display:contents}
+.visibility-settings{display:flex;flex-direction:column;gap:6px;width:380px}
+.localized-title-dialog label.visibility-settings-common{display:flex;align-items:center;gap:6px;font-size:13px;color:inherit}.localized-title-dialog .visibility-settings-common input{padding:0;margin:0;accent-color:#589df6}
+.visibility-settings-roles{height:260px;overflow:auto;border:1px solid var(--border,#393b40);border-radius:4px;padding:2px 4px}
+.visibility-settings-role{display:flex;align-items:center;gap:8px;padding:1px 0}

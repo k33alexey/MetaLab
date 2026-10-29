@@ -31,6 +31,9 @@ type ObjectChoiceItem struct {
 	// Path is where the object is described, for a window that opens it -
 	// the magnifier of a main form; none for an object of no folder.
 	Path string `json:"path,omitempty"`
+	// Items are what the window offers inside the object: its forms in
+	// «Выбор управляемой формы» (homePageFormTree).
+	Items []ObjectChoiceItem `json:"items,omitempty"`
 }
 
 // objectChoiceTree is the tree of the window «Выбор объекта» offering the
@@ -39,6 +42,12 @@ type ObjectChoiceItem struct {
 // another kind - numerators in «Документы» - inside that branch before its
 // objects (branchPlaces), each with its objects in the tree's order.
 func objectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind) []ObjectChoiceBranch {
+	return shapedObjectChoiceTree(loaded, offered, nil)
+}
+
+// shapedObjectChoiceTree is objectChoiceTree whose objects shape gives what
+// they hold or leaves out, answering false; nil keeps every object as it is.
+func shapedObjectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind, shape func(metadata.Kind, *ObjectChoiceItem) bool) []ObjectChoiceBranch {
 	var result []ObjectChoiceBranch
 	common := ObjectChoiceBranch{Title: commonBranch.Title, Icon: commonBranch.Icon}
 	at := map[string]int{}
@@ -56,6 +65,9 @@ func objectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind) []Objec
 			item := ObjectChoiceItem{ID: object.ID, Name: object.Name, FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon}
 			if directory, err := project.ObjectDirectory(string(descriptor.Kind), object.Name); err == nil && descriptor.Layout().KeepsFolder() {
 				item.Path = path.Join(directory, project.DescriptionFile(string(descriptor.Kind)))
+			}
+			if shape != nil && !shape(descriptor.Kind, &item) {
+				continue
 			}
 			branch.Objects = append(branch.Objects, item)
 		}

@@ -386,6 +386,7 @@ func NewHandler(workspace *Workspace) http.Handler {
 	registerXDTOPackageEditorRoutes(routes, workspace)
 	registerSubsystemEditorRoutes(routes, workspace)
 	registerSubsystemOverviewRoutes(routes, workspace)
+	registerHomePageRoutes(routes, workspace)
 	registerCommonAttributeEditorRoutes(routes, workspace)
 	registerNameRoutes(routes, workspace)
 	registerProjectEditorRoutes(routes, workspace)

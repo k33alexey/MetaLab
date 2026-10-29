@@ -919,6 +919,122 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
   return await answer === 'ok' ? order.filter(id => marked.has(id)) : null;
 }
 
+/* chooseOneObject is the platform's window of the choice of one object of
+   the project - «Выбор управляемой формы» of the home page
+   (konfiguraciya.md, «Досъёмка 27.10.2026»; snapshot series-2.595/42): the
+   search over the full names with its clearing, the tree of the branches -
+   «Общие» holding its own - and OK, «Отмена» in a column at the right. tree
+   is the server's (objectChoiceTree): an object holding items is a row to
+   open, chosen by one of them; any other is chosen itself. current is the
+   identifier chosen first: the tree opens down to it. A double click
+   chooses too. Answers the identifier chosen on OK - OK is unavailable
+   while nothing is - and null on «Отмена». */
+async function chooseOneObject(title, tree, current) {
+  let chosen = current || null;
+  const content = node('div', undefined, 'object-choice'), rows = node('div', undefined, 'object-choice-tree');
+  const [searchRow, search] = searchField('object-choice-search', () => draw());
+  content.append(searchRow, rows);
+  let accept = () => {};
+  const leaf = item => {
+    const {element, row} = treeNode({icon: item.icon, caption: item.name});
+    row.classList.toggle('selected', item.id === chosen);
+    row.title = item.fullName || item.name;
+    row.addEventListener('click', () => { chosen = item.id; draw(); });
+    row.addEventListener('dblclick', () => { chosen = item.id; accept(); });
+    return element;
+  };
+  function draw() {
+    const text = search.value.trim().toLocaleLowerCase();
+    const found = item => !text || (item.fullName || item.name).toLocaleLowerCase().includes(text);
+    const holds = item => item.id === chosen || (item.items || []).some(holds);
+    const object = item => {
+      if (!item.items) return found(item) ? {element: leaf(item), open: holds(item)} : null;
+      const inner = item.items.filter(found).map(leaf);
+      if (!inner.length) return null;
+      return {element: treeNode({icon: item.icon, caption: item.name, children: inner, open: !!text || holds(item)}).element, open: holds(item)};
+    };
+    const branch = group => {
+      const children = [...(group.children || []).map(branch), ...(group.objects || []).map(object)].filter(Boolean);
+      if (text && !children.length) return null;
+      const open = !!text || children.some(child => child.open);
+      return {element: treeNode({icon: group.icon, caption: group.title, children: children.map(child => child.element), open}).element, open};
+    };
+    rows.replaceChildren(...tree.map(branch).filter(Boolean).map(item => item.element));
+    rows.querySelector('.selected')?.scrollIntoView?.({block: 'nearest'});
+  }
+  draw();
+  const answer = showDialog({title, content, side: true, className: 'object-choice-dialog',
+    answers: [['ok', 'OK', {enabled: () => !!chosen}], [null, 'Отмена']]});
+  const dialog = content.closest('dialog');
+  accept = () => dialog.querySelector('button.primary')?.click();
+  search.focus();
+  return await answer === 'ok' ? chosen : null;
+}
+
+/* The visibility of an item of the command interface or of the home page
+   to a role (obshchee.md, «Видимость по ролям»): what the roles say -
+   project.InterfaceVisibility.Roles, [{role, visible}] - leaves a role
+   'default' while it says nothing, 'on' or 'off' where it does. A click on
+   the box of a role goes round, as the prototype's does in «Настройка
+   видимости» and in the list of commands: the default, off, on, the default
+   again (turnRoleVisibility answers what the roles say after it). */
+function roleVisibilityState(said, role) {
+  const item = (said || []).find(one => one.role === role);
+  return item ? (item.visible ? 'on' : 'off') : 'default';
+}
+function turnRoleVisibility(said, role) {
+  const next = [...(said || [])], at = next.findIndex(item => item.role === role);
+  if (at < 0) next.push({role, visible: false});
+  else if (!next[at].visible) next[at] = {role, visible: true};
+  else next.splice(at, 1);
+  return next;
+}
+
+/* roleVisibilityBox is the box of a role in three states - grey and marked
+   for the default - labelled label; click() is a click on it. */
+function roleVisibilityBox(state, label, click) {
+  const box = node('span', undefined, 'role-visibility');
+  box.dataset.state = state;
+  box.tabIndex = 0;
+  box.setAttribute('role', 'checkbox');
+  box.setAttribute('aria-checked', {default: 'mixed', on: 'true', off: 'false'}[state]);
+  box.setAttribute('aria-label', label);
+  box.addEventListener('click', event => { event.stopPropagation(); click(); });
+  box.addEventListener('keydown', event => { if (event.key === ' ') { event.preventDefault(); click(); } });
+  return box;
+}
+
+/* visibilityDiffers says the roles see an item differently: one of them says
+   other than the common box (the link «Различная» of the home page; question
+   В4 of series 2.646). */
+function visibilityDiffers(visibility) {
+  return (visibility.roles || []).some(item => item.visible !== visibility.common);
+}
+
+/* showVisibilitySettings is the platform's window «Настройка видимости»
+   (obshchee.md, «Видимость по ролям»; snapshot series-2.595/44): the box
+   «Видимость» - the common one - and under «Видимость по ролям:» a row a
+   role of the project, by its synonym, in its order, with its box in three
+   states (roleVisibilityBox); OK, «Отмена», «Справка». visibility is
+   project.InterfaceVisibility, roles the project's ([{id, title}]). Answers
+   the visibility on OK - the roles in the order they were said - and null
+   on «Отмена». */
+async function showVisibilitySettings(visibility, roles) {
+  let common = visibility.common, said = [...(visibility.roles || [])];
+  const content = node('div', undefined, 'visibility-settings'), list = node('div', undefined, 'visibility-settings-roles');
+  content.append(checkboxField('Видимость', common, value => { common = value; }, 'visibility-settings-common'), node('div', 'Видимость по ролям:'), list);
+  const draw = () => list.replaceChildren(...roles.map(role => {
+    const row = node('div', undefined, 'visibility-settings-role');
+    row.append(roleVisibilityBox(roleVisibilityState(said, role.id), 'Видимость: ' + role.title, () => { said = turnRoleVisibility(said, role.id); draw(); }),
+      node('span', role.title));
+    return row;
+  }));
+  draw();
+  if (await showDialog({title: 'Настройка видимости', content, className: 'visibility-settings-dialog', help: 'visibility-settings',
+    answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return null;
+  return {common, ...(said.length ? {roles: said} : {})};
+}
+
 /* chooseCommandGroup is the platform's window «Выбор группы команд» of the
    windows of a command interface (podsistema.md, «Досъёмка 28.10.2026,
    поздний вечер»; konfiguraciya.md, «Досъёмка 27.10.2026»; snapshots

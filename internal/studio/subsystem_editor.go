@@ -271,13 +271,21 @@ func (workspace *Workspace) sectionAnswer(of func(*metadata.Catalog, string) ([]
 	if err != nil {
 		return SubsystemSectionAnswer{}, err
 	}
+	groups, sections := of(loaded, configuration.DefaultLanguage)
+	return SubsystemSectionAnswer{Groups: groups, Subsections: sections, Roles: projectRoles(loaded, configuration.DefaultLanguage),
+		Project: configuration.Name}, nil
+}
+
+// projectRoles are the roles of the project by their synonyms in language,
+// in its order: the columns of the roles of a window of a command interface
+// and the rows of «Настройка видимости».
+func projectRoles(loaded *metadata.Catalog, language string) []SectionRole {
 	roles := []SectionRole{}
 	for _, role := range loaded.KindObjects(metadata.RoleKind) {
-		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Title: role.Title.Presentation(configuration.DefaultLanguage, role.Name),
+		roles = append(roles, SectionRole{ID: role.ID, Name: role.Name, Title: role.Title.Presentation(language, role.Name),
 			Icon: kinds.Must(metadata.RoleKind).Icon})
 	}
-	groups, sections := of(loaded, configuration.DefaultLanguage)
-	return SubsystemSectionAnswer{Groups: groups, Subsections: sections, Roles: roles, Project: configuration.Name}, nil
+	return roles
 }
 
 // openingRoles are the roles of the project that open one of lines at least,

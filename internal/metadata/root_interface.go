@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -165,48 +166,72 @@ func validateClientInterface(value ClientInterface) []string {
 	return issues
 }
 
+// DecodeRootDescription reads one of the three descriptions of the root's
+// interface (project.RootDescriptionFiles) by its file and checks it by its
+// shape: a HomePage, a ClientInterface or the CommandInterface of the main
+// section. It is how the loader reads them and how Studio checks one it
+// writes.
+func DecodeRootDescription(file string, reader io.Reader) (any, error) {
+	switch file {
+	case project.HomePageFile:
+		return decodeChecked(file, reader, validateHomePage)
+	case project.ClientInterfaceFile:
+		return decodeChecked(file, reader, validateClientInterface)
+	case project.MainSectionCommandInterfaceFile:
+		return decodeChecked(file, reader, func(commands CommandInterface) []string {
+			issues := validateCommandInterface("command_interface", commands)
+			// The order of the sections is the root's own, on its
+			// description: the main section is one of them, not their
+			// parent.
+			if len(commands.SubsystemsOrder) > 0 {
+				issues = append(issues, "subsystems_order lies on the project, not on its main section")
+			}
+			return issues
+		})
+	}
+	return nil, fmt.Errorf("%s is no description of the project's interface", file)
+}
+
+// decodeChecked reads a value of file strictly and refuses it with what
+// issues finds in it.
+func decodeChecked[T any](file string, reader io.Reader, issues func(T) []string) (any, error) {
+	var value T
+	if err := decodeStrict(file, reader, &value); err != nil {
+		return nil, err
+	}
+	if found := issues(value); len(found) > 0 {
+		return nil, fmt.Errorf("%s: %s", file, strings.Join(found, "; "))
+	}
+	return value, nil
+}
+
 // loadRootInterface reads the three descriptions of the root's interface. None
 // of them is required: a configuration without a home page opens on an empty
 // one.
 func (catalog *Catalog) loadRootInterface(root string) error {
-	read := func(file string, target any, validate func() []string) (bool, error) {
+	read := func(file string) (any, error) {
 		handle, err := openRootFile(root, file)
 		if handle == nil || err != nil {
-			return false, err
+			return nil, err
 		}
 		defer handle.Close()
-		if err := decodeStrict(file, handle, target); err != nil {
-			return false, err
-		}
-		if issues := validate(); len(issues) > 0 {
-			return false, fmt.Errorf("%s: %s", file, strings.Join(issues, "; "))
-		}
-		return true, nil
+		return DecodeRootDescription(file, handle)
 	}
-	var page HomePage
-	if found, err := read(project.HomePageFile, &page, func() []string { return validateHomePage(page) }); err != nil {
+	if value, err := read(project.HomePageFile); err != nil {
 		return err
-	} else if found {
+	} else if page, ok := value.(HomePage); ok {
 		catalog.HomePage = &page
 	}
-	var panels ClientInterface
-	if found, err := read(project.ClientInterfaceFile, &panels, func() []string { return validateClientInterface(panels) }); err != nil {
+	if value, err := read(project.ClientInterfaceFile); err != nil {
 		return err
-	} else if found {
+	} else if panels, ok := value.(ClientInterface); ok {
 		catalog.ClientInterface = &panels
 	}
-	var commands CommandInterface
-	if _, err := read(project.MainSectionCommandInterfaceFile, &commands, func() []string {
-		issues := validateCommandInterface("command_interface", commands)
-		// The order of the sections is the root's own, on its description:
-		// the main section is one of them, not their parent.
-		if len(commands.SubsystemsOrder) > 0 {
-			issues = append(issues, "subsystems_order lies on the project, not on its main section")
-		}
-		return issues
-	}); err != nil {
+	value, err := read(project.MainSectionCommandInterfaceFile)
+	if err != nil {
 		return err
 	}
+	commands, _ := value.(CommandInterface)
 	catalog.MainSectionCommandInterface = commands
 	return nil
 }
