@@ -76,10 +76,22 @@ func withObjects(tree []ObjectChoiceBranch) []ObjectChoiceBranch {
 func (workspace *Workspace) ReadMainSection() (MainSectionWindow, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
-	return workspace.readMainSectionLocked()
+	return workspace.readMainSectionLocked(nil)
 }
 
-func (workspace *Workspace) readMainSectionLocked() (MainSectionWindow, error) {
+// ReadMainSectionAs reads the window as if the project said said - what
+// its OK gave before and «Сохранить» of the root has not written yet: the
+// window opened again shows it (the owner's decision of 29.10.2026, В7 of
+// series 2.646).
+func (workspace *Workspace) ReadMainSectionAs(said metadata.CommandInterface) (MainSectionWindow, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	return workspace.readMainSectionLocked(&said)
+}
+
+// readMainSectionLocked reads the window of the main section, its command
+// interface said, or where nil the project's.
+func (workspace *Workspace) readMainSectionLocked(said *metadata.CommandInterface) (MainSectionWindow, error) {
 	configuration, err := project.ValidateLayout(workspace.root)
 	if err != nil {
 		return MainSectionWindow{}, err
@@ -92,7 +104,10 @@ func (workspace *Workspace) readMainSectionLocked() (MainSectionWindow, error) {
 	if err != nil {
 		return MainSectionWindow{}, err
 	}
-	window := MainSectionWindow{Revision: revision, CommandInterface: loaded.MainSectionCommandInterface,
+	if said == nil {
+		said = &loaded.MainSectionCommandInterface
+	}
+	window := MainSectionWindow{Revision: revision, CommandInterface: *said,
 		Roles: projectRoles(loaded, configuration.DefaultLanguage), Project: configuration.Name, DefaultLanguage: configuration.DefaultLanguage}
 	window.Available, window.Commands = mainSectionAvailable(loaded)
 	window.Groups = sectionGroups(loaded, configuration.DefaultLanguage, nil)
@@ -100,7 +115,7 @@ func (workspace *Workspace) readMainSectionLocked() (MainSectionWindow, error) {
 	// this window: the main section has no content of its own to give it
 	// another. One the project does not have, or placed in a group the
 	// window has not, is kept as written and not shown.
-	for _, placed := range loaded.MainSectionCommandInterface.CommandsPlacement {
+	for _, placed := range said.CommandsPlacement {
 		line, ok := availableLine(window.Commands, placed.InterfaceCommand)
 		if !ok {
 			continue
@@ -128,12 +143,15 @@ func availableLine(commands map[string][]SectionCommandLine, command metadata.In
 	return SectionCommandLine{}, false
 }
 
-// SaveMainSection writes the command interface of the main section OK of
-// the window gives, at the revision read (saveRootDescription).
-func (workspace *Workspace) SaveMainSection(commands metadata.CommandInterface, expectedRevision string) (MainSectionWindow, error) {
-	return saveRootDescription(workspace, project.MainSectionCommandInterfaceFile, commands, expectedRevision, workspace.readMainSectionLocked)
-}
-
+// The window is read here; what its OK gives is written by «Сохранить» of
+// the root with configuration.yaml (SaveProjectEditor, RootWindowsValue).
 func registerMainSectionRoutes(routes *http.ServeMux, workspace *Workspace) {
-	registerRootDescriptionWindow(routes, mainSectionAddress, workspace.ReadMainSection, workspace.SaveMainSection)
+	routes.HandleFunc("GET "+mainSectionAddress, answerQuery(writeSourceError, func(*http.Request) (any, error) {
+		return workspace.ReadMainSection()
+	}))
+	routes.HandleFunc("POST "+mainSectionAddress+"/window", answerStudio(0, writeSourceError, func(input struct {
+		Value metadata.CommandInterface `json:"value"`
+	}) (any, error) {
+		return workspace.ReadMainSectionAs(input.Value)
+	}))
 }

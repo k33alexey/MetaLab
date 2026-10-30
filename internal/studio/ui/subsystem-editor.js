@@ -715,12 +715,16 @@ async function showProjectCommandInterface(configuration, language, set) {
    end of the group of the navigation panel chosen at the right - its own
    group where none is - visible; any other command at the end of its own
    group, as its kind shows it (question В2 of series 2.646). «<» and Del
-   take the command current out. OK writes the command interface into the
-   project's file of it (/api/project/main-section) at the revision read:
-   the window has no editor behind it to hold the change till «Сохранить».
-   Answers the error of the writing, or null; «Отмена» writes nothing. */
-async function showMainSectionCommandInterface() {
-  const response = await fetch('/api/project/main-section');
+   take the command current out. OK gives the command interface to the
+   root, «Сохранить» of which writes it with configuration.yaml (the
+   owner's decision of 29.10.2026, В7 of series 2.646); given is what an
+   earlier OK gave and «Сохранить» has not written yet, which the window
+   opened again shows. Answers on OK {value, expectedRevision} - the
+   revision of the file the window read first - null on «Отмена», an Error
+   where the window could not be read. */
+async function showMainSectionCommandInterface(given) {
+  const response = given ? await studioRequest('/api/project/main-section/window', {method: 'POST', body: {value: given.value}})
+    : await fetch('/api/project/main-section');
   if (!response.ok) return new Error((await response.text()).trim());
   const answer = await response.json();
   const language = answer.defaultLanguage;
@@ -758,7 +762,5 @@ async function showMainSectionCommandInterface() {
   content.append(available, moves, pane.element);
   if (await showDialog({title: 'Командный интерфейс основного раздела', content, className: 'section-commands-dialog main-section-dialog',
     help: 'main-section-command-interface', answers: [['ok', 'OK'], [null, 'Отмена']]}) !== 'ok') return null;
-  const saved = await studioRequest('/api/project/main-section', {method: 'PUT', body: {value: pane.value() || {}, expectedRevision: answer.revision}});
-  if (saved.status === 409) return new Error('Командный интерфейс основного раздела изменён вне Studio. Откройте окно заново и повторите правку.');
-  return saved.ok ? null : new Error((await saved.text()).trim());
+  return {value: pane.value() || {}, expectedRevision: given ? given.expectedRevision : answer.revision};
 }

@@ -84,7 +84,16 @@ function createProjectEditor(host, onChange, around = {}) {
   // «Выбор картинки» gave the picture of the main section, written by
   // «Сохранить» with the description, as the prototype keeps a change of
   // the configuration until it is saved.
-  let opened = null, picture = null;
+  let opened = null, picture = null, mainSection = null;
+  // «Командный интерфейс основного раздела»: what its OK gives is the
+  // root's until «Сохранить», as the picture's.
+  async function chooseMainSection() {
+    const chosen = await showMainSectionCommandInterface(mainSection);
+    if (chosen instanceof Error) { around.problem?.(chosen); return; }
+    if (!chosen) return;
+    mainSection = chosen;
+    onChange();
+  }
   async function choosePicture() {
     const chosen = await chooseMainSectionPicture({...opened.picture, imageAddress: name => `/api/project/picture/image?name=${encodeURIComponent(name)}`}, picture);
     if (chosen === undefined || chosen === picture) return;
@@ -96,7 +105,8 @@ function createProjectEditor(host, onChange, around = {}) {
     subject: source => rootSubject(source.configuration, source.choices),
     // The languages of the texts are the root's own.
     context: source => ({project: source.configuration, choices: source.choices, windows: ['commandInterface', 'homePage', 'mainSectionCommands', 'mainSectionPicture', 'clientInterface'],
-      openModule: path => around.openModule?.({path}), openWindow: key => key === 'mainSectionPicture' ? choosePicture() : around.openWindow?.(key),
+      openModule: path => around.openModule?.({path}),
+      openWindow: key => key === 'mainSectionPicture' ? choosePicture() : key === 'mainSectionCommands' ? chooseMainSection() : around.openWindow?.(key),
       openFile: path => around.openFile?.(path),
       // A main form of the root is a common form, named by its identifier;
       // every row of a form offers the same ones.
@@ -108,10 +118,14 @@ function createProjectEditor(host, onChange, around = {}) {
         : chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items, {open: true})}),
   });
   return {...editor,
-    open(value) { picture = null; editor.open(value); },
-    // What «Сохранить» writes of the picture of the main section: null
-    // while «Выбор картинки» gave nothing.
-    picture() { return picture; },
+    open(value) { picture = null; mainSection = null; editor.open(value); },
+    // What «Сохранить» writes with the description of the root
+    // (RootWindowsValue): of the picture of the main section and of its
+    // command interface, what their windows gave - null where nothing.
+    windows() { return picture || mainSection ? {picture, mainSection} : null; },
+    // The window of the command interface of the main section, from the
+    // menu of the root as from its row.
+    openMainSection: () => chooseMainSection(),
     // «Открыть командный интерфейс проекта» of the menu of the root: what
     // its window writes goes into the description the palette edits.
     async openCommandInterface() {

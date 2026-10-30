@@ -72,6 +72,23 @@ type RootPictureSource struct {
 	Formats        []string                  `json:"formats"`
 }
 
+// RootWindowsValue is what the windows of the root gave beside its
+// palette and «Сохранить» writes with configuration.yaml as one save, as
+// the prototype keeps a change of the configuration until it is saved: the
+// picture of the main section and the command interface of the main
+// section (the owner's decision of 29.10.2026, В7 of series 2.646).
+type RootWindowsValue struct {
+	Picture     *RootPictureValue `json:"picture,omitempty"`
+	MainSection *MainSectionValue `json:"mainSection,omitempty"`
+}
+
+// MainSectionValue is what OK of «Командный интерфейс основного раздела»
+// gave, over its file at the revision the window read.
+type MainSectionValue struct {
+	Value            metadata.CommandInterface `json:"value"`
+	ExpectedRevision string                    `json:"expectedRevision"`
+}
+
 // RootPictureValue is what OK of «Выбор картинки» gave the picture of the
 // main section, written by «Сохранить» of the root with configuration.yaml:
 // a new image or a new set, as the window of a common picture gives them.
@@ -260,11 +277,17 @@ func findLanguage(languages []project.Language, code string) (project.Language, 
 }
 
 // SaveProjectEditor validates and writes an edited project configuration
-// and, when «Выбор картинки» gave one, the picture of the main section, as
-// one save: the description first, then the folder of the picture; a
-// refusal there puts the description back as it was read and leaves the
-// folder as it was (replacePictureImagesLocked).
-func (workspace *Workspace) SaveProjectEditor(configuration project.Project, picture *RootPictureValue, revision string) (ProjectEditorSource, error) {
+// and what the windows of the root gave (RootWindowsValue), as one save:
+// the description first, then the command interface of the main section,
+// then the folder of the picture; a refusal of one puts back what was
+// written before it - the description and the command interface as they
+// were read - and leaves the folder as it was (replacePictureImagesLocked).
+func (workspace *Workspace) SaveProjectEditor(configuration project.Project, windows *RootWindowsValue, revision string) (ProjectEditorSource, error) {
+	var picture *RootPictureValue
+	var section *MainSectionValue
+	if windows != nil {
+		picture, section = windows.Picture, windows.MainSection
+	}
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	opened, err := workspace.readProjectEditorLocked()
@@ -315,11 +338,34 @@ func (workspace *Workspace) SaveProjectEditor(configuration project.Project, pic
 	if _, err := workspace.saveSourceLocked(project.ConfigurationFile, encoded.String(), opened.description); err != nil {
 		return ProjectEditorSource{}, err
 	}
+	restore := func() error {
+		defer workspace.invalidateStudioIndexesLocked()
+		return atomicfile.Write(filepath.Join(workspace.root, project.ConfigurationFile), ".ml-write-*", 0o644, atomicfile.Bytes([]byte(original.Content)))
+	}
+	if section != nil {
+		file := project.MainSectionCommandInterfaceFile
+		before, readErr := workspace.readSource(file)
+		if readErr != nil && !errors.Is(readErr, ErrSourceNotFound) {
+			return ProjectEditorSource{}, errors.Join(readErr, restore())
+		}
+		if err := workspace.saveRootDescriptionLocked(file, section.Value, section.ExpectedRevision); err != nil {
+			return ProjectEditorSource{}, errors.Join(err, restore())
+		}
+		restoreDescription := restore
+		restore = func() error {
+			target := filepath.Join(workspace.root, file)
+			var back error
+			if readErr != nil {
+				back = os.Remove(target)
+			} else {
+				back = atomicfile.Write(target, ".ml-write-*", 0o644, atomicfile.Bytes([]byte(before.Content)))
+			}
+			return errors.Join(back, restoreDescription())
+		}
+	}
 	if picture != nil {
 		if err := workspace.writeRootPictureLocked(remove, write); err != nil {
-			restored := atomicfile.Write(filepath.Join(workspace.root, project.ConfigurationFile), ".ml-write-*", 0o644, atomicfile.Bytes([]byte(original.Content)))
-			workspace.invalidateStudioIndexesLocked()
-			return ProjectEditorSource{}, errors.Join(err, restored)
+			return ProjectEditorSource{}, errors.Join(err, restore())
 		}
 	}
 	return workspace.readProjectEditorLocked()
@@ -412,9 +458,9 @@ func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 	routes.HandleFunc("PUT /api/project-configuration", answerStudio(0, writeSourceError, func(input struct {
 		ExpectedRevision string            `json:"expectedRevision"`
 		Configuration    project.Project   `json:"configuration"`
-		Picture          *RootPictureValue `json:"picture"`
+		Windows          *RootWindowsValue `json:"windows"`
 	}) (any, error) {
-		return workspace.SaveProjectEditor(input.Configuration, input.Picture, input.ExpectedRevision)
+		return workspace.SaveProjectEditor(input.Configuration, input.Windows, input.ExpectedRevision)
 	}))
 	routes.HandleFunc("GET /api/project/picture/image", answerPictureImage(func(request *http.Request) ([]byte, string, error) {
 		return workspace.ReadRootPictureImage(request.URL.Query().Get("name"))

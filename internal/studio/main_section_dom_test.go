@@ -48,6 +48,16 @@ const mainSectionWalk = `(async () => {
   steps.removed = read();
   [...dialog.querySelectorAll('button')].find(item => item.textContent === 'OK').click(); await settle();
   steps.open = !!document.querySelector('dialog[open]');
+  // OK gives the root its command interface; «Сохранить» writes it, and
+  // the window opened before that shows it.
+  steps.unsaved = !document.querySelector('#save').disabled;
+  steps.fileBefore = await (await fetch('/api/project/main-section')).json().then(window => (window.commandInterface.commandsPlacement || []).length);
+  document.querySelector('#tree summary').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle();
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(entry => entry.textContent.includes('Открыть командный интерфейс основного раздела')).click(); await settle();
+  steps.again = [...document.querySelector('dialog[open]').querySelectorAll('.section-commands .studio-tree-row')].map(row => row.textContent).filter(text => text.startsWith('Товары'));
+  [...document.querySelector('dialog[open]').querySelectorAll('button')].find(item => item.textContent === 'Отмена').click(); await settle();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
   return steps;
 })()`
 
@@ -98,7 +108,9 @@ func TestTheMainSectionIsThePrototypes(t *testing.T) {
 	var steps struct {
 		Title, Caption                                     string
 		Available, Panel, Before, Created, Listed, Removed []string
-		Open                                               bool
+		Open, Unsaved, Saved                               bool
+		FileBefore                                         int
+		Again                                              []string
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -128,6 +140,12 @@ func TestTheMainSectionIsThePrototypes(t *testing.T) {
 	expect("a list put in", steps.Listed, groups([]string{"Контрагенты ✓", "Товары ✓ *"}, nil, []string{"Товары: создать -", "Контрагенты: создать -"}))
 	expect("taken out", steps.Removed, groups([]string{"Товары ✓ *"}, nil, []string{"Товары: создать -", "Контрагенты: создать -"}))
 	expect("closed", steps.Open, false)
+	// The owner's decision of 29.10.2026, В7 of series 2.646: OK changes the
+	// root, «Сохранить» writes the file with configuration.yaml.
+	expect("the root changed by OK", steps.Unsaved, true)
+	expect("the file before «Сохранить»", steps.FileBefore, 3)
+	expect("opened again before «Сохранить»", steps.Again, []string{"Товары", "Товары: создать"})
+	expect("saved", steps.Saved, true)
 	file, err := os.Open(filepath.Join(root, project.MainSectionCommandInterfaceFile))
 	if err != nil {
 		t.Fatal(err)

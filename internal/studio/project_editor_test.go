@@ -525,7 +525,7 @@ func TestTheRootWritesThePictureOfTheMainSectionWithItsDescription(t *testing.T)
 	image := pngImage(t, 16, 16, 120)
 	updated := opened.Configuration
 	updated.Vendor = "Поставщик"
-	saved, err := workspace.SaveProjectEditor(updated, &RootPictureValue{Image: &PictureImage{Format: "png", Content: image}}, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(updated, &RootWindowsValue{Picture: &RootPictureValue{Image: &PictureImage{Format: "png", Content: image}}}, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +550,7 @@ func TestTheRootWritesThePictureOfTheMainSectionWithItsDescription(t *testing.T)
 	}
 	set := []PictureSetVariant{{PictureVariant: metadata.PictureVariant{File: "100.png", Density: 100}},
 		{PictureVariant: metadata.PictureVariant{Density: 200}, Image: &PictureImage{Format: "png", Content: pngImage(t, 32, 32, 60)}}}
-	saved, err = workspace.SaveProjectEditor(reread.Configuration, &RootPictureValue{Set: set}, reread.Revision)
+	saved, err = workspace.SaveProjectEditor(reread.Configuration, &RootWindowsValue{Picture: &RootPictureValue{Set: set}}, reread.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +577,7 @@ func TestTheRootWritesThePictureOfTheMainSectionWithItsDescription(t *testing.T)
 	}
 	refused := reread.Configuration
 	refused.Vendor = "Другой"
-	if _, err := workspace.SaveProjectEditor(refused, &RootPictureValue{Image: &PictureImage{Format: "jpg", Content: []byte("jpeg")}}, reread.Revision); err == nil {
+	if _, err := workspace.SaveProjectEditor(refused, &RootWindowsValue{Picture: &RootPictureValue{Image: &PictureImage{Format: "jpg", Content: []byte("jpeg")}}}, reread.Revision); err == nil {
 		t.Fatal("an image the folder cannot take was written")
 	}
 	if after, err := os.ReadFile(filepath.Join(root, project.ConfigurationFile)); err != nil || string(after) != string(before) {
@@ -592,10 +592,89 @@ func TestTheRootWritesThePictureOfTheMainSectionWithItsDescription(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workspace.SaveProjectEditor(reread.Configuration, &RootPictureValue{Image: &PictureImage{}}, reread.Revision); err != nil {
+	if _, err := workspace.SaveProjectEditor(reread.Configuration, &RootWindowsValue{Picture: &RootPictureValue{Image: &PictureImage{}}}, reread.Revision); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(folder); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a cleared picture left its folder: %v", err)
+	}
+}
+
+// The command interface of the main section is written by «Сохранить» of
+// the root with configuration.yaml, as one save (the owner's decision of
+// 29.10.2026, В7 of series 2.646): a file made where there was none, at the
+// revision the window read; a file changed outside Studio is a conflict and
+// leaves configuration.yaml as it was; a refusal of the picture after it
+// puts both back. Defects caught: the main section written apart from the
+// description; a conflict or a refusal leaving the description or the main
+// section half written.
+func TestTheRootWritesTheMainSectionWithItsDescription(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		return string(content)
+	}
+	said := func(visible bool) metadata.CommandInterface {
+		return metadata.CommandInterface{CommandsVisibility: []metadata.InterfaceCommandVisibility{{
+			InterfaceCommand: metadata.InterfaceCommand{Written: "0:11111111-1111-4111-8111-111111111111"}, InterfaceVisibility: project.InterfaceVisibility{Common: visible}}}}
+	}
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := opened.Configuration
+	updated.Vendor = "Поставщик"
+	saved, err := workspace.SaveProjectEditor(updated, &RootWindowsValue{MainSection: &MainSectionValue{Value: said(true)}}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := read(project.MainSectionCommandInterfaceFile)
+	if !strings.Contains(section, "common: true") || saved.Configuration.Vendor != "Поставщик" {
+		t.Fatalf("the main section %q and the vendor %q were not written together", section, saved.Configuration.Vendor)
+	}
+	description := read(project.ConfigurationFile)
+
+	// A conflict: the window read no file, one is there now.
+	conflicted := saved.Configuration
+	conflicted.Vendor = "Другой"
+	if _, err := workspace.SaveProjectEditor(conflicted, &RootWindowsValue{MainSection: &MainSectionValue{Value: said(false)}}, saved.Revision); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("a main section changed meanwhile: %v", err)
+	}
+	if read(project.ConfigurationFile) != description || read(project.MainSectionCommandInterfaceFile) != section {
+		t.Fatal("a conflict of the main section left the root changed")
+	}
+
+	// A refusal of the picture after the main section: its folder takes no
+	// file.
+	window, err := workspace.ReadMainSection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(root, project.MainSectionPictureDirectory)
+	if err := os.MkdirAll(folder, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(folder, 0o755) })
+	reread, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := reread.Configuration
+	refused.Vendor = "Третий"
+	if _, err := workspace.SaveProjectEditor(refused, &RootWindowsValue{MainSection: &MainSectionValue{Value: said(false), ExpectedRevision: window.Revision},
+		Picture: &RootPictureValue{Image: &PictureImage{Format: "png", Content: pngImage(t, 4, 4, 1)}}}, reread.Revision); err == nil {
+		t.Fatal("a picture the folder cannot take was written")
+	}
+	if read(project.ConfigurationFile) != description || read(project.MainSectionCommandInterfaceFile) != section {
+		t.Fatalf("a refused picture left the root changed:\n%s", read(project.MainSectionCommandInterfaceFile))
 	}
 }
