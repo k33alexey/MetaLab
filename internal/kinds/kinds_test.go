@@ -1,6 +1,7 @@
 package kinds
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -511,9 +512,12 @@ func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
 // out of place, a row of a mode, of the mobile application, of the logo or
 // of a form of data history coming back, the main form of constants or the
 // prefix of names shown, the modules standing elsewhere, the main language
-// cleared.
+// cleared; «Командный интерфейс» missing from the head of «Представление»;
+// «Показывать только важные» keeping «Справка», a row of «Представление»
+// besides the main forms and the template, or dropping a line of a group
+// it keeps.
 func TestThePaletteOfTheRootIsThePrototypes(t *testing.T) {
-	palette := RootPalette([]PaletteRow{{Key: "m1", Title: "Модуль приложения", Field: ModuleField}, {Key: "m2", Title: "Модуль сеанса", Field: ModuleField}})
+	palette := RootPalette([]PaletteRow{{Key: "m1", Title: "Модуль приложения", Field: ModuleField, Important: true}, {Key: "m2", Title: "Модуль сеанса", Field: ModuleField, Important: true}})
 	var tabs []string
 	for _, tab := range palette {
 		tabs = append(tabs, tab.Title)
@@ -524,7 +528,7 @@ func TestThePaletteOfTheRootIsThePrototypes(t *testing.T) {
 			"Модуль приложения", "Модуль сеанса", "Дополнительные словари полнотекстового поиска",
 			"Хранилище общих настроек", "Хранилище пользовательских настроек отчетов", "Хранилище вариантов отчетов",
 			"Хранилище настроек данных форм", "Хранилище пользовательских настроек динамических списков", "Хранилище внешних данных навигационных ссылок"}},
-		"presentation": {shownRows(palette, "presentation"), []string{"Рабочая область начальной страницы", "Командный интерфейс основного раздела",
+		"presentation": {shownRows(palette, "presentation"), []string{"Командный интерфейс", "Рабочая область начальной страницы", "Командный интерфейс основного раздела",
 			"Картинка основного раздела", "Интерфейс клиентского приложения", "Основной стиль", "Основной язык", "Краткая информация",
 			"Подробная информация", "Авторские права", "Адрес информации о поставщике", "Адрес информации о проекте",
 			"Основная форма отчета", "Основная форма настроек отчета", "Основная форма варианта отчета",
@@ -542,6 +546,38 @@ func TestThePaletteOfTheRootIsThePrototypes(t *testing.T) {
 			if row.Required != (row.Key == "defaultLanguage") {
 				t.Errorf("%q: required %v", row.Title, row.Required)
 			}
+		}
+	}
+	// «Показывать только важные» (snapshots dosyomka-2651/12 to 15): the
+	// tabs but «Справка», «Основные» whole with its lines, of
+	// «Представление» the main forms, a line and the appearance template;
+	// | is a line.
+	var importantTabs []string
+	important := map[string][]string{}
+	for _, tab := range palette {
+		if !tab.Important {
+			continue
+		}
+		importantTabs = append(importantTabs, tab.Title)
+		for _, row := range tab.Rows {
+			if row.Important {
+				important[tab.Key] = append(important[tab.Key], cmp.Or(row.Title, "|"))
+			}
+		}
+	}
+	for name, testCase := range map[string]struct{ got, want []string }{
+		"tabs": {importantTabs, []string{"Основные", "Представление", "Разработка", "Совместимость"}},
+		"main": {important["main"], []string{"Имя", "Синоним", "Комментарий", "|", "Вариант встроенного языка", "Основные роли",
+			"Модуль приложения", "Модуль сеанса", "Дополнительные словари полнотекстового поиска", "|",
+			"Хранилище общих настроек", "Хранилище пользовательских настроек отчетов", "Хранилище вариантов отчетов",
+			"Хранилище настроек данных форм", "Хранилище пользовательских настроек динамических списков", "Хранилище внешних данных навигационных ссылок"}},
+		"presentation": {important["presentation"], []string{"Основная форма отчета", "Основная форма настроек отчета", "Основная форма варианта отчета",
+			"Основная форма настроек динамического списка", "Основная форма поиска", "|", "Основной макет оформления отчета"}},
+		"development":   {important["development"], []string{"Поставщик", "Версия"}},
+		"compatibility": {important["compatibility"], []string{"Режим управления блокировкой данных"}},
+	} {
+		if !slices.Equal(testCase.got, testCase.want) {
+			t.Errorf("only the important, %s: %q, want %q", name, testCase.got, testCase.want)
 		}
 	}
 	if again := RootPalette(nil); len(again[0].Rows) != len(rootPalette[0].Rows)-1 {

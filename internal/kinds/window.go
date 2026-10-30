@@ -1304,10 +1304,14 @@ func rootForm(key, title, what string) PaletteRow {
 // of 29.10.2026, В13 of series 2.646). The modules stand where the
 // modulesRow does, given by the root (RootPalette). The tab of the help is
 // «Справка», as every palette's (the owner's decision of 26.10.2026).
-// Which rows «Показывать только важные» keeps is not shot: it keeps all.
+// «Показывать только важные» keeps «Основные», «Разработка» and
+// «Совместимость» whole, of «Представление» the main forms and the main
+// appearance template, and not «Справка» (snapshots dosyomka-2651/12 to 15;
+// konfiguraciya.md, «Досъёмка 30.10.2026»): the group of the mode of the
+// main window, which ML does not carry, goes with its line.
 var rootPalette = []PaletteTab{
 	{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("проекта", "о проекте"), []PaletteRow{
-		{Field: SeparatorField},
+		{Field: SeparatorField, Important: true},
 		{Key: "scriptVariant", Title: "Вариант встроенного языка", Field: ChoiceField, Important: true, Default: "russian",
 			Choices:     [][2]string{{"russian", "Русский"}, {"english", "Английский"}},
 			Description: "На каком из двух вариантов встроенного языка написан код проекта."},
@@ -1316,7 +1320,7 @@ var rootPalette = []PaletteTab{
 		{Field: modulesRow, Important: true},
 		{Key: "additionalFullTextSearchDictionaries", Title: "Дополнительные словари полнотекстового поиска", Field: ObjectsField, Important: true,
 			Description: "Общие макеты и константы со словарями, которые полнотекстовый поиск знает сверх своих."},
-		{Field: SeparatorField},
+		{Field: SeparatorField, Important: true},
 		rootStorage("commonSettingsStorage", "Хранилище общих настроек", "общие настройки пользователя"),
 		rootStorage("reportsUserSettingsStorage", "Хранилище пользовательских настроек отчетов", "настройки отчётов, сохранённые пользователем"),
 		rootStorage("reportsVariantsStorage", "Хранилище вариантов отчетов", "варианты отчётов"),
@@ -1325,29 +1329,31 @@ var rootPalette = []PaletteTab{
 		rootStorage("urlExternalDataStorage", "Хранилище внешних данных навигационных ссылок", "данные за навигационной ссылкой"),
 	})},
 	{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
-		{Key: "homePage", Title: "Рабочая область начальной страницы", Field: WindowField, Important: true,
+		{Key: "commandInterface", Title: "Командный интерфейс", Field: WindowField,
+			Description: "Разделы приложения: их порядок и видимость."},
+		{Key: "homePage", Title: "Рабочая область начальной страницы", Field: WindowField,
 			Description: "Формы, которые приложение открывает на начальной странице."},
-		{Key: "mainSectionCommands", Title: "Командный интерфейс основного раздела", Field: WindowField, Important: true,
+		{Key: "mainSectionCommands", Title: "Командный интерфейс основного раздела", Field: WindowField,
 			Description: "Команды основного раздела и их группы."},
-		{Key: "mainSectionPicture", Title: "Картинка основного раздела", Field: WindowField, Important: true,
+		{Key: "mainSectionPicture", Title: "Картинка основного раздела", Field: WindowField,
 			Description: "Значок основного раздела на панели разделов."},
-		{Key: "clientInterface", Title: "Интерфейс клиентского приложения", Field: WindowField, Important: true,
+		{Key: "clientInterface", Title: "Интерфейс клиентского приложения", Field: WindowField,
 			Description: "Панели основного окна приложения по его сторонам."},
 		{Field: SeparatorField},
-		{Key: "defaultStyle", Title: "Основной стиль", Field: ObjectField, Important: true,
+		{Key: "defaultStyle", Title: "Основной стиль", Field: ObjectField,
 			Description: "Стиль, которым рисуется приложение, если ближе ничего не сказано."},
-		{Key: "defaultLanguage", Title: "Основной язык", Field: ObjectField, Required: true, Important: true,
+		{Key: "defaultLanguage", Title: "Основной язык", Field: ObjectField, Required: true,
 			Description: "Язык, на котором проект читается, пока пользователь не выбрал другой."},
-		{Key: "briefInformation", Title: "Краткая информация", Field: LocalizedField, Important: true,
+		{Key: "briefInformation", Title: "Краткая информация", Field: LocalizedField,
 			Description: "Одна строка о проекте для окна «О программе»."},
-		{Key: "detailedInformation", Title: "Подробная информация", Field: LocalizedField, Lines: 6, Important: true,
+		{Key: "detailedInformation", Title: "Подробная информация", Field: LocalizedField, Lines: 6,
 			Description: "Текст о проекте для окна «О программе»."},
-		{Key: "copyright", Title: "Авторские права", Field: LocalizedField, Important: true,
+		{Key: "copyright", Title: "Авторские права", Field: LocalizedField,
 			Description: "Кому принадлежат права на проект."},
-		{Key: "vendorAddress", Title: "Адрес информации о поставщике", Field: LocalizedField, Important: true,
+		{Key: "vendorAddress", Title: "Адрес информации о поставщике", Field: LocalizedField,
 			Description: "Страница в сети о поставщике проекта, на каждом языке своя."},
 		// «о конфигурации» of the prototype: product texts say «проект».
-		{Key: "informationAddress", Title: "Адрес информации о проекте", Field: LocalizedField, Important: true,
+		{Key: "informationAddress", Title: "Адрес информации о проекте", Field: LocalizedField,
 			Description: "Страница в сети о самом проекте, на каждом языке своя."},
 		{Field: SeparatorField},
 		rootForm("defaultReportForm", "Основная форма отчета", "отчётом"),
@@ -1355,7 +1361,7 @@ var rootPalette = []PaletteTab{
 		rootForm("defaultReportVariantForm", "Основная форма варианта отчета", "для варианта отчёта"),
 		rootForm("defaultDynamicListSettingsForm", "Основная форма настроек динамического списка", "для настроек списка"),
 		rootForm("defaultSearchForm", "Основная форма поиска", "для поиска"),
-		{Field: SeparatorField},
+		{Field: SeparatorField, Important: true},
 		{Key: "defaultReportAppearanceTemplate", Title: "Основной макет оформления отчета", Field: ObjectField, Important: true,
 			Description: "Макет оформления, которым раскрашиваются отчёты без своего оформления."},
 	}},
@@ -1363,7 +1369,7 @@ var rootPalette = []PaletteTab{
 		{Key: "vendor", Title: "Поставщик", Field: TextField, Important: true, Description: "Кто выпустил проект."},
 		{Key: "version", Title: "Версия", Field: TextField, Important: true, Description: "Номер выпуска проекта."},
 	}},
-	{Key: "help", Title: "Справка", Important: true, Rows: []PaletteRow{
+	{Key: "help", Title: "Справка", Rows: []PaletteRow{
 		{Key: "includeHelpInContents", Title: "Включать в содержание справки", Field: FlagField, Important: true,
 			Description: "Справка проекта входит в оглавление справки."},
 		{Key: "help", Title: "Справочная информация", Field: WindowField, Important: true, Description: "Текст справки проекта."},

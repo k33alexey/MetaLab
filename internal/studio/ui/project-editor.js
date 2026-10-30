@@ -50,8 +50,9 @@ function createProjectModel(source) {
    reference to nothing. Two rows name an object otherwise than by its
    identifier: the main language by its code, and a dictionary of the search
    by its kind and object - the palette sees their identifiers, the
-   description keeps what it keeps. */
-function rootSubject(configuration) {
+   description keeps what it keeps; a dictionary chosen anew takes its kind
+   from the tree of its window (choices, objectChoiceTree). */
+function rootSubject(configuration, choices) {
   const languages = () => configuration.languages || [];
   const dictionaries = () => configuration.additionalFullTextSearchDictionaries || [];
   return {target: configuration,
@@ -64,7 +65,8 @@ function rootSubject(configuration) {
     },
     set(key, value) {
       if (key === 'defaultLanguage') value = languages().find(item => item.id === value)?.code || configuration.defaultLanguage;
-      if (key === 'additionalFullTextSearchDictionaries') value = dictionaries().filter(item => (value || []).includes(item.object));
+      if (key === 'additionalFullTextSearchDictionaries') value = (value || []).map(object => dictionaries().find(item => item.object === object)
+        || {kind: objectChoiceItem(choices?.[key], object)?.kind, object}).filter(item => item.kind);
       if (value === false || value === null || value === undefined) delete configuration[key];
       else setPathValue(configuration, key, value);
     }};
@@ -73,7 +75,7 @@ function rootSubject(configuration) {
 /* createProjectEditor is the palette of the root. around holds the
    palette and its title, and opens what its rows open: a module of the root
    by its file (openModule), the windows of its interface (openWindow:
-   homePage, mainSectionCommands, clientInterface). The picture of the main
+   commandInterface, homePage, mainSectionCommands, clientInterface). The picture of the main
    section and the help have no window in Studio yet, as the root's menu
    shows «Справочная информация» unavailable. */
 function createProjectEditor(host, onChange, around = {}) {
@@ -81,18 +83,19 @@ function createProjectEditor(host, onChange, around = {}) {
   let opened = null;
   const editor = paletteEditor(host, onChange, around, {
     target: source => (opened = source).configuration,
-    subject: source => rootSubject(source.configuration),
+    subject: source => rootSubject(source.configuration, source.choices),
     // The languages of the texts are the root's own.
-    context: source => ({project: source.configuration, choices: source.choices, windows: ['homePage', 'mainSectionCommands', 'clientInterface'],
+    context: source => ({project: source.configuration, choices: source.choices, windows: ['commandInterface', 'homePage', 'mainSectionCommands', 'clientInterface'],
       openModule: path => around.openModule?.({path}), openWindow: key => around.openWindow?.(key),
       openFile: path => around.openFile?.(path),
       // A main form of the root is a common form, named by its identifier;
       // every row of a form offers the same ones.
       form: id => chosenForm(source.choices?.defaultReportForm, id),
-      choose: (row, items) => chooseObjects('Выбор объекта: Роль', source.choices?.[row.key] || [], items),
-      // «…» of the dictionaries of the search opens a window the inventory
-      // does not show (question of series 2.651): unavailable.
-      chooses: row => row.key === 'defaultRoles'}),
+      // The main roles in «Выбор объекта: Роль»; the dictionaries of the
+      // search in «Выбор объекта» of the common templates and the
+      // constants, both branches open (snapshots dosyomka-2651/02 to 04).
+      choose: (row, items) => row.key === 'defaultRoles' ? chooseObjects('Выбор объекта: Роль', source.choices?.[row.key] || [], items)
+        : chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items, {open: true})}),
   });
   return {...editor,
     // «Открыть командный интерфейс проекта» of the menu of the root: what

@@ -1017,8 +1017,9 @@ async function chooseInWindow(title, fill, chosen) {
    - the numerator of a document (dokument.md, «Досъёмка 28.10.2026»), the
    defaults of the root: the search over the names with its clearing, the
    list of the objects in the order of the tree, OK and «Отмена» in a column
-   at the right. tree is the server's (objectChoiceTree) offering the
-   objects of one kind, its word for one object titling the window; current
+   at the right, a row the kind's icon and the name (snapshots
+   dosyomka-2651/09 to 11). tree is the server's (objectChoiceTree) offering
+   the objects of one kind, its word for one object titling the window; current
    is the identifier current at first. A double click chooses too. Answers
    the identifier chosen on OK - OK is unavailable while none is - and null
    on «Отмена». */
@@ -1029,7 +1030,7 @@ async function chooseListedObject(tree, current) {
   let chosen = objects.some(item => item.id === current) ? current : null;
   return chooseInWindow(`Выбор объекта: ${one}`, (rows, text, accept, draw) => {
     const shown = objects.filter(item => !text || item.name.toLocaleLowerCase().includes(text));
-    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name]), chosen, id => { chosen = id; draw(); }, accept));
+    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name, iconElement(item.icon)]), chosen, id => { chosen = id; draw(); }, accept));
     rows.querySelector('.current')?.scrollIntoView?.({block: 'nearest'});
   }, () => chosen);
 }

@@ -31,6 +31,10 @@ type ObjectChoiceItem struct {
 	Name     string    `json:"name"`
 	FullName string    `json:"fullName"`
 	Icon     string    `json:"icon"`
+	// Kind is the object's kind, for a place keeping objects of several
+	// kinds by kind and identifier: the dictionaries of the search of the
+	// root (project.DictionaryReference).
+	Kind string `json:"kind,omitempty"`
 	// Path is where the object is described, for a window that opens it -
 	// the magnifier of a main form; none for an object of no folder.
 	Path string `json:"path,omitempty"`
@@ -65,7 +69,7 @@ func shapedObjectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind, s
 		}
 		branch := ObjectChoiceBranch{Title: descriptor.Titles, One: descriptor.Title, Icon: descriptor.Icon}
 		for _, object := range loaded.KindObjects(descriptor.Kind) {
-			item := ObjectChoiceItem{ID: object.ID, Name: object.Name, FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon}
+			item := ObjectChoiceItem{ID: object.ID, Name: object.Name, FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon, Kind: string(descriptor.Kind)}
 			if directory, err := project.ObjectDirectory(string(descriptor.Kind), object.Name); err == nil && descriptor.Layout().KeepsFolder() {
 				item.Path = path.Join(directory, project.DescriptionFile(string(descriptor.Kind)))
 			}

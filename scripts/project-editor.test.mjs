@@ -95,6 +95,18 @@ test('a search dictionary is a kind and an object, not an identifier alone',()=>
   root.set('additionalFullTextSearchDictionaries',[]);
   assert.equal('additionalFullTextSearchDictionaries' in configuration,false);
 });
+// Словарь, выбранный в окне заново, берёт вид из дерева окна (общие макеты
+// и константы — одно окно); выбранное держится в порядке ответа окна, а
+// объект, которого дерево не знает, не пишется — без вида пары нет.
+test('a dictionary chosen anew takes its kind from the tree of its window',()=>{
+  const configuration=fixture().configuration;
+  configuration.additionalFullTextSearchDictionaries=[{kind:'constants',object:'d2'}];
+  const tree=[{title:'Общие',children:[{title:'Общие макеты',objects:[{id:'t1',name:'Словарь',kind:'common-templates'}]}]},
+    {title:'Константы',objects:[{id:'d2',name:'Синонимы',kind:'constants'}]}];
+  const root=context.rootSubject(configuration,{additionalFullTextSearchDictionaries:tree});
+  root.set('additionalFullTextSearchDictionaries',['t1','d2','x9']);
+  assert.deepEqual(JSON.parse(JSON.stringify(configuration.additionalFullTextSearchDictionaries)),[{kind:'common-templates',object:'t1'},{kind:'constants',object:'d2'}]);
+});
 // Синоним языка локализован: язык называется на каждом языке проекта, и
 // стёртый перевод исчезает, а не остаётся пустой строкой. Английский не
 // правится вовсе.
