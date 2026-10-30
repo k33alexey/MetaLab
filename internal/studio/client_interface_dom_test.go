@@ -209,3 +209,87 @@ func TestTheClientInterfaceWindowIsThePrototypes(t *testing.T) {
 		t.Errorf("the panels defined were written otherwise: %+v", value.Panels)
 	}
 }
+
+// clientInterfaceDragWalk opens the window on the interface of erp and drags
+// panels of the list: the panel of favourites onto the group of the left,
+// the panel of history onto the side Право and onto the panel of sections,
+// the placed panel of sections onto the group of the top.
+const clientInterfaceDragWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  steps.errors = []; window.addEventListener('unhandledrejection', event => steps.errors.push(String(event.reason?.stack || event.reason))); window.addEventListener('error', event => steps.errors.push(String(event.message)));
+  const settle = () => new Promise(resolve => setTimeout(resolve, 120)).then(() => studio.settle());
+  await settle();
+  document.querySelector('#tree summary').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle();
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.includes('Открыть интерфейс клиентского приложения')).click(); await settle();
+  const host = document.querySelector('#client-interface');
+  const rows = () => [...host.querySelectorAll('.client-interface-row')].map(row => row.textContent + (row.classList.contains('current') ? ' *' : ''));
+  const listRow = text => [...host.querySelectorAll('.client-interface-list .object-window-list-row')].find(row => row.textContent === text);
+  const listed = () => [...host.querySelectorAll('.client-interface-list .object-window-list-row')].map(row => row.textContent + (row.querySelector('.client-interface-placed') ? ' ■' : '') + (row.draggable ? ' ↕' : ''));
+  const row = (text, at = 0) => [...host.querySelectorAll('.client-interface-row')].filter(item => item.textContent === text)[at];
+  const drag = async (panel, target) => {
+    const data = new DataTransfer();
+    listRow(panel).dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true, dataTransfer: data}));
+    const over = new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: data});
+    target().dispatchEvent(over);
+    target().dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: data}));
+    await settle();
+    return over.defaultPrevented;
+  };
+  steps.list = listed();
+  steps.overGroup = await drag('Панель избранного', () => row('Группа', 1));
+  steps.dropped = rows();
+  steps.listAfter = listed();
+  steps.overSide = await drag('Панель истории', () => row('Право'));
+  steps.overPanel = await drag('Панель истории', () => row('Панель разделов'));
+  steps.notTaken = rows();
+  await drag('Панель разделов', () => row('Группа', 0));
+  steps.placedNotTaken = rows();
+  steps.dirty = !document.querySelector('#save').disabled;
+  return steps;
+})()`
+
+// A panel of the list not placed, dragged onto a group, stands at its end,
+// current, and the list marks it placed and no longer drags it
+// (series-2.595/71); a side and a panel take no drop, and a panel placed
+// already is not dragged nor placed twice. Defects caught: the panel put
+// first in the group or onto the side, the row current left where it was,
+// the mark not following, a placed panel dragged into a second place, a drop
+// onto a side or a panel taken though not shot.
+func TestAPanelDraggedFromTheListStandsAtTheEndOfAGroup(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	if err := os.WriteFile(filepath.Join(root, project.ClientInterfaceFile), []byte(erpClientInterface), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, clientInterfaceDragWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		List, Dropped, ListAfter, NotTaken, PlacedNotTaken []string
+		OverGroup, OverSide, OverPanel, Dirty              bool
+		Errors                                             []string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	dropped := []string{"Верх", "Группа", "", "Панель открытых", "Низ", "Лево", "Группа", "Панель разделов", "Панель избранного *", "Право"}
+	expect("the errors of the page", steps.Errors, []string{})
+	expect("the list", steps.List, []string{"Панель разделов ■", "Панель избранного ↕", "Панель истории ↕", "Панель открытых ■", "Панель функций текущего раздела ↕"})
+	expect("a group takes the drag", steps.OverGroup, true)
+	expect("dropped onto the group", steps.Dropped, dropped)
+	expect("the list after the drop", steps.ListAfter, []string{"Панель разделов ■", "Панель избранного ■", "Панель истории ↕", "Панель открытых ■", "Панель функций текущего раздела ↕"})
+	expect("a side takes the drag", steps.OverSide, false)
+	expect("a panel takes the drag", steps.OverPanel, false)
+	expect("nothing taken by a side or a panel", steps.NotTaken, dropped)
+	expect("a placed panel not taken", steps.PlacedNotTaken, dropped)
+	expect("changed", steps.Dirty, true)
+}

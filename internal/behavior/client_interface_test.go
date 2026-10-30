@@ -190,3 +190,51 @@ func TestTheRepresentationLiesOnTheDefinitionOfThePanelOfSections(t *testing.T) 
 		t.Fatalf("the default is written: %+v", value.Panels)
 	}
 }
+
+// A panel dragged from the list onto a group stands at the end of the
+// group, in a nameless group of its own, chosen, of an identifier of its own
+// (series-2.595/71); a panel placed already, a zero panel, a drop onto a
+// side or onto a panel are refused, the interface left as it was. Defects
+// caught: the panel put first or bare into the group, left not chosen, a
+// panel of the platform placed twice, a drop onto a side or a panel taken,
+// a refusal leaving an empty panel behind.
+func TestAPanelDraggedOntoAGroupStandsAtItsEnd(t *testing.T) {
+	favourites := uuid.MustParse("13322b22-3960-4d68-93a6-fe2dd7f28ca3")
+	value := erpInterface()
+	at, err := DropClientInterfacePanel(&value, place("left", 0), favourites)
+	if err != nil || at.Side != "left" || len(at.Path) != 3 || at.Path[0] != 0 || at.Path[1] != 1 || at.Path[2] != 0 {
+		t.Fatalf("the panel dropped stands at %+v: %v", at, err)
+	}
+	group := value.Left[0].Items
+	if len(group) != 2 || group[1].ID != nil || len(group[1].Items) != 1 {
+		t.Fatalf("the group holds %+v", group)
+	}
+	dropped := group[1].Items[0]
+	if dropped.Panel == nil || uuid.UUID(*dropped.Panel) != favourites || dropped.ID == nil || dropped.ID.IsZero() {
+		t.Fatalf("the panel dropped is %+v", dropped)
+	}
+	if issue := metadataIssues(value); issue != "" {
+		t.Fatalf("the model refuses the interface: %s", issue)
+	}
+	for name, drop := range map[string]struct {
+		at    ClientInterfacePlace
+		panel uuid.UUID
+	}{
+		"размещённая":     {place("top", 0), sectionsPanel},
+		"нулевая":         {place("top", 0), uuid.UUID{}},
+		"на сторону":      {place("right"), historyPanel},
+		"на панель":       {place("top", 0, 1, 0), historyPanel},
+		"мимо интерфейса": {place("top", 5), historyPanel},
+	} {
+		before := erpInterface()
+		value := before
+		value.Top = append([]metadata.ClientInterfaceItem(nil), before.Top...)
+		value.Top[0].Items = append([]metadata.ClientInterfaceItem(nil), before.Top[0].Items...)
+		if _, err := DropClientInterfacePanel(&value, drop.at, drop.panel); err == nil {
+			t.Errorf("%s: the drop was taken", name)
+		}
+		if len(value.Top[0].Items) != 2 || len(value.Right) != 0 {
+			t.Errorf("%s: the refusal changed the interface: %+v %+v", name, value.Top, value.Right)
+		}
+	}
+}

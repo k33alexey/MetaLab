@@ -28,14 +28,17 @@
    of the panel of sections. The menu of a row: Добавить, Изменить, Удалить;
    up, down; «Перейти» (F12) - the panel in the list becomes current;
    «Свойства». «Добавить» on a panel is unavailable until the prototype's
-   place for it is shot (question of series 2.649).
+   place for it is shot (question of series 2.649). A panel of the list not
+   placed is dragged onto a group of the tree: it stands at the end of the
+   group, current (series-2.595/71); a placed one is not dragged, and a side
+   and a panel take no drop - not shot (questions of series 2.667).
 
    around is {changed(), palette, paletteTitle}. */
 function createClientInterfaceEditor(host, around) {
   let source = null, value = null, initial = '', placed = new Set(), busy = false;
   let current = {side: 'top', path: []}, listed = null, palette = 'tree';
   const sides = [['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']];
-  const cleanups = [], NotChosen = 'not-chosen';
+  const cleanups = [], NotChosen = 'not-chosen', DraggedPanel = 'application/x-ml-standard-panel';
   const panelOf = id => source.panels.find(panel => panel.id === id);
   const same = (one, other) => one.side === other.side && JSON.stringify(one.path || []) === JSON.stringify(other.path || []);
 
@@ -120,6 +123,15 @@ function createClientInterfaceEditor(host, around) {
     if (!chosen || chosen === row.panel) return;
     if (await edit('choose', {panel: chosen})) changed();
   }
+  async function dropPanel(group, panel) {
+    if (!panel || placed.has(panel)) return;
+    current = group;
+    const edited = await edit('drop-panel', {panel});
+    if (!edited) return;
+    current = edited.at;
+    palette = 'tree';
+    changed();
+  }
   function goToList() {
     const row = currentRow();
     if (row.kind !== 'panel' || !panelOf(row.panel)) return;
@@ -184,6 +196,10 @@ function createClientInterfaceEditor(host, around) {
       line.append(node('span', item.caption));
       line.addEventListener('mousedown', () => { current = item.place; palette = 'tree'; draw(); });
       line.addEventListener('contextmenu', event => { event.preventDefault(); current = item.place; palette = 'tree'; draw(); menu(event); });
+      if (item.kind === 'group') {
+        line.addEventListener('dragover', event => { if (event.dataTransfer.types.includes(DraggedPanel)) event.preventDefault(); });
+        line.addEventListener('drop', event => { event.preventDefault(); dropPanel(item.place, event.dataTransfer.getData(DraggedPanel)); });
+      }
       list.append(line);
     }
     list.addEventListener('keydown', event => {
@@ -207,6 +223,11 @@ function createClientInterfaceEditor(host, around) {
     const block = node('div', undefined, 'client-interface-list');
     const items = source.panels.map(panel => [panel.id, panel.title, undefined, placedMark(panel.id)]);
     const list = objectRows(items, palette === 'list' ? listed : null, id => { listed = id; palette = 'list'; draw(); });
+    [...list.children].forEach((row, at) => {
+      const id = source.panels[at].id;
+      row.draggable = !placed.has(id);
+      row.addEventListener('dragstart', event => event.dataTransfer.setData(DraggedPanel, id));
+    });
     list.tabIndex = 0;
     list.addEventListener('keydown', event => {
       if (event.key === 'F2' || event.altKey && event.key === 'Enter') { event.preventDefault(); showPalette(); }

@@ -105,7 +105,8 @@ func (workspace *Workspace) SaveClientInterface(value metadata.ClientInterface, 
 
 // ClientInterfaceEdit is a command of the window on the interface it holds:
 // add-panel and add-group at At, remove and move (By -1 or 1) the element at
-// At, choose the Panel at At, representation of the panel of sections.
+// At, choose the Panel at At, drop-panel - the Panel dragged from the list
+// onto the group at At, representation of the panel of sections.
 type ClientInterfaceEdit struct {
 	Value               metadata.ClientInterface             `json:"value"`
 	Operation           string                               `json:"operation"`
@@ -140,6 +141,8 @@ func EditClientInterface(edit ClientInterfaceEdit) (ClientInterfaceEdited, error
 		at, _, err = behavior.MoveClientInterfaceElement(&value, at, edit.By)
 	case "choose":
 		err = behavior.ChooseClientInterfacePanel(&value, at, edit.Panel)
+	case "drop-panel":
+		at, err = behavior.DropClientInterfacePanel(&value, at, edit.Panel)
 	case "representation":
 		behavior.SetSectionsPanelRepresentation(&value, edit.PanelRepresentation)
 	default:

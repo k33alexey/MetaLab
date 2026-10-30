@@ -197,6 +197,30 @@ func ChooseClientInterfacePanel(value *metadata.ClientInterface, place ClientInt
 	return nil
 }
 
+// DropClientInterfacePanel puts a panel of the platform dragged from the list
+// of the window onto a group: at the end of the group, in a nameless group
+// of its own, as «Добавить» puts one, and chosen (series-2.595/71). A panel
+// placed already is refused, as the choice refuses it (owner, 29.10.2026:
+// one panel of the platform stands once), and so is a drop onto anything
+// but a group - onto a side and onto a panel it is not shot. Nothing is
+// changed by a refusal. Answers where the panel stands.
+func DropClientInterfacePanel(value *metadata.ClientInterface, group ClientInterfacePlace, panel uuid.UUID) (ClientInterfacePlace, error) {
+	if len(group.Path) == 0 {
+		return ClientInterfacePlace{}, fmt.Errorf("a panel is dropped onto a group")
+	}
+	if panel.IsZero() {
+		return ClientInterfacePlace{}, fmt.Errorf("no panel is dropped")
+	}
+	if PlacedClientInterfacePanels(*value)[panel] {
+		return ClientInterfacePlace{}, fmt.Errorf("the panel stands in the interface already")
+	}
+	at, err := AddClientInterfacePanel(value, group)
+	if err != nil {
+		return ClientInterfacePlace{}, err
+	}
+	return at, ChooseClientInterfacePanel(value, at, panel)
+}
+
 // PlacedClientInterfacePanels answers the panels the sides show, the ones
 // the list of the window marks.
 func PlacedClientInterfacePanels(value metadata.ClientInterface) map[uuid.UUID]bool {
