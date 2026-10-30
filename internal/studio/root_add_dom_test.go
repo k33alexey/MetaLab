@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// rootAddWalk opens «Добавить ▸» of the menu of the root, reads its items,
-// their signs and which are available, and makes a subsystem by it.
+// rootAddWalk opens «Добавить ▸» of the menu of the root, reads what stands
+// before it and its items, their signs and which are available, and makes a
+// subsystem by it.
 const rootAddWalk = `(async () => {
   const studio = window.__studio, steps = {};
   window.confirm = () => true;
@@ -15,7 +16,8 @@ const rootAddWalk = `(async () => {
   root.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle();
   const entries = within => [...within.children].filter(item => item.matches('.context-menu-item, .context-menu-separator'));
   const top = entries(document.querySelector('.context-menu'));
-  steps.tail = top.slice(-3).map(item => item.matches('.context-menu-separator') ? '|' : item.childNodes[1]?.textContent ?? item.textContent);
+  const parent = top.findIndex(item => item.classList.contains('context-menu-parent'));
+  steps.tail = top.slice(parent - 2, parent + 1).map(item => item.matches('.context-menu-separator') ? '|' : item.childNodes[1]?.textContent ?? item.textContent);
   top.find(item => item.classList.contains('context-menu-parent')).click(); await settle();
   const submenu = document.querySelector('.context-submenu');
   steps.items = entries(submenu).map(item => item.matches('.context-menu-separator') ? '|' :
@@ -59,7 +61,7 @@ func TestTheRootAddsAsThePrototype(t *testing.T) {
 			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
 		}
 	}
-	expect("the end of the menu", steps.Tail, []string{"Все картинки", "|", "Добавить"})
+	expect("before «Добавить ▸»", steps.Tail, []string{"Все картинки", "|", "Добавить"})
 	expect("«Добавить ▸»", steps.Items, []string{"Язык", "Подсистема", "Элемент стиля", "Общая картинка", "Параметр сеанса", "Роль",
 		"Общий макет", "Критерий отбора", "Общий модуль", "Общий реквизит", "План обмена", "XDTO-пакет", "Web-сервис", "HTTP-сервис",
 		"WS-ссылка", "WebSocket-клиент", "Подписка на событие", "Регламентное задание", "Хранилище настроек", "Функциональная опция",

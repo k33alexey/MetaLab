@@ -44,7 +44,17 @@ const moduleCommandsWalk = `(async () => {
   const root = document.querySelector('#tree summary');
   answer.rootMenu = menu(root);
   answer.rootAvailable = [...document.querySelectorAll('.context-menu .context-menu-item')].filter(item => !item.disabled).map(item => item.textContent.trim());
-  closeContextMenu();
+  // «Свойства» of the menu and a double click put the cursor into «Имя» of
+  // the root's palette.
+  const properties = () => ({title: document.querySelector('#inspector-title').textContent,
+    field: document.activeElement?.closest('#properties .object-palette-row')?.firstChild.textContent || ''});
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.startsWith('Свойства')).click();
+  await studio.settle();
+  answer.properties = properties();
+  document.activeElement?.blur();
+  root.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, detail: 2}));
+  await studio.settle();
+  answer.doubleClick = properties();
   root.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10}));
   [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.trim() === 'Все картинки').click();
   await studio.settle();
@@ -82,6 +92,10 @@ const moduleCommandsWalk = `(async () => {
 // common module rather than its module, or that the first click of it, still
 // opening, refuses; the root's commands missing, out of order, bold, not
 // apart from «Все роли», or not opening the module, made the first time; the
+// common part of the root's menu (konfiguraciya/15) missing, out of order,
+// available where the prototype shows it unavailable or where Studio has no
+// window, «Свойства» not bold, or neither it nor a double click on the root
+// putting the cursor into «Имя» of its palette; the
 // commands of an object's modules missing from the head of its menu, bold, or
 // not opening the module - the one with no text yet made empty, the one with
 // text shown as written (spravochnik.md, dokument.md, 2.405); the object
@@ -124,6 +138,7 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 		Library                                         string
 		Opened, External, Manager, Object               file
 		Table                                           []string
+		Properties, DoubleClick                         struct{ Title, Field string }
 		CatalogMenu                                     []string `json:"Открыть модуль менеджера"`
 		DocumentMenu                                    []string `json:"Открыть модуль объекта"`
 	}
@@ -142,12 +157,18 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	// The root's own part of the menu (konfiguraciya.md, «Команды»;
 	// snapshot konfiguraciya/15-menyu), in the prototype's order and
 	// groups, «конфигурации» said as «проекта»; the mobile client's
-	// composition is not carried; «Добавить ▸» last (TestTheRootAddsAsThePrototype).
+	// composition is not carried; «Добавить ▸» (TestTheRootAddsAsThePrototype),
+	// then the common part of the menu of an object, written out here from
+	// the snapshot: the edits and the moves unavailable, «Свойства» bold.
 	wantRoot := []string{"#icon-open-module Открыть модуль приложения 400", "#icon-open-module Открыть модуль сеанса 400",
 		"#icon-open-module Открыть модуль внешнего соединения 400", "|",
 		" Открыть командный интерфейс проекта 400", " Открыть рабочую область начальной страницы 400",
 		" Открыть командный интерфейс основного раздела 400", " Открыть интерфейс клиентского приложения 400", "|",
-		" Справочная информация 400", "|", " Все подсистемы 400", " Все роли 400", " Все ограничения доступа 400", " Все картинки 400", "|", " Добавить 400"}
+		" Справочная информация 400", "|", " Все подсистемы 400", " Все роли 400", " Все ограничения доступа 400", " Все картинки 400", "|", " Добавить 400",
+		"#icon-change Изменить 400", "#icon-clone Скопировать 400", "#icon-delete Удалить 400", "|",
+		"#icon-move-up Переместить вверх 400", "#icon-move-down Переместить вниз 400", "#icon-sort Сортировать... 400",
+		"#icon-additional Дополнительно 400", "#icon-properties Свойства 600", "|",
+		"#icon-references-to Поиск ссылок на объект 400", "#icon-references-in Поиск ссылок в объекте 400"}
 	if !slices.Equal(got.RootMenu, wantRoot) {
 		t.Errorf("the root's menu is %v, want %v", got.RootMenu, wantRoot)
 	}
@@ -159,8 +180,13 @@ func TestModulesOpenFromTheMenuOfTheirObject(t *testing.T) {
 	// for their windows.
 	if want := []string{"Открыть модуль приложения", "Открыть модуль сеанса", "Открыть модуль внешнего соединения", "Открыть командный интерфейс проекта",
 		"Открыть рабочую область начальной страницы", "Открыть командный интерфейс основного раздела", "Открыть интерфейс клиентского приложения", "Все подсистемы",
-		"Все роли", "Все ограничения доступа", "Все картинки", "Добавить▸"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
+		"Все роли", "Все ограничения доступа", "Все картинки", "Добавить▸", "СвойстваOption+Enter"}; !slices.Equal(got.RootAvailable, want) || got.Library != "Библиотека картинок проекта" {
 		t.Errorf("the root's menu offers %v and «Все картинки» opens %q, want %v and the library", got.RootAvailable, got.Library, want)
+	}
+	for name, opened := range map[string]struct{ Title, Field string }{"«Свойства»": got.Properties, "a double click": got.DoubleClick} {
+		if opened.Title != "Свойства: ПродажиИСклад" || opened.Field != "Имя" {
+			t.Errorf("%s on the root shows %q with the cursor in %q, want its palette with the cursor in «Имя»", name, opened.Title, opened.Field)
+		}
 	}
 	if got.External.Path != project.ExternalConnectionModuleFile || !strings.Contains(got.External.Text, "ПриНачалеРаботыСистемы") {
 		t.Errorf("«Открыть модуль внешнего соединения» opened %q (%q), want %s with its routines", got.External.Path, got.External.Text, project.ExternalConnectionModuleFile)

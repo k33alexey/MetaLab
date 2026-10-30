@@ -705,6 +705,37 @@ function menuItems(menu, items) {
   }
 }
 
+/* objectEditCommands are «Изменить» F2, «Скопировать» F9 and «Удалить» Del
+   of an object, as the menu of the tree and «Действия» of the window of an
+   object show them: each acts by its function, unavailable without one. */
+function objectEditCommands({edit, copy, remove} = {}) {
+  return [['Изменить', edit, !!edit, 'F2', 'change'], ['Скопировать', copy, !!copy, 'F9', 'clone'], ['Удалить', remove, !!remove, 'Del', 'delete']];
+}
+
+/* objectMenuCommands is the common part of the menu of an object in the
+   tree, one for every kind (obshchee.md, «Меню дерева»; the root's -
+   konfiguraciya/15): «Изменить», «Скопировать», «Удалить»; the moves and
+   «Сортировать...»; «Дополнительно» and «Свойства»; the two searches of
+   references. A command acts by its function and is unavailable without
+   one; «Свойства» is bold - the action of a double click - unless main
+   names another command. The kind's own commands stand above it. */
+function objectMenuCommands(acts = {}) {
+  const {up, down, sort, additional, properties, referencesTo, referencesIn, main = 'properties'} = acts;
+  const edits = objectEditCommands(acts);
+  if (main === 'edit') edits[0][5] = true;
+  return [...edits, null,
+    ['Переместить вверх', up, !!up, 'Cmd+Shift+Up', 'move-up'], ['Переместить вниз', down, !!down, 'Cmd+Shift+Down', 'move-down'],
+    ['Сортировать...', sort, !!sort, '', 'sort'], ['Дополнительно', additional, !!additional, 'Option+Shift+Enter', 'additional'],
+    ['Свойства', properties, !!properties, 'Option+Enter', 'properties', main === 'properties'], null,
+    ['Поиск ссылок на объект', referencesTo, !!referencesTo, '', 'references-to'], ['Поиск ссылок в объекте', referencesIn, !!referencesIn, '', 'references-in']];
+}
+
+/* focusPalette puts the cursor into the first field of the palette - «Имя»
+   of an object: «Свойства», and «Изменить» of a part shown there. */
+function focusPalette() {
+  document.querySelector('#properties .object-palette-rows input')?.focus();
+}
+
 function showContextMenu(event, items) {
   event.preventDefault();
   closeContextMenu();
@@ -2118,7 +2149,7 @@ function partsOfTwoLevels(api, page, spec) {
         const {upper} = chosenUpper();
         if (upper) add(upper[spec.children] ||= [], spec.lower, {upper: upper.id});
       }),
-      ...partButtons(on, {change: () => document.querySelector('#properties input')?.focus(),
+      ...partButtons(on, {change: focusPalette,
         remove: () => { const list = siblings(), at = list.findIndex(item => item.id === chosen.id); if (at >= 0) list.splice(at, 1); chosen = null; api.changed(); },
         move: by => { const list = siblings(), at = list.findIndex(item => item.id === chosen.id); if (at >= 0) moveInCircle(list, at, by); api.changed(); }}),
     ]);
@@ -2250,7 +2281,7 @@ function objectWindow({title, pages, chosen, page, actions, close, help}) {
     return tab;
   });
   list.append(...tabs);
-  const own = [['Изменить', () => {}, false, 'F2', 'change'], ['Скопировать', () => {}, false, 'F9', 'clone'], ['Удалить', () => {}, false, 'Del', 'delete']];
+  const own = objectEditCommands();
   const menu = menuButton('Действия', () => { const items = actions?.() || []; return items.length ? [...items, null, ...own] : own; });
   const back = node('button', '<Назад'), next = node('button', 'Далее>'), shut = node('button', 'Закрыть'), aid = node('button', 'Справка');
   for (const button of [back, next, shut, aid]) button.type = 'button';
