@@ -252,16 +252,24 @@ const sectionActions = {create: ': создать', 'create-folder': ': созд
    written with its placement and its visibility, as the configurations
    being moved write them. list names the setting of the list («Настройка
    списка...» of the menu of a row, commandListSettings) - its key and the
-   width of «Команда». Answers {element, value(), add, remove, at()}:
+   width of «Команда». A subsection of «Все подсистемы» opens into the
+   groups of its own section (inside(item) answers {answer, said} of the
+   subsystem), read only (podsistema.md, «Досъёмка 29.10.2026»; snapshots
+   dosyomka-2642/03-08): the prototype lets its boxes be clicked and loses
+   what was clicked - its error, not copied (В4 of series 2.642); they are
+   drawn by a pane of the subsystem nested in this one (nested: the strip
+   of the columns of the roles and the columns shown of this one), which
+   answers {rows()} - its groups - and edits nothing. Answers {element,
+   value(), add, remove, at()}:
    value is the command interface the list says - what OK of the window
    writes - or null where it says nothing; at() is the group the row
    current is or stands in, {key, panel}, or null. */
 function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию', content = false,
-  list = {key: 'subsystem-commands'}} = {}) {
+  list = {key: 'subsystem-commands'}, inside = null, nested = null} = {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const listSettings = commandListSettings(list.key, projectRoles, list.width);
   let setting = listSettings.standard();
-  const shownColumn = key => setting.columns.some(column => column.key === key && column.visible);
+  const shownColumn = nested?.shown || (key => setting.columns.some(column => column.key === key && column.visible));
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
   const commandOf = line => Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
@@ -323,11 +331,11 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   const columns = () => setting.columns.filter(column => column.visible && column.key.startsWith('role:'))
     .map(column => projectRoles.find(role => 'role:' + role.id === column.key)).filter(role => role && (!filtering.length || filtering.includes(role.id)));
   let strips = [], offset = 0;
-  const strip = fill => {
+  const strip = nested?.strip || (fill => {
     const element = node('div', undefined, 'section-roles-strip');
     strips.push({element, fill});
     return element;
-  };
+  });
   const paint = () => {
     const shown = columns(), sight = Math.min(shown.length, rolesInSight) * roleWidth;
     offset = Math.max(0, Math.min(offset, shown.length * roleWidth - sight));
@@ -348,24 +356,24 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     if (scroller.scrollLeft !== offset) scroller.scrollLeft = offset;
   };
   const roleBox = (line, role, cell) => {
-    cell.append(roleVisibilityBox(roleVisibilityState(roles.get(line), role.id), 'Видимость: ' + role.title + ': ' + caption(line), () => {
+    const box = roleVisibilityBox(roleVisibilityState(roles.get(line), role.id), 'Видимость: ' + role.title + ': ' + caption(line), () => {
+      if (nested) return;
       const said = turnRoleVisibility(roles.get(line), role.id);
       roles.set(line, said.length ? said : undefined);
       current = {line};
       edited();
-    }));
+    });
+    if (nested) box.setAttribute('aria-disabled', 'true');
+    cell.append(box);
   };
   const chosen = (row, which) => {
+    if (nested) return;
     row.classList.toggle('selected', isCurrent(which));
     row.addEventListener('click', event => { if (!(event.target instanceof HTMLInputElement)) { current = which; draw(); } });
     row.addEventListener('contextmenu', event => { current = which; draw(); menu(event); });
   };
-  const draw = () => {
-    strips = [];
-    const rolesHead = node('div', undefined, 'section-roles-head');
-    rolesHead.append(...(shownColumn('by-roles') ? [node('span', 'Видимость по ролям')] : []), strip((role, cell) => { cell.textContent = role.title; cell.title = role.title; }));
-    head.replaceChildren(node('span', 'Команда', 'section-commands-caption'), ...(shownColumn('visibility') ? [node('span', 'Видимость', 'section-commands-visibility')] : []), rolesHead);
-    const rows = groups.map(group => {
+  // The groups of the section with their commands.
+  const groupRows = () => groups.map(group => {
       const key = groupKey(group.group);
       const lines = commandsOf(key).filter(opened);
       if (filtering.length && !lines.length) return null;
@@ -374,6 +382,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
         box.type = 'checkbox';
         box.checked = visible.get(line);
         box.setAttribute('aria-label', 'Видимость: ' + caption(line));
+        box.disabled = !!nested;
         box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; edited(); });
         const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
         row.append(...(shownColumn('visibility') ? [box] : []), strip((role, cell) => roleBox(line, role, cell)));
@@ -384,10 +393,35 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
       chosen(row, {group: key});
       return element;
     }).filter(Boolean);
+  if (nested) return {rows: groupRows};
+  // The subsections opened, by their identifiers, and the panes of their
+  // own sections once read.
+  const subsectionPanes = new Map();
+  const subsectionRow = item => {
+    if (!inside) return treeNode({icon: 'subsystem', caption: item.title});
+    const known = subsectionPanes.get(item.id) || {};
+    return treeNode({icon: 'subsystem', caption: item.title, open: !!known.open, children: known.pane ? known.pane.rows() : [node('div')],
+      toggled: async open => {
+        const entry = subsectionPanes.get(item.id) || {};
+        entry.open = open;
+        subsectionPanes.set(item.id, entry);
+        if (open && !entry.pane) {
+          const read = await inside(item);
+          entry.pane = sectionCommandsPane(read.answer, read.said, language, () => {}, {nested: {strip, shown: shownColumn}});
+        }
+        draw();
+      }});
+  };
+  const draw = () => {
+    strips = [];
+    const rolesHead = node('div', undefined, 'section-roles-head');
+    rolesHead.append(...(shownColumn('by-roles') ? [node('span', 'Видимость по ролям')] : []), strip((role, cell) => { cell.textContent = role.title; cell.title = role.title; }));
+    head.replaceChildren(node('span', 'Команда', 'section-commands-caption'), ...(shownColumn('visibility') ? [node('span', 'Видимость', 'section-commands-visibility')] : []), rolesHead);
+    const rows = groupRows();
     const under = subsectionsShown().filter(opened);
     if (under.length) {
       const children = under.map(item => {
-        const {element, row} = treeNode({icon: 'subsystem', caption: item.title});
+        const {element, row} = subsectionRow(item);
         chosen(row, {subsection: item});
         return element;
       });
