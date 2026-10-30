@@ -50,6 +50,19 @@ const sectionRolesWalk = `(async () => {
   await settle();
   if (!dialog()) return {problem: JSON.stringify(studio.problems)};
   steps.before = [shown(), read()];
+  dialog().querySelector('button[title="Выбор объекта: Роль"]').click(); await settle();
+  {
+    const choice = document.querySelector('dialog.object-choice-dialog');
+    const now = () => choice.querySelector('.studio-tree-row.selected')?.textContent || '';
+    steps.typed = [document.activeElement === choice.querySelector('.object-choice-tree') ? 'дерево' : 'не дерево', now()];
+    for (const key of ['п', 'П', 'п', 'д', 'я', 'Д']) {
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+      steps.typed.push(now());
+    }
+    choice.querySelectorAll('.studio-tree-row')[1].click();
+    steps.typed.push(now());
+    [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'Отмена').click(); await settle();
+  }
   steps.choice = await choose('Просмотр');
   steps.viewing = [shown(), read()];
   await choose('Просмотр', 'Добавление');
@@ -79,7 +92,12 @@ const sectionRolesWalk = `(async () => {
 // last; the field shows the
 // roles by their names, its list the values it had, the last first, and
 // takes one back; «<Не установлен>» and a choice of no role take the filter
-// away. Defects caught: a right taken for another, a role's rights taken for
+// away. The choice opens with the focus on its tree, the root current; a
+// letter goes to the next row on it, round, the root among them, a letter
+// no row begins with stays, a click makes a row current (snapshots
+// dosyomka-2653/20-24). Defects caught: the focus left in the search, no
+// current row, a letter searching from the first row, no round, the case
+// taken into account, a right taken for another, a role's rights taken for
 // another's, the roles not added up, an empty group or a closed subsection
 // left, a subsection open by a subsystem under it left out, the root of the
 // choice closed, the field or its list wrong, the filter not taken away.
@@ -155,7 +173,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 	}
 	var steps struct {
 		Problem                                             string
-		Choice, List                                        []string
+		Choice, List, Typed                                 []string
 		Before, Viewing, Adding, Empty, Picked, Unset, None []any
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
@@ -177,6 +195,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 		{"Подразделы", "Закрытый", "Партнёрский", "Товарный"}}
 	expect("before", steps.Before, []any{"<Не установлен>", all})
 	expect("the choice", steps.Choice, []string{"открыт", "ПродажиИСклад", "Просмотр", "Добавление", "Пусто"})
+	expect("typed in the choice", steps.Typed, []string{"дерево", "ПродажиИСклад", "Просмотр", "Пусто", "ПродажиИСклад", "Добавление", "Добавление", "Добавление", "Просмотр"})
 	expect("by viewing", steps.Viewing, []any{"Просмотр", [][]string{{"Панель навигации.Обычное", "Список товаров"}, {"Подразделы", "Партнёрский", "Товарный"}}})
 	expect("by adding too", steps.Adding, []any{"Просмотр, Добавление", [][]string{{"Панель навигации.Обычное", "Список товаров"},
 		{"Панель действий.Создать", "Товары: создать"}, {"Подразделы", "Партнёрский", "Товарный"}}})

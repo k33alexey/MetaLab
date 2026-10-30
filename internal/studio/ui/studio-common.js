@@ -920,6 +920,22 @@ function choiceOrder(tree) {
   return order;
 }
 
+/* rowByLetter is the row a letter typed in a tree of the platform's window
+   «Выбор объекта» goes to (obshchee.md, «Видимость по ролям»; snapshots
+   dosyomka-2653/20 to 24): the next row after the current one whose caption
+   begins with the letter, in any case, round to the first; the letters are
+   not gathered into a word. captions are of the rows shown, in their order;
+   at is the current one's place, -1 for none. Answers the place - at where
+   no row begins with the letter. */
+function rowByLetter(captions, at, letter) {
+  const wanted = letter.toLocaleLowerCase();
+  for (let step = 1; step <= captions.length; step++) {
+    const place = (at + step) % captions.length;
+    if (captions[place].toLocaleLowerCase().startsWith(wanted)) return place;
+  }
+  return at;
+}
+
 /* chooseObjects is the platform's window «Выбор объекта» of objects of the
    project marked by boxes (docs/block-00/spravochnik.md, the window of the
    owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
@@ -932,13 +948,32 @@ function choiceOrder(tree) {
    ролям» shows its root (snapshot series-2.603/45); first shows the first
    branch open at each level, as «Редактировать состав…» of «Все подсистемы»
    opens the root, «Общие» and «Общие модули» (snapshot predsyomka-1/25).
-   Answers the identifiers marked, in the order of the tree, on «ОК», and
-   null on «Отмена». */
+   The tree has a current row, the first one on opening and after a search,
+   and the focus, as the prototype's (snapshots vladelcy-vybor-obekta,
+   dosyomka-2653/20); a click makes a row current, a letter typed goes to
+   the next row on it (rowByLetter). Answers the identifiers marked, in the
+   order of the tree, on «ОК», and null on «Отмена». */
 async function chooseObjects(title, tree, chosen, {open = false, first = false} = {}) {
   const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = choiceOrder(tree);
   const [searchRow, search] = searchField('object-choice-search', () => draw());
   const rows = node('div', undefined, 'object-choice-tree');
+  rows.tabIndex = 0;
   content.append(searchRow, rows);
+  let current = null;
+  const makeCurrent = row => {
+    current?.classList.remove('selected');
+    current = row;
+    row?.classList.add('selected');
+    row?.scrollIntoView?.({block: 'nearest'});
+  };
+  rows.addEventListener('click', event => { const row = event.target.closest('.studio-tree-row'); if (row) makeCurrent(row); });
+  rows.addEventListener('keydown', event => {
+    if (event.key.length !== 1 || event.key === ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
+    const shown = [...rows.querySelectorAll('.studio-tree-row')].filter(row => !row.closest('details:not([open]) > .studio-tree-children'));
+    const at = rowByLetter(shown.map(row => row.textContent), shown.indexOf(current), event.key);
+    event.preventDefault();
+    if (at >= 0) makeCurrent(shown[at]);
+  });
   function draw() {
     const text = search.value.trim().toLocaleLowerCase();
     const branch = (group, leading) => {
@@ -950,10 +985,11 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
       return treeNode({icon: group.icon, caption: group.title, children, open: open || !!text || leading}).element;
     };
     rows.replaceChildren(...tree.map((group, at) => branch(group, first && at === 0)).filter(Boolean));
+    makeCurrent(rows.querySelector('.studio-tree-row'));
   }
   draw();
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
-  search.focus();
+  rows.focus();
   return await answer === 'ok' ? order.filter(id => marked.has(id)) : null;
 }
 

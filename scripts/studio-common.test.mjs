@@ -265,3 +265,25 @@ test('a namespace of the platform is shown and typed by its short name',()=>{
   assert.equal(namespaceTyped('http://v8.1c.ru/8.1/data/core'),'http://v8.1c.ru/8.1/data/core');
   assert.equal(namespaceTyped('urn:example'),'urn:example');
 });
+
+// A letter typed in the tree of «Выбор объекта» goes to the next row on it,
+// round, the letters not gathered (obshchee.md, «Видимость по ролям»;
+// snapshots dosyomka-2653/20 to 24 - the rows of the roles of the ERP copy,
+// the root current at first). The defects caught: the letters gathered into
+// a word («Ба» staying on «Базовые…»), the search starting from the first
+// row and not after the current one, no round to the first, the case taken
+// into account, a row of another alphabet's letter taken, a letter no row
+// begins with moving the current row.
+test('a letter typed in «Выбор объекта» goes to the next row on it',()=>{
+  const {rowByLetter}=context;
+  const rows=['BASERP','АдминистраторСистемы','Администрирование','АдминистрированиеЗарплатаКадры','БазовыеПраваБИД','БазовыеПраваБП','БазовыеПраваБРО'];
+  assert.equal(rowByLetter(rows,0,'Б'),4);
+  assert.equal(rowByLetter(rows,4,'а'),1);
+  assert.equal(rowByLetter(rows,4,'б'),5);
+  assert.equal(rowByLetter(rows,5,'Б'),6);
+  assert.equal(rowByLetter(rows,6,'б'),4);
+  assert.equal(rowByLetter(rows,3,'b'),0);
+  assert.equal(rowByLetter(rows,2,'я'),2);
+  assert.equal(rowByLetter(rows,-1,'а'),1);
+  assert.equal(rowByLetter([],-1,'а'),-1);
+});
