@@ -53,6 +53,13 @@ const rootPaletteWalk = `(async () => {
   await studio.settle();
   steps.chosen = row('Основной язык').querySelector('input').value;
   steps.changed = !document.querySelector('#save').disabled;
+  row('Основная форма поиска').querySelector('button').click(); await studio.settle();
+  steps.form = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent)};
+  const form = dialog().querySelector('.object-window-list-row');
+  form.click(); await studio.settle();
+  form.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
+  await studio.settle();
+  steps.form.chosen = row('Основная форма поиска').querySelector('input').value;
   steps.windows = ['Командный интерфейс', 'Рабочая область начальной страницы', 'Командный интерфейс основного раздела', 'Картинка основного раздела', 'Интерфейс клиентского приложения']
     .map(caption => caption + (row(caption).querySelector('button').disabled ? ' -' : ''));
   document.querySelector('#save').click(); await studio.settle();
@@ -90,7 +97,9 @@ const rootPaletteWalk = `(async () => {
 // dictionaries unavailable, titled by a kind, with a branch closed, or its
 // choice not shown or not written with its kind; a row of «Выбор объекта:
 // Язык» without the kind's icon; «Показывать только важные» keeping
-// «Справка» or a row of «Представление» the prototype's does not keep.
+// «Справка» or a row of «Представление» the prototype's does not keep;
+// «…» of a main form unavailable, not «Выбор объекта: Общая форма», or its
+// choice not shown or not written.
 func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	// A dictionary may be kept in a common template or in a constant.
@@ -120,6 +129,10 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 		Choice                                                                         struct {
 			Title, Current string
 			Rows, Icons    []string
+		}
+		Form struct {
+			Title, Chosen string
+			Rows          []string
 		}
 		DictionaryWindow struct {
 			Title string
@@ -165,6 +178,11 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	if steps.Chosen != "English" || !steps.Changed || !steps.Saved {
 		t.Errorf("after the choice the language shows %q, changed %v, saved %v", steps.Chosen, steps.Changed, steps.Saved)
 	}
+	// «…» of a main form: «Выбор объекта: Общая форма» of the common forms
+	// (dosyomka-2651/11).
+	if steps.Form.Title != "Выбор объекта: Общая форма" || !slices.Equal(steps.Form.Rows, []string{"ДемоФормаТовара"}) || steps.Form.Chosen != "ДемоФормаТовара" {
+		t.Errorf("«…» of «Основная форма поиска» opens %+v", steps.Form)
+	}
 	if want := []string{"Командный интерфейс", "Рабочая область начальной страницы", "Командный интерфейс основного раздела", "Картинка основного раздела -", "Интерфейс клиентского приложения"}; !slices.Equal(steps.Windows, want) {
 		t.Errorf("the windows of «Представление» are %q, want %q", steps.Windows, want)
 	}
@@ -192,6 +210,9 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	}
 	if configuration.DefaultLanguage != "en" {
 		t.Errorf("the saved main language is %q, want en", configuration.DefaultLanguage)
+	}
+	if form := configuration.DefaultSearchForm; form == nil || form.String() != "10000000-0000-4000-8000-000000000501" {
+		t.Errorf("the saved main form of the search is %v, want ДемоФормаТовара", form)
 	}
 	if want := []project.DictionaryReference{{Kind: project.ConstantDictionary, Object: constant}}; !slices.Equal(configuration.AdditionalFullTextSearchDictionaries, want) {
 		t.Errorf("the saved dictionaries are %+v, want %+v", configuration.AdditionalFullTextSearchDictionaries, want)

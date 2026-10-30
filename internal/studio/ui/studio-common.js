@@ -1329,6 +1329,17 @@ function paletteFields(context) {
     clear.disabled = off;
     return clear;
   };
+  // «…» of a row naming one object: «Выбор объекта: <Вид>» over what the
+  // place offers (offered, objectChoiceTree), current chosen first, writes
+  // the choice; unavailable where nothing is offered.
+  function chooseOneButton(subject, row, offered, current, off) {
+    const pick = fieldChoiceButton(row.title, async () => {
+      const chosen = await chooseListedObject(offered, current);
+      if (chosen) { subject.set(row.key, chosen); context.changed(); }
+    });
+    pick.disabled = off || !offered;
+    return pick;
+  }
   // A list of objects or of fields in one line: their names by commas, «…»
   // choosing them and the cross clearing them; the fields - of the data
   // lock, of the input by string, the link by type - wait for their window,
@@ -1347,15 +1358,17 @@ function paletteFields(context) {
     pick.disabled = off || row.field === 'fields' || context.chooses?.(row) === false;
     return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, []); context.changed(); }, off || !items.length)]);
   }
-  // A main form: its name, «…» choosing it - its window the inventory does
-  // not show, unavailable until shot - the cross and the magnifier opening
-  // it.
+  // A main form: its name, «…» choosing it, the cross and the magnifier
+  // opening it. «…» is the window of one object over what the place offers
+  // for the row - the common forms of a main form of the root, «Выбор
+  // объекта: Общая форма» (snapshot dosyomka-2651/11); where it offers
+  // nothing - the forms of an object, whose window is an item of its own -
+  // it is unavailable.
   function formField(subject, row, value, off) {
-    const form = value ? context.form(value) : {name: ''};
+    const form = value ? context.form(value) : {name: ''}, offered = context.choices?.[row.key];
     const shown = node('input');
     shown.readOnly = true; shown.value = form.name; shown.disabled = off;
-    const pick = fieldChoiceButton(row.title, () => {});
-    pick.disabled = true;
+    const pick = chooseOneButton(subject, row, offered, value, off);
     const open = fieldButton('field-translations', `Открыть: ${row.title}`, () => context.openFile(form.path));
     open.disabled = off || !form.name;
     return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, ''); context.changed(); }, off || !form.name), open]);
@@ -1470,11 +1483,7 @@ function paletteFields(context) {
       const id = subject.get(row.key), shown = node('input'), off = !available(subject, row), offered = context.choices?.[row.key];
       shown.readOnly = true; shown.disabled = off;
       shown.value = id ? objectChoiceItem(offered, id)?.name || id : '';
-      const pick = fieldChoiceButton(row.title, async () => {
-        const chosen = await chooseListedObject(offered, id);
-        if (chosen) { subject.set(row.key, chosen); context.changed(); }
-      });
-      pick.disabled = off || !offered;
+      const pick = chooseOneButton(subject, row, offered, id, off);
       if (row.required) return fieldWithButtons(shown, [pick]);
       return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, off || !id)]);
     }
