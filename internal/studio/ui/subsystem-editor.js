@@ -402,9 +402,9 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   // own sections once read.
   const subsectionPanes = new Map();
   const subsectionRow = item => {
-    if (!inside) return treeNode({icon: 'subsystem', caption: item.title});
+    if (!inside) return treeNode({icon: sectionSign(item.picture), caption: item.title});
     const known = subsectionPanes.get(item.id) || {};
-    return treeNode({icon: 'subsystem', caption: item.title, open: !!known.open, children: known.pane ? known.pane.rows() : [node('div')],
+    return treeNode({icon: sectionSign(item.picture), caption: item.title, open: !!known.open, children: known.pane ? known.pane.rows() : [node('div')],
       toggled: async open => {
         const entry = subsectionPanes.get(item.id) || {};
         entry.open = open;
@@ -636,6 +636,22 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   }
 }
 
+/* sectionSign is what the row of a section shows before its title in the
+   windows of a command interface (podsistema.md, «Досъёмка 29.10.2026», В6;
+   the owner's decision of 29.10.2026): the picture of its subsystem - a
+   picture of the platform by its icon, a common picture by its image
+   (server, SectionPicture) - or, where it has none, the sign of a
+   subsystem. */
+function sectionSign(picture) {
+  if (picture?.icon) return picture.icon;
+  if (!picture?.image) return 'subsystem';
+  const image = node('img', undefined, 'tree-icon');
+  image.src = `/api/picture/image?path=${encodeURIComponent(picture.path)}&name=${encodeURIComponent(picture.image)}`;
+  image.alt = '';
+  image.width = 16; image.height = 16;
+  return image;
+}
+
 /* commandListSettings is the setting of the list of commands of every
    window of a command interface (obshchee.md, «Список команд»; snapshots
    predsyomka-1/05-17, 32, 39), key apart for each: «Команда» twice, always
@@ -669,7 +685,7 @@ function commandListSettings(key, roles, width = 40) {
 async function showProjectCommandInterface(configuration, language, set) {
   const answer = await (await fetch('/api/project/sections')).json();
   const group = {standard: 'sections'};
-  const lines = (answer.subsections || []).map(item => ({object: item.id, title: item.title, icon: 'subsystem', visible: true, opens: item.opens, group}));
+  const lines = (answer.subsections || []).map(item => ({object: item.id, title: item.title, icon: sectionSign(item.picture), visible: true, opens: item.opens, group}));
   const said = {
     commandsVisibility: (configuration.subsystemsVisibility || []).map(item => ({object: item.subsystem,
       visibility: {common: item.common, ...(item.roles?.length ? {roles: item.roles} : {})}})),

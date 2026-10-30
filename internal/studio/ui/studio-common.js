@@ -2493,13 +2493,15 @@ function menuButton(text, items, className) {
    reports opened too, after the fact: a search that opens what holds a
    match would leave it all open once cleared (2.437, case 2в-25). mark is
    a box standing before the icon, as the prototype's window «Выбор
-   объекта» draws it. Answers {element, row}: the element to put in the tree and the
+   объекта» draws it. icon is the name of an icon of Studio or an element
+   drawn in its place - the picture of a section (sectionSign). Answers
+   {element, row}: the element to put in the tree and the
    row to hang clicks and the menu on. Every tree of Studio is made of these;
    the trees of marks - the filter by subsystems, the fields of a
    restriction - are rows of restrictionTreeRow. */
 function treeNode({icon, caption, children = [], open = false, toggled, foldOnDoubleClick = true, mark}) {
   const row = node(children.length ? 'summary' : 'div', undefined, 'studio-tree-row'), sign = node('span', undefined, 'studio-tree-sign');
-  row.append(sign, ...(mark ? [mark] : []), iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
+  row.append(sign, ...(mark ? [mark] : []), icon instanceof Node ? icon : iconElement(icon), typeof caption === 'string' ? node('span', caption) : caption);
   if (!children.length) {
     row.classList.add('studio-tree-leaf');
     return {element: row, row};

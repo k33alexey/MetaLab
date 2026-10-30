@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/behavior"
+	"github.com/k33alexey/MetaLab/internal/icons"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -156,6 +157,19 @@ type SectionSubsystem struct {
 	ID    uuid.UUID   `json:"id"`
 	Title string      `json:"title"`
 	Opens []uuid.UUID `json:"opens"`
+	// Picture is the picture of the subsystem its row of a window of a
+	// command interface shows; none - its field empty, or naming nothing -
+	// the sign of a subsystem (sectionPictureLocked).
+	Picture *SectionPicture `json:"picture,omitempty"`
+}
+
+// SectionPicture is the picture of a section as a row draws it: a picture
+// of the platform by its icon, or an image of a common picture by its
+// description and the name of the image.
+type SectionPicture struct {
+	Icon  string `json:"icon,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Image string `json:"image,omitempty"`
 }
 
 // SectionRole is a role of the project in the order of the tree: by its
@@ -278,6 +292,9 @@ func (workspace *Workspace) sectionAnswer(of func(*metadata.Catalog, string) ([]
 		return SubsystemSectionAnswer{}, err
 	}
 	groups, sections := of(loaded, configuration.DefaultLanguage)
+	for index := range sections {
+		sections[index].Picture = workspace.sectionPictureLocked(loaded, sections[index].ID)
+	}
 	return SubsystemSectionAnswer{Groups: groups, Subsections: sections, Roles: projectRoles(loaded, configuration.DefaultLanguage),
 		Project: configuration.Name}, nil
 }
@@ -441,6 +458,49 @@ func (workspace *Workspace) addSubsectionLocked(relative string, added uuid.UUID
 	}
 	_, err = workspace.saveSourceLocked(relative, encoded.String(), opened.Revision)
 	return err
+}
+
+// sectionPictureLocked is the picture the row of the section of the
+// subsystem id shows in the windows of a command interface - the field
+// «Картинка» of the subsystem (podsistema.md, «Досъёмка 29.10.2026», В6;
+// the owner's decision of 29.10.2026): a picture of the platform by its
+// icon, a common picture by its image - of a set, the one of density 100,
+// else its first. A field empty, a reference naming no picture, a common
+// picture of no image: none, and the row shows the sign of a subsystem.
+func (workspace *Workspace) sectionPictureLocked(loaded *metadata.Catalog, id uuid.UUID) *SectionPicture {
+	subsystem, ok := loaded.SubsystemByID(id)
+	if !ok || !subsystem.Picture.Names() {
+		return nil
+	}
+	if subsystem.Picture.Standard != "" {
+		if standard, ok := icons.LookupStandard(subsystem.Picture.Standard); ok {
+			return &SectionPicture{Icon: standard.Icon}
+		}
+		return nil
+	}
+	if subsystem.Picture.Common == nil {
+		return nil
+	}
+	picture, ok := loaded.CommonPictureByID(*subsystem.Picture.Common)
+	if !ok {
+		return nil
+	}
+	relative, err := project.ObjectMetadataPath(string(metadata.CommonPictureKind), picture.Name)
+	if err != nil {
+		return nil
+	}
+	images, _, err := workspace.pictureImagesLocked(relative)
+	if err != nil || len(images) == 0 {
+		return nil
+	}
+	image := images[0]
+	for _, variant := range pictureSet(picture.Variants, images) {
+		if variant.Density == 100 {
+			image = variant.File
+			break
+		}
+	}
+	return &SectionPicture{Path: relative, Image: image}
 }
 
 // subsectionsKept is the order of «Подразделы» of parent - the sections of
