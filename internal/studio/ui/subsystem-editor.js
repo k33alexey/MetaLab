@@ -227,6 +227,12 @@ async function commandInterfaceWindow(pane, help) {
     answers: [['ok', 'OK'], [null, 'Отмена']]}) === 'ok';
 }
 
+/* sectionActions is what follows the title of a standard command of a
+   section by its command (metadata.SectionLine): «: создать» after the
+   presentation of an object, «: создать группу» after the presentation of
+   the list (podsistema.md, «Досъёмка 28.10.2026, поздний вечер»). */
+const sectionActions = {create: ': создать', 'create-folder': ': создать группу'};
+
 /* sectionCommandsPane is the list of the commands of the section of a
    subsystem with its panel - the body of the window «Командный интерфейс»
    (showSubsystemCommandInterface) and the right of «Все подсистемы»
@@ -281,10 +287,9 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   const added = new Set(), first = [], removedLines = [];
   const removedHere = item => removedLines.some(line => same(line, item));
   let subsectionsTouched = false;
-  const actions = {create: ': создать', 'create-folder': ': создать группу'};
   // A section of the root comes by its presentation already (server,
   // SectionSubsystem), a command by its title in every language.
-  const caption = line => (typeof line.title === 'string' ? line.title : localizedTitle({title: line.title}, language)) + (actions[line.standard] || '');
+  const caption = line => (typeof line.title === 'string' ? line.title : localizedTitle({title: line.title}, language)) + (sectionActions[line.standard] || '');
   const alphabet = (one, other) => caption(one).localeCompare(caption(other), 'ru');
   const commandsOf = key => {
     const members = lines.filter(line => place.get(line) === key);
@@ -615,8 +620,7 @@ async function showMainSectionCommandInterface() {
   if (!response.ok) return new Error((await response.text()).trim());
   const answer = await response.json();
   const language = answer.defaultLanguage;
-  const actions = {create: ': создать', 'create-folder': ': создать группу'};
-  const caption = line => localizedTitle({title: line.title}, language) + (actions[line.standard] || '');
+  const caption = line => localizedTitle({title: line.title}, language) + (sectionActions[line.standard] || '');
   const pane = sectionCommandsPane({...answer, subsections: []}, answer.commandInterface || {}, language, () => {},
     {hideTitle: 'Скрыть невидимые по умолчанию', content: true});
   let chosen = null;

@@ -23,20 +23,24 @@ type SectionCommand struct {
 // SectionCommandTitle is how a standard command is titled: by the
 // presentation of the list, or else the synonym («Список замовлень
 // клієнтів», «Валюти»); by the presentation of an object, or else the
-// synonym, with «: создать» or «: создать группу» after it by the command
-// («Замовлення клієнта: создать», «Бригади: создать группу»); by the
-// synonym.
+// synonym, with «: создать» after it («Замовлення клієнта: создать»); by
+// the presentation of the list, or else the synonym, with «: создать
+// группу» after it («Каталог товаров: создать группу» - podsistema.md,
+// «Досъёмка 28.10.2026, поздний вечер»; snapshots vopr-2.636/23, 24); by
+// the synonym.
 type SectionCommandTitle string
 
 const (
 	ListTitle    SectionCommandTitle = "list"
 	CreateTitle  SectionCommandTitle = "create"
+	FolderTitle  SectionCommandTitle = "folder"
 	SynonymTitle SectionCommandTitle = "synonym"
 )
 
 // SectionCommandCondition is which objects of a kind give a command: every
 // one, or only an independent register or only one a recorder writes, or
-// only one with folders.
+// only one with folders - a catalog of folders and items, a chart of
+// characteristic types with a hierarchy.
 type SectionCommandCondition string
 
 const (
@@ -57,19 +61,24 @@ const (
 var (
 	listAndCreate = []SectionCommand{{Standard: "open-list", Group: navigationOrdinary, Visible: true, Title: ListTitle},
 		{Standard: "create", Group: actionsCreate, Title: CreateTitle}}
-	unseenList = []SectionCommand{{Standard: "open-list", Group: navigationOrdinary, Title: ListTitle}}
+	// createFolder is the creation of a folder, unseen, given by an object
+	// with folders.
+	createFolder = SectionCommand{Standard: "create-folder", Group: actionsCreate, Title: FolderTitle, When: FolderObject}
+	unseenList   = []SectionCommand{{Standard: "open-list", Group: navigationOrdinary, Title: ListTitle}}
 )
 
 // sectionCommands are the standard commands of each kind; a kind not here
-// gives a section none. A catalog of folders and items adds the creation of
-// a folder, unseen, and a common form of standard commands is opened from
-// «Сервис», visible, by its synonym (podsistema.md, «Досъёмка 28.10.2026,
-// вечер»; snapshots seriya-2631/07, 08). The commands the inventory has not
-// shot - a folder of another kind, a table of an external source - are not
-// here yet (question В6 of series 2.631, В4 of series 2.636).
+// gives a section none. A catalog of folders and items and a chart of
+// characteristic types with a hierarchy add the creation of a folder,
+// unseen, and a common form of standard commands is opened from «Сервис»,
+// visible, by its synonym (podsistema.md, «Досъёмка 28.10.2026, вечер» and
+// «поздний вечер»; snapshots seriya-2631/07, 08, vopr-2.636/23, 24). A
+// table of an external source, which the inventory has not shot, is not
+// here yet (question В6 of series 2.631).
 var sectionCommands = map[Kind][]SectionCommand{
-	Catalog:  {listAndCreate[0], listAndCreate[1], {Standard: "create-folder", Group: actionsCreate, Title: CreateTitle, When: FolderObject}},
-	Document: listAndCreate, ChartOfCharacteristicTypes: listAndCreate, ChartOfAccounts: listAndCreate,
+	Catalog:                    {listAndCreate[0], listAndCreate[1], createFolder},
+	ChartOfCharacteristicTypes: {listAndCreate[0], listAndCreate[1], createFolder},
+	Document:                   listAndCreate, ChartOfAccounts: listAndCreate,
 	ChartOfCalculationTypes: listAndCreate, ExchangePlan: listAndCreate, BusinessProcess: listAndCreate, Task: listAndCreate,
 	DocumentJournal: {{Standard: "open-list", Group: navigationOrdinary, Visible: true, Title: ListTitle}},
 	InformationRegister: {{Standard: "open-list", Group: navigationOrdinary, Visible: true, Title: ListTitle, When: IndependentObject},

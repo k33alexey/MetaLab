@@ -21,8 +21,11 @@ import (
 // and a constant in «Сервис», visible; a common command in a project's
 // group of the navigation panel, and not one in a group of a form; a
 // catalog of folders and items also the creation of a folder in «Создать»,
-// unseen, by the presentation of an object, and one of items alone none
-// (podsistema.md, «Досъёмка 28.10.2026, вечер»); a common form of standard
+// unseen, and one of items alone none (podsistema.md, «Досъёмка
+// 28.10.2026, вечер»), titled by the presentation of the list or else the
+// synonym - not by the presentation of an object, as «: создать» is - and
+// so a chart of characteristic types with a hierarchy, one without none
+// («Досъёмка 28.10.2026, поздний вечер»; vopr-2.636/23, 24); a common form of standard
 // commands its opening in «Сервис», visible, by its synonym, and one
 // without none. Defects caught: a command in the wrong group, seen or
 // unseen wrongly, titled wrongly, given where the kind or the object gives
@@ -55,17 +58,25 @@ func TestTheContentOfASubsystemGivesItsSectionThePrototypesCommands(t *testing.T
 	exchange := CommonCommandDefinition{ObjectCommand: ObjectCommand{ID: id(12), Name: "Обмен", Title: ru("Обмен"), GroupRef: &salesRef}}
 	printing := CommonCommandDefinition{ObjectCommand: ObjectCommand{ID: id(13), Name: "Печать", Title: ru("Печать"), GroupRef: &formRef}}
 	crews := CatalogDefinition{ID: id(14), Name: "Бригады", Title: ru("Бригады"), Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}}
-	crews.UseStandardCommands = true
+	crews.UseStandardCommands, crews.ObjectPresentation, crews.ListPresentation = true, ru("Бригада"), ru("Список бригад")
+	goods := CatalogDefinition{ID: id(18), Name: "Номенклатура", Title: ru("Номенклатура"), Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}}
+	goods.UseStandardCommands, goods.ObjectPresentation = true, ru("Товар")
+	properties := ChartOfCharacteristicTypesDefinition{ID: id(19), Name: "Свойства", Title: ru("Свойства"),
+		Hierarchy: Hierarchy{Enabled: true, Kind: FoldersAndItemsHierarchy}}
+	properties.UseStandardCommands = true
+	flat := ChartOfCharacteristicTypesDefinition{ID: id(20), Name: "Плоские", Title: ru("Плоские")}
+	flat.UseStandardCommands = true
 	staff := CatalogDefinition{ID: id(15), Name: "Сотрудники", Title: ru("Сотрудники"), Hierarchy: Hierarchy{Enabled: true, Kind: ItemsHierarchy}}
 	staff.UseStandardCommands = true
-	catalog := &Catalog{Catalogs: []CatalogDefinition{currencies, crews, staff}, Documents: []DocumentDefinition{order, quiet},
+	catalog := &Catalog{Catalogs: []CatalogDefinition{currencies, crews, staff, goods},
 		InformationRegisters: []InformationRegisterDefinition{prices, rates}, AccumulationRegisters: []AccumulationRegisterDefinition{stock},
 		Enumerations: []Enumeration{kindsOf}, Reports: []ReportDefinition{profit}, Constants: []Constant{currency},
+		Documents: []DocumentDefinition{order, quiet}, ChartsOfCharacteristicTypes: []ChartOfCharacteristicTypesDefinition{properties, flat},
 		CommandGroups: []CommandGroupDefinition{sales, form}, CommonCommands: []CommonCommandDefinition{exchange, printing},
 		commandGroupByID: map[uuid.UUID]int{sales.ID: 0, form.ID: 1},
 		commonFormHeads: []commonFormHead{{ID: id(16), Name: "АдреснаяКнига", Title: ru("Адресная книга"), UseStandardCommands: true},
 			{ID: id(17), Name: "АвтономнаяРабота", Title: ru("Автономная работа")}}}
-	got := catalog.SectionLines([]uuid.UUID{id(1), id(2), id(3), id(4), id(5), id(6), id(7), id(8), id(9), id(12), id(13), id(14), id(15), id(16), id(17)})
+	got := catalog.SectionLines([]uuid.UUID{id(1), id(2), id(3), id(4), id(5), id(6), id(7), id(8), id(9), id(12), id(13), id(14), id(15), id(16), id(17), id(18), id(19), id(20)})
 	type line struct {
 		Object, Command, Standard, Group, Kind, Title string
 		Visible                                       bool
@@ -84,12 +95,20 @@ func TestTheContentOfASubsystemGivesItsSectionThePrototypesCommands(t *testing.T
 		{intUUID(8), "", "open", "actions-panel-reports", "reports", "Прибыль", true},
 		{intUUID(9), "", "open", "actions-panel-tools", "constants", "Основная валюта", true},
 		{"", intUUID(12), "", "", "common-commands", "Обмен", true},
-		{intUUID(14), "", "open-list", "navigation-panel-ordinary", "catalogs", "Бригады", true},
-		{intUUID(14), "", "create", "actions-panel-create", "catalogs", "Бригады", false},
-		{intUUID(14), "", "create-folder", "actions-panel-create", "catalogs", "Бригады", false},
+		{intUUID(14), "", "open-list", "navigation-panel-ordinary", "catalogs", "Список бригад", true},
+		{intUUID(14), "", "create", "actions-panel-create", "catalogs", "Бригада", false},
+		{intUUID(14), "", "create-folder", "actions-panel-create", "catalogs", "Список бригад", false},
 		{intUUID(15), "", "open-list", "navigation-panel-ordinary", "catalogs", "Сотрудники", true},
 		{intUUID(15), "", "create", "actions-panel-create", "catalogs", "Сотрудники", false},
 		{intUUID(16), "", "open", "actions-panel-tools", "common-forms", "Адресная книга", true},
+		{intUUID(18), "", "open-list", "navigation-panel-ordinary", "catalogs", "Номенклатура", true},
+		{intUUID(18), "", "create", "actions-panel-create", "catalogs", "Товар", false},
+		{intUUID(18), "", "create-folder", "actions-panel-create", "catalogs", "Номенклатура", false},
+		{intUUID(19), "", "open-list", "navigation-panel-ordinary", "charts-of-characteristic-types", "Свойства", true},
+		{intUUID(19), "", "create", "actions-panel-create", "charts-of-characteristic-types", "Свойства", false},
+		{intUUID(19), "", "create-folder", "actions-panel-create", "charts-of-characteristic-types", "Свойства", false},
+		{intUUID(20), "", "open-list", "navigation-panel-ordinary", "charts-of-characteristic-types", "Плоские", true},
+		{intUUID(20), "", "create", "actions-panel-create", "charts-of-characteristic-types", "Плоские", false},
 	}
 	var read []line
 	for _, item := range got {

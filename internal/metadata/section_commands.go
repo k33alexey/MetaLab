@@ -45,7 +45,8 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 				line := SectionLine{InterfaceCommand: InterfaceCommand{Object: &id, Standard: StandardCommand(command.Standard)},
 					Group: InterfaceGroup{Standard: InterfaceGroupKind(command.Group)}, Kind: kind, Visible: command.Visible,
 					Title: headOf(object.Interface()).title}
-				presentation := map[kinds.SectionCommandTitle]string{kinds.ListTitle: "ListPresentation", kinds.CreateTitle: "ObjectPresentation"}[command.Title]
+				presentation := map[kinds.SectionCommandTitle]string{kinds.ListTitle: "ListPresentation", kinds.CreateTitle: "ObjectPresentation",
+					kinds.FolderTitle: "ListPresentation"}[command.Title]
 				if said := field(presentation); presentation != "" && said.IsValid() && len(said.Interface().(LocalizedText)) > 0 {
 					line.Title = said.Interface().(LocalizedText)
 				}
@@ -106,7 +107,8 @@ func (role RoleDefinition) OpensSectionLine(line SectionLine) bool {
 
 // sectionCondition says whether an object gives a command its kind gives
 // only some objects: an independent register of information, or one a
-// recorder writes; a catalog with folders.
+// recorder writes; a catalog or a chart of characteristic types with
+// folders.
 func sectionCondition(when kinds.SectionCommandCondition, object reflect.Value) bool {
 	switch when {
 	case kinds.EveryObject:
