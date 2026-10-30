@@ -95,6 +95,9 @@ table.settable-list td.muted{grid-column:1/-1;padding:7px 10px}
 .list-settings-columns{height:260px;overflow:auto;border:1px solid #4a4d54;border-radius:4px;background:#1e1f22}
 .localized-title-dialog .list-settings-item{display:flex;align-items:center;gap:6px;padding:3px 6px;color:#dfe1e5;cursor:default}
 .list-settings-item.selected{background:#2f4a6d}
+/* Закреплённая колонка (predsyomka-1/06, 07): галочка вместо флажка, жирным. */
+.list-settings-fixed{font-weight:600}
+.list-settings-mark{display:inline-block;width:13px;text-align:center}
 .list-settings-marks{display:flex;gap:4px;margin-bottom:6px}
 .list-settings-column{display:grid;gap:8px;margin:0;padding:8px 10px;border:1px solid #4a4d54;border-radius:4px}
 .list-settings-column legend{padding:0 4px;color:#dfe1e5;font-size:12px}

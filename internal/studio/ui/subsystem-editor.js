@@ -250,12 +250,18 @@ const sectionActions = {create: ': создать', 'create-folder': ': созд
    predsyomka-1/37); a command added stands where it was put until the
    window is opened again, the group staying automatic; every command is
    written with its placement and its visibility, as the configurations
-   being moved write them. Answers {element, value(), add, remove, at()}:
+   being moved write them. list names the setting of the list («Настройка
+   списка...» of the menu of a row, commandListSettings) - its key and the
+   width of «Команда». Answers {element, value(), add, remove, at()}:
    value is the command interface the list says - what OK of the window
    writes - or null where it says nothing; at() is the group the row
    current is or stands in, {key, panel}, or null. */
-function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию', content = false} = {}) {
+function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию', content = false,
+  list = {key: 'subsystem-commands'}} = {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
+  const listSettings = commandListSettings(list.key, projectRoles, list.width);
+  let setting = listSettings.standard();
+  const shownColumn = key => setting.columns.some(column => column.key === key && column.visible);
   const identity = ['command', 'object', 'standard', 'written'];
   const same = (one, other) => identity.every(key => (one[key] || '') === (other[key] || ''));
   const commandOf = line => Object.fromEntries(identity.filter(key => line[key]).map(key => [key, line[key]]));
@@ -310,7 +316,10 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   const tree = node('div', undefined, 'object-window-tree section-commands');
   tree.tabIndex = 0;
   const roleWidth = 120, rolesInSight = 3;
-  const columns = () => filtering.length ? projectRoles.filter(role => filtering.includes(role.id)) : projectRoles;
+  // The roles in the order and with the showing the setting of the list
+  // gives them, narrowed by the filter.
+  const columns = () => setting.columns.filter(column => column.visible && column.key.startsWith('role:'))
+    .map(column => projectRoles.find(role => 'role:' + role.id === column.key)).filter(role => role && (!filtering.length || filtering.includes(role.id)));
   let strips = [], offset = 0;
   const strip = fill => {
     const element = node('div', undefined, 'section-roles-strip');
@@ -352,8 +361,8 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   const draw = () => {
     strips = [];
     const rolesHead = node('div', undefined, 'section-roles-head');
-    rolesHead.append(node('span', 'Видимость по ролям'), strip((role, cell) => { cell.textContent = role.title; cell.title = role.title; }));
-    head.replaceChildren(node('span', 'Команда', 'section-commands-caption'), node('span', 'Видимость', 'section-commands-visibility'), rolesHead);
+    rolesHead.append(...(shownColumn('by-roles') ? [node('span', 'Видимость по ролям')] : []), strip((role, cell) => { cell.textContent = role.title; cell.title = role.title; }));
+    head.replaceChildren(node('span', 'Команда', 'section-commands-caption'), ...(shownColumn('visibility') ? [node('span', 'Видимость', 'section-commands-visibility')] : []), rolesHead);
     const rows = groups.map(group => {
       const key = groupKey(group.group);
       const lines = commandsOf(key).filter(opened);
@@ -365,7 +374,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
         box.setAttribute('aria-label', 'Видимость: ' + caption(line));
         box.addEventListener('change', () => { visible.set(line, box.checked); current = {line}; edited(); });
         const {element, row} = treeNode({icon: line.icon, caption: caption(line)});
-        row.append(box, strip((role, cell) => roleBox(line, role, cell)));
+        row.append(...(shownColumn('visibility') ? [box] : []), strip((role, cell) => roleBox(line, role, cell)));
         chosen(row, {line});
         return element;
       });
@@ -476,6 +485,11 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     ['Установить свойства по умолчанию', setDefault, !!(current?.line || current?.subsection), '', 'restore-values'],
     ['Восстановить автоматический порядок', restore, !!(current?.group || current?.subsections)],
     ...(content ? [null, ['Удалить команду из основного раздела', remove, !!current?.line, 'Del', 'delete']] : []),
+    null,
+    ['Настройка списка...', async () => {
+      const next = await chooseListSettings(listSettings, setting, applied => { setting = applied; draw(); });
+      if (next) { setting = next; draw(); StudioListSettings.save(listSettings.key, next); }
+    }, true, '', 'list-settings'],
   ]);
   tree.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -530,6 +544,12 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   const windowContent = node('div', undefined, 'section-commands-window');
   windowContent.append(bar, head, tree, scroller);
   draw();
+  // The setting the user kept, once read; the list opens where it says.
+  StudioListSettings.load().then(() => {
+    setting = listSettings.read(StudioListSettings.get(listSettings.key));
+    draw();
+    requestAnimationFrame(() => { tree.scrollTop = setting.opening === 'end' ? tree.scrollHeight : 0; });
+  });
   const at = () => {
     const key = current?.group || (current?.line && place.get(current.line));
     return key ? {key, panel: byKey.get(key)?.panel} : null;
@@ -566,6 +586,24 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
   }
 }
 
+/* commandListSettings is the setting of the list of commands of every
+   window of a command interface (obshchee.md, «Список команд»; snapshots
+   predsyomka-1/05-17, 32, 39), key apart for each: «Команда» twice, always
+   shown - a new column of width (40, of «Все подсистемы» 25) and one on the
+   next row, 27 - «Видимость» and «Видимость по ролям», new columns of 8,
+   these four of autoheight; then a column a role of the project, by its
+   synonym, in the order of the project, the first on the next row, the
+   rest in the same column, 87 wide. The list opens at its beginning. */
+function commandListSettings(key, roles, width = 40) {
+  return createListSettings({key, opening: 'beginning', columns: [
+    {key: 'command', title: 'Команда', width, autoHeight: true, fixed: true},
+    {key: 'command-next', title: 'Команда', location: 'next-row', width: 27, autoHeight: true, fixed: true},
+    {key: 'visibility', title: 'Видимость', width: 8, autoHeight: true},
+    {key: 'by-roles', title: 'Видимость по ролям', width: 8, autoHeight: true},
+    ...roles.map((role, at) => ({key: 'role:' + role.id, title: role.title, location: at ? 'same-column' : 'next-row', width: 87})),
+  ]});
+}
+
 /* showProjectCommandInterface is the window «Командный интерфейс» of the
    root (konfiguraciya.md, «Окна», «Досъёмка 27.10.2026», «Предсъёмка
    28.10.2026»; snapshots konfiguraciya/16, 17, series-2.595/36-40, 66-68):
@@ -588,7 +626,7 @@ async function showProjectCommandInterface(configuration, language, set) {
     commandsOrder: (configuration.subsystemsOrder || []).map(id => ({object: id, group})),
   };
   const pane = sectionCommandsPane({...answer, groups: [{group, title: 'Разделы', panel: 'sections', commands: lines}], subsections: []}, said, language,
-    () => {}, {moves: false, hideTitle: 'Скрыть невидимые по умолчанию'});
+    () => {}, {moves: false, hideTitle: 'Скрыть невидимые по умолчанию', list: {key: 'root-commands'}});
   if (!await commandInterfaceWindow(pane, 'project-command-interface')) return false;
   const value = pane.value() || {};
   set((value.commandsOrder || []).map(item => item.object), (value.commandsVisibility || []).map(item => ({subsystem: item.object,
@@ -622,7 +660,7 @@ async function showMainSectionCommandInterface() {
   const language = answer.defaultLanguage;
   const caption = line => localizedTitle({title: line.title}, language) + (sectionActions[line.standard] || '');
   const pane = sectionCommandsPane({...answer, subsections: []}, answer.commandInterface || {}, language, () => {},
-    {hideTitle: 'Скрыть невидимые по умолчанию', content: true});
+    {hideTitle: 'Скрыть невидимые по умолчанию', content: true, list: {key: 'main-section-commands'}});
   let chosen = null;
   const tree = node('div', undefined, 'object-window-tree main-section-available');
   const keyOf = group => [group.standard, group.group, group.written].map(part => part || '').join('|');

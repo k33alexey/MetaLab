@@ -114,7 +114,7 @@ function createSubsystemOverview(host, around) {
       const said = pane.value();
       if (said) row.subsystem.commandInterface = said; else delete row.subsystem.commandInterface;
       changedRow(row);
-    });
+    }, {list: {key: 'all-subsystems-commands', width: 25}});
     commands.replaceChildren(pane.element);
   }
 

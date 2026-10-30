@@ -29,12 +29,16 @@ const listColumnHeightLimit = 10;
    vse-ogr-13, vse-ogr-15) — where it opens (opening), what «Автоматически»
    means for it (autoOpening: help, НачальноеОтображениеСписка.Авто — the end
    for the lists ordered by date, the beginning for the rest) and its
-   standard order (sort: {column, descending}). A setting is
+   standard order (sort: {column, descending}). A column fixed is always
+   shown and stands where it is: the window shows it with a mark, not a
+   box, its place and the arrows unavailable (the two «Команда» of the list
+   of commands, snapshots predsyomka-1/06, 07). A setting is
    {columns: [{key, visible, location, resize, width, height, autoHeight}],
    opening, sort}. */
 function createListSettings(definition) {
   const columns = definition.columns.map(column => ({key: column.key, title: column.title, visible: true,
     location: column.location || 'new', resize: column.resize || 'change', width: column.width || 14, height: column.height || 1, autoHeight: !!column.autoHeight}));
+  const fixed = new Set(definition.columns.filter(column => column.fixed).map(column => column.key));
   const byKey = new Map(columns.map(column => [column.key, column]));
   const standardSort = {column: definition.sort?.column ?? columns[0]?.key, descending: !!definition.sort?.descending};
   const among = (choices, value) => choices.some(([key]) => key === value);
@@ -44,6 +48,7 @@ function createListSettings(definition) {
   return {
     key: definition.key,
     title(key) { return byKey.get(key)?.title ?? key; },
+    fixed(key) { return fixed.has(key); },
     standard() { return {columns: standardColumns(), opening: definition.opening || 'auto', sort: {...standardSort}}; },
     // «Стандартная настройка» (help: it takes back every setting of the
     // user): the columns and where the list opens; the order of the list is
@@ -61,13 +66,14 @@ function createListSettings(definition) {
         const standard = byKey.get(item?.key);
         if (!standard || seen.has(item.key)) continue;
         seen.add(item.key);
-        kept.push({key: item.key, visible: typeof item.visible === 'boolean' ? item.visible : true,
+        kept.push({key: item.key, visible: fixed.has(item.key) || (typeof item.visible === 'boolean' ? item.visible : true),
           location: among(listColumnLocations, item.location) ? item.location : standard.location,
           resize: among(listColumnResizes, item.resize) ? item.resize : standard.resize,
           width: size(item.width, standard.width), height: size(item.height, standard.height, listColumnHeightLimit),
           autoHeight: typeof item.autoHeight === 'boolean' ? item.autoHeight : standard.autoHeight});
       }
-      result.columns = [...kept, ...columns.filter(column => !seen.has(column.key)).map(own)];
+      const all = [...kept, ...columns.filter(column => !seen.has(column.key)).map(own)];
+      result.columns = [...all.filter(column => fixed.has(column.key)), ...all.filter(column => !fixed.has(column.key))];
       if (among(listOpenings, saved.opening)) result.opening = saved.opening;
       if (byKey.has(saved.sort?.column)) result.sort = {column: saved.sort.column, descending: saved.sort.descending === true};
       return result;
@@ -286,7 +292,7 @@ async function chooseListSettings(list, settings, applied) {
   bar.append(up, down, standard);
   const columnList = node('div', undefined, 'list-settings-columns'), side = node('div', undefined, 'list-settings-side');
   const marks = node('div', undefined, 'list-settings-marks');
-  marks.append(...markAllButtons(visible => { for (const column of draft.columns) column.visible = visible; fill(); }));
+  marks.append(...markAllButtons(visible => { for (const column of draft.columns) column.visible = visible || list.fixed(column.key); fill(); }));
   const group = node('fieldset', undefined, 'list-settings-column');
   side.append(marks, group);
   const body = node('div', undefined, 'list-settings-body');
@@ -299,7 +305,10 @@ async function chooseListSettings(list, settings, applied) {
   // its change.
   function fill() {
     columnList.replaceChildren(...draft.columns.map((column, index) => {
-      const line = checkboxField(list.title(column.key), column.visible, visible => { column.visible = visible; }, 'list-settings-item');
+      // A fixed column is marked, bold, and has no box.
+      const line = list.fixed(column.key) ? node('label', undefined, 'list-settings-item list-settings-fixed')
+        : checkboxField(list.title(column.key), column.visible, visible => { column.visible = visible; }, 'list-settings-item');
+      if (list.fixed(column.key)) line.append(node('span', '✓', 'list-settings-mark'), node('span', list.title(column.key)));
       // A click on the caption chooses the column; only the box shows or
       // hides it.
       line.addEventListener('click', event => {
@@ -313,8 +322,8 @@ async function chooseListSettings(list, settings, applied) {
   function choose(index) {
     chosen = index;
     [...columnList.children].forEach((line, at) => line.classList.toggle('selected', at === chosen));
-    up.disabled = chosen <= 0; down.disabled = chosen >= draft.columns.length - 1;
-    const column = draft.columns[chosen];
+    const column = draft.columns[chosen], held = !!column && list.fixed(column.key);
+    up.disabled = held || chosen <= 0; down.disabled = held || chosen >= draft.columns.length - 1;
     group.replaceChildren(node('legend', 'Колонка'));
     if (column) {
       const number = (value, apply, label, limit = Infinity) => {
@@ -324,8 +333,10 @@ async function chooseListSettings(list, settings, applied) {
         input.setAttribute('aria-label', label);
         return input;
       };
+      const place = selectInput(listColumnLocations, column.location, value => { column.location = value; }, 'Положение');
+      place.disabled = held;
       group.append(
-        labeledField('Положение:', selectInput(listColumnLocations, column.location, value => { column.location = value; }, 'Положение'), 'list-settings-field'),
+        labeledField('Положение:', place, 'list-settings-field'),
         labeledField('Изменение размера:', selectInput(listColumnResizes, column.resize, value => { column.resize = value; }, 'Изменение размера'), 'list-settings-field'),
         labeledField('Ширина:', number(column.width, value => { column.width = value; }, 'Ширина'), 'list-settings-field'),
         labeledField('Высота:', number(column.height, value => { column.height = value; }, 'Высота', listColumnHeightLimit), 'list-settings-field'),

@@ -112,7 +112,8 @@ const sectionOrderWalk = `(async () => {
 // in, the first current, and the command goes to the end of the group
 // chosen; up on the first command does nothing; up makes a group «(ручной
 // порядок)»; Cmd+Shift+Up orders «Подразделы»; the menu of a group offers
-// only «Восстановить автоматический порядок»; OK writes the placement with
+// only «Восстановить автоматический порядок» and «Настройка списка...»,
+// which every row has; OK writes the placement with
 // the visibility said, the whole order of the group with GroupsOrder, the
 // order of «Подразделы»; the window opened again shows what is written;
 // the automatic order and the defaults take it away; a command moved into a
@@ -246,7 +247,7 @@ func TestTheCommandsOfASectionMoveAndAreOrderedAsThePrototypes(t *testing.T) {
 	expect("the buttons on a group", steps.OnGroup, []string{"Переместить команду в другую группу команд (недоступна)", "Переместить вверх (недоступна)",
 		"Переместить вниз (недоступна)", "Установить свойства по умолчанию (недоступна)", "Скрыть команды, невидимые по умолчанию", "Выбор объекта: Роль"})
 	expect("the menu of a group", steps.GroupMenu, []string{"Переместить команду (недоступен)", "Переместить вверхCmd+Shift+Up (недоступен)",
-		"Переместить внизCmd+Shift+Down (недоступен)", "Установить свойства по умолчанию (недоступен)", "Восстановить автоматический порядок"})
+		"Переместить внизCmd+Shift+Down (недоступен)", "Установить свойства по умолчанию (недоступен)", "Восстановить автоматический порядок", "Настройка списка..."})
 	written := steps.Written
 	if len(written.CommandsPlacement) != 1 || written.CommandsPlacement[0].Object == nil || *written.CommandsPlacement[0].Object != products ||
 		written.CommandsPlacement[0].Standard != metadata.StandardOpenList || written.CommandsPlacement[0].Group.Standard != metadata.NavigationPanelImportant ||
