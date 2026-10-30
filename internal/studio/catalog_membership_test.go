@@ -548,7 +548,7 @@ func TestTheWindowOfACatalogWritesItsRights(t *testing.T) {
 		return role
 	}
 	says := func(role metadata.RoleDefinition, object uuid.UUID) string {
-		if entry := permissionOf(role, object); entry != nil {
+		if entry := role.PermissionOf(object); entry != nil {
 			return fmt.Sprint(entry.Operations, len(entry.Restrictions))
 		}
 		return "nothing"

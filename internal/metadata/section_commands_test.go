@@ -130,6 +130,15 @@ func TestTheContentOfASubsystemGivesItsSectionThePrototypesCommands(t *testing.T
 	if string(gotJSON) != string(wantJSON) {
 		t.Errorf("lines:\n got %s\nwant %s", gotJSON, wantJSON)
 	}
+	// An object's own command knows its object, which a role is asked about
+	// too (TestARoleOpensACommandOfASectionByThePrototypesRight); a common
+	// command and a standard one have none.
+	for _, item := range got {
+		owned := item.Command != nil && *item.Command == id(21)
+		if owned != (item.Owner != nil) || owned && *item.Owner != id(2) {
+			t.Errorf("the line %+v has the owner %v", item.InterfaceCommand, item.Owner)
+		}
+	}
 }
 
 // intUUID is an identifier numbered for a test, as text.
@@ -142,4 +151,50 @@ func numbered(number int) string {
 		number /= 10
 	}
 	return "00000000-0000-4000-8000-" + string(digits)
+}
+
+// A role opens a command of a section by the right the prototype asks
+// (obshchee.md, «Видимость по ролям»; snapshots vopr-2.636/02-06,
+// dosyomka-2639/06-11), written out here, not read from the code: a list by
+// «Просмотр» of its object, a creation by «Интерактивное добавление»; a
+// constant and a common command by «Просмотр» of themselves, «Чтение» of a
+// constant opening nothing; an object's own command by «Просмотр» of the
+// command and of its object both - a role with «Просмотр» of the command
+// alone opens nothing, nor one with «Просмотр» of the object alone. Defects
+// caught: an own command opened by the right on the command alone, as
+// before; a right of another object or another command taken; the owner
+// asked of a common command.
+func TestARoleOpensACommandOfASectionByThePrototypesRight(t *testing.T) {
+	t.Parallel()
+	id := func(number int) uuid.UUID { value, _ := uuid.Parse(numbered(number)); return value }
+	order, own, other, constant, common := id(1), id(2), id(3), id(4), id(5)
+	view, read, insert := []PermissionOperation{PermissionView}, []PermissionOperation{PermissionRead}, []PermissionOperation{PermissionInteractiveInsert}
+	line := func(object *uuid.UUID, command *uuid.UUID, standard StandardCommand, owner *uuid.UUID) SectionLine {
+		return SectionLine{InterfaceCommand: InterfaceCommand{Object: object, Command: command, Standard: standard}, Owner: owner}
+	}
+	list, create := line(&order, nil, StandardOpenList, nil), line(&order, nil, StandardCreate, nil)
+	ownCommand, constantLine, commonLine := line(nil, &own, "", &order), line(&constant, nil, StandardOpen, nil), line(nil, &common, "", nil)
+	role := func(objects ...ObjectPermission) RoleDefinition { return RoleDefinition{Objects: objects} }
+	for name, testCase := range map[string]struct {
+		role  RoleDefinition
+		line  SectionLine
+		opens bool
+	}{
+		"the list by «Просмотр»":                     {role(ObjectPermission{Object: order, Operations: view}), list, true},
+		"the list not by «Чтение»":                   {role(ObjectPermission{Object: order, Operations: read}), list, false},
+		"the creation by «Интерактивное добавление»": {role(ObjectPermission{Object: order, Operations: insert}), create, true},
+		"the creation not by «Просмотр»":             {role(ObjectPermission{Object: order, Operations: view}), create, false},
+		"a constant by «Просмотр»":                   {role(ObjectPermission{Object: constant, Operations: view}), constantLine, true},
+		"a constant not by «Чтение»":                 {role(ObjectPermission{Object: constant, Operations: read}), constantLine, false},
+		"a common command by «Просмотр»":             {role(ObjectPermission{Object: common, Operations: view}), commonLine, true},
+		"an own command by both":                     {role(ObjectPermission{Object: order, Operations: view, Fields: []FieldPermission{{Field: own.String(), Operations: view}}}), ownCommand, true},
+		"an own command not by itself alone":         {role(ObjectPermission{Object: order, Fields: []FieldPermission{{Field: own.String(), Operations: view}}}), ownCommand, false},
+		"an own command not by the object alone":     {role(ObjectPermission{Object: order, Operations: view}), ownCommand, false},
+		"an own command not by another command":      {role(ObjectPermission{Object: order, Operations: view, Fields: []FieldPermission{{Field: other.String(), Operations: view}}}), ownCommand, false},
+		"nothing written, nothing opened":            {role(), list, false},
+	} {
+		if got := testCase.role.OpensSectionLine(testCase.line); got != testCase.opens {
+			t.Errorf("%s: opens %v, want %v", name, got, testCase.opens)
+		}
+	}
 }

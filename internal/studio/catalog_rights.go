@@ -77,15 +77,6 @@ func objectRightsSchema(root string, object uuid.UUID) (metadata.PermissionSchem
 	return schema, nil
 }
 
-// permissionOf is what a role says about the object, nil for nothing.
-func permissionOf(role metadata.RoleDefinition, object uuid.UUID) *metadata.ObjectPermission {
-	index := slices.IndexFunc(role.Objects, func(entry metadata.ObjectPermission) bool { return entry.Object == object })
-	if index < 0 {
-		return nil
-	}
-	return &role.Objects[index]
-}
-
 // samePermission tells two entries of a role about one object that say the
 // same: an empty list is no list, and an entry saying nothing is none.
 func samePermission(a, b *metadata.ObjectPermission) bool {
@@ -157,7 +148,7 @@ func (workspace *Workspace) roleEditsLocked(object uuid.UUID, current []RolePlac
 			return nil, fmt.Errorf("role %s is not in the project", mark.ID)
 		}
 		place := current[index]
-		if samePermission(permissionOf(place.Role, object), mark.Permission) {
+		if samePermission(place.Role.PermissionOf(object), mark.Permission) {
 			continue
 		}
 		if mark.Permission != nil && mark.Permission.Object != object {

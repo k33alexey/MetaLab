@@ -21,6 +21,9 @@ type SectionLine struct {
 	Kind    Kind           `json:"kind"`
 	Title   LocalizedText  `json:"title"`
 	Visible bool           `json:"visible"`
+	// Owner is the object whose own command the line is; none for a
+	// standard command and a common command.
+	Owner *uuid.UUID `json:"owner,omitempty"`
 }
 
 // SectionLines are the commands the objects of a subsystem's content give
@@ -53,14 +56,14 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 				lines = append(lines, line)
 			}
 		}
-		own := func(commandID uuid.UUID, title LocalizedText, group string, groupRef *uuid.UUID) {
+		own := func(commandID uuid.UUID, title LocalizedText, group string, groupRef *uuid.UUID, owner *uuid.UUID) {
 			if placed, ok := catalog.sectionGroup(group, groupRef); ok {
-				lines = append(lines, SectionLine{InterfaceCommand: InterfaceCommand{Command: &commandID}, Group: placed, Kind: kind, Title: title, Visible: true})
+				lines = append(lines, SectionLine{InterfaceCommand: InterfaceCommand{Command: &commandID}, Group: placed, Kind: kind, Title: title, Visible: true, Owner: owner})
 			}
 		}
 		if kind == CommonCommandKind {
 			command := object.Interface().(CommonCommandDefinition)
-			own(command.ID, command.Title, command.Group, command.GroupRef)
+			own(command.ID, command.Title, command.Group, command.GroupRef, nil)
 			continue
 		}
 		// A role's Commands are its rights on commands, not commands of its
@@ -68,7 +71,7 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 		if commands := field("Commands"); commands.IsValid() {
 			objectCommands, _ := commands.Interface().([]ObjectCommand)
 			for _, command := range objectCommands {
-				own(command.ID, command.Title, command.Group, command.GroupRef)
+				own(command.ID, command.Title, command.Group, command.GroupRef, &id)
 			}
 		}
 	}
@@ -78,31 +81,42 @@ func (catalog *Catalog) SectionLines(members []uuid.UUID) []SectionLine {
 // OpensSectionLine says whether a role opens a command of a section - the
 // filter «Отбор по ролям» of the windows of a command interface keeps the
 // commands one of its roles opens (obshchee.md, «Видимость по ролям»;
-// snapshots vopr-2.636/02-06): a command to create one or a folder of it by
-// «Интерактивное добавление» of its object, its list by «Просмотр». The
-// prototype was seen on these two alone; every other command - an object
-// opened, an object's own command, a common command, a common form - is
-// taken by «Просмотр» of itself the same way until it is seen (question В5
-// of series 2.639). A right a role does not write is not granted.
+// snapshots vopr-2.636/02-06, dosyomka-2639/06-11): a command to create one
+// or a folder of it by «Интерактивное добавление» of its object, its list by
+// «Просмотр»; a constant, a common form, a common command by «Просмотр» of
+// itself; an object's own command by «Просмотр» of the command and of its
+// object both. A report and a data processor were not seen apart from these
+// (question В5 of series 2.639) and go by «Просмотр» of themselves. A right a
+// role does not write is not granted.
 func (role RoleDefinition) OpensSectionLine(line SectionLine) bool {
 	right := PermissionView
 	if line.Standard == StandardCreate || line.Standard == StandardCreateFolder {
 		right = PermissionInteractiveInsert
 	}
-	for _, object := range role.Objects {
-		if line.Object != nil && object.Object == *line.Object || line.Command != nil && object.Object == *line.Command {
-			return slices.Contains(object.Operations, right)
+	if line.Owner != nil && line.Command != nil {
+		object := role.PermissionOf(*line.Owner)
+		if object == nil || !slices.Contains(object.Operations, PermissionView) {
+			return false
 		}
-		if line.Command == nil {
-			continue
-		}
-		for _, field := range object.Fields {
-			if field.Field == line.Command.String() {
-				return slices.Contains(field.Operations, right)
-			}
-		}
+		at := slices.IndexFunc(object.Fields, func(field FieldPermission) bool { return field.Field == line.Command.String() })
+		return at >= 0 && slices.Contains(object.Fields[at].Operations, PermissionView)
 	}
-	return false
+	target := line.Object
+	if target == nil {
+		target = line.Command
+	}
+	object := role.PermissionOf(*target)
+	return object != nil && slices.Contains(object.Operations, right)
+}
+
+// PermissionOf is what the role writes about an object, nil for nothing:
+// its entry in the role's list, which a change through it changes.
+func (role RoleDefinition) PermissionOf(object uuid.UUID) *ObjectPermission {
+	at := slices.IndexFunc(role.Objects, func(entry ObjectPermission) bool { return entry.Object == object })
+	if at < 0 {
+		return nil
+	}
+	return &role.Objects[at]
 }
 
 // sectionCondition says whether an object gives a command its kind gives
