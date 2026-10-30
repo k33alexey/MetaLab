@@ -27,8 +27,10 @@
    nothing; a panel of the list «Описание панели»: its name, and «Отображение»
    of the panel of sections. The menu of a row: Добавить, Изменить, Удалить;
    up, down; «Перейти» (F12) - the panel in the list becomes current;
-   «Свойства». «Добавить» on a panel is unavailable until the prototype's
-   place for it is shot (question of series 2.649). A panel of the list not
+   «Свойства». «Добавить» at a panel puts the new element before it - on
+   its side, or in its group, where «Тип элемента» offers the panel alone
+   (dosyomka-2649/02-09). A project writing no interface shows the default
+   one (metadata.DefaultClientInterface). A panel of the list not
    placed is dragged onto a group of the tree: it stands at the end of the
    group, current (series-2.595/71); a placed one is not dragged, and a side
    and a panel take no drop - not shot (questions of series 2.667).
@@ -84,9 +86,9 @@ function createClientInterfaceEditor(host, around) {
   const placedMark = id => placed.has(id) ? Object.assign(node('span', undefined, 'client-interface-placed'), {title: 'Размещена'}) : undefined;
 
   async function add() {
-    const row = currentRow();
-    if (row.kind === 'panel') return;
-    const kind = await chooseFromList({title: 'Тип элемента', items: [['add-panel', 'Стандартная панель'], ['add-group', 'Группа']], help: 'client-interface-element-type'});
+    const row = currentRow(), inGroup = row.kind === 'panel' && row.depth > 1;
+    const items = [['add-panel', 'Стандартная панель'], ...(inGroup ? [] : [['add-group', 'Группа']])];
+    const kind = await chooseFromList({title: 'Тип элемента', items, help: 'client-interface-element-type'});
     if (!kind) return;
     const edited = await edit(kind);
     if (!edited) return;
@@ -163,7 +165,7 @@ function createClientInterfaceEditor(host, around) {
   function menu(event) {
     const row = currentRow(), element = row.kind !== 'side';
     showContextMenu(event, [
-      ['Добавить', add, row.kind !== 'panel', 'Ins', 'add'],
+      ['Добавить', add, true, 'Ins', 'add'],
       ['Изменить', () => { palette = 'tree'; showPalette(); }, true, 'F2', 'change'],
       ['Удалить', remove, element, 'Del', 'delete'],
       null,
@@ -180,7 +182,7 @@ function createClientInterfaceEditor(host, around) {
     const row = currentRow(), element = row.kind !== 'side';
     const block = node('div', undefined, 'client-interface-tree');
     const panel = windowPanel([
-      panelButton('add', 'Добавить (Ins)', row.kind !== 'panel', add),
+      panelButton('add', 'Добавить (Ins)', true, add),
       panelButton('change', 'Изменить текущий элемент (F2)', true, () => { palette = 'tree'; showPalette(); }),
       panelButton('delete', 'Удалить текущий (Del)', element, remove),
       panelButton('move-up', 'Переместить вверх', element && row.index > 0, () => shift(-1)),

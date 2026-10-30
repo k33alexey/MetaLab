@@ -86,7 +86,9 @@ func (workspace *Workspace) readClientInterfaceLocked() (ClientInterfaceWindow, 
 	if err != nil {
 		return ClientInterfaceWindow{}, err
 	}
-	window := ClientInterfaceWindow{Panels: metadata.StandardPanels, Palettes: clientInterfacePalettes}
+	// A project whose root writes no interface shows the platform's default
+	// one, written only when the window saves an edit of it.
+	window := ClientInterfaceWindow{Panels: metadata.StandardPanels, Palettes: clientInterfacePalettes, Value: metadata.DefaultClientInterface()}
 	if loaded.ClientInterface != nil {
 		window.Value = *loaded.ClientInterface
 	}
@@ -98,8 +100,10 @@ func (workspace *Workspace) readClientInterfaceLocked() (ClientInterfaceWindow, 
 }
 
 // SaveClientInterface writes the interface the window holds, at the revision
-// read (saveRootDescription).
+// read (saveRootDescription), defining every panel of the platform as the
+// prototype's file does (DefineStandardPanels).
 func (workspace *Workspace) SaveClientInterface(value metadata.ClientInterface, expectedRevision string) (ClientInterfaceWindow, error) {
+	value.DefineStandardPanels()
 	return saveRootDescription(workspace, project.ClientInterfaceFile, value, expectedRevision, workspace.readClientInterfaceLocked)
 }
 

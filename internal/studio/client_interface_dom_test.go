@@ -168,10 +168,10 @@ func TestTheClientInterfaceWindowIsThePrototypes(t *testing.T) {
 	expect("opened", steps.Opened, []string{"Верх *", "Группа", "", "Панель открытых", "Низ", "Лево", "Группа", "Панель разделов", "Право"})
 	expect("the list", steps.List, []string{"Панель разделов ■", "Панель избранного", "Панель истории", "Панель открытых ■", "Панель функций текущего раздела"})
 	expect("the panel at a side", steps.AtSide, []string{"Добавить (Ins)", "Изменить текущий элемент (F2)", "Удалить текущий (Del) -", "Переместить вверх -", "Переместить вниз -"})
-	expect("the panel at a panel", steps.AtPanel, []string{"Добавить (Ins) -", "Изменить текущий элемент (F2)", "Удалить текущий (Del)", "Переместить вверх", "Переместить вниз -"})
-	expect("the menu of a row", steps.Menu, []string{"ДобавитьIns -", "ИзменитьF2", "УдалитьDel", "Переместить вверхCmd+Shift+Up", "Переместить внизCmd+Shift+Down -", "ПерейтиF12", "СвойстваOption+Enter"})
+	expect("the panel at a panel", steps.AtPanel, []string{"Добавить (Ins)", "Изменить текущий элемент (F2)", "Удалить текущий (Del)", "Переместить вверх", "Переместить вниз -"})
+	expect("the menu of a row", steps.Menu, []string{"ДобавитьIns", "ИзменитьF2", "УдалитьDel", "Переместить вверхCmd+Shift+Up", "Переместить внизCmd+Shift+Down -", "ПерейтиF12", "СвойстваOption+Enter"})
 	expect("up", steps.Up, []string{"Верх", "Группа", "Панель открытых *", "", "Низ", "Лево", "Группа", "Панель разделов", "Право"})
-	expect("at the top of the group", steps.AtFirst, []string{"Добавить (Ins) -", "Изменить текущий элемент (F2)", "Удалить текущий (Del)", "Переместить вверх -", "Переместить вниз"})
+	expect("at the top of the group", steps.AtFirst, []string{"Добавить (Ins)", "Изменить текущий элемент (F2)", "Удалить текущий (Del)", "Переместить вверх -", "Переместить вниз"})
 	expect("«Тип элемента»", steps.Type, []string{"Тип элемента", "Стандартная панель *", "Группа"})
 	expect("added to the group", steps.Added, []string{"Верх", "Группа", "Панель открытых", "", "Стандартная панель *", "Низ", "Лево", "Группа", "Панель разделов", "Право"})
 	expect("its palette", steps.AddedPalette, []string{"Свойства: Стандартная панель", "Стандартная панель: Не выбрана"})
@@ -292,4 +292,111 @@ func TestAPanelDraggedFromTheListStandsAtTheEndOfAGroup(t *testing.T) {
 	expect("nothing taken by a side or a panel", steps.NotTaken, dropped)
 	expect("a placed panel not taken", steps.PlacedNotTaken, dropped)
 	expect("changed", steps.Dirty, true)
+}
+
+// clientInterfaceDefaultWalk opens the window on a project writing no
+// interface, then adds before the current rows: a panel at the panel of
+// functions, a group at the panel of sections, a panel into that group and
+// a panel at that panel - reading «Тип элемента» there - and saves.
+const clientInterfaceDefaultWalk = `(async () => {
+  const studio = window.__studio, steps = {};
+  steps.errors = []; window.addEventListener('unhandledrejection', event => steps.errors.push(String(event.reason?.stack || event.reason))); window.addEventListener('error', event => steps.errors.push(String(event.message)));
+  const settle = () => new Promise(resolve => setTimeout(resolve, 120)).then(() => studio.settle());
+  await settle();
+  document.querySelector('#tree summary').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 10, clientY: 10})); await settle();
+  [...document.querySelectorAll('.context-menu .context-menu-item')].find(item => item.textContent.includes('Открыть интерфейс клиентского приложения')).click(); await settle();
+  const host = document.querySelector('#client-interface');
+  const rows = () => [...host.querySelectorAll('.client-interface-row')].map(row => row.textContent + (row.classList.contains('current') ? ' *' : ''));
+  const listed = () => [...host.querySelectorAll('.client-interface-list .object-window-list-row')].map(row => row.textContent + (row.querySelector('.client-interface-placed') ? ' ■' : ''));
+  const row = (text, at = 0) => [...host.querySelectorAll('.client-interface-row')].filter(item => item.textContent === text)[at];
+  const pick = async (text, at) => { row(text, at).dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); await settle(); };
+  const dialog = () => document.querySelector('dialog[open]');
+  const types = () => [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent);
+  const add = async kind => {
+    [...host.querySelectorAll('.client-interface-tree .object-window-panel button')].find(item => item.title === 'Добавить (Ins)').click(); await settle();
+    const offered = types();
+    [...dialog().querySelectorAll('.object-window-list-row')].find(item => item.textContent === kind).click(); await settle();
+    [...dialog().querySelectorAll('button')].find(item => item.textContent === 'OK').click(); await settle();
+    return offered;
+  };
+  steps.opened = rows();
+  steps.list = listed();
+  steps.clean = document.querySelector('#save').disabled;
+  await pick('Панель функций текущего раздела');
+  steps.atSidePanel = await add('Стандартная панель');
+  steps.panelBefore = rows();
+  await pick('Панель разделов');
+  await add('Группа');
+  steps.groupBefore = rows();
+  await add('Стандартная панель');
+  steps.atGroupPanel = await add('Стандартная панель');
+  steps.inGroupBefore = rows();
+  document.querySelector('#save').click(); await settle();
+  steps.saved = document.querySelector('#save').disabled;
+  return steps;
+})()`
+
+// A project writing no interface shows the platform's default one - at the
+// top the panel of sections and the panel of functions of the current
+// section on the side itself - unchanged until edited; «Добавить» at an
+// element puts the new one before it, «Тип элемента» offering the panel
+// alone at a panel of a group; the file written defines the five panels of
+// the platform (konfiguraciya.md, «Досъёмка 29.10.2026, ночь»;
+// dosyomka-2649/01-09). Defects caught: an empty window for a project with
+// no file, the window changed by opening it, the new element put after the
+// current or at the end, a group offered into a group, the definitions of
+// the panels not placed left out of the file.
+func TestTheDefaultClientInterfaceAndAddingBeforeTheCurrent(t *testing.T) {
+	root := copyDemoProjectForStudioTest(t)
+	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
+	result, err := browser.evaluate(ctx, page, clientInterfaceDefaultWalk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps struct {
+		Opened, List, AtSidePanel, PanelBefore, GroupBefore, AtGroupPanel, InGroupBefore []string
+		Clean, Saved                                                                     bool
+		Errors                                                                           []string
+	}
+	if err := json.Unmarshal(result, &steps); err != nil {
+		t.Fatalf("the walk answered %s: %v", result, err)
+	}
+	expect := func(what string, got, want any) {
+		t.Helper()
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
+		}
+	}
+	expect("the errors of the page", steps.Errors, []string{})
+	expect("opened", steps.Opened, []string{"Верх *", "Панель разделов", "Панель функций текущего раздела", "Низ", "Лево", "Право"})
+	expect("the list", steps.List, []string{"Панель разделов ■", "Панель избранного", "Панель истории", "Панель открытых", "Панель функций текущего раздела ■"})
+	expect("not changed by opening", steps.Clean, true)
+	expect("«Тип элемента» at a panel of a side", steps.AtSidePanel, []string{"Стандартная панель", "Группа"})
+	expect("a panel before a panel of the side", steps.PanelBefore, []string{"Верх", "Панель разделов", "Стандартная панель *", "Панель функций текущего раздела", "Низ", "Лево", "Право"})
+	expect("a group before a panel of the side", steps.GroupBefore, []string{"Верх", "Группа *", "Панель разделов", "Стандартная панель", "Панель функций текущего раздела", "Низ", "Лево", "Право"})
+	expect("«Тип элемента» at a panel of a group", steps.AtGroupPanel, []string{"Стандартная панель"})
+	expect("a panel before a panel of the group", steps.InGroupBefore, []string{"Верх", "Группа", "Стандартная панель *", "Стандартная панель", "Панель разделов", "Стандартная панель", "Панель функций текущего раздела", "Низ", "Лево", "Право"})
+	expect("saved", steps.Saved, true)
+	file, err := os.Open(filepath.Join(root, project.ClientInterfaceFile))
+	if err != nil {
+		t.Fatalf("the interface was not written: %v", err)
+	}
+	defer file.Close()
+	read, err := metadata.DecodeRootDescription(project.ClientInterfaceFile, file)
+	if err != nil {
+		t.Fatalf("the interface written is not read: %v", err)
+	}
+	value := read.(metadata.ClientInterface)
+	var defined []string
+	for _, panel := range value.Panels {
+		defined = append(defined, panel.ID.String())
+	}
+	expect("the panels defined", defined, []string{"b553047f-c9aa-4157-978d-448ecad24248", "13322b22-3960-4d68-93a6-fe2dd7f28ca3",
+		"c933ac92-92cd-459d-81cc-e0c8a83ced99", "cbab57f2-a0f3-4f0a-89ea-4cb19570ab75", "b2735bd3-d822-4430-ba59-c9e869693b24"})
+	if len(value.Top) != 4 || value.Top[0].ID == nil || len(value.Top[0].Items) != 2 || value.Top[1].Panel == nil || value.Top[1].ID == nil ||
+		value.Top[1].Panel.String() != "b553047f-c9aa-4157-978d-448ecad24248" || value.Top[3].Panel.String() != "b2735bd3-d822-4430-ba59-c9e869693b24" {
+		t.Errorf("the top was written as %+v", value.Top)
+	}
 }

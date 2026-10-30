@@ -8,6 +8,7 @@ package behavior
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -103,11 +104,13 @@ func withPath(place ClientInterfacePlace, path ...int) ClientInterfacePlace {
 }
 
 // AddClientInterfacePanel adds a standard panel not yet chosen («Стандартная
-// панель: Не выбрана», metadata.PanelID): on a side it
-// stands on the side itself, after its elements; on a group, in a nameless
+// панель: Не выбрана», metadata.PanelID) where the prototype puts it
+// (konfiguraciya.md, «Досъёмка 29.10.2026, ночь»; dosyomka-2649/02-07): at
+// a side, on the side itself after its elements; at a group, in a nameless
 // group of its own at the end of the group (export after the edit of
-// 29.10.2026). Every panel added gets an identifier of its own, as the
-// prototype gives one. Answers where the panel stands.
+// 29.10.2026); at a panel, before it - on its side, or in its group in a
+// nameless group of its own. Every panel added gets an identifier of its
+// own, as the prototype gives one. Answers where the panel stands.
 func AddClientInterfacePanel(value *metadata.ClientInterface, at ClientInterfacePlace) (ClientInterfacePlace, error) {
 	panel := metadata.ClientInterfaceItem{ID: newID(), Panel: &metadata.PanelID{}}
 	if len(at.Path) == 0 {
@@ -122,24 +125,50 @@ func AddClientInterfacePanel(value *metadata.ClientInterface, at ClientInterface
 	if err != nil {
 		return ClientInterfacePlace{}, err
 	}
-	group := &(*list)[index]
-	if group.Panel != nil || group.ID == nil {
-		return ClientInterfacePlace{}, fmt.Errorf("a panel is added to a side or a group")
+	if item := &(*list)[index]; item.Panel == nil {
+		if item.ID == nil {
+			return ClientInterfacePlace{}, fmt.Errorf("a panel is added to a side, a group or a panel")
+		}
+		item.Items = append(item.Items, metadata.ClientInterfaceItem{Items: []metadata.ClientInterfaceItem{panel}})
+		return withPath(at, len(item.Items)-1, 0), nil
 	}
-	group.Items = append(group.Items, metadata.ClientInterfaceItem{Items: []metadata.ClientInterfaceItem{panel}})
-	return withPath(at, len(group.Items)-1, 0), nil
+	// At a panel: before what stands for it - itself on a side, its nameless
+	// group in a group.
+	before := unit(value, at)
+	list, index, _ = container(value, before)
+	parent := ClientInterfacePlace{Side: at.Side, Path: before.Path[:len(before.Path)-1]}
+	if len(before.Path) == len(at.Path) && len(at.Path) == 1 {
+		*list = slices.Insert(*list, index, panel)
+		return withPath(parent, index), nil
+	}
+	*list = slices.Insert(*list, index, metadata.ClientInterfaceItem{Items: []metadata.ClientInterfaceItem{panel}})
+	return withPath(parent, index, 0), nil
 }
 
-// AddClientInterfaceGroup adds a group at the end of the side of at, of an
-// identifier of its own (series-2.595/54; konfiguraciya.md: «группа — в
-// конец стороны»). Answers where it stands.
+// AddClientInterfaceGroup adds a group of an identifier of its own: at a
+// side, at the end of the side (series-2.595/54); at a group or a panel of
+// the side, before it on the side (dosyomka-2649/08, 09). A group goes into
+// no group: at a panel of a group «Тип элемента» offers the panel alone
+// (dosyomka-2649/05). Answers where it stands.
 func AddClientInterfaceGroup(value *metadata.ClientInterface, at ClientInterfacePlace) (ClientInterfacePlace, error) {
 	list := side(value, at.Side)
 	if list == nil {
 		return ClientInterfacePlace{}, errNoClientInterfaceElement
 	}
-	*list = append(*list, metadata.ClientInterfaceItem{ID: newID()})
-	return ClientInterfacePlace{Side: at.Side, Path: []int{len(*list) - 1}}, nil
+	group := metadata.ClientInterfaceItem{ID: newID()}
+	if len(at.Path) == 0 {
+		*list = append(*list, group)
+		return ClientInterfacePlace{Side: at.Side, Path: []int{len(*list) - 1}}, nil
+	}
+	if _, _, err := container(value, at); err != nil {
+		return ClientInterfacePlace{}, err
+	}
+	before := unit(value, at)
+	if len(before.Path) != 1 {
+		return ClientInterfacePlace{}, fmt.Errorf("a group is added to a side, before a group or a panel of the side")
+	}
+	*list = slices.Insert(*list, before.Path[0], group)
+	return before, nil
 }
 
 // RemoveClientInterfaceElement deletes the element at place - a panel with
@@ -213,6 +242,9 @@ func DropClientInterfacePanel(value *metadata.ClientInterface, group ClientInter
 	}
 	if PlacedClientInterfacePanels(*value)[panel] {
 		return ClientInterfacePlace{}, fmt.Errorf("the panel stands in the interface already")
+	}
+	if list, index, err := container(value, group); err != nil || (*list)[index].Panel != nil || (*list)[index].ID == nil {
+		return ClientInterfacePlace{}, fmt.Errorf("a panel is dropped onto a group")
 	}
 	at, err := AddClientInterfacePanel(value, group)
 	if err != nil {

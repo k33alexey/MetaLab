@@ -81,15 +81,54 @@ func TestAPanelAndAGroupAreAddedWhereThePrototypePutsThem(t *testing.T) {
 	if err != nil || len(at.Path) != 1 || at.Path[0] != 0 || len(value.Right) != 1 || value.Right[0].Panel == nil || len(value.Right[0].Items) != 0 {
 		t.Fatalf("the panel of the side does not stand on the side: %+v %+v %v", at, value.Right, err)
 	}
-	at, err = AddClientInterfaceGroup(&value, place("left", 0))
+	at, err = AddClientInterfaceGroup(&value, place("left"))
 	if err != nil || len(at.Path) != 1 || at.Path[0] != 1 || value.Left[1].ID == nil || value.Left[1].Panel != nil {
 		t.Fatalf("the group does not stand at the end of the side: %+v %+v %v", at, value.Left, err)
 	}
-	if _, err := AddClientInterfacePanel(&value, place("top", 0, 1, 0)); err == nil {
-		t.Fatal("a panel was added to a panel")
-	}
 	if _, err := AddClientInterfacePanel(&value, place("middle")); err == nil {
 		t.Fatal("a panel was added to a side the window has not")
+	}
+	if issues := metadataIssues(value); issues != "" {
+		t.Fatalf("what was added is refused by the model: %s", issues)
+	}
+}
+
+// «Добавить» at an element puts the new one before it (konfiguraciya.md,
+// «Досъёмка 29.10.2026, ночь»; dosyomka-2649/02-09): a panel at a panel of a
+// side - before it on the side, bare; at a panel of a group - before it in
+// the group, in a nameless group of its own; a group at a group or a panel
+// of a side - before it on the side; a group at a panel of a group is
+// refused, as «Тип элемента» offers it no group there. Defects caught: the
+// new one put after the current or at the end, a panel of a side wrapped, a
+// panel of a group left bare, a group put into a group, the place answered
+// not the new one's.
+func TestWhatIsAddedAtAnElementStandsBeforeIt(t *testing.T) {
+	value := metadata.ClientInterface{Top: []metadata.ClientInterfaceItem{panelItem(sectionsPanel), panelItem(openPanel)}}
+	at, err := AddClientInterfacePanel(&value, place("top", 1))
+	if err != nil || len(at.Path) != 1 || at.Path[0] != 1 || len(value.Top) != 3 || value.Top[1].Panel == nil || value.Top[1].Panel.Chosen() ||
+		*value.Top[2].Panel != metadata.PanelID(openPanel) {
+		t.Fatalf("the panel at a panel of the side stands at %+v: %+v %v", at, value.Top, err)
+	}
+	at, err = AddClientInterfaceGroup(&value, place("top", 0))
+	if err != nil || len(at.Path) != 1 || at.Path[0] != 0 || value.Top[0].ID == nil || value.Top[0].Panel != nil || len(value.Top) != 4 {
+		t.Fatalf("the group at a panel of the side stands at %+v: %+v %v", at, value.Top, err)
+	}
+	value = erpInterface()
+	at, err = AddClientInterfacePanel(&value, place("top", 0, 1, 0))
+	if err != nil || len(at.Path) != 3 || at.Path[0] != 0 || at.Path[1] != 1 || at.Path[2] != 0 {
+		t.Fatalf("the panel at a panel of the group stands at %+v: %v", at, err)
+	}
+	group := value.Top[0].Items
+	if len(group) != 3 || group[1].ID != nil || len(group[1].Items) != 1 || group[1].Items[0].Panel.Chosen() || *group[2].Items[0].Panel != metadata.PanelID(openPanel) {
+		t.Fatalf("the group holds %+v", group)
+	}
+	at, err = AddClientInterfaceGroup(&value, place("left", 0))
+	if err != nil || len(at.Path) != 1 || at.Path[0] != 0 || value.Left[0].ID == nil || len(value.Left[0].Items) != 0 || len(value.Left[1].Items) != 1 {
+		t.Fatalf("the group at a group stands at %+v: %+v %v", at, value.Left, err)
+	}
+	before := len(value.Top[0].Items)
+	if _, err := AddClientInterfaceGroup(&value, place("top", 0, 1, 0)); err == nil || len(value.Top[0].Items) != before || len(value.Top) != 1 {
+		t.Fatalf("a group was added at a panel of a group: %v %+v", err, value.Top)
 	}
 	if issues := metadataIssues(value); issues != "" {
 		t.Fatalf("what was added is refused by the model: %s", issues)

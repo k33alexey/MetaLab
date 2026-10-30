@@ -178,7 +178,59 @@ var StandardPanels = []StandardPanel{
 	{uuid.MustParse("13322b22-3960-4d68-93a6-fe2dd7f28ca3"), "ПанельИзбранного", "Панель избранного"},
 	{uuid.MustParse("c933ac92-92cd-459d-81cc-e0c8a83ced99"), "ПанельИстории", "Панель истории"},
 	{uuid.MustParse("cbab57f2-a0f3-4f0a-89ea-4cb19570ab75"), "ПанельОткрытых", "Панель открытых"},
-	{uuid.MustParse("b2735bd3-d822-4430-ba59-c9e869693b24"), "ПанельФункцийТекущегоРаздела", "Панель функций текущего раздела"},
+	{CurrentSectionFunctionsPanel, "ПанельФункцийТекущегоРаздела", "Панель функций текущего раздела"},
+}
+
+// CurrentSectionFunctionsPanel is the identifier of the platform's panel of
+// the functions of the current section.
+var CurrentSectionFunctionsPanel = uuid.MustParse("b2735bd3-d822-4430-ba59-c9e869693b24")
+
+// DefaultClientInterface is the interface of a project whose root writes
+// none: the configurator writes no file until the interface is edited, and
+// its window shows at the top the panel of sections and the panel of the
+// functions of the current section, on the side itself, the other sides
+// empty (konfiguraciya.md, «Досъёмка 29.10.2026, ночь»; snapshot
+// dosyomka-2649/01). Studio shows it and the application shows it alike.
+// Each panel gets an identifier of its own, as the prototype gives the two
+// one when it writes the interface first (dosyomka-2649, the export after
+// the edits); every panel of the platform is defined (DefineStandardPanels).
+func DefaultClientInterface() ClientInterface {
+	panel := func(shown uuid.UUID) ClientInterfaceItem {
+		id, chosen := uuid.MustNew(), PanelID(shown)
+		return ClientInterfaceItem{ID: &id, Panel: &chosen}
+	}
+	value := ClientInterface{Top: []ClientInterfaceItem{panel(SectionsPanel), panel(CurrentSectionFunctionsPanel)}}
+	value.DefineStandardPanels()
+	return value
+}
+
+// DefineStandardPanels makes the interface define every panel of the
+// platform, placed or not, as the file the prototype writes does (panelDef
+// of all five, dosyomka-2649, the export after the edits): the panels of
+// the platform in the order of StandardPanels, each keeping its definition
+// - the representation of the panel of sections - where it had one, then
+// the other panels the interface defines (8e10648b… of the exports) in their
+// order.
+func (value *ClientInterface) DefineStandardPanels() {
+	defined := make([]ClientInterfacePanel, 0, len(StandardPanels)+len(value.Panels))
+	standard := map[uuid.UUID]bool{}
+	for _, panel := range StandardPanels {
+		standard[panel.ID] = true
+		definition := ClientInterfacePanel{ID: panel.ID}
+		for _, had := range value.Panels {
+			if had.ID == panel.ID {
+				definition = had
+				break
+			}
+		}
+		defined = append(defined, definition)
+	}
+	for _, had := range value.Panels {
+		if !standard[had.ID] {
+			defined = append(defined, had)
+		}
+	}
+	value.Panels = defined
 }
 
 type homePageColumn struct {
@@ -221,6 +273,11 @@ func validateHomePage(value HomePage) []string {
 
 func validateClientInterface(value ClientInterface) []string {
 	var issues []string
+	// A panel of the platform stands once (owner, 29.10.2026,
+	// METADATA-OBJECTS.md, «Интерфейс корня»: the prototype keeps one twice
+	// and its application shows it once - not repeated); a panel not chosen
+	// may stand anywhere, as many as there are.
+	placed := map[PanelID]string{}
 	var walk func(path string, items []ClientInterfaceItem)
 	walk = func(path string, items []ClientInterfaceItem) {
 		for index, item := range items {
@@ -231,6 +288,11 @@ func validateClientInterface(value ClientInterface) []string {
 			if item.Panel != nil {
 				if len(item.Items) > 0 {
 					issues = append(issues, prefix+" is a panel and holds no items")
+				}
+				if first, twice := placed[*item.Panel]; twice {
+					issues = append(issues, fmt.Sprintf("%s.panel %s stands at %s already", prefix, item.Panel, first))
+				} else if item.Panel.Chosen() {
+					placed[*item.Panel] = prefix
 				}
 				continue
 			}

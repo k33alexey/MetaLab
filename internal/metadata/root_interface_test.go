@@ -178,6 +178,11 @@ func TestRootInterfaceIsCheckedForShape(t *testing.T) {
 			"panels[0].representation belongs to the panel of sections"},
 		"определение панели без идентификатора": {project.ClientInterfaceFile, "panels:\n  - {representation: text}\n",
 			"panels[0].id must be a non-zero UUID"},
+		"панель дважды на разных сторонах": {project.ClientInterfaceFile, "top:\n  - {panel: b553047f-c9aa-4157-978d-448ecad24248}\n" +
+			"left:\n  - {items: [{items: [{panel: b553047f-c9aa-4157-978d-448ecad24248}]}]}\n",
+			"left[0].items[0].items[0].panel b553047f-c9aa-4157-978d-448ecad24248 stands at top[0] already"},
+		"панель дважды в группе": {project.ClientInterfaceFile, "top:\n  - {panel: not-chosen}\n  - {panel: cbab57f2-a0f3-4f0a-89ea-4cb19570ab75}\n" +
+			"  - {panel: cbab57f2-a0f3-4f0a-89ea-4cb19570ab75}\n", "top[2].panel cbab57f2-a0f3-4f0a-89ea-4cb19570ab75 stands at top[1] already"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -267,5 +272,58 @@ func TestAPanelNotChosenIsWrittenAndReadBack(t *testing.T) {
 	answer, err := json.Marshal(value)
 	if err != nil || !strings.Contains(string(answer), `"panel":"not-chosen"`) {
 		t.Fatalf("the panel not chosen is not answered: %s %v", answer, err)
+	}
+}
+
+// Panels not chosen may stand anywhere, as many as there are: the window
+// holds them while it is edited and the application shows none
+// (dosyomka-2649/12, the configurator's check passes two). Defect caught:
+// the refusal of a panel of the platform twice taking the panels not chosen
+// for one panel.
+func TestPanelsNotChosenStandAsManyAsThereAre(t *testing.T) {
+	t.Parallel()
+	root := rootInterfaceProject(t)
+	writeText(t, root, "", project.ClientInterfaceFile, "bottom:\n  - {panel: not-chosen}\n  - {panel: not-chosen}\n"+
+		"  - {items: [{items: [{panel: not-chosen}]}]}\n")
+	if _, err := Load(root); err != nil {
+		t.Fatalf("the panels not chosen were refused: %v", err)
+	}
+}
+
+// The default interface is the prototype's window of a configuration that
+// never wrote one (dosyomka-2649/01): at the top the panel of sections and
+// that of the functions of the current section on the side itself, each of
+// an identifier of its own, the other sides empty, the five panels of the
+// platform defined; the definitions of a file are completed in the order of
+// the export (panelDef), keeping the representation and a panel the platform
+// does not list. Defects caught: the default empty or in a group, panels with
+// no identifier, a definition dropped or its representation lost, the
+// definitions out of the export's order.
+func TestTheDefaultClientInterfaceAndItsDefinitions(t *testing.T) {
+	t.Parallel()
+	value := DefaultClientInterface()
+	if len(value.Top) != 2 || len(value.Left)+len(value.Right)+len(value.Bottom) != 0 {
+		t.Fatalf("the default is %+v", value)
+	}
+	for index, want := range []string{"b553047f-c9aa-4157-978d-448ecad24248", "b2735bd3-d822-4430-ba59-c9e869693b24"} {
+		item := value.Top[index]
+		if item.Panel == nil || item.Panel.String() != want || item.ID == nil || item.ID.IsZero() || len(item.Items) != 0 {
+			t.Errorf("the top[%d] of the default is %+v", index, item)
+		}
+	}
+	if issues := validateClientInterface(value); len(issues) != 0 {
+		t.Errorf("the default is refused: %v", issues)
+	}
+	unknown := uuid.MustParse("8e10648b-f52d-4ec2-b4dd-87de33778d95")
+	file := ClientInterface{Panels: []ClientInterfacePanel{{ID: unknown}, {ID: CurrentSectionFunctionsPanel}, {ID: SectionsPanel, PanelRepresentation: SectionsPanelText}}}
+	file.DefineStandardPanels()
+	var defined []string
+	for _, panel := range file.Panels {
+		defined = append(defined, panel.ID.String()+":"+string(panel.PanelRepresentation))
+	}
+	want := []string{"b553047f-c9aa-4157-978d-448ecad24248:text", "13322b22-3960-4d68-93a6-fe2dd7f28ca3:", "c933ac92-92cd-459d-81cc-e0c8a83ced99:",
+		"cbab57f2-a0f3-4f0a-89ea-4cb19570ab75:", "b2735bd3-d822-4430-ba59-c9e869693b24:", "8e10648b-f52d-4ec2-b4dd-87de33778d95:"}
+	if strings.Join(defined, " ") != strings.Join(want, " ") || len(DefaultClientInterface().Panels) != 5 {
+		t.Errorf("the panels defined are %v, want %v", defined, want)
 	}
 }
