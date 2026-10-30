@@ -78,6 +78,7 @@ type InformationRegisterDefinition struct {
 	Forms              InformationRegisterForms  `yaml:"forms,omitempty"`
 	Commands           []ObjectCommand           `yaml:"commands,omitempty"`
 	Templates          []ObjectTemplate          `yaml:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 func DecodeInformationRegister(source string, reader io.Reader, configuration project.Project) (InformationRegisterDefinition, error) {
@@ -144,6 +145,7 @@ func cloneInformationRegisterDefinition(value InformationRegisterDefinition) Inf
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	value.RecordPresentations = cloneRecordPresentations(value.RecordPresentations)

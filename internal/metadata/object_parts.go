@@ -276,6 +276,9 @@ func declaredFilesOf(catalog *Catalog, id uuid.UUID) objectFiles {
 	if templates := description.FieldByName("Templates"); templates.IsValid() {
 		files.templates = templates.Interface().([]ObjectTemplate)
 	}
+	if order := description.FieldByName("SubordinatesOrder"); order.IsValid() {
+		files.formsOrder = order.Interface().(SubordinatesOrder).Order.Forms
+	}
 	return files
 }
 

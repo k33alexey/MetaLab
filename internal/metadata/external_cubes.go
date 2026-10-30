@@ -77,10 +77,11 @@ type ExternalCube struct {
 	// hang off a reference to the object they describe, and a record of a cube
 	// has none; what the prototype makes of them is a question for a run on
 	// the platform.
-	Characteristics []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	Forms           ExternalCubeForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands        []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates       []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Characteristics   []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	Forms             ExternalCubeForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands          []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates         []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 	// DimensionTables are read from the cube's own folder of them.
 	DimensionTables []ExternalDimensionTable `yaml:"-" json:"dimensionTables,omitempty"`
 }
@@ -147,10 +148,11 @@ type ExternalDimensionTable struct {
 	// dimension table (mdclasses: false).
 	QuickChoice bool `yaml:"quick_choice,omitempty" json:"quickChoice,omitempty"`
 
-	Fields    []ExternalField             `yaml:"fields,omitempty" json:"fields,omitempty"`
-	Forms     ExternalDimensionTableForms `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands  []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Fields            []ExternalField             `yaml:"fields,omitempty" json:"fields,omitempty"`
+	Forms             ExternalDimensionTableForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands          []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates         []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 }
 
 // DecodeExternalCube reads and validates one cube, without its dimension
@@ -342,6 +344,7 @@ func cloneExternalDimensionTable(table ExternalDimensionTable) ExternalDimension
 	table.Fields = cloneExternalFields(table.Fields)
 	table.Commands = cloneObjectCommands(table.Commands)
 	table.Templates = cloneObjectTemplates(table.Templates)
+	table.SubordinatesOrder = table.SubordinatesOrder.clone()
 	return table
 }
 
@@ -369,6 +372,7 @@ func cloneExternalCube(cube ExternalCube) ExternalCube {
 	cube.Characteristics = cloneObjectCharacteristics(cube.Characteristics)
 	cube.Commands = cloneObjectCommands(cube.Commands)
 	cube.Templates = cloneObjectTemplates(cube.Templates)
+	cube.SubordinatesOrder = cube.SubordinatesOrder.clone()
 	tables := make([]ExternalDimensionTable, len(cube.DimensionTables))
 	for index, table := range cube.DimensionTables {
 		tables[index] = cloneExternalDimensionTable(table)

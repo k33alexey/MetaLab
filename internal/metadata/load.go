@@ -1910,6 +1910,8 @@ type objectFiles struct {
 	formSlots []formSlot
 	commands  []ObjectCommand
 	templates []ObjectTemplate
+	// formsOrder is the developer's order of the forms (SubordinatesOrder).
+	formsOrder []uuid.UUID
 	// collections are the folders of this object's own content beside its
 	// forms, commands and templates and the folders of what lies inside it -
 	// the pictures of the route map of a business process.
@@ -1954,7 +1956,7 @@ func (catalog *Catalog) validateObjectFileSources(files objectFiles) error {
 	if err := validateObjectFolderEntries(directory, files.directoryKind, kind, name, modules, collections...); err != nil {
 		return err
 	}
-	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots); err != nil {
+	if err := catalog.indexObjectForms(directory, files.directoryKind, kind, name, files.formSlots, files.formsOrder); err != nil {
 		return err
 	}
 	if err := catalog.validateCommonFormSlots(kind, name, files.formSlots); err != nil {
@@ -2047,7 +2049,10 @@ func findFolded(directory, name string) string {
 // What is recorded is the form's own identifier, because that is what a role,
 // the portal and ML App refer to a form by. The name finds the file; the
 // identifier travels.
-func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, kind, name string, slots []formSlot) error {
+func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, kind, name string, slots []formSlot, order []uuid.UUID) error {
+	if err := validateFormsOrder(order); err != nil {
+		return fmt.Errorf("%s %s %w", kind, name, err)
+	}
 	entries, err := os.ReadDir(filepath.Join(directory, "forms"))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("%s %s forms: %w", kind, name, err)
@@ -2080,6 +2085,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 			return fmt.Errorf("%s %s names %s %s, which it does not keep", kind, name, slot.role(), slot.form)
 		}
 	}
+	catalog.resolveFormsOrder(kind, name, order, found)
 	if len(found) == 0 {
 		return nil
 	}
@@ -2089,7 +2095,7 @@ func (catalog *Catalog) indexObjectForms(directory string, directoryKind Kind, k
 	if catalog.objectForms[directoryKind] == nil {
 		catalog.objectForms[directoryKind] = map[string]objectFormIndex{}
 	}
-	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, kind: kind, forms: found}
+	catalog.objectForms[directoryKind][strings.ToLower(name)] = objectFormIndex{object: name, kind: kind, forms: found, order: order}
 	return nil
 }
 

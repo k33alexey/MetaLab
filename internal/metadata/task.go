@@ -94,6 +94,7 @@ type TaskDefinition struct {
 	Forms              ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 // DecodeTask reads and validates one kind of task.
@@ -229,6 +230,7 @@ func cloneTask(value TaskDefinition) TaskDefinition {
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)

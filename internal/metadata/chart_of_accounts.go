@@ -172,8 +172,9 @@ type ChartOfAccountsDefinition struct {
 	Forms                       ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands                    []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates                   []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
-	Predefined                  []PredefinedAccount    `yaml:"predefined,omitempty" json:"predefined,omitempty"`
-	PredefinedDataUpdate        PredefinedDataUpdate   `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
+	SubordinatesOrder           `yaml:",inline" json:",inline"`
+	Predefined                  []PredefinedAccount  `yaml:"predefined,omitempty" json:"predefined,omitempty"`
+	PredefinedDataUpdate        PredefinedDataUpdate `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
 
 // DecodeChartOfAccounts reads and validates one chart of accounts.
@@ -524,6 +525,7 @@ func cloneChartOfAccounts(value ChartOfAccountsDefinition) ChartOfAccountsDefini
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)

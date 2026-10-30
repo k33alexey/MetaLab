@@ -31,9 +31,10 @@ type ReportDefinition struct {
 	SettingsStorage *uuid.UUID `yaml:"settings_storage,omitempty" json:"settingsStorage,omitempty"`
 	// Forms of a report may be its own or common to the configuration, and
 	// the second is the usual case rather than the exception.
-	Forms     ReportForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Forms             ReportForms      `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands          []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates         []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 }
 
 // ReportForms are the roles a report shows itself through: the report itself,
@@ -63,11 +64,12 @@ type DataProcessorDefinition struct {
 	// list of rows to name - see object_presentation.go.
 	RunningObjectPresentations `yaml:",inline" json:",inline"`
 
-	Attributes []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Forms      SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands   []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates  []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Attributes        []Attribute      `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts        []TablePart      `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Forms             SingleRoleForms  `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands          []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates         []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 }
 
 // DecodeReport reads and validates one report.
@@ -167,6 +169,7 @@ func cloneReport(value ReportDefinition) ReportDefinition {
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.RunningObjectPresentations = cloneRunningObjectPresentations(value.RunningObjectPresentations)
 	return value
 }
@@ -178,6 +181,7 @@ func cloneDataProcessor(value DataProcessorDefinition) DataProcessorDefinition {
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.RunningObjectPresentations = cloneRunningObjectPresentations(value.RunningObjectPresentations)
 	return value
 }

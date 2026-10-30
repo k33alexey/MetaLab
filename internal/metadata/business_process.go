@@ -263,6 +263,7 @@ type BusinessProcessDefinition struct {
 	Forms                 ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands              []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates             []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder     `yaml:",inline" json:",inline"`
 }
 
 // DecodeBusinessProcess reads and validates one business process.
@@ -703,6 +704,7 @@ func cloneBusinessProcess(value BusinessProcessDefinition) BusinessProcessDefini
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)

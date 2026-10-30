@@ -116,6 +116,7 @@ type CalculationRegisterDefinition struct {
 	Forms              RegisterForms                  `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand                `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate               `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 // DecodeCalculationRegister reads and validates one calculation register.
@@ -354,6 +355,7 @@ func cloneCalculationRegister(value CalculationRegisterDefinition) CalculationRe
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value

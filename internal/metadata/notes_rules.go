@@ -75,6 +75,7 @@ const (
 	NoteRestrictionWithoutSample   NoteKind = "restriction-without-sample"
 	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
 	NoteObjectOutsideOrder         NoteKind = "object-outside-order"
+	NoteFormOutsideOrder           NoteKind = "form-outside-order"
 	NoteXDTOContentUnknown         NoteKind = "xdto-content-unknown"
 )
 
@@ -339,6 +340,11 @@ func init() {
 				"объекта добавили мимо Studio. Это не состояние прототипа — его выгрузка пишет все объекты по порядку.",
 			"Объект стоит после названных, среди таких же — по имени; описание корня не меняется, пока порядок не запишет " +
 				"Studio."},
+		NoteKindInfo{NoteFormOutsideOrder,
+			"Форма объекта, порядок форм которого записан в его описании (order.forms), в этом порядке не названа: папку " +
+				"формы добавили мимо Studio. Это не состояние прототипа — он держит все формы объекта в своём порядке.",
+			"Форма стоит после названных, среди таких же — по имени; описание объекта не меняется, пока порядок не запишет " +
+				"Studio."},
 		NoteKindInfo{NoteXDTOContentUnknown,
 			"Атрибут или элемент в содержимом пакета XDTO, которого модель XDTO справки (свойство, тип значения, тип объекта, " +
 				"фасеты) не знает. В проверочных выгрузках таких нет (294 пакета).",
@@ -444,6 +450,7 @@ func init() {
 	noteRules[NoteRestrictionWithoutSample] = noteRestrictionWithoutSample
 	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
 	noteRules[NoteObjectOutsideOrder] = noteObjectOutsideOrder
+	noteRules[NoteFormOutsideOrder] = noteFormOutsideOrder
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan, a

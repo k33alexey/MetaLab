@@ -59,6 +59,7 @@ type AccumulationRegisterDefinition struct {
 	Forms              RegisterForms                   `yaml:"forms,omitempty"`
 	Commands           []ObjectCommand                 `yaml:"commands,omitempty"`
 	Templates          []ObjectTemplate                `yaml:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 func DecodeAccumulationRegister(source string, reader io.Reader, configuration project.Project) (AccumulationRegisterDefinition, error) {
@@ -133,6 +134,7 @@ func cloneAccumulationRegisterDefinition(value AccumulationRegisterDefinition) A
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	value.AdditionalIndexes = cloneAdditionalIndexes(value.AdditionalIndexes)

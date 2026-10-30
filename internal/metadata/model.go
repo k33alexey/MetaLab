@@ -434,6 +434,7 @@ type Enumeration struct {
 	Forms               EnumerationForms    `yaml:"forms,omitempty"`
 	Commands            []ObjectCommand     `yaml:"commands,omitempty"`
 	Templates           []ObjectTemplate    `yaml:"templates,omitempty"`
+	SubordinatesOrder   `yaml:",inline" json:",inline"`
 }
 
 type DefinedTypeObject struct {
@@ -637,6 +638,7 @@ type CatalogDefinition struct {
 	Forms              HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 	Predefined         []PredefinedCatalogItem `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	// PredefinedDataUpdate decides what happens to the rows behind Predefined
 	// when the configuration is updated - see predefined_data_update.go.
@@ -2287,6 +2289,7 @@ func cloneEnumeration(value Enumeration) Enumeration {
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	return value
@@ -2305,6 +2308,7 @@ func cloneCatalogDefinition(value CatalogDefinition) CatalogDefinition {
 	value.Predefined = slices.Clone(value.Predefined)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)

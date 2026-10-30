@@ -49,7 +49,8 @@ type SettingsStorageDefinition struct {
 	Forms SettingsStorageForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	// Templates are the storage's own templates - what its forms print the
 	// saved settings with.
-	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	Templates         []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 }
 
 // DecodeSettingsStorage reads and validates one settings storage.
@@ -65,6 +66,7 @@ func DecodeSettingsStorage(source string, reader io.Reader, configuration projec
 func cloneSettingsStorage(value SettingsStorageDefinition) SettingsStorageDefinition {
 	value.Title = cloneTitle(value.Title)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	return value
 }
 

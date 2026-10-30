@@ -55,6 +55,7 @@ type DocumentJournalDefinition struct {
 	Forms              SingleRoleForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand     `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate    `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 // DecodeDocumentJournal reads and validates one journal.
@@ -114,6 +115,7 @@ func cloneDocumentJournal(value DocumentJournalDefinition) DocumentJournalDefini
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.ListPresentations = cloneListPresentations(value.ListPresentations)
 	return value

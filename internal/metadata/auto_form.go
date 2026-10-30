@@ -153,6 +153,8 @@ type objectFormIndex struct {
 	// kind is the word messages name the object's kind by.
 	kind  string
 	forms map[string]objectFormRef
+	// order is the developer's order of the forms (SubordinatesOrder).
+	order []uuid.UUID
 }
 
 // objectFormRef is one form of an object: the name its folder was called, and
@@ -165,19 +167,25 @@ type objectFormRef struct {
 	path string
 }
 
-// ObjectFormNames returns the names of the forms one object keeps, as written
-// and sorted. The folder is the list of forms, so this is the only answer to
-// "what forms does this object have".
+// ObjectFormNames returns the names of the forms one object keeps, as written,
+// in the developer's order (orderedForms). The folder is the list of forms,
+// so this is the only answer to "what forms does this object have" - the
+// tree, the window of the object and the windows choosing a form show them
+// in this order. A project that does not read (nil) has no order: the tree
+// shows its forms as their folders lie.
 func (catalog *Catalog) ObjectFormNames(objectKind Kind, object string) []string {
+	if catalog == nil {
+		return nil
+	}
 	index, ok := catalog.objectForms[objectKind][strings.ToLower(object)]
 	if !ok {
 		return nil
 	}
-	result := make([]string, 0, len(index.forms))
-	for _, form := range index.forms {
+	forms := index.orderedForms()
+	result := make([]string, 0, len(forms))
+	for _, form := range forms {
 		result = append(result, form.name)
 	}
-	sort.Strings(result)
 	return result
 }
 

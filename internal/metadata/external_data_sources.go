@@ -183,9 +183,10 @@ type ExternalTable struct {
 	Forms           ExternalTableForms     `yaml:"forms,omitempty" json:"forms,omitempty"`
 	// Commands and Templates are the table's own, as a catalog's are: each
 	// keeps a folder in the table's folder.
-	Commands  []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
-	Fields    []ExternalField  `yaml:"fields,omitempty" json:"fields,omitempty"`
+	Commands          []ObjectCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates         []ObjectTemplate `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
+	Fields            []ExternalField `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
 // ExternalField is one field of a table of a source.
@@ -592,6 +593,7 @@ func cloneExternalTable(table ExternalTable) ExternalTable {
 	table.Characteristics = cloneObjectCharacteristics(table.Characteristics)
 	table.Commands = cloneObjectCommands(table.Commands)
 	table.Templates = cloneObjectTemplates(table.Templates)
+	table.SubordinatesOrder = table.SubordinatesOrder.clone()
 	if table.Hierarchy != nil {
 		hierarchy := *table.Hierarchy
 		table.Hierarchy = &hierarchy

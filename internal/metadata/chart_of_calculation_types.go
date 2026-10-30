@@ -83,15 +83,16 @@ type ChartOfCalculationTypesDefinition struct {
 	ActionPeriodUse bool           `yaml:"action_period_use,omitempty" json:"actionPeriodUse,omitempty"`
 	BaseDependency  BaseDependency `yaml:"base_dependency,omitempty" json:"baseDependency,omitempty"`
 	// BaseCharts are the charts a base may be taken from, this one included.
-	BaseCharts           []uuid.UUID                 `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
-	Attributes           []Attribute                 `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts           []TablePart                 `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics      []ObjectCharacteristic      `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	StandardAttributes   []StandardAttribute         `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	StandardTableParts   []StandardTablePart         `yaml:"standard_table_parts,omitempty" json:"standardTableParts,omitempty"`
-	Forms                ObjectForms                 `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands             []ObjectCommand             `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates            []ObjectTemplate            `yaml:"templates,omitempty" json:"templates,omitempty"`
+	BaseCharts           []uuid.UUID            `yaml:"base_charts,omitempty" json:"baseCharts,omitempty"`
+	Attributes           []Attribute            `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts           []TablePart            `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics      []ObjectCharacteristic `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes   []StandardAttribute    `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	StandardTableParts   []StandardTablePart    `yaml:"standard_table_parts,omitempty" json:"standardTableParts,omitempty"`
+	Forms                ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands             []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates            []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder    `yaml:",inline" json:",inline"`
 	Predefined           []PredefinedCalculationType `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	PredefinedDataUpdate PredefinedDataUpdate        `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
@@ -213,6 +214,7 @@ func cloneChartOfCalculationTypes(value ChartOfCalculationTypesDefinition) Chart
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.StandardTableParts = cloneStandardTableParts(value.StandardTableParts)

@@ -55,7 +55,8 @@ type FilterCriterionDefinition struct {
 	Forms               SingleRoleForms `yaml:"forms,omitempty" json:"forms,omitempty"`
 	// A criterion has forms and commands and nothing else: it prints nothing,
 	// so it keeps no templates.
-	Commands []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Commands          []ObjectCommand `yaml:"commands,omitempty" json:"commands,omitempty"`
+	SubordinatesOrder `yaml:",inline" json:",inline"`
 }
 
 // DecodeFilterCriterion reads and validates one filter criterion.
@@ -114,6 +115,7 @@ func cloneFilterCriterion(value FilterCriterionDefinition) FilterCriterionDefini
 		}
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	return value
 }
 

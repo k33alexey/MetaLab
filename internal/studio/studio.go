@@ -2,6 +2,7 @@
 package studio
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"encoding/json"
@@ -1151,6 +1152,7 @@ func (workspace *Workspace) objectFolderNodes(directory, relative, nodeKind, kin
 		// filter no templates, a storage of settings no commands.
 		layout := kinds.Must(kinds.Kind(kind)).Layout()
 		if layout.Forms {
+			formNodesInOrder(owned.forms, loaded.ObjectFormNames(kinds.Kind(kind), entry.Name()))
 			children = append(children, Node{ID: id.String() + ":forms", Kind: "group", Icon: formIcon, Title: "Формы", Children: owned.forms})
 		}
 		// A command shows the module that runs it, because that is the whole
@@ -1244,6 +1246,17 @@ func objectOwnedFileNodes(objectDirectory, objectRelative, kind string, collecti
 	sort.Slice(owned.forms, func(left, right int) bool { return owned.forms[left].Path < owned.forms[right].Path })
 	sort.Slice(owned.commands, func(left, right int) bool { return owned.commands[left].Title < owned.commands[right].Title })
 	return owned, nil
+}
+
+// formNodesInOrder puts the nodes of the forms of an object in the
+// developer's order the model keeps (Catalog.ObjectFormNames), the order of
+// the window of the object and of the windows choosing a form too.
+func formNodesInOrder(forms []Node, names []string) {
+	place := make(map[string]int, len(names))
+	for index, name := range names {
+		place[name] = index
+	}
+	slices.SortStableFunc(forms, func(left, right Node) int { return cmp.Compare(place[left.Title], place[right.Title]) })
 }
 
 // objectFormNodes lists the managed forms of one object. A form is a folder

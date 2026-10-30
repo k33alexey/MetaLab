@@ -87,6 +87,7 @@ type DocumentDefinition struct {
 	Forms              ObjectForms            `yaml:"forms,omitempty" json:"forms,omitempty"`
 	Commands           []ObjectCommand        `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Templates          []ObjectTemplate       `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder  `yaml:",inline" json:",inline"`
 }
 
 func DecodeDocument(source string, reader io.Reader, configuration project.Project) (DocumentDefinition, error) {
@@ -386,6 +387,7 @@ func cloneDocumentDefinition(value DocumentDefinition) DocumentDefinition {
 	value.Forms = cloneFormSet(value.Forms)
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.Movements = slices.Clone(value.Movements)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)

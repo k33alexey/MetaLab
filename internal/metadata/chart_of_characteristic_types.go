@@ -58,14 +58,15 @@ type ChartOfCharacteristicTypesDefinition struct {
 	// AdditionalValues is the catalog holding values that fit no existing
 	// type - a characteristic whose values are a list the user writes
 	// themselves has nowhere else to put them.
-	AdditionalValues     *uuid.UUID                 `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
-	Attributes           []Attribute                `yaml:"attributes,omitempty" json:"attributes,omitempty"`
-	TableParts           []TablePart                `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
-	Characteristics      []ObjectCharacteristic     `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
-	StandardAttributes   []StandardAttribute        `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
-	Forms                HierarchicalObjectForms    `yaml:"forms,omitempty" json:"forms,omitempty"`
-	Commands             []ObjectCommand            `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Templates            []ObjectTemplate           `yaml:"templates,omitempty" json:"templates,omitempty"`
+	AdditionalValues     *uuid.UUID              `yaml:"additional_values,omitempty" json:"additionalValues,omitempty"`
+	Attributes           []Attribute             `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+	TableParts           []TablePart             `yaml:"table_parts,omitempty" json:"tableParts,omitempty"`
+	Characteristics      []ObjectCharacteristic  `yaml:"characteristics,omitempty" json:"characteristics,omitempty"`
+	StandardAttributes   []StandardAttribute     `yaml:"standard_attributes,omitempty" json:"standardAttributes,omitempty"`
+	Forms                HierarchicalObjectForms `yaml:"forms,omitempty" json:"forms,omitempty"`
+	Commands             []ObjectCommand         `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Templates            []ObjectTemplate        `yaml:"templates,omitempty" json:"templates,omitempty"`
+	SubordinatesOrder    `yaml:",inline" json:",inline"`
 	Predefined           []PredefinedCharacteristic `yaml:"predefined,omitempty" json:"predefined,omitempty"`
 	PredefinedDataUpdate PredefinedDataUpdate       `yaml:"predefined_data_update,omitempty" json:"predefinedDataUpdate,omitempty"`
 }
@@ -198,6 +199,7 @@ func cloneChartOfCharacteristicTypes(value ChartOfCharacteristicTypesDefinition)
 	}
 	value.Commands = cloneObjectCommands(value.Commands)
 	value.Templates = cloneObjectTemplates(value.Templates)
+	value.SubordinatesOrder = value.SubordinatesOrder.clone()
 	value.Characteristics = cloneObjectCharacteristics(value.Characteristics)
 	value.StandardAttributes = cloneStandardAttributes(value.StandardAttributes)
 	value.Presentations = clonePresentations(value.Presentations)
