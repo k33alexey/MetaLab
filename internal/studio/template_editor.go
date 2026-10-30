@@ -36,6 +36,9 @@ type objectHead struct {
 	Languages       []project.Language `json:"languages"`
 	DefaultLanguage string             `json:"defaultLanguage"`
 	KindTitle       string             `json:"kindTitle"`
+	// Project is the name of the project, the root of the tree of the
+	// window «Подсистемы» of the field «Подсистемы».
+	Project string `json:"project"`
 	// MemberWord names the object in the captions of its pages «Подсистемы»
 	// and «Функциональные опции» (kinds.Descriptor.MemberWord).
 	MemberWord string             `json:"memberWord"`
@@ -67,7 +70,7 @@ func readObjectDescription[T any](workspace *Workspace, kind metadata.Kind, rela
 	if err != nil {
 		return none, objectHead{}, err
 	}
-	return value, objectHead{Path: relative, Revision: file.Revision, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+	return value, objectHead{Path: relative, Revision: file.Revision, Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, Project: configuration.Name,
 		KindTitle: kinds.Must(kind).Title, MemberWord: kinds.Must(kind).MemberWord(), Palette: kinds.Must(kind).Palette(), Pages: kinds.Must(kind).WindowPages(), WindowRows: kinds.Must(kind).WindowRows()}, nil
 }
 

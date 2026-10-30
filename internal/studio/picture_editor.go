@@ -40,6 +40,9 @@ type PictureEditorSource struct {
 	Languages       []project.Language               `json:"languages"`
 	DefaultLanguage string                           `json:"defaultLanguage"`
 	KindTitle       string                           `json:"kindTitle"`
+	// Project is the name of the project, the root of the window
+	// «Подсистемы» of the field «Подсистемы».
+	Project string `json:"project"`
 	// Palette is the tabs of the palette of a picture and their rows, the
 	// kind's (kinds.Palette).
 	Palette []kinds.PaletteTab `json:"palette"`
@@ -71,6 +74,9 @@ type PictureWindowValue struct {
 	metadata.CommonPictureDefinition
 	Image *PictureImage       `json:"image,omitempty"`
 	Set   []PictureSetVariant `json:"set,omitempty"`
+	// Subsystems are the subsystems the field «Подсистемы» of the window
+	// marks the picture in; none given leaves them as they are.
+	Subsystems *[]uuid.UUID `json:"subsystems,omitempty"`
 }
 
 // PictureImage is the image a window gives a picture: a file of a format a
@@ -158,7 +164,7 @@ func (workspace *Workspace) readPictureEditorLocked(relative string) (PictureEdi
 	revision.Write(digest)
 	return PictureEditorSource{
 		Path: relative, Revision: hex.EncodeToString(revision.Sum(nil)), description: file.Revision, Picture: value, Images: images,
-		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage,
+		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, Project: configuration.Name,
 		KindTitle: kinds.Must(metadata.CommonPictureKind).Title, Palette: kinds.Must(metadata.CommonPictureKind).Palette(),
 		Set: pictureSet(value.Variants, images), VariantChoices: pictureVariantChoices, Formats: metadata.PictureFormats(), Subsystems: subsystemPlaces(loaded, value.ID),
 	}, nil
@@ -282,23 +288,30 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 	if err := metadata.Encode(&encoded, value); err != nil {
 		return PictureEditorSource{}, err
 	}
+	// The subsystems marked go first, as every window writes them, and back
+	// if anything after them is refused.
+	restoreMembership, err := workspace.writeMembershipLocked(windowMarks{Subsystems: window.Subsystems}.memberships(value.ID, windowHead{Subsystems: opened.Subsystems}))
+	if err != nil {
+		return PictureEditorSource{}, fmt.Errorf("write the objects listing the object: %w", err)
+	}
 	written, moveBack, err := workspace.followNameLocked(relative, opened.Picture.Name, value.Name)
 	if err != nil {
-		return PictureEditorSource{}, err
+		return PictureEditorSource{}, errors.Join(err, restoreMembership())
 	}
 	original, err := workspace.readSource(written)
 	if err != nil {
-		return PictureEditorSource{}, errors.Join(err, moveBack())
+		return PictureEditorSource{}, errors.Join(err, moveBack(), restoreMembership())
 	}
 	if _, err := workspace.saveSourceLocked(written, encoded.String(), opened.description); err != nil {
-		return PictureEditorSource{}, errors.Join(err, moveBack())
+		return PictureEditorSource{}, errors.Join(err, moveBack(), restoreMembership())
 	}
 	if window.Image != nil || window.Set != nil {
 		if err := workspace.replacePictureImagesLocked(written, remove, write); err != nil {
-			// The description goes back as it was read, then the folder.
+			// The description goes back as it was read, then the folder and
+			// the subsystems.
 			restored := atomicfile.Write(filepath.Join(workspace.root, filepath.FromSlash(written)), ".ml-write-*", 0o644, atomicfile.Bytes([]byte(original.Content)))
 			workspace.invalidateStudioIndexesLocked()
-			return PictureEditorSource{}, errors.Join(err, restored, moveBack())
+			return PictureEditorSource{}, errors.Join(err, restored, moveBack(), restoreMembership())
 		}
 	}
 	return workspace.readPictureEditorLocked(written)

@@ -122,15 +122,15 @@ func TestTheWindowOfAPictureIsThePrototypes(t *testing.T) {
 		return all
 	}
 	expect("the new picture", steps.Created, window{Title: "Общая картинка ОбщаяКартинка1", Captions: captions, Buttons: unavailable("Выбрать из файла", "Включить набор вариантов"),
-		Appearance: true, Subsystems: true})
+		Appearance: true, Subsystems: false})
 	expect("its node", steps.Tree, true)
 	expect("the palette", []any{steps.PaletteTitle, steps.Tabs, steps.Palette, steps.PaletteAppearance},
 		[]any{"Свойства: ОбщаяКартинка1", []string{"Основные"}, []string{"Имя", "Синоним", "Комментарий", "Картинка", "Доступность для выбора", "Доступность для оформления"}, true})
 	expect("a picture with an image", steps.Star, window{Title: "Общая картинка Звезда", Type: "png", Captions: captions,
-		Buttons: unavailable("Выбрать из файла", "Очистить", "Включить набор вариантов", "Сохранить в файл"), Appearance: true, Subsystems: true, Image: true})
+		Buttons: unavailable("Выбрать из файла", "Очистить", "Включить набор вариантов", "Сохранить в файл"), Appearance: true, Subsystems: false, Image: true})
 	expect("drawn", steps.Drawn, 24)
 	expect("marked for choice", steps.Marked, struct{ Appearance, Palette, Unsaved bool }{false, true, true})
-	expect("cleared", steps.Cleared, window{Title: "Общая картинка Звезда", Captions: captions, Buttons: unavailable("Выбрать из файла", "Включить набор вариантов"), Subsystems: true})
+	expect("cleared", steps.Cleared, window{Title: "Общая картинка Звезда", Captions: captions, Buttons: unavailable("Выбрать из файла", "Включить набор вариантов"), Subsystems: false})
 	expect("saved", steps.Saved.Unsaved, false)
 	expect("saved window", steps.Saved.After.Image, false)
 	if _, err := os.Stat(filepath.Join(root, "metadata", "common-pictures", "Звезда", "100.png")); !os.IsNotExist(err) {

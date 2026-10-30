@@ -36,7 +36,7 @@ function createPictureEditor(host, onChange, around = {}) {
   }
   function draw(body, api) {
     const {typed, changed} = api;
-    body.append(...windowHeadFields(source, picture(), typed, api.cleanups()),
+    body.append(...windowHeadFields(source, picture(), typed, api.cleanups(), api.subsystems()),
       checkboxField('Доступность для выбора', !!picture().availableForChoice, value => { setFlag('availableForChoice', value); changed(); }),
       checkboxField('Доступность для оформления', !!picture().availableForAppearance, value => { setFlag('availableForAppearance', value); changed(); },
         'catalog-check', !picture().availableForChoice));

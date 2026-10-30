@@ -18,7 +18,7 @@ function createStyleEditor(host, onChange, around = {}) {
     const preview = node('fieldset', undefined, 'studio-frame style-window-preview');
     preview.append(node('legend', 'Предварительный просмотр'), ...stylePreview(source));
     const left = node('div', undefined, 'style-window-left');
-    left.append(...windowHeadFields(source, source.style, api.typed, api.cleanups()), preview);
+    left.append(...windowHeadFields(source, source.style, api.typed, api.cleanups(), api.subsystems()), preview);
     body.append(left, styleValueRows(source, 'style-window-items', item => chooseValue(source.style, item, api.changed)));
   }
   // «…» of a value: the window choosing a value of the item's kind, its

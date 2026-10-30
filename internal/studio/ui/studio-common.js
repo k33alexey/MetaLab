@@ -1678,8 +1678,10 @@ function subsystemsPage(source, marks, changed) {
    project by their parents (places, MemberPlace), a box at each marked
    where the object is in its content (marks, a Set the boxes change);
    a subsystem holding a marked one beneath stands open. changed() is
-   called on every mark. */
-function subsystemsTree(places, marks, changed) {
+   called on every mark. root, the name of the project, puts the
+   subsystems under the root of the project, as the window of the field
+   «Подсистемы» draws them (chooseSubsystems). */
+function subsystemsTree(places, marks, changed, root) {
   const under = parent => (places || []).filter(place => (place.parent || null) === parent);
   const holds = place => marks.has(place.id) || under(place.id).some(holds);
   const branch = place => {
@@ -1688,30 +1690,57 @@ function subsystemsTree(places, marks, changed) {
       open: children.length > 0 && under(place.id).some(holds)}).element;
   };
   const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
-  tree.append(...under(null).map(branch));
+  if (root === undefined) tree.append(...under(null).map(branch));
+  else {
+    // The prototype's root has a box too; what it does is not shot
+    // (question В4 of series 2.653): it stands unavailable.
+    const box = markBox(root, new Set(), null);
+    box.disabled = true;
+    tree.append(treeNode({icon: 'configuration', caption: root, mark: box, children: under(null).map(branch), open: true}).element);
+  }
   return tree;
+}
+
+/* chooseSubsystems is the window «Подсистемы» of the field «Подсистемы»
+   of the window of an object of no pages - a style, a common picture
+   (obshchee.md, «Окно объекта», «Окно поля „Подсистемы“ с „…“»): the tree of
+   the page «Подсистемы» under the root of the project, OK, «Отмена»,
+   «Справка» at the right. places are the subsystems (MemberPlace), marked
+   the identifiers marked first. Answers the set marked on OK, null on
+   «Отмена». */
+async function chooseSubsystems(places, marked, project) {
+  const marks = new Set(marked);
+  const answer = await showDialog({title: 'Подсистемы', content: subsystemsTree(places, marks, () => {}, project), side: true,
+    className: 'object-choice-dialog', help: 'object-window', answers: [['ok', 'OK'], [null, 'Отмена']]});
+  return answer === 'ok' ? marks : null;
 }
 
 /* windowHeadFields are the fields at the top of the window of an object
    without pages - a common picture, a style (obshchaya-kartinka.md, stil.md,
    «Окно»): the name, the synonym, the comment, and the subsystems holding
-   it (source.subsystems) by commas with «…», unavailable until the window
-   choosing them. object is the object edited; typed() is called on every
-   key; the synonym's cleanup goes to cleanups. */
-function windowHeadFields(source, object, typed, cleanups) {
+   it by commas with «…» - the window «Подсистемы» (chooseSubsystems).
+   object is the object edited; typed() is called on every key; the
+   synonym's cleanup goes to cleanups. subsystems are the marks of the
+   window - a Set of the subsystems marked - and their changed(). */
+function windowHeadFields(source, object, typed, cleanups, subsystems) {
   const setText = (key, value) => { if (typeof value === 'string' ? value : Object.keys(value || {}).length) object[key] = value; else delete object[key]; };
   const synonym = createLocalizedField(source, code => object.title?.[code], (language, value) => setText('title', setTranslation(object.title, language, value)), typed, titleTextOptions);
   cleanups.push(synonym.destroy);
   const name = nameInput(object.name, value => { const before = object.name; object.name = value; synonym.follow(before, value); typed(); },
     () => ({path: source.path, name: object.name}));
-  const subsystems = node('input');
-  subsystems.readOnly = true;
-  subsystems.value = (source.subsystems || []).filter(place => place.member).map(place => place.name).join(',');
-  const choose = fieldChoiceButton('Подсистемы', () => {});
-  choose.disabled = true;
+  const members = node('input');
+  members.readOnly = true;
+  members.value = (source.subsystems || []).filter(place => subsystems.marks.has(place.id)).map(place => place.name).join(',');
+  const choose = fieldChoiceButton('Подсистемы', async () => {
+    const chosen = await chooseSubsystems(source.subsystems, subsystems.marks, source.project);
+    if (!chosen) return;
+    subsystems.marks.clear();
+    for (const id of chosen) subsystems.marks.add(id);
+    subsystems.changed();
+  });
   return [labeledField('Имя:', name), labeledField('Синоним:', synonym),
     labeledField('Комментарий:', textInput(object.comment, value => { setText('comment', value); typed(); })),
-    labeledField('Подсистемы:', fieldWithButtons(subsystems, [choose]))];
+    labeledField('Подсистемы:', fieldWithButtons(members, [choose]))];
 }
 
 /* objectWindowEditor is the editor of the window of an object: of a kind
@@ -1740,7 +1769,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
   // The part chosen in the window - of the kind's own pages or of the common
   // ones - one for the window; its palette stands beside it.
-  let chosen = null;
+  let chosen = null, headMarks = false;
   const same = (left, right) => !!left && !!right && left.kind === right.kind && left.container === right.container && left.id === right.id;
   const choose = choice => { chosen = choice; frame.refresh(); renderPalette(); };
   const focusPalette = () => around.palette?.querySelector('input')?.focus();
@@ -1754,6 +1783,9 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     return element;
   }
   const api = {source: () => source, object, changed, typed, marked: () => onChange(), refresh: () => frame.refresh(), show: key => frame.show?.(key),
+    // The field «Подсистемы» of a window of no pages (windowHeadFields): the
+    // window drawing it gives the marks with the object.
+    subsystems: () => { headMarks = true; return {marks, changed}; },
     palette: () => renderPalette(), cleanups: () => cleanups, rowsPage: key => rowsOf(key),
     chosen: () => chosen, setChosen: choice => { chosen = choice; }, choose, treeRow, focusPalette, addTemplate: () => common.addTemplate()};
   const kind = own(api);
@@ -1832,7 +1864,9 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
     // back leaves the window unchanged; a window of no pages marks none.
     value() {
       if (!source) return null;
-      if (kind.value) return {...kind.value(structuredClone(object())), ...common.value()};
+      // A window of no pages marks its subsystems in its field «Подсистемы»,
+      // where it has one.
+      if (kind.value) return {...kind.value(structuredClone(object())), ...(headMarks ? {subsystems: [...marks].sort()} : {}), ...common.value()};
       // A kind of the page «Функциональные опции» writes the options marked;
       // its own subsystems are a property of its own, not marks of a page.
       if (source.pages?.some(page => page.key === 'functional-options')) return {...structuredClone(object()), functionalOptions: [...options].sort(), ...common.value()};
