@@ -1167,6 +1167,7 @@ func (catalog *Catalog) indexAndValidate(root string) error {
 	catalog.resolveCommandInterfaces(root)
 	catalog.resolveRootInterface()
 	catalog.resolveObjectsOrder(root)
+	catalog.resolveRootContent(root)
 	if err := catalog.validateEventSubscriptionReferences(); err != nil {
 		return err
 	}

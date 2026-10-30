@@ -76,6 +76,7 @@ const (
 	NoteRestrictionAbsentField     NoteKind = "restriction-absent-field"
 	NoteObjectOutsideOrder         NoteKind = "object-outside-order"
 	NoteFormOutsideOrder           NoteKind = "form-outside-order"
+	NoteRootContent                NoteKind = "root-content"
 	NoteXDTOContentUnknown         NoteKind = "xdto-content-unknown"
 )
 
@@ -345,6 +346,11 @@ func init() {
 				"формы добавили мимо Studio. Это не состояние прототипа — он держит все формы объекта в своём порядке.",
 			"Форма стоит после названных, среди таких же — по имени; описание объекта не меняется, пока порядок не запишет " +
 				"Studio."},
+		NoteKindInfo{NoteRootContent,
+			"Объект в «Составе» самого корня (content): его ставит флажок корня в окне «Подсистемы» поля или страницы объекта, " +
+				"выгрузка пишет его в Content описания корня. Справка такого свойства корня не называет, во всех " +
+				"проверочных выгрузках оно пусто; что оно значит для приложения, не известно.",
+			"Объект несётся в составе корня как записан и ничего не меняет: ни раздела, ни видимости."},
 		NoteKindInfo{NoteXDTOContentUnknown,
 			"Атрибут или элемент в содержимом пакета XDTO, которого модель XDTO справки (свойство, тип значения, тип объекта, " +
 				"фасеты) не знает. В проверочных выгрузках таких нет (294 пакета).",
@@ -451,6 +457,7 @@ func init() {
 	noteRules[NoteRestrictionAbsentField] = noteRestrictionAbsentField
 	noteRules[NoteObjectOutsideOrder] = noteObjectOutsideOrder
 	noteRules[NoteFormOutsideOrder] = noteFormOutsideOrder
+	noteRules[NoteRootContent] = noteRootContent
 }
 
 // noteUseWithoutSample notes every object a role, an exchange plan, a

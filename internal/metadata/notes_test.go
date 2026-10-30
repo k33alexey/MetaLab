@@ -72,6 +72,12 @@ var noteExamples = map[NoteKind]func(t *testing.T, root string){
 		writeObjectForm(t, root, CatalogKind, "Товары", "ФормаСписка", listed.String())
 		writeObjectForm(t, root, CatalogKind, "Товары", "ФормаДобавленная", uuid.MustNew().String())
 	},
+	NoteRootContent: func(t *testing.T, root string) {
+		id := uuid.MustNew()
+		writeMetadata(t, root, CatalogKind, id.String(), "format: 1\nid: "+id.String()+"\nname: Товары\ntitle: {ru: Товары}\n"+
+			"code: {type: string, length: 9, auto: true}\ndescription_length: 150\n")
+		saveDefaults(t, root, func(configuration *project.Project) { configuration.Content = []uuid.UUID{id} })
+	},
 	NoteXDTOContentUnknown: func(t *testing.T, root string) {
 		writeXDTOPackage(t, root, firstXDTOPackage, "Обмен", "http://example.org/x", xdtoBody("http://example.org/x",
 			"\t<objectType name=\"Товар\">\r\n\t\t<property name=\"Код\" type=\"xs:string\" unknownFacet=\"1\"/>\r\n\t</objectType>\r\n"))

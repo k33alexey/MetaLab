@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -175,5 +176,52 @@ func TestTheWindowsListObjectsInTheOrderOfTheTree(t *testing.T) {
 	}
 	if !slices.Equal(subsystems, []string{"Склад", "Продажи"}) {
 		t.Errorf("the filter by subsystems lists %v, the tree Склад, Продажи", subsystems)
+	}
+}
+
+// «Состав» of the root is carried by the iron rule (obshchee.md, «Окно поля
+// „Подсистемы“»; the export of 30.10.2026 writes Content of the root): its
+// objects of any kind are taken and each noted; one the project has not is
+// a reference to nothing; a zero identifier or one named twice is refused.
+// Defects caught: the content refused or dropped, an object of it taken
+// silently, the note missing for a kind, a deleted object taken, a list
+// naming one twice read as written.
+func TestTheContentOfTheRootIsCarriedAndNoted(t *testing.T) {
+	t.Parallel()
+	root := orderProject(t, nil)
+	saveDefaults(t, root, func(configuration *project.Project) {
+		configuration.Content = ids(t, orderConstantB, orderCatalogA)
+	})
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(catalog.Project.Content, ids(t, orderConstantB, orderCatalogA)) {
+		t.Fatalf("the content is %v", catalog.Project.Content)
+	}
+	var noted []string
+	for _, note := range catalog.Notes() {
+		if note.Kind == NoteRootContent {
+			noted = append(noted, note.Where+": "+note.Written)
+		}
+	}
+	if want := []string{"the project's content: constant Вторая", "the project's content: catalog Альфа"}; !slices.Equal(noted, want) {
+		t.Fatalf("noted %v, want %v", noted, want)
+	}
+	gone := orderProject(t, nil)
+	saveDefaults(t, gone, func(configuration *project.Project) {
+		configuration.Content = ids(t, orderCatalogA, "e5000000-0000-4000-8000-0000000000ff")
+	})
+	if !containsWhere(unresolvedOf(t, gone), "the project's content") {
+		t.Fatal("an object the project has not was taken into the content")
+	}
+	for name, list := range map[string][]uuid.UUID{
+		"нулевой": {mustUUID(t, orderCatalogA), {}},
+		"дважды":  ids(t, orderCatalogA, orderCatalogB, orderCatalogA),
+	} {
+		configuration := project.Project{Content: list}
+		if err := configuration.Validate(); err == nil || !strings.Contains(err.Error(), "content[") {
+			t.Errorf("%s: the content was taken: %v", name, err)
+		}
 	}
 }

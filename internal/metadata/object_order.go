@@ -90,3 +90,27 @@ func (catalog *Catalog) resolveObjectsOrder(root string) {
 		}
 	}
 }
+
+// resolveRootContent checks that every object of «Состав» of the root
+// (project.Project.Content) is an object of the project: one deleted is a
+// reference to nothing, as a line of objects_order.
+func (catalog *Catalog) resolveRootContent(root string) {
+	if root == "" {
+		return
+	}
+	for _, id := range catalog.Project.Content {
+		if _, ok := catalog.objects[id]; !ok {
+			catalog.noteUnresolved("the project's content", id)
+		}
+	}
+}
+
+// noteRootContent notes every object of «Состав» of the root, carried by the
+// iron rule and not acted upon.
+func noteRootContent(catalog *Catalog, note func(where, written string)) {
+	for _, id := range catalog.Project.Content {
+		if object, ok := catalog.objects[id]; ok {
+			note("the project's content", kindWord(object.kind)+" "+object.name)
+		}
+	}
+}

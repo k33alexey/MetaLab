@@ -678,3 +678,38 @@ func TestTheRootWritesTheMainSectionWithItsDescription(t *testing.T) {
 		t.Fatalf("a refused picture left the root changed:\n%s", read(project.MainSectionCommandInterfaceFile))
 	}
 }
+
+// «Состав» of the root goes through the palette of the root as it is: a save
+// of another property keeps it in the description (obshchee.md, «Окно поля
+// „Подсистемы“»: the export keeps Content of the root). Defect caught: the
+// window writing the root without what it does not show.
+func TestTheRootKeepsItsContentThroughItsPalette(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	catalog := uuid.MustNew()
+	writeProjectFile(t, root, "metadata/catalogs/Товары/object.yaml", "format: 1\nid: "+catalog.String()+"\nname: Товары\ntitle: {ru: Товары}\n"+
+		"code: {type: string, length: 9}\ndescription_length: 25\n")
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := opened.Configuration
+	marked.Content = []uuid.UUID{catalog}
+	saved, err := workspace.SaveProjectEditor(marked, nil, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := saved.Configuration
+	renamed.Title = project.LocalizedText{"ru": "Новое название"}
+	if saved, err = workspace.SaveProjectEditor(renamed, nil, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	again, err := workspace.ReadProjectEditor()
+	if err != nil || len(again.Configuration.Content) != 1 || again.Configuration.Content[0] != catalog {
+		t.Fatalf("the content read back is %v (%v)", again.Configuration.Content, err)
+	}
+}

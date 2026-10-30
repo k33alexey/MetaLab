@@ -135,6 +135,15 @@ type Project struct {
 	// configuration is known. Languages have no list here: Languages is
 	// their order already.
 	ObjectsOrder map[string][]uuid.UUID `yaml:"objects_order,omitempty" json:"objectsOrder,omitempty"`
+	// Content is «Состав» of the root itself: the objects the box of the
+	// root marks in the window «Подсистемы» of a field or a page, each of
+	// them on its own, nothing below it (docs/block-00/obshchee.md, «Окно
+	// поля „Подсистемы“»; the export writes it as Content of
+	// Configuration.xml). The help names no such property of the
+	// configuration and every export being moved keeps it empty, so it is
+	// carried by the iron rule - taken, not acted upon, every object of it
+	// noted (CONFORMANCE.md, «Принято, но не исполняется»).
+	Content []uuid.UUID `yaml:"content,omitempty" json:"content,omitempty"`
 	// The five forms below stand in for a report, a constant or a search that
 	// names no form of its own. All five are common forms: they belong to no
 	// object, which is exactly why the root can hand them to every object at
@@ -535,6 +544,16 @@ func (p Project) Validate() error {
 	for _, issue := range validateObjectsOrder(p.ObjectsOrder) {
 		field, message, _ := strings.Cut(issue, " ")
 		add(field, message)
+	}
+	seen := make(map[uuid.UUID]bool, len(p.Content))
+	for index, id := range p.Content {
+		switch {
+		case id.IsZero():
+			add(fmt.Sprintf("content[%d]", index), "must be a non-zero UUID")
+		case seen[id]:
+			add(fmt.Sprintf("content[%d]", index), "names "+id.String()+" twice")
+		}
+		seen[id] = true
 	}
 	seenRoles := make(map[uuid.UUID]struct{}, len(p.DefaultRoles))
 	for index, role := range p.DefaultRoles {
