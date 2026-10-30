@@ -572,7 +572,8 @@ async function postJSON(path, body, options = {}) {
    explanation, any content, and buttons, each [key, caption]. It answers
    with the key of the button pressed, or null when the dialog is closed
    without one. check(key), when given, is asked before the dialog closes on
-   a button with a key: a text it returns is shown and keeps the dialog open.
+   a button with a key: a text it returns is shown and keeps the dialog open,
+   true keeps it open having told the refusal by a message of its own.
    A button may take a third element, {act, enabled, primary}: act() is done
    in place of closing, as the steps of a wizard do; enabled() makes it
    unavailable without hiding it, as the prototype's buttons are; the
@@ -607,7 +608,12 @@ function showDialog({title, caption, explanation, content, answers, check, class
       button.type = 'submit';
       button.addEventListener('click', event => {
         const refusal = key !== null && check ? check(key) : '';
-        if (refusal) { event.preventDefault(); problem.textContent = refusal; problem.hidden = false; return; }
+        if (refusal) {
+          event.preventDefault();
+          // true: refused, the check telling it by a message of its own.
+          if (refusal !== true) { problem.textContent = refusal; problem.hidden = false; }
+          return;
+        }
         problem.hidden = true;
         if (step?.act) { event.preventDefault(); step.act(); arrange(); return; }
         answer = key;
@@ -959,8 +965,9 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
    is the server's (objectChoiceTree): an object holding items is a row to
    open, chosen by one of them; any other is chosen itself. current is the
    identifier chosen first: the tree opens down to it. A double click
-   chooses too. Answers the identifier chosen on OK - OK is unavailable
-   while nothing is - and null on «Отмена». */
+   chooses too. OK with nothing chosen - on a branch - is refused,
+   «Объект не выбран.» (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»).
+   Answers the identifier chosen on OK and null on «Отмена». */
 async function chooseOneObject(title, tree, current) {
   let chosen = current || null;
   return chooseInWindow(title, (rows, text, accept, draw) => {
@@ -974,11 +981,13 @@ async function chooseOneObject(title, tree, current) {
     };
     const found = item => !text || (item.fullName || item.name).toLocaleLowerCase().includes(text);
     const holds = item => item.id === chosen || (item.items || []).some(holds);
+    // An object holding items is a branch, an item holding items too - the
+    // object, its «Формы», the forms.
     const object = item => {
       if (!item.items) return found(item) ? {element: leaf(item), open: holds(item)} : null;
-      const inner = item.items.filter(found).map(leaf);
+      const inner = item.items.map(object).filter(Boolean);
       if (!inner.length) return null;
-      return {element: treeNode({icon: item.icon, caption: item.name, children: inner, open: !!text || holds(item)}).element, open: holds(item)};
+      return {element: treeNode({icon: item.icon, caption: item.name, children: inner.map(one => one.element), open: !!text || holds(item)}).element, open: holds(item)};
     };
     const branch = group => {
       const children = [...(group.children || []).map(branch), ...(group.objects || []).map(object)].filter(Boolean);
@@ -988,7 +997,7 @@ async function chooseOneObject(title, tree, current) {
     };
     rows.replaceChildren(...tree.map(branch).filter(Boolean).map(item => item.element));
     rows.querySelector('.selected')?.scrollIntoView?.({block: 'nearest'});
-  }, () => chosen);
+  }, () => chosen, 'Объект не выбран.');
 }
 
 /* chooseInWindow is the frame of the platform's windows choosing one object
@@ -997,8 +1006,12 @@ async function chooseOneObject(title, tree, current) {
    «Отмена» in a column at the right, the search focused. fill(rows, text,
    accept, draw) draws the rows for the text searched, lowercase; accept()
    is OK, for a double click; draw() draws them anew. chosen() is the
-   identifier chosen. Answers it on OK and null on «Отмена». */
-async function chooseInWindow(title, fill, chosen) {
+   identifier chosen. refusal, where given, makes OK available with nothing
+   chosen - on a branch - and tells it as the prototype's «Выбор
+   управляемой формы» does, «Объект не выбран.», the window staying
+   (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»). Answers it on OK and
+   null on «Отмена». */
+async function chooseInWindow(title, fill, chosen, refusal) {
   const content = node('div', undefined, 'object-choice'), rows = node('div', undefined, 'object-choice-tree');
   const [searchRow, search] = searchField('object-choice-search', () => draw());
   content.append(searchRow, rows);
@@ -1006,7 +1019,8 @@ async function chooseInWindow(title, fill, chosen) {
   const draw = () => fill(rows, search.value.trim().toLocaleLowerCase(), () => accept(), draw);
   draw();
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog',
-    answers: [['ok', 'OK', {enabled: () => !!chosen()}], [null, 'Отмена']]});
+    check: key => { if (key !== 'ok' || chosen()) return ''; askChoice(refusal, undefined, [['ok', 'OK']]); return true; },
+    answers: [['ok', 'OK', refusal ? {} : {enabled: () => !!chosen()}], [null, 'Отмена']]});
   accept = () => content.closest('dialog').querySelector('button.primary')?.click();
   search.focus();
   return await answer === 'ok' ? chosen() : null;
@@ -1076,11 +1090,12 @@ function roleVisibilityBox(state, label, click) {
   return box;
 }
 
-/* visibilityDiffers says the roles see an item differently: one of them says
-   other than the common box (the link «Различная» of the home page; question
-   В4 of series 2.646). */
+/* visibilityDiffers says the roles see an item apart from the common box:
+   a role says anything, even what the common box says - the link
+   «Различная» of the home page (konfiguraciya.md, «Досъёмка 29.10.2026,
+   вечер»; question В4 of series 2.646). */
 function visibilityDiffers(visibility) {
-  return (visibility.roles || []).some(item => item.visible !== visibility.common);
+  return (visibility.roles || []).length > 0;
 }
 
 /* showVisibilitySettings is the platform's window «Настройка видимости»

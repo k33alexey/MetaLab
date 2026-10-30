@@ -45,21 +45,24 @@ function createHomePageEditor(host, around) {
 
   function changed() { draw(); around.changed(); }
 
-  async function chooseForm(side, at) {
+  // «Отмена» takes the row added away and makes current again the row that
+  // was before the command (konfiguraciya.md, «Досъёмка 29.10.2026,
+  // вечер»).
+  async function chooseForm(side, at, before) {
     const row = page[side][at];
     const form = await chooseOneObject('Выбор управляемой формы', source.forms, row.form);
-    if (!form) { page[side].splice(at, 1); current[side] = Math.max(0, Math.min(at - 1, page[side].length - 1)); changed(); return; }
+    if (!form) { page[side].splice(at, 1); current[side] = Math.max(0, Math.min(before, page[side].length - 1)); changed(); return; }
     row.form = form;
     changed();
     host.querySelector(`.home-page-${side} .home-page-row.current .home-page-height`)?.focus();
   }
   function add(side, copy) {
-    const list = page[side], copied = list[current[side]];
+    const list = page[side], copied = list[current[side]], before = current[side];
     if (copy && !copied) return;
     list.push(copy ? structuredClone(copied) : {form: '', height: 10, visibility: {common: true}});
     current[side] = list.length - 1;
     draw();
-    chooseForm(side, list.length - 1);
+    chooseForm(side, list.length - 1, before);
   }
   function remove(side) {
     const list = page[side];

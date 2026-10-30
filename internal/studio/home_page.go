@@ -89,13 +89,20 @@ func homePageFormTree(loaded *metadata.Catalog) ([]ObjectChoiceBranch, map[uuid.
 			names[item.ID] = item.FullName
 			return true
 		}
+		// Under the object the branch «Формы», as the prototype's window
+		// draws it (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»), the
+		// forms in the order the model keeps them.
+		forms := ObjectChoiceItem{Name: "Формы", Icon: formIcon}
 		for _, form := range loaded.ObjectFormNames(kind, item.Name) {
 			id, _ := loaded.ObjectFormID(kind, item.Name, form)
 			full := item.FullName + ".Форма." + form
 			names[id] = full
-			item.Items = append(item.Items, ObjectChoiceItem{ID: id, Name: form, FullName: full, Icon: formIconOf})
+			forms.Items = append(forms.Items, ObjectChoiceItem{ID: id, Name: form, FullName: full, Icon: formIconOf})
 		}
-		return len(item.Items) > 0
+		if len(forms.Items) > 0 {
+			item.Items = []ObjectChoiceItem{forms}
+		}
+		return len(forms.Items) > 0
 	})
 	return tree, names
 }

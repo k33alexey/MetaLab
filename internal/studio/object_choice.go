@@ -27,7 +27,9 @@ type ObjectChoiceBranch struct {
 // ObjectChoiceItem is an object the window offers: its name, its full name
 // as a list of chosen objects shows it (Справочник.Контрагенты) and its icon.
 type ObjectChoiceItem struct {
-	ID       uuid.UUID `json:"id"`
+	// ID is none for a branch inside an object - «Формы» of «Выбор
+	// управляемой формы» - which is chosen by what it holds.
+	ID       uuid.UUID `json:"id,omitzero"`
 	Name     string    `json:"name"`
 	FullName string    `json:"fullName"`
 	Icon     string    `json:"icon"`
