@@ -84,6 +84,7 @@ func (workspace *Workspace) SaveSubsystems(saves []SubsystemOverviewRow) (Subsys
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	changes, originals := map[string][]byte{}, map[string][]byte{}
+	loaded, _ := metadata.Load(workspace.root)
 	for _, save := range saves {
 		opened, head, err := readObjectDescription(workspace, metadata.SubsystemKind, save.Path, metadata.DecodeSubsystem)
 		if err != nil {
@@ -98,6 +99,8 @@ func (workspace *Workspace) SaveSubsystems(saves []SubsystemOverviewRow) (Subsys
 		if _, twice := changes[save.Path]; twice {
 			return SubsystemOverview{}, fmt.Errorf("subsystem %q is saved twice", opened.Name)
 		}
+		order := &save.Subsystem.CommandInterface.SubsystemsOrder
+		*order = subsectionsKept(loaded, &opened.ID, opened.CommandInterface.SubsystemsOrder, *order)
 		var encoded bytes.Buffer
 		if err := metadata.Encode(&encoded, save.Subsystem); err != nil {
 			return SubsystemOverview{}, err

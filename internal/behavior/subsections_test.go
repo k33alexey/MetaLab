@@ -32,3 +32,22 @@ func TestTheSubsectionsAreOrderedAsThePrototypes(t *testing.T) {
 		}
 	}
 }
+
+// A subsystem that is no section keeps its place in the order written
+// when the sections are moved (ML-STUDIO.md, «Подразделы», В6 of series
+// 2.639): after the section it followed, first where it was first, last
+// where the one it followed is gone; an order taken back keeps none.
+// Defects caught: a hidden subsection dropped from the order, put at its
+// start or end instead of after its section, or kept in an automatic order.
+func TestAHiddenSubsectionKeepsItsPlace(t *testing.T) {
+	a, b, c, hiddenFirst, hiddenAfterA, hiddenAfterGone, gone := uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew(), uuid.MustNew()
+	hidden := func(id uuid.UUID) bool { return id == hiddenFirst || id == hiddenAfterA || id == hiddenAfterGone }
+	said := []uuid.UUID{hiddenFirst, a, hiddenAfterA, b, gone, hiddenAfterGone, c}
+	got := HiddenSubsectionsKept(said, []uuid.UUID{a, c, b}, hidden)
+	if want := []uuid.UUID{hiddenFirst, a, hiddenAfterA, c, b, hiddenAfterGone}; !slices.Equal(got, want) {
+		t.Errorf("kept %v, want %v", got, want)
+	}
+	if got := HiddenSubsectionsKept(said, nil, hidden); len(got) != 0 {
+		t.Errorf("the automatic order kept %v", got)
+	}
+}

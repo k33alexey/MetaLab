@@ -42,3 +42,43 @@ func SubsectionAdded(said, automatic []uuid.UUID, added uuid.UUID) []uuid.UUID {
 	}
 	return order
 }
+
+// HiddenSubsectionsKept is the order of «Подразделы» a window wrote,
+// written, with the subsystems that are no sections - not in the command
+// interface, hidden(id), which the window does not show (ML-STUDIO.md, В6 of
+// series 2.639) - kept where the order said before, said, put them: after
+// the section they followed, or first where none was before them, or last
+// where the one before them is gone. An order taken back - none written,
+// the automatic one - keeps none of them.
+func HiddenSubsectionsKept(said, written []uuid.UUID, hidden func(uuid.UUID) bool) []uuid.UUID {
+	if len(written) == 0 {
+		return written
+	}
+	var leading, orphans []uuid.UUID
+	after := map[uuid.UUID][]uuid.UUID{}
+	var before *uuid.UUID
+	for _, id := range said {
+		if !hidden(id) {
+			shown := id
+			before = &shown
+			continue
+		}
+		if slices.Contains(written, id) {
+			continue
+		}
+		switch {
+		case before == nil:
+			leading = append(leading, id)
+		case slices.Contains(written, *before):
+			after[*before] = append(after[*before], id)
+		default:
+			orphans = append(orphans, id)
+		}
+	}
+	order := slices.Clone(leading)
+	for _, id := range written {
+		order = append(order, id)
+		order = append(order, after[id]...)
+	}
+	return append(order, orphans...)
+}

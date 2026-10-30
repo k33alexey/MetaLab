@@ -152,3 +152,105 @@ func TestASubsystemMadeUnderAnotherGoesLastInItsSubsections(t *testing.T) {
 		t.Errorf("a manual order became %q, want it kept and the new one last", got)
 	}
 }
+
+// A subsystem that is no section - not in the command interface, which
+// «Подразделы» does not show - keeps its place in the order written when
+// the sections are moved (ML-STUDIO.md, «Подразделы», В6 of series 2.639),
+// by every window writing it: the window of the subsystem, «Все
+// подсистемы» and the root's «Командный интерфейс». Defects caught: one
+// of the three dropping the hidden one from the order, as the windows
+// write only what they show.
+func TestAHiddenSubsectionKeepsItsPlaceInEveryWindow(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	made := map[string]SubsystemEditorSource{}
+	subsystem := func(name string, parent *uuid.UUID, shown bool) {
+		t.Helper()
+		var source SubsystemEditorSource
+		var err error
+		if parent == nil {
+			source, err = workspace.CreateSubsystem(name)
+		} else {
+			source, err = workspace.CreateSubsystemChild(SubsystemChild{Parent: *parent})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := source.Subsystem
+		value.Name, value.IncludeInCommandInterface = name, shown
+		if source, err = workspace.SaveSubsystemWindow(source.Path, SubsystemWindowValue{SubsystemDefinition: value}, source.Revision); err != nil {
+			t.Fatal(err)
+		}
+		made[name] = source
+	}
+	subsystem("Склад", nil, true)
+	parent := made["Склад"].Subsystem.ID
+	subsystem("А", &parent, true)
+	subsystem("Скрытая", &parent, false)
+	subsystem("Б", &parent, true)
+	subsystem("Корневая", nil, true)
+	subsystem("Служебная", nil, false)
+	id := func(name string) uuid.UUID { return made[name].Subsystem.ID }
+	ordered := func(names ...string) []uuid.UUID {
+		var ids []uuid.UUID
+		for _, name := range names {
+			ids = append(ids, id(name))
+		}
+		return ids
+	}
+	reread := func() SubsystemEditorSource {
+		t.Helper()
+		opened, err := workspace.ReadSubsystemEditor(made["Склад"].Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return opened
+	}
+	// The window: А, Скрытая, Б said; Б, А written.
+	opened := reread()
+	value := opened.Subsystem
+	value.CommandInterface.SubsystemsOrder = ordered("А", "Скрытая", "Б")
+	if _, err := workspace.SaveSubsystemWindow(opened.Path, SubsystemWindowValue{SubsystemDefinition: value}, opened.Revision); err != nil {
+		t.Fatal(err)
+	}
+	opened = reread()
+	value = opened.Subsystem
+	value.CommandInterface.SubsystemsOrder = ordered("Б", "А")
+	if _, err := workspace.SaveSubsystemWindow(opened.Path, SubsystemWindowValue{SubsystemDefinition: value}, opened.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := reread().Subsystem.CommandInterface.SubsystemsOrder, ordered("Б", "А", "Скрытая"); !slices.Equal(got, want) {
+		t.Errorf("the window wrote %v, want %v", got, want)
+	}
+	// «Все подсистемы»: А, Б written.
+	opened = reread()
+	value = opened.Subsystem
+	value.CommandInterface.SubsystemsOrder = ordered("А", "Б")
+	if _, err := workspace.SaveSubsystems([]SubsystemOverviewRow{{Path: opened.Path, Revision: opened.Revision, Subsystem: value}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := reread().Subsystem.CommandInterface.SubsystemsOrder, ordered("А", "Скрытая", "Б"); !slices.Equal(got, want) {
+		t.Errorf("«Все подсистемы» wrote %v, want %v", got, want)
+	}
+	// The root: Служебная first said, the sections moved.
+	root, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration := root.Configuration
+	configuration.SubsystemsOrder = ordered("Служебная", "Склад", "Корневая")
+	if root, err = workspace.SaveProjectEditor(configuration, nil, root.Revision); err != nil {
+		t.Fatal(err)
+	}
+	configuration = root.Configuration
+	configuration.SubsystemsOrder = ordered("Корневая", "Склад")
+	if root, err = workspace.SaveProjectEditor(configuration, nil, root.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if want := ordered("Служебная", "Корневая", "Склад"); !slices.Equal(root.Configuration.SubsystemsOrder, want) {
+		t.Errorf("the root wrote %v, want %v", root.Configuration.SubsystemsOrder, want)
+	}
+}

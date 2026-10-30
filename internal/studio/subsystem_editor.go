@@ -83,6 +83,11 @@ func (workspace *Workspace) readSubsystemEditorLocked(relative string) (Subsyste
 func (workspace *Workspace) SaveSubsystemWindow(relative string, window SubsystemWindowValue, revision string) (SubsystemEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
+	if opened, err := workspace.readSubsystemEditorLocked(relative); err == nil {
+		loaded, _ := metadata.Load(workspace.root)
+		order := &window.SubsystemDefinition.CommandInterface.SubsystemsOrder
+		*order = subsectionsKept(loaded, &opened.Subsystem.ID, opened.Subsystem.CommandInterface.SubsystemsOrder, *order)
+	}
 	written, err := saveObjectWindow(workspace, relative, revision, window.SubsystemDefinition,
 		windowMarks{FunctionalOptions: window.FunctionalOptions, Kind: metadata.SubsystemKind},
 		func(relative string) (metadata.SubsystemDefinition, windowHead, error) {
@@ -436,6 +441,21 @@ func (workspace *Workspace) addSubsectionLocked(relative string, added uuid.UUID
 	}
 	_, err = workspace.saveSourceLocked(relative, encoded.String(), opened.Revision)
 	return err
+}
+
+// subsectionsKept is the order of «Подразделы» of parent - the sections of
+// the root where nil - a window wrote, written, with the subsystems under it
+// that are not in the command interface in the project loaded kept where
+// the order said, said, put them (behavior.HiddenSubsectionsKept). A
+// project that did not load - nil - keeps what was written.
+func subsectionsKept(loaded *metadata.Catalog, parent *uuid.UUID, said, written []uuid.UUID) []uuid.UUID {
+	if loaded == nil {
+		return written
+	}
+	return behavior.HiddenSubsectionsKept(said, written, func(id uuid.UUID) bool {
+		subsystem, ok := loaded.SubsystemByID(id)
+		return ok && sameParent(subsystem.Parent, parent) && !subsystem.IncludeInCommandInterface
+	})
 }
 
 // errSubsystemInsideItself refuses a subsystem moved under itself or under

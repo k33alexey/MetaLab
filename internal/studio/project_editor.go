@@ -295,6 +295,8 @@ func (workspace *Workspace) SaveProjectEditor(configuration project.Project, pic
 		return ProjectEditorSource{}, err
 	}
 	configuration = withoutRemovedTranslations(configuration)
+	loaded, _ := metadata.Load(workspace.root)
+	configuration.SubsystemsOrder = subsectionsKept(loaded, nil, opened.Configuration.SubsystemsOrder, configuration.SubsystemsOrder)
 	var encoded bytes.Buffer
 	if err := project.Encode(&encoded, configuration); err != nil {
 		return ProjectEditorSource{}, err
