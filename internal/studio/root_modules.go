@@ -16,13 +16,16 @@ import (
 )
 
 // rootModule is one module of the configuration root: the command of the
-// root's menu that opens it, the file it lies in, the address Studio opens it
+// root's menu that opens it, its row of the root's palette and the line the
+// palette explains it by, the file it lies in, the address Studio opens it
 // by, what it starts as when it is opened for the first time.
 type rootModule struct {
-	id      string
-	command string
-	file    string
-	stub    string
+	id          string
+	command     string
+	title       string
+	explanation string
+	file        string
+	stub        string
 }
 
 // rootModules are the modules the configuration root owns, in the order of
@@ -41,6 +44,7 @@ type rootModule struct {
 var rootModules = []rootModule{
 	{
 		id: "application-module", command: "Открыть модуль приложения", file: project.ApplicationModuleFile,
+		title: "Модуль приложения", explanation: "Код, который исполняется, когда приложение открывается и закрывается.",
 		stub: "Процедура ПередНачаломРаботыСистемы(Отказ)\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПередЗавершениемРаботыСистемы(Отказ)\n\nКонецПроцедуры\n\n" +
@@ -48,11 +52,13 @@ var rootModules = []rootModule{
 	},
 	{
 		id: "session-module", command: "Открыть модуль сеанса", file: project.SessionModuleFile,
+		title: "Модуль сеанса", explanation: "Код, который задаёт значения параметров сеанса.",
 		stub: "Процедура УстановкаПараметровСеанса(ИменаПараметровСеанса)\n\nКонецПроцедуры\n",
 	},
 	{
 		id: "external-connection-module", command: "Открыть модуль внешнего соединения",
-		file: project.ExternalConnectionModuleFile,
+		file: project.ExternalConnectionModuleFile, title: "Модуль внешнего соединения",
+		explanation: "Код, который исполняется, когда к приложению подключается внешняя программа.",
 		stub: "Процедура ПриНачалеРаботыСистемы()\n\nКонецПроцедуры\n\n" +
 			"Процедура ПриЗавершенииРаботыСистемы()\n\nКонецПроцедуры\n",
 	},

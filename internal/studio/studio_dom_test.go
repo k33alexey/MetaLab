@@ -94,7 +94,9 @@ const studioPageWalk = `(async () => {
     ['roles', '#role-overview[data-view=roles]', null, [{select: '.role-tree-item'}]],
     ['restrictions', '#role-overview[data-view=restrictions]', null, [{select: '.studio-tab', then: [{open: '.overview-block .role-list tbody tr[tabindex]'}, {press: '.overview-block .role-bulk button[data-command=filter]'}]}]],
     ['catalog', '#catalog-editor', null, [{select: '.object-window-page', then: [{press: '.field-with-buttons button'}, {select: '.object-window-body .studio-tree-row'}]}]],
-    ['project', '#project-editor', null, [{press: '.field-with-buttons button'}]],
+    // The root has no window: its palette, the magnifiers of its texts.
+    ['project', () => document.querySelector('#file-path').textContent === 'configuration.yaml' && document.querySelector('#languages-editor').hidden,
+      document.querySelector('#properties'), [{press: '.field-with-buttons button[title="Строки на разных языках"]'}]],
     ['languages', '#languages-editor', null, [{press: '.field-with-buttons button:enabled'}]],
   ];
   function shown() {

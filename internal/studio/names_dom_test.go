@@ -46,7 +46,7 @@ const namesWalk = `(async () => {
   steps.language = await type('#languages-editor', 'english');
   document.querySelector('#tree summary').click();
   await studio.settle();
-  steps.project = await type('#project-editor', 'Продажи и склад');
+  steps.project = await type('#properties', 'Продажи и склад');
   return steps;
 })()`
 
@@ -200,7 +200,7 @@ const limitsWalk = `(async () => {
   node('Українська').click(); await studio.settle();
   for (const caption of ['Имя', 'Синоним', 'Комментарий']) steps['language ' + caption] = ceiling(input('#languages-editor', caption));
   document.querySelector('#tree summary').click(); await studio.settle();
-  for (const caption of ['Имя', 'Синоним']) steps['project ' + caption] = ceiling(input('#project-editor', caption));
+  for (const caption of ['Имя', 'Синоним']) steps['project ' + caption] = ceiling(input('#properties', caption));
   return steps;
 })()`
 

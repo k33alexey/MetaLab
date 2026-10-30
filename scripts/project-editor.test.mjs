@@ -19,37 +19,28 @@ test('Studio inline script remains valid JavaScript',()=>{
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
   assert.match(html,/\/api\/project-configuration/);
 });
-test('name, synonym and default language round-trip',()=>{
-  const model=create(fixture());
-  model.setName('НовоеИмя');model.setText('title','ru','Новый синоним');model.setDefaultLanguage('en');
-  const saved=model.value();
-  assert.equal(saved.name,'НовоеИмя');assert.equal(saved.title.ru,'Новый синоним');assert.equal(saved.defaultLanguage,'en');
+const subject=configuration=>context.rootSubject(configuration);
+// Палитра корня правит описание по ключам строк: имя, синоним по языкам,
+// основной язык — по его коду, хотя палитра видит идентификатор языка.
+test('name, synonym and the main language round-trip through the palette',()=>{
+  const configuration=fixture().configuration;configuration.languages[0].id='l-en';configuration.languages[1].id='l-ru';
+  const root=subject(configuration);
+  root.setName('НовоеИмя');root.set('title',{ru:'Новый синоним'});
+  assert.equal(root.get('defaultLanguage'),'l-ru');
+  root.set('defaultLanguage','l-en');
+  assert.equal(configuration.name,'НовоеИмя');assert.deepEqual(configuration.title,{ru:'Новый синоним'});assert.equal(configuration.defaultLanguage,'en');
+  // Язык, которого нет, основной язык не меняет: без основного языка корень не живёт.
+  root.set('defaultLanguage','l-xx');
+  assert.equal(configuration.defaultLanguage,'en');
 });
-// Синоним пишется по языку, и язык, в котором его стёрли, исчезает из текста
-// целиком: пустая строка — это не перевод, а его отсутствие.
-test('a text is stored per language and an emptied one disappears',()=>{
-  const model=create(fixture());
-  model.setText('title','en','Sales and warehouse');
-  model.setText('copyright','ru','© Пример');
-  let saved=model.value();
-  assert.deepEqual(saved.title,{ru:'Продажи и склад',en:'Sales and warehouse'});
-  assert.deepEqual(saved.copyright,{ru:'© Пример'});
-  model.setText('title','en','');
-  model.setText('copyright','ru','');
-  saved=model.value();
-  assert.deepEqual(saved.title,{ru:'Продажи и склад'});
-  assert.equal('copyright' in saved,false);
-});
-// Поставщик и версия одинаковы на всех языках, поэтому это простые поля - и
-// опустошённое поле пропадает, а не остаётся пустой строкой.
-test('vendor and version are plain fields that vanish when emptied',()=>{
-  const model=create(fixture());
-  model.setField('vendor','Пример');model.setField('version','1.0.0.1');
-  let saved=model.value();
-  assert.equal(saved.vendor,'Пример');assert.equal(saved.version,'1.0.0.1');
-  model.setField('vendor','');
-  saved=model.value();
-  assert.equal('vendor' in saved,false);
+// Текст пишется по языку, и стёртый целиком исчезает из корня: пустая
+// строка — это не перевод, а его отсутствие.
+test('an emptied text disappears from the root',()=>{
+  const configuration=fixture().configuration,root=subject(configuration);
+  root.set('copyright',{ru:'© Пример'});
+  assert.deepEqual(configuration.copyright,{ru:'© Пример'});
+  root.set('copyright',{});
+  assert.equal('copyright' in configuration,false);
 });
 test('English cannot be removed or edited through the model',()=>{
   const model=create(fixture());
@@ -72,64 +63,37 @@ test('value() returns an independent clone',()=>{
   const value=model.value();value.languages.push({name:'x',title:'x',code:'x'});
   assert.equal(model.value().languages.length,2);
 });
-// Умолчание — ссылка на другой объект, и очищенное умолчание исчезает из
-// корня, а не остаётся пустой строкой: «не задано» означает, что платформа
-// возьмёт своё, а не что конфигурация назвала ничто.
-test('a default is a reference that vanishes when cleared',()=>{
-  const model=create(fixture());
-  model.setField('defaultStyle','s1');
-  model.setField('defaultReportForm','f1');
-  let saved=model.value();
-  assert.equal(saved.defaultStyle,'s1');assert.equal(saved.defaultReportForm,'f1');
-  model.setField('defaultStyle','');
-  saved=model.value();
-  assert.equal('defaultStyle' in saved,false);
-  assert.equal(saved.defaultReportForm,'f1');
+// Поставщик — простое поле, умолчание — ссылка, флаг — отметка: опустошённое,
+// очищенное и снятое исчезают из корня, а не остаются пустой строкой, null
+// или ложью — «не задано» означает своё у платформы, а не ссылку в никуда.
+test('an emptied field, a cleared default and an unmarked flag vanish',()=>{
+  const configuration=fixture().configuration,root=subject(configuration);
+  root.set('vendor','Пример');root.set('defaultStyle','s1');root.set('includeHelpInContents',true);root.set('dataLockControl','managed');
+  assert.equal(configuration.vendor,'Пример');assert.equal(configuration.defaultStyle,'s1');assert.equal(configuration.includeHelpInContents,true);
+  root.set('vendor','');root.set('defaultStyle',undefined);root.set('includeHelpInContents',false);
+  for(const key of ['vendor','defaultStyle','includeHelpInContents'])assert.equal(key in configuration,false,key);
+  assert.equal(configuration.dataLockControl,'managed');
 });
-// Роли перечислены в порядке конфигурации, роль не выдаётся дважды, а список
-// без единой роли пропадает целиком.
-test('default roles keep their order and are granted once',()=>{
-  const model=create(fixture());
-  model.setRoleGranted('defaultRoles','r1',true);model.setRoleGranted('defaultRoles','r2',true);model.setRoleGranted('defaultRoles','r1',true);
-  assert.deepEqual(model.value().defaultRoles,['r2','r1']);
-  model.setRoleGranted('defaultRoles','r2',false);
-  assert.deepEqual(model.value().defaultRoles,['r1']);
-  model.setRoleGranted('defaultRoles','r1',false);
-  assert.equal('defaultRoles' in model.value(),false);
+// Роли идут в том порядке, в каком их отметили в окне выбора, а пустой
+// список пропадает целиком.
+test('the main roles are kept as chosen and an empty list vanishes',()=>{
+  const configuration=fixture().configuration,root=subject(configuration);
+  root.set('defaultRoles',['r2','r1']);
+  assert.deepEqual(configuration.defaultRoles,['r2','r1']);
+  root.set('defaultRoles',[]);
+  assert.equal('defaultRoles' in configuration,false);
 });
-// Словарь поиска — пара «вид и объект»: один и тот же идентификатор у макета и
-// у константы означает разные словари, и снятый последний словарь уносит
-// список целиком.
+// Словарь поиска — пара «вид и объект»: палитра видит идентификаторы, а
+// корень держит пары; снятый словарь уходит вместе со своим видом, и
+// последний снятый уносит список.
 test('a search dictionary is a kind and an object, not an identifier alone',()=>{
-  const model=create(fixture());
-  model.setDictionary('common-templates','d1',true);
-  model.setDictionary('constants','d1',true);
-  assert.deepEqual(model.value().additionalFullTextSearchDictionaries,
-    [{kind:'common-templates',object:'d1'},{kind:'constants',object:'d1'}]);
-  model.setDictionary('common-templates','d1',false);
-  assert.deepEqual(model.value().additionalFullTextSearchDictionaries,[{kind:'constants',object:'d1'}]);
-  model.setDictionary('constants','d1',false);
-  assert.equal('additionalFullTextSearchDictionaries' in model.value(),false);
-});
-// Режим — слово из набора, и «как в ML» — это отсутствие свойства, а не пустая
-// строка в файле.
-test('a mode set back to the platform default disappears from the root',()=>{
-  const model=create(fixture());
-  model.setField('dataLockControl','managed');model.setField('scriptVariant','russian');
-  assert.equal(model.value().dataLockControl,'managed');
-  model.setField('dataLockControl','');
-  const saved=model.value();
-  assert.equal('dataLockControl' in saved,false);
-  assert.equal(saved.scriptVariant,'russian');
-});
-// Флаг, снятый обратно, исчезает из корня целиком: ложь и отсутствие здесь —
-// одно и то же, и писать её в файл значило бы писать пустоту словами.
-test('a flag that is switched off disappears from the root',()=>{
-  const model=create(fixture());
-  model.setFlag('includeHelpInContents',true);
-  assert.equal(model.value().includeHelpInContents,true);
-  model.setFlag('includeHelpInContents',false);
-  assert.equal('includeHelpInContents' in model.value(),false);
+  const configuration=fixture().configuration,root=subject(configuration);
+  configuration.additionalFullTextSearchDictionaries=[{kind:'common-templates',object:'d1'},{kind:'constants',object:'d2'}];
+  assert.deepEqual(root.get('additionalFullTextSearchDictionaries'),['d1','d2']);
+  root.set('additionalFullTextSearchDictionaries',['d2']);
+  assert.deepEqual(configuration.additionalFullTextSearchDictionaries,[{kind:'constants',object:'d2'}]);
+  root.set('additionalFullTextSearchDictionaries',[]);
+  assert.equal('additionalFullTextSearchDictionaries' in configuration,false);
 });
 // Синоним языка локализован: язык называется на каждом языке проекта, и
 // стёртый перевод исчезает, а не остаётся пустой строкой. Английский не
@@ -154,12 +118,20 @@ test('a language comment vanishes when emptied',()=>{
   model.setLanguageField('ru','comment','');
   assert.equal('comment' in model.value().languages.find(item=>item.code==='ru'),false);
 });
-// Порядок объектов окно корня не показывает и не правит, но хранит его то же
-// описание корня: запись окна не должна его терять (2.519).
-test('the order of the objects survives a save of the root window',()=>{
-  const source=fixture();
-  source.configuration.objectsOrder={catalogs:['c3','c1','c2']};
-  const model=create(source);
-  model.setField('vendor','MetaLab');
-  assert.deepEqual(model.value().objectsOrder,{catalogs:['c3','c1','c2']});
+// Порядок объектов палитра корня не показывает и не правит, но хранит его то
+// же описание корня: правка палитры не должна его терять (2.519).
+test('the order of the objects survives an edit of the palette',()=>{
+  const configuration=fixture().configuration;
+  configuration.objectsOrder={catalogs:['c3','c1','c2']};
+  subject(configuration).set('vendor','MetaLab');
+  assert.deepEqual(configuration.objectsOrder,{catalogs:['c3','c1','c2']});
+});
+// Окно «Командный интерфейс» пишет порядок и видимость разделов в то же
+// описание; пустые — не пишутся.
+test('the sections of the command interface are written and emptied',()=>{
+  const model=create(fixture());
+  model.setSections(['s1'],[{subsystem:'s1',common:false}]);
+  assert.deepEqual(model.value().subsystemsOrder,['s1']);
+  model.setSections([],[]);
+  assert.equal('subsystemsOrder' in model.value(),false);assert.equal('subsystemsVisibility' in model.value(),false);
 });

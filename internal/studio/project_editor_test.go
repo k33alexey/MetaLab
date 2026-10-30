@@ -269,28 +269,43 @@ func TestProjectEditorOffersWhatTheDefaultsMayName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	holds := func(choices []DefaultChoice, id uuid.UUID) bool {
-		for _, choice := range choices {
-			if choice.ID == id {
-				return choice.Name != ""
-			}
-		}
-		return false
+	holds := func(key string, id uuid.UUID) bool {
+		item := choiceItem(opened.Choices[key], id)
+		return item != nil && item.Name != ""
 	}
 	switch {
-	case !holds(opened.Defaults.Styles, written["style"]):
-		t.Fatalf("the style is not offered: %+v", opened.Defaults.Styles)
-	case !holds(opened.Defaults.Roles, written["role"]):
-		t.Fatalf("the role is not offered: %+v", opened.Defaults.Roles)
-	case !holds(opened.Defaults.CommonForms, written["form"]):
-		t.Fatalf("the common form is not offered: %+v", opened.Defaults.CommonForms)
-	case !holds(opened.Defaults.SettingsStorages, written["storage"]):
-		t.Fatalf("the settings storage is not offered: %+v", opened.Defaults.SettingsStorages)
-	case !holds(opened.Defaults.AppearanceTemplates, written["appearance"]):
-		t.Fatalf("the appearance template is not offered: %+v", opened.Defaults.AppearanceTemplates)
-	case holds(opened.Defaults.AppearanceTemplates, written["spreadsheet"]):
-		t.Fatalf("a spreadsheet was offered as an appearance: %+v", opened.Defaults.AppearanceTemplates)
+	case !holds("defaultStyle", written["style"]):
+		t.Fatalf("the style is not offered: %+v", opened.Choices["defaultStyle"])
+	case !holds("defaultRoles", written["role"]):
+		t.Fatalf("the role is not offered: %+v", opened.Choices["defaultRoles"])
+	case !holds("defaultSearchForm", written["form"]):
+		t.Fatalf("the common form is not offered: %+v", opened.Choices["defaultSearchForm"])
+	case !holds("formDataSettingsStorage", written["storage"]), !holds("urlExternalDataStorage", written["storage"]):
+		t.Fatalf("the settings storage is not offered: %+v", opened.Choices)
+	case holds("formDataSettingsStorage", written["style"]):
+		t.Fatalf("a style was offered as a storage: %+v", opened.Choices["formDataSettingsStorage"])
+	case !holds("defaultReportAppearanceTemplate", written["appearance"]):
+		t.Fatalf("the appearance template is not offered: %+v", opened.Choices["defaultReportAppearanceTemplate"])
+	case holds("defaultReportAppearanceTemplate", written["spreadsheet"]):
+		t.Fatalf("a spreadsheet was offered as an appearance: %+v", opened.Choices["defaultReportAppearanceTemplate"])
+	case !holds("defaultLanguage", opened.Configuration.Languages[0].ID):
+		t.Fatalf("the languages are not offered: %+v", opened.Choices["defaultLanguage"])
 	}
+}
+
+// choiceItem finds an object of a tree of «Выбор объекта» by its identifier.
+func choiceItem(branches []ObjectChoiceBranch, id uuid.UUID) *ObjectChoiceItem {
+	for _, branch := range branches {
+		for index := range branch.Objects {
+			if branch.Objects[index].ID == id {
+				return &branch.Objects[index]
+			}
+		}
+		if item := choiceItem(branch.Children, id); item != nil {
+			return item
+		}
+	}
+	return nil
 }
 
 // Every default survives being saved through the editor and comes back naming
@@ -357,10 +372,8 @@ func TestProjectEditorKeepsADefaultPointingAtNothing(t *testing.T) {
 	if reopened.Configuration.DefaultStyle == nil || *reopened.Configuration.DefaultStyle != stranger {
 		t.Fatalf("the broken default was dropped: %+v", reopened.Configuration.DefaultStyle)
 	}
-	for _, choice := range reopened.Defaults.Styles {
-		if choice.ID == stranger {
-			t.Fatal("a style nobody wrote was offered as a choice")
-		}
+	if choiceItem(reopened.Choices["defaultStyle"], stranger) != nil {
+		t.Fatal("a style nobody wrote was offered as a choice")
 	}
 }
 
@@ -375,14 +388,8 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	offered := map[project.DictionaryKind]bool{}
-	for _, choice := range opened.Defaults.Dictionaries {
-		if choice.ID == written["appearance"] || choice.ID == written["spreadsheet"] {
-			offered[choice.Kind] = true
-		}
-	}
-	if !offered[project.TemplateDictionary] {
-		t.Fatalf("a common template was not offered as a dictionary: %+v", opened.Defaults.Dictionaries)
+	if choiceItem(opened.Choices["additionalFullTextSearchDictionaries"], written["spreadsheet"]) == nil {
+		t.Fatalf("a common template was not offered as a dictionary: %+v", opened.Choices["additionalFullTextSearchDictionaries"])
 	}
 
 	updated := opened.Configuration

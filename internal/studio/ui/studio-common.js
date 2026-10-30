@@ -932,20 +932,15 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
    while nothing is - and null on «Отмена». */
 async function chooseOneObject(title, tree, current) {
   let chosen = current || null;
-  const content = node('div', undefined, 'object-choice'), rows = node('div', undefined, 'object-choice-tree');
-  const [searchRow, search] = searchField('object-choice-search', () => draw());
-  content.append(searchRow, rows);
-  let accept = () => {};
-  const leaf = item => {
-    const {element, row} = treeNode({icon: item.icon, caption: item.name});
-    row.classList.toggle('selected', item.id === chosen);
-    row.title = item.fullName || item.name;
-    row.addEventListener('click', () => { chosen = item.id; draw(); });
-    row.addEventListener('dblclick', () => { chosen = item.id; accept(); });
-    return element;
-  };
-  function draw() {
-    const text = search.value.trim().toLocaleLowerCase();
+  return chooseInWindow(title, (rows, text, accept, draw) => {
+    const leaf = item => {
+      const {element, row} = treeNode({icon: item.icon, caption: item.name});
+      row.classList.toggle('selected', item.id === chosen);
+      row.title = item.fullName || item.name;
+      row.addEventListener('click', () => { chosen = item.id; draw(); });
+      row.addEventListener('dblclick', () => { chosen = item.id; accept(); });
+      return element;
+    };
     const found = item => !text || (item.fullName || item.name).toLocaleLowerCase().includes(text);
     const holds = item => item.id === chosen || (item.items || []).some(holds);
     const object = item => {
@@ -962,14 +957,58 @@ async function chooseOneObject(title, tree, current) {
     };
     rows.replaceChildren(...tree.map(branch).filter(Boolean).map(item => item.element));
     rows.querySelector('.selected')?.scrollIntoView?.({block: 'nearest'});
-  }
+  }, () => chosen);
+}
+
+/* chooseInWindow is the frame of the platform's windows choosing one object
+   (chooseOneObject, chooseListedObject): the search over the names with its
+   clearing above the rows, OK - unavailable while nothing is chosen - and
+   «Отмена» in a column at the right, the search focused. fill(rows, text,
+   accept, draw) draws the rows for the text searched, lowercase; accept()
+   is OK, for a double click; draw() draws them anew. chosen() is the
+   identifier chosen. Answers it on OK and null on «Отмена». */
+async function chooseInWindow(title, fill, chosen) {
+  const content = node('div', undefined, 'object-choice'), rows = node('div', undefined, 'object-choice-tree');
+  const [searchRow, search] = searchField('object-choice-search', () => draw());
+  content.append(searchRow, rows);
+  let accept = () => {};
+  const draw = () => fill(rows, search.value.trim().toLocaleLowerCase(), () => accept(), draw);
   draw();
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog',
-    answers: [['ok', 'OK', {enabled: () => !!chosen}], [null, 'Отмена']]});
-  const dialog = content.closest('dialog');
-  accept = () => dialog.querySelector('button.primary')?.click();
+    answers: [['ok', 'OK', {enabled: () => !!chosen()}], [null, 'Отмена']]});
+  accept = () => content.closest('dialog').querySelector('button.primary')?.click();
   search.focus();
-  return await answer === 'ok' ? chosen : null;
+  return await answer === 'ok' ? chosen() : null;
+}
+
+/* chooseListedObject is the platform's window of the choice of one object
+   of a kind, «Выбор объекта: <Вид>» of a row of a palette naming one object
+   - the numerator of a document (dokument.md, «Досъёмка 28.10.2026»), the
+   defaults of the root: the search over the names with its clearing, the
+   list of the objects in the order of the tree, OK and «Отмена» in a column
+   at the right. tree is the server's (objectChoiceTree) offering the
+   objects of one kind, its word for one object titling the window; current
+   is the identifier current at first. A double click chooses too. Answers
+   the identifier chosen on OK - OK is unavailable while none is - and null
+   on «Отмена». */
+async function chooseListedObject(tree, current) {
+  const objects = [];
+  let one = '';
+  (function collect(groups) { for (const group of groups) { one ||= group.one || ''; collect(group.children || []); objects.push(...(group.objects || [])); } })(tree || []);
+  let chosen = objects.some(item => item.id === current) ? current : null;
+  return chooseInWindow(`Выбор объекта: ${one}`, (rows, text, accept, draw) => {
+    const shown = objects.filter(item => !text || item.name.toLocaleLowerCase().includes(text));
+    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name]), chosen, id => { chosen = id; draw(); }, accept));
+    rows.querySelector('.current')?.scrollIntoView?.({block: 'nearest'});
+  }, () => chosen);
+}
+
+/* chosenForm is a main form named by its identifier among the common forms
+   a tree of «Выбор объекта» offers (objectChoiceTree): its name - the
+   identifier where the tree has none - and the path its magnifier opens. */
+function chosenForm(tree, id) {
+  const form = objectChoiceItem(tree, id);
+  return {name: form?.name || id, path: form?.path};
 }
 
 /* The visibility of an item of the command interface or of the home page
@@ -1240,7 +1279,8 @@ function paletteShown(subject) {
    openModule(role), windows - the windows the subject opens and
    openWindow(key), openFile(path), form(value) - the name of a main form
    and the path it opens at, choose(row, items) - the objects chosen for a
-   row, null for none. A subject is {target, get(path), set(path, value),
+   row, null for none, chooses(row) - false where the place opens no window
+   choosing them. A subject is {target, get(path), set(path, value),
    setName(value), check()}. */
 function paletteFields(context) {
   let synonym = null;
@@ -1271,7 +1311,8 @@ function paletteFields(context) {
       const chosen = await context.choose?.(row, items);
       if (chosen) { subject.set(row.key, chosen); context.changed(); }
     });
-    pick.disabled = off || row.field === 'fields';
+    // A place may know no window for a row: context.chooses(row) false.
+    pick.disabled = off || row.field === 'fields' || context.chooses?.(row) === false;
     return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, []); context.changed(); }, off || !items.length)]);
   }
   // A main form: its name, «…» choosing it - its window the inventory does
@@ -1379,10 +1420,11 @@ function paletteFields(context) {
       return link;
     }
     // One object of the project by its identifier - a document's numerator
-    // (dokument.md, «Палитра»): its name among what the window «Выбор
-    // объекта» of the row offers (context.choices), the cross taking it
-    // away; which window «…» opens the inventory does not show (series
-    // 2.618, question): it stands unavailable.
+    // (dokument.md, «Палитра»), a default of the root: its name among what
+    // the row offers (context.choices), «…» choosing another in «Выбор
+    // объекта: <Вид>» (chooseListedObject) - unavailable where nothing is
+    // offered -, the cross taking it away but from an object the subject is
+    // never without (row.required).
     // A standard panel of the window of the client interface
     // (konfiguraciya.md, «Предсъёмка 28.10.2026»; predsyomka-1/42): the
     // panel by its caption (context.standardPanel), «…» choosing another
@@ -1393,11 +1435,15 @@ function paletteFields(context) {
       return fieldWithButtons(shown, [fieldChoiceButton(row.title, () => context.chooseStandardPanel())]);
     }
     if (row.field === 'object') {
-      const id = subject.get(row.key), shown = node('input'), off = !available(subject, row);
+      const id = subject.get(row.key), shown = node('input'), off = !available(subject, row), offered = context.choices?.[row.key];
       shown.readOnly = true; shown.disabled = off;
-      shown.value = id ? objectChoiceItem(context.choices?.[row.key], id)?.name || id : '';
-      const pick = fieldChoiceButton(row.title, () => {});
-      pick.disabled = true;
+      shown.value = id ? objectChoiceItem(offered, id)?.name || id : '';
+      const pick = fieldChoiceButton(row.title, async () => {
+        const chosen = await chooseListedObject(offered, id);
+        if (chosen) { subject.set(row.key, chosen); context.changed(); }
+      });
+      pick.disabled = off || !offered;
+      if (row.required) return fieldWithButtons(shown, [pick]);
       return fieldWithButtons(shown, [pick, clearing(row, () => { subject.set(row.key, undefined); context.changed(); }, off || !id)]);
     }
     // A picture: of the platform by its Russian name, of the project by

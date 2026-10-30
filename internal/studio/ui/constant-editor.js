@@ -15,10 +15,6 @@ function createConstantEditor(host, onChange, around = {}) {
       openModule: role => around.openModule?.(role), openFile: path => around.openFile?.(path),
       // The main form of a constant is a common form, named by its
       // identifier.
-      form: id => {
-        const form = objectChoiceItem(source.choices?.defaultForm, id);
-        return {name: form?.name || id, path: form?.path};
-      },
-      choose: (row, items) => chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items)}),
+      form: id => chosenForm(source.choices?.defaultForm, id)}),
   });
 }

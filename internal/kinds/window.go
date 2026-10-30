@@ -261,6 +261,10 @@ type PaletteRow struct {
 	// «Палитра узла»): not said, the field shows Default greyed with ✓
 	// beside it, which says it; said, ✕ takes it back.
 	Optional bool `json:"optional,omitempty"`
+	// Required is an object the subject is never without: its field has
+	// «…» and no cross - the main language of the root (snapshot
+	// konfiguraciya/03).
+	Required bool `json:"required,omitempty"`
 	// Shown are what the row stands by at all, unlike Needs, which leave it
 	// standing unavailable: type=<kind> - the kind of the one type of the
 	// part (string, number, reference), owner=<kind> - the kind of the
@@ -1272,4 +1276,116 @@ var partPalettes = map[string][]PaletteTab{
 // for.
 func PartPalette(part string) []PaletteTab {
 	return slices.Clone(partPalettes[part])
+}
+
+// rootStorage is a row of a storage of settings of the root: what a user
+// saved of the kind named, kept in a settings storage of the project.
+func rootStorage(key, title, what string) PaletteRow {
+	return PaletteRow{Key: key, Title: title, Field: ObjectField, Important: true,
+		Description: "Хранилище настроек, в котором платформа держит " + what + "; не задано — своё хранилище платформы."}
+}
+
+// rootForm is a row of a main form of the root: the common form standing
+// in for one an object of the project does not name.
+func rootForm(key, title, what string) PaletteRow {
+	return PaletteRow{Key: key, Title: title, Field: FormField, Important: true,
+		Description: "Общая форма, которая открывается " + what + ", если своей формы не названо."}
+}
+
+// rootPalette is the palette of the root of the project, the five tabs of
+// the prototype's (konfiguraciya.md, «Палитра»; snapshots konfiguraciya/01
+// to 07) without the rows ML does not carry (METADATA-OBJECTS.md, «Корень
+// конфигурации»): the run mode and the purposes, the mobile application,
+// the mode of the main window, the logo and the splash, the forms of data
+// history and of the collaboration system, the address of the catalog of
+// updates and every mode of «Совместимость» but the data lock. Nor does it
+// show what the prototype's palette does not: the main form of constants
+// and the prefix of names, which the model carries (the owner's decision
+// of 29.10.2026, В13 of series 2.646). The modules stand where the
+// modulesRow does, given by the root (RootPalette). The tab of the help is
+// «Справка», as every palette's (the owner's decision of 26.10.2026).
+// Which rows «Показывать только важные» keeps is not shot: it keeps all.
+var rootPalette = []PaletteTab{
+	{Key: "main", Title: "Основные", Important: true, Rows: rows(identityRows("проекта", "о проекте"), []PaletteRow{
+		{Field: SeparatorField},
+		{Key: "scriptVariant", Title: "Вариант встроенного языка", Field: ChoiceField, Important: true, Default: "russian",
+			Choices:     [][2]string{{"russian", "Русский"}, {"english", "Английский"}},
+			Description: "На каком из двух вариантов встроенного языка написан код проекта."},
+		{Key: "defaultRoles", Title: "Основные роли", Field: ObjectsField, Important: true,
+			Description: "Роли, с которыми работает пользователь, пока список пользователей пуст."},
+		{Field: modulesRow, Important: true},
+		{Key: "additionalFullTextSearchDictionaries", Title: "Дополнительные словари полнотекстового поиска", Field: ObjectsField, Important: true,
+			Description: "Общие макеты и константы со словарями, которые полнотекстовый поиск знает сверх своих."},
+		{Field: SeparatorField},
+		rootStorage("commonSettingsStorage", "Хранилище общих настроек", "общие настройки пользователя"),
+		rootStorage("reportsUserSettingsStorage", "Хранилище пользовательских настроек отчетов", "настройки отчётов, сохранённые пользователем"),
+		rootStorage("reportsVariantsStorage", "Хранилище вариантов отчетов", "варианты отчётов"),
+		rootStorage("formDataSettingsStorage", "Хранилище настроек данных форм", "данные форм, сохранённые пользователем"),
+		rootStorage("dynamicListsUserSettingsStorage", "Хранилище пользовательских настроек динамических списков", "настройки списков, сохранённые пользователем"),
+		rootStorage("urlExternalDataStorage", "Хранилище внешних данных навигационных ссылок", "данные за навигационной ссылкой"),
+	})},
+	{Key: "presentation", Title: "Представление", Important: true, Rows: []PaletteRow{
+		{Key: "homePage", Title: "Рабочая область начальной страницы", Field: WindowField, Important: true,
+			Description: "Формы, которые приложение открывает на начальной странице."},
+		{Key: "mainSectionCommands", Title: "Командный интерфейс основного раздела", Field: WindowField, Important: true,
+			Description: "Команды основного раздела и их группы."},
+		{Key: "mainSectionPicture", Title: "Картинка основного раздела", Field: WindowField, Important: true,
+			Description: "Значок основного раздела на панели разделов."},
+		{Key: "clientInterface", Title: "Интерфейс клиентского приложения", Field: WindowField, Important: true,
+			Description: "Панели основного окна приложения по его сторонам."},
+		{Field: SeparatorField},
+		{Key: "defaultStyle", Title: "Основной стиль", Field: ObjectField, Important: true,
+			Description: "Стиль, которым рисуется приложение, если ближе ничего не сказано."},
+		{Key: "defaultLanguage", Title: "Основной язык", Field: ObjectField, Required: true, Important: true,
+			Description: "Язык, на котором проект читается, пока пользователь не выбрал другой."},
+		{Key: "briefInformation", Title: "Краткая информация", Field: LocalizedField, Important: true,
+			Description: "Одна строка о проекте для окна «О программе»."},
+		{Key: "detailedInformation", Title: "Подробная информация", Field: LocalizedField, Lines: 6, Important: true,
+			Description: "Текст о проекте для окна «О программе»."},
+		{Key: "copyright", Title: "Авторские права", Field: LocalizedField, Important: true,
+			Description: "Кому принадлежат права на проект."},
+		{Key: "vendorAddress", Title: "Адрес информации о поставщике", Field: LocalizedField, Important: true,
+			Description: "Страница в сети о поставщике проекта, на каждом языке своя."},
+		// «о конфигурации» of the prototype: product texts say «проект».
+		{Key: "informationAddress", Title: "Адрес информации о проекте", Field: LocalizedField, Important: true,
+			Description: "Страница в сети о самом проекте, на каждом языке своя."},
+		{Field: SeparatorField},
+		rootForm("defaultReportForm", "Основная форма отчета", "отчётом"),
+		rootForm("defaultReportSettingsForm", "Основная форма настроек отчета", "для настроек отчёта"),
+		rootForm("defaultReportVariantForm", "Основная форма варианта отчета", "для варианта отчёта"),
+		rootForm("defaultDynamicListSettingsForm", "Основная форма настроек динамического списка", "для настроек списка"),
+		rootForm("defaultSearchForm", "Основная форма поиска", "для поиска"),
+		{Field: SeparatorField},
+		{Key: "defaultReportAppearanceTemplate", Title: "Основной макет оформления отчета", Field: ObjectField, Important: true,
+			Description: "Макет оформления, которым раскрашиваются отчёты без своего оформления."},
+	}},
+	{Key: "development", Title: "Разработка", Important: true, Rows: []PaletteRow{
+		{Key: "vendor", Title: "Поставщик", Field: TextField, Important: true, Description: "Кто выпустил проект."},
+		{Key: "version", Title: "Версия", Field: TextField, Important: true, Description: "Номер выпуска проекта."},
+	}},
+	{Key: "help", Title: "Справка", Important: true, Rows: []PaletteRow{
+		{Key: "includeHelpInContents", Title: "Включать в содержание справки", Field: FlagField, Important: true,
+			Description: "Справка проекта входит в оглавление справки."},
+		{Key: "help", Title: "Справочная информация", Field: WindowField, Important: true, Description: "Текст справки проекта."},
+	}},
+	{Key: "compatibility", Title: "Совместимость", Important: true, Rows: []PaletteRow{
+		{Key: "dataLockControl", Title: "Режим управления блокировкой данных", Field: ChoiceField, Important: true, Default: "managed",
+			Choices:     [][2]string{{"automatic", "Автоматический"}, {"managed", "Управляемый"}, {"automatic-and-managed", "Автоматический и управляемый"}},
+			Description: "Как блокируются данные при записи, если объект не говорит своего: платформой, кодом или и так и так."},
+	}},
+}
+
+// RootPalette is the palette of the root of the project with the rows of
+// its modules, which the root itself knows, standing where the prototype
+// lists them.
+func RootPalette(modules []PaletteRow) []PaletteTab {
+	var result []PaletteTab
+	for _, tab := range rootPalette {
+		tab.Rows = slices.Clone(tab.Rows)
+		if at := slices.IndexFunc(tab.Rows, func(row PaletteRow) bool { return row.Field == modulesRow }); at >= 0 {
+			tab.Rows = slices.Concat(tab.Rows[:at], modules, tab.Rows[at+1:])
+		}
+		result = append(result, tab)
+	}
+	return result
 }

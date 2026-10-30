@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// editorFieldsWalk opens the window of the root, of a catalog and of a
-// language and answers, for each, the left and the right edge of every field
+// editorFieldsWalk opens the window of a catalog and of a language and
+// answers, for each, the left and the right edge of every field
 // of its rows - an input, a list to choose from, a text, and a field with
 // buttons inside its frame measured by its frame - with the caption of the
 // row it stands in.
@@ -22,8 +22,6 @@ const editorFieldsWalk = `(async () => {
       return {caption: label.firstChild.textContent.trim(), left: Math.round(place.left), right: Math.round(place.right)};
     });
   });
-  document.querySelector('#tree summary').click(); await studio.settle();
-  result.root = edges('#project-editor');
   await open('Товары');
   result.catalog = edges('#catalog-editor');
   await open('Українська');
@@ -34,10 +32,11 @@ const editorFieldsWalk = `(async () => {
 // The fields of one window stand under one ruler, as the prototype's do:
 // each starts where the others start and ends where they end, whatever it is
 // - a string, a number, a list to choose from, a text over several lines, a
-// field with the magnifier inside it. Defect caught: a list to choose from of
-// the window of the root wider than every other field of it (420 pixels
-// against 280 - a rule of 2.34 that outlived the width of 2.386), which the
-// owner saw on «Язык по умолчанию» on 21.10.2026.
+// field with the magnifier inside it. Defect caught: a list to choose from
+// wider than every other field of its window (420 pixels against 280 - a
+// rule of 2.34 that outlived the width of 2.386), which the owner saw on
+// «Язык по умолчанию» of the window of the root on 21.10.2026; the root has
+// had no window since 2.651, its palette is the palette of every object.
 func TestTheFieldsOfAWindowStandUnderOneRuler(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	ctx, browser, page := openStudioInBrowser(t, root, func(*Workspace) {})
@@ -53,10 +52,8 @@ func TestTheFieldsOfAWindowStandUnderOneRuler(t *testing.T) {
 	if err := json.Unmarshal(answer, &windows); err != nil {
 		t.Fatalf("the walk answered %s: %v", answer, err)
 	}
-	for _, window := range []string{"root", "catalog", "language"} {
+	for _, window := range []string{"catalog", "language"} {
 		fields := windows[window]
-		// The root has a list to choose from and a text over several lines,
-		// so it is not held by plain inputs alone.
 		if len(fields) < 3 {
 			t.Fatalf("the window of the %s shows %d fields: %+v", window, len(fields), fields)
 		}

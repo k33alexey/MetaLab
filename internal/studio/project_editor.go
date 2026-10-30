@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
@@ -29,102 +31,78 @@ func canonicalEnglish(existing project.Language) project.Language {
 	return canonical
 }
 
-// ProjectEditorSource is the typed, revision-safe representation the
-// visual project editor reads and writes, in place of raw configuration.yaml.
+// ProjectEditorSource is the root of the project as its palette reads and
+// writes it, in place of raw configuration.yaml: the description, the
+// palette's tabs and what its windows «Выбор объекта» offer.
 type ProjectEditorSource struct {
-	Path          string          `json:"path"`
-	Revision      string          `json:"revision"`
-	Configuration project.Project `json:"configuration"`
-	Defaults      DefaultChoices  `json:"defaults"`
+	Path          string             `json:"path"`
+	Revision      string             `json:"revision"`
+	Configuration project.Project    `json:"configuration"`
+	Palette       []kinds.PaletteTab `json:"palette"`
+	// Choices are the objects a row of the palette names, by the key of the
+	// row: the tree of the window choosing them and the names the row shows
+	// (ObjectChoiceBranch).
+	Choices map[string][]ObjectChoiceBranch `json:"choices"`
 }
 
-// DefaultChoice is one object a default of the root is allowed to name. The
-// name is what a developer knows the object by; the synonym is what stands in
-// the picker, in the language the project is read in.
-type DefaultChoice struct {
-	ID    uuid.UUID              `json:"id"`
-	Name  string                 `json:"name"`
-	Title metadata.LocalizedText `json:"title"`
-}
-
-// DefaultChoices lists what the defaults of the root may point at, grouped by
-// what each default needs: a style, a role, a common form, a common template
-// of the one kind an appearance is made of, or a settings storage.
+// rootChoices are what the rows of the palette of the root may name, by the
+// key of the row: a role, a style, a language, a settings storage, a common
+// form, an appearance template, and a dictionary of the full-text search -
+// a common template or a constant.
 //
-// The defaults are references, and a reference is offered rather than typed:
-// an identifier written by hand is an identifier misspelled sooner or later,
-// and a default pointing at nothing is a form that will not open.
-type DefaultChoices struct {
-	Styles              []DefaultChoice `json:"styles"`
-	Roles               []DefaultChoice `json:"roles"`
-	CommonForms         []DefaultChoice `json:"commonForms"`
-	AppearanceTemplates []DefaultChoice `json:"appearanceTemplates"`
-	SettingsStorages    []DefaultChoice `json:"settingsStorages"`
-	// Dictionaries is what may serve as an additional dictionary of the
-	// full-text search: any common template, or any constant. The two are one
-	// list rather than two, because the root chooses a dictionary and not a
-	// kind of object, and each entry says which kind it is.
-	Dictionaries []DictionaryChoice `json:"dictionaries"`
-}
-
-// DictionaryChoice is one object the full-text search may be given as a
-// dictionary, and the kind it is: without the kind the browser would send back
-// an identifier the root cannot store.
-type DictionaryChoice struct {
-	Kind  project.DictionaryKind `json:"kind"`
-	ID    uuid.UUID              `json:"id"`
-	Name  string                 `json:"name"`
-	Title metadata.LocalizedText `json:"title"`
-}
-
-// loadDefaultChoices reads what the root's defaults may name.
-//
-// A configuration that does not fully load comes back with empty lists rather
-// than an error: the root is where a broken reference is repaired, so the one
-// editor that can repair it must open even while something else in the project
-// is mid-edit. What the root already names is shown regardless - the browser
-// keeps a default it cannot find in the lists and says so, which is the whole
-// point of opening the editor in that state.
-func loadDefaultChoices(root string, configuration project.Project) DefaultChoices {
-	choices := DefaultChoices{}
-	catalog, err := metadata.Load(root)
+// A configuration that does not fully load comes back with no choices
+// rather than an error: the root is where a broken reference is repaired, so
+// the one palette that can repair it must open even while something else in
+// the project is mid-edit. What the root already names is shown regardless -
+// a row shows an identifier it cannot find, which is the point of opening it
+// in that state. The languages are the root's own and are offered always.
+func rootChoices(root string, configuration project.Project) map[string][]ObjectChoiceBranch {
+	language := kinds.Must(metadata.LanguageKind)
+	languages := ObjectChoiceBranch{Title: language.Titles, One: language.Title, Icon: language.Icon}
+	for _, item := range configuration.Languages {
+		languages.Objects = append(languages.Objects, ObjectChoiceItem{ID: item.ID, Name: item.Name,
+			FullName: language.Name.Russian + "." + item.Name, Icon: language.Icon})
+	}
+	choices := map[string][]ObjectChoiceBranch{"defaultLanguage": {languages}}
+	loaded, err := metadata.Load(root)
 	if err != nil {
 		return choices
 	}
-	for _, item := range catalog.Styles {
-		choices.Styles = append(choices.Styles, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.Roles {
-		choices.Roles = append(choices.Roles, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.CommonTemplates {
+	appearance := func(kind metadata.Kind, item *ObjectChoiceItem) bool {
 		// A template of another kind describes nothing an appearance is made
 		// of: a spreadsheet is a document, not a set of colours and fonts.
-		if item.Kind != metadata.CompositionAppearance {
-			continue
+		at := slices.IndexFunc(loaded.CommonTemplates, func(template metadata.CommonTemplateDefinition) bool { return template.ID == item.ID })
+		return at >= 0 && loaded.CommonTemplates[at].Kind == metadata.CompositionAppearance
+	}
+	choices["defaultRoles"] = objectChoiceTree(loaded, []metadata.Kind{metadata.RoleKind})
+	choices["defaultStyle"] = objectChoiceTree(loaded, []metadata.Kind{metadata.StyleKind})
+	choices["defaultReportAppearanceTemplate"] = shapedObjectChoiceTree(loaded, []metadata.Kind{metadata.CommonTemplateKind}, appearance)
+	choices["additionalFullTextSearchDictionaries"] = objectChoiceTree(loaded, []metadata.Kind{metadata.CommonTemplateKind, metadata.ConstantKind})
+	storages := objectChoiceTree(loaded, []metadata.Kind{metadata.SettingsStorageKind})
+	forms := objectChoiceTree(loaded, []metadata.Kind{metadata.CommonFormKind})
+	for _, tab := range kinds.RootPalette(nil) {
+		for _, row := range tab.Rows {
+			switch {
+			case row.Field == kinds.FormField:
+				choices[row.Key] = forms
+			case row.Field == kinds.ObjectField && choices[row.Key] == nil:
+				// Every other row of one object is a storage of settings.
+				choices[row.Key] = storages
+			}
 		}
-		choices.AppearanceTemplates = append(choices.AppearanceTemplates,
-			DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.SettingsStorages {
-		choices.SettingsStorages = append(choices.SettingsStorages, DefaultChoice{ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.CommonTemplates {
-		choices.Dictionaries = append(choices.Dictionaries,
-			DictionaryChoice{Kind: project.TemplateDictionary, ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	for _, item := range catalog.Constants {
-		choices.Dictionaries = append(choices.Dictionaries,
-			DictionaryChoice{Kind: project.ConstantDictionary, ID: item.ID, Name: item.Name, Title: item.Title})
-	}
-	forms, err := metadata.ReadCommonForms(root, configuration)
-	if err != nil {
-		return choices
-	}
-	for _, form := range forms {
-		choices.CommonForms = append(choices.CommonForms, DefaultChoice{ID: form.ID, Name: form.Name, Title: form.Title})
 	}
 	return choices
+}
+
+// rootPaletteRows is the palette of the root with the rows of its modules
+// (rootModules), each opened by its file.
+func rootPaletteRows() []kinds.PaletteTab {
+	modules := make([]kinds.PaletteRow, 0, len(rootModules))
+	for _, module := range rootModules {
+		modules = append(modules, kinds.PaletteRow{Key: module.file, Title: module.title, Field: kinds.ModuleField, Important: true,
+			Description: module.explanation})
+	}
+	return kinds.RootPalette(modules)
 }
 
 func (workspace *Workspace) ReadProjectEditor() (ProjectEditorSource, error) {
@@ -145,7 +123,7 @@ func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, erro
 	configuration = withEnglishLanguage(configuration)
 	return ProjectEditorSource{
 		Path: project.ConfigurationFile, Revision: file.Revision,
-		Configuration: configuration, Defaults: loadDefaultChoices(workspace.root, configuration),
+		Configuration: configuration, Palette: rootPaletteRows(), Choices: rootChoices(workspace.root, configuration),
 	}, nil
 }
 
@@ -221,7 +199,7 @@ func (workspace *Workspace) SaveProjectEditor(configuration project.Project, rev
 		return ProjectEditorSource{}, err
 	}
 	opened.Configuration, opened.Revision = configuration, saved.Revision
-	opened.Defaults = loadDefaultChoices(workspace.root, configuration)
+	opened.Choices = rootChoices(workspace.root, configuration)
 	return opened, nil
 }
 

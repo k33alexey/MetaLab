@@ -35,7 +35,7 @@ func addGermanLanguage(t *testing.T, root string) {
 	}
 }
 
-// localizedFieldWalk opens the window of the root and answers how its
+// localizedFieldWalk opens the palette of the root and answers how its
 // synonym is drawn - the inputs of the field, its value, whether the
 // magnifier lies inside the input's frame at the right edge and whether the
 // field is as wide as «Имя» - then opens «Строки на разных языках» and
@@ -74,27 +74,31 @@ const localizedFieldWalk = `(async () => {
   const write = (index, text) => { const input = dialog().querySelectorAll('label input')[index]; input.value = text; input.dispatchEvent(new Event('input', {bubbles: true})); };
   const press = async caption => { [...dialog().querySelectorAll('.localized-title-actions button')].find(button => button.textContent === caption).click(); await studio.settle(); };
   document.querySelector('#tree summary').click(); await studio.settle();
-  steps.synonym = drawn('#project-editor', 'Синоним');
-  steps.name = Math.round(field('#project-editor', 'Имя').querySelector('input').getBoundingClientRect().width);
-  steps.detailed = drawn('#project-editor', 'Подробная информация');
-  await lupa('#project-editor', 'Синоним');
+  steps.synonym = drawn('#properties', 'Синоним');
+  steps.name = Math.round(field('#properties', 'Имя').querySelector('input').getBoundingClientRect().width);
+  // «Подробная информация» stands on «Представление» of the palette.
+  const tab = async key => { document.querySelector('#properties .studio-tab[data-tab="' + key + '"]').click(); await studio.settle(); };
+  await tab('presentation');
+  steps.detailed = drawn('#properties', 'Подробная информация');
+  await tab('main');
+  await lupa('#properties', 'Синоним');
   steps.window = translations();
   write(1, 'Отменено');
   await press('Отмена');
-  steps.cancelled = {value: drawn('#project-editor', 'Синоним').value, saved: document.querySelector('#save').disabled};
-  await lupa('#project-editor', 'Синоним');
+  steps.cancelled = {value: drawn('#properties', 'Синоним').value, saved: document.querySelector('#save').disabled};
+  await lupa('#properties', 'Синоним');
   steps.afterCancel = translations().strings;
   write(0, 'Продажи и склады');
   write(3, 'Verkauf und Lager');
   await press('ОК');
-  steps.written = {value: drawn('#project-editor', 'Синоним').value, saved: document.querySelector('#save').disabled};
-  await lupa('#project-editor', 'Синоним');
+  steps.written = {value: drawn('#properties', 'Синоним').value, saved: document.querySelector('#save').disabled};
+  await lupa('#properties', 'Синоним');
   steps.afterOK = translations().strings;
   await press('Отмена');
   const language = document.querySelector('#studio-language');
   language.value = 'en'; language.dispatchEvent(new Event('change')); await studio.settle();
-  steps.english = drawn('#project-editor', 'Синоним').value;
-  await lupa('#project-editor', 'Синоним');
+  steps.english = drawn('#properties', 'Синоним').value;
+  await lupa('#properties', 'Синоним');
   steps.inEnglish = translations();
   await press('Отмена');
   language.value = 'ru'; language.dispatchEvent(new Event('change')); await studio.settle();

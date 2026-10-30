@@ -15,7 +15,10 @@ import (
 // vladelcy-vybor-obekta): the branch of a kind with its objects, or «Общие»
 // with the branches of its kinds, as the project tree stands them.
 type ObjectChoiceBranch struct {
-	Title    string               `json:"title"`
+	Title string `json:"title"`
+	// One is the kind's word for one object of it, which the window choosing
+	// one object of the kind is titled by: «Выбор объекта: Нумератор».
+	One      string               `json:"one,omitempty"`
 	Icon     string               `json:"icon"`
 	Children []ObjectChoiceBranch `json:"children,omitempty"`
 	Objects  []ObjectChoiceItem   `json:"objects,omitempty"`
@@ -60,7 +63,7 @@ func shapedObjectChoiceTree(loaded *metadata.Catalog, offered []metadata.Kind, s
 		if !slices.Contains(offered, descriptor.Kind) {
 			continue
 		}
-		branch := ObjectChoiceBranch{Title: descriptor.Titles, Icon: descriptor.Icon}
+		branch := ObjectChoiceBranch{Title: descriptor.Titles, One: descriptor.Title, Icon: descriptor.Icon}
 		for _, object := range loaded.KindObjects(descriptor.Kind) {
 			item := ObjectChoiceItem{ID: object.ID, Name: object.Name, FullName: descriptor.Name.Russian + "." + object.Name, Icon: descriptor.Icon}
 			if directory, err := project.ObjectDirectory(string(descriptor.Kind), object.Name); err == nil && descriptor.Layout().KeepsFolder() {

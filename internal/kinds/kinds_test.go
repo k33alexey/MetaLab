@@ -502,6 +502,53 @@ func TestThePaletteOfAConstantIsThePrototypes(t *testing.T) {
 	}
 }
 
+// The palette of the root is the prototype's five tabs (docs/block-00/
+// konfiguraciya.md, «Палитра»; snapshots konfiguraciya/01 to 07) without
+// what ML does not carry (METADATA-OBJECTS.md, «Корень конфигурации») and
+// without the rows the prototype's palette does not show (В13 of series
+// 2.646): the modules stand after the main roles, where the root puts them;
+// the main language has no cross. Defects caught: a tab or a row missing or
+// out of place, a row of a mode, of the mobile application, of the logo or
+// of a form of data history coming back, the main form of constants or the
+// prefix of names shown, the modules standing elsewhere, the main language
+// cleared.
+func TestThePaletteOfTheRootIsThePrototypes(t *testing.T) {
+	palette := RootPalette([]PaletteRow{{Key: "m1", Title: "Модуль приложения", Field: ModuleField}, {Key: "m2", Title: "Модуль сеанса", Field: ModuleField}})
+	var tabs []string
+	for _, tab := range palette {
+		tabs = append(tabs, tab.Title)
+	}
+	for name, testCase := range map[string]struct{ got, want []string }{
+		"tabs": {tabs, []string{"Основные", "Представление", "Разработка", "Справка", "Совместимость"}},
+		"main": {shownRows(palette, "main"), []string{"Имя", "Синоним", "Комментарий", "Вариант встроенного языка", "Основные роли",
+			"Модуль приложения", "Модуль сеанса", "Дополнительные словари полнотекстового поиска",
+			"Хранилище общих настроек", "Хранилище пользовательских настроек отчетов", "Хранилище вариантов отчетов",
+			"Хранилище настроек данных форм", "Хранилище пользовательских настроек динамических списков", "Хранилище внешних данных навигационных ссылок"}},
+		"presentation": {shownRows(palette, "presentation"), []string{"Рабочая область начальной страницы", "Командный интерфейс основного раздела",
+			"Картинка основного раздела", "Интерфейс клиентского приложения", "Основной стиль", "Основной язык", "Краткая информация",
+			"Подробная информация", "Авторские права", "Адрес информации о поставщике", "Адрес информации о проекте",
+			"Основная форма отчета", "Основная форма настроек отчета", "Основная форма варианта отчета",
+			"Основная форма настроек динамического списка", "Основная форма поиска", "Основной макет оформления отчета"}},
+		"development":   {shownRows(palette, "development"), []string{"Поставщик", "Версия"}},
+		"help":          {shownRows(palette, "help"), []string{"Включать в содержание справки", "Справочная информация"}},
+		"compatibility": {shownRows(palette, "compatibility"), []string{"Режим управления блокировкой данных"}},
+	} {
+		if !slices.Equal(testCase.got, testCase.want) {
+			t.Errorf("%s: %q, want %q", name, testCase.got, testCase.want)
+		}
+	}
+	for _, tab := range palette {
+		for _, row := range tab.Rows {
+			if row.Required != (row.Key == "defaultLanguage") {
+				t.Errorf("%q: required %v", row.Title, row.Required)
+			}
+		}
+	}
+	if again := RootPalette(nil); len(again[0].Rows) != len(rootPalette[0].Rows)-1 {
+		t.Errorf("the modules of one call stayed in the palette of the next: %d rows", len(again[0].Rows))
+	}
+}
+
 // Every row of a page of a window built of the palette names a row the
 // palette of its kind has, so the field, its values and its availability
 // are the palette's and are not written twice; the pages «Поле ввода» and
