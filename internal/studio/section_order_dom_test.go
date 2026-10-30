@@ -194,6 +194,7 @@ func TestTheCommandsOfASectionMoveAndAreOrderedAsThePrototypes(t *testing.T) {
 			}
 			children[child.name] = named.ID
 		}
+		automaticSubsections(t, workspace, created.Path)
 	})
 	result, err := browser.evaluate(ctx, page, strings.Replace(sectionOrderWalk, "SUBSYSTEM_PATH", path, 1))
 	if err != nil {

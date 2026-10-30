@@ -147,6 +147,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 			}
 			made[child.name] = named.ID
 		}
+		automaticSubsections(t, workspace, created.Path)
 	})
 	result, err := browser.evaluate(ctx, page, sectionRolesWalk)
 	if err != nil {

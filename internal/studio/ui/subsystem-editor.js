@@ -306,9 +306,11 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     return [...manual, ...leading, ...rest.filter(line => home.get(line) === key && !added.has(line)).sort(alphabet),
       ...come.filter(line => !leading.includes(line))];
   };
+  // Those the order says, then the rest in the automatic order the server
+  // gives them (behavior.AutomaticSubsections).
   const subsectionsShown = () => {
     const manual = subsectionOrder || [];
-    return [...manual, ...subsections.filter(item => !manual.includes(item)).sort((one, other) => one.title.localeCompare(other.title, 'ru'))];
+    return [...manual, ...subsections.filter(item => !manual.includes(item))];
   };
   let hidden = false, current = null, filtering = [];
   const opened = item => !filtering.length || (item.opens || []).some(role => filtering.includes(role));

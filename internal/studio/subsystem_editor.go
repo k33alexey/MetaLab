@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/k33alexey/MetaLab/internal/behavior"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -313,12 +314,13 @@ func contentLines(loaded *metadata.Catalog, subsystem metadata.SubsystemDefiniti
 }
 
 // subsections are the subsystems under parent - the root where none - that
-// are in the command interface, as the project reads them - the window
-// orders them: a subsystem not in it is no section (help,
-// Подсистема.ВключатьВКомандныйИнтерфейс), and «Все подсистемы» leaves it
-// out too (podsistema.md, «Предсъёмка 28.10.2026»).
+// are in the command interface, in the automatic order of «Подразделы»
+// (behavior.AutomaticSubsections); the window puts those its command
+// interface orders first. A subsystem not in the command interface is no
+// section (help, Подсистема.ВключатьВКомандныйИнтерфейс), and «Все
+// подсистемы» leaves it out too (podsistema.md, «Предсъёмка 28.10.2026»).
 func subsections(loaded *metadata.Catalog, language string, parent *uuid.UUID) []SectionSubsystem {
-	var found []SectionSubsystem
+	found := []SectionSubsystem{}
 	for _, item := range loaded.Subsystems {
 		if !sameParent(item.Parent, parent) || !item.IncludeInCommandInterface {
 			continue
@@ -326,6 +328,7 @@ func subsections(loaded *metadata.Catalog, language string, parent *uuid.UUID) [
 		found = append(found, SectionSubsystem{ID: item.ID, Title: item.Title.Presentation(language, item.Name),
 			Opens: openingRoles(loaded, contentLines(loaded, item))})
 	}
+	behavior.AutomaticSubsections(found, func(item SectionSubsystem) string { return item.Title })
 	return found
 }
 
@@ -388,7 +391,51 @@ func (workspace *Workspace) CreateSubsystemChild(child SubsystemChild) (Subsyste
 	if err != nil {
 		return SubsystemEditorSource{}, err
 	}
-	return workspace.readSubsystemEditorLocked(relative)
+	made, err := workspace.readSubsystemEditorLocked(relative)
+	if err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	if err := workspace.addSubsectionLocked(parent, made.Subsystem.ID); err != nil {
+		return SubsystemEditorSource{}, err
+	}
+	return made, nil
+}
+
+// addSubsectionLocked writes the subsystem added at the end of the order
+// of «Подразделы» of the parent described at relative
+// (behavior.SubsectionAdded): the parent shows «Подразделы (ручной
+// порядок)» at once, as the prototype's (podsistema.md, «Досъёмка
+// 28.10.2026, ночь»). A subsystem not in the command interface is no
+// subsection and changes no order.
+func (workspace *Workspace) addSubsectionLocked(relative string, added uuid.UUID) error {
+	opened, err := workspace.readSubsystemEditorLocked(relative)
+	if err != nil {
+		return err
+	}
+	loaded, err := metadata.Load(workspace.root)
+	if err != nil {
+		return err
+	}
+	configuration, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return err
+	}
+	automatic := subsections(loaded, configuration.DefaultLanguage, &opened.Subsystem.ID)
+	if !slices.ContainsFunc(automatic, func(item SectionSubsystem) bool { return item.ID == added }) {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(automatic))
+	for index, item := range automatic {
+		ids[index] = item.ID
+	}
+	parent := opened.Subsystem
+	parent.CommandInterface.SubsystemsOrder = behavior.SubsectionAdded(parent.CommandInterface.SubsystemsOrder, ids, added)
+	var encoded bytes.Buffer
+	if err := metadata.Encode(&encoded, parent); err != nil {
+		return err
+	}
+	_, err = workspace.saveSourceLocked(relative, encoded.String(), opened.Revision)
+	return err
 }
 
 // errSubsystemInsideItself refuses a subsystem moved under itself or under
