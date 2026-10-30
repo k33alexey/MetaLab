@@ -20,34 +20,11 @@
    15.10.2026; question В1 of series 2.631). around holds the palette and
    its title. */
 function createPictureEditor(host, onChange, around = {}) {
-  // image is the image the window gives the picture - {format, content},
-  // {file} of the folder, {} for none - and set the rows of the set it gives
-  // instead; null for each is what the folder has.
-  let image = null, set = null, source = null;
+  // What the window gives the picture (pictureChoice), and the picture as
+  // the server read it.
+  const choice = {image: null, set: null};
+  let source = null;
   const picture = () => source.picture;
-  const imageAddress = name => `/api/picture/image?path=${encodeURIComponent(source.path)}&name=${encodeURIComponent(name)}`;
-  // address is the image a variant, or the window's image, draws.
-  const address = item => item.image?.content ? `data:${mediaOf(item.image.format)};base64,${item.image.content}` : item.file ? imageAddress(item.file) : '';
-  // The set the window shows: the one given, or the folder's when no image
-  // was given; null for a picture of one image or none.
-  function currentSet() {
-    if (image) return null;
-    if (set) return set;
-    return source.set?.length ? source.set.map(variant => ({...variant})) : null;
-  }
-  // The image the window shows: of a set, chosen, cleared, or the one in
-  // the folder.
-  function shownImage() {
-    const rows = currentSet();
-    if (rows) {
-      const row = screenVariant(rows, (window.devicePixelRatio || 1) * 100);
-      return row ? {url: address(row), format: 'zip'} : null;
-    }
-    if (image?.content) return {url: address({image}), format: image.format};
-    const name = image ? image.file : source.images[0];
-    return name ? {url: imageAddress(name), format: pictureFormat({file: name}), name} : null;
-  }
-  function mediaOf(format) { return format === 'svg' ? 'image/svg+xml' : format === 'jpg' ? 'image/jpeg' : format === 'ico' ? 'image/x-icon' : `image/${format}`; }
   function setText(key, value) {
     if (typeof value === 'string' ? value : Object.keys(value || {}).length) picture()[key] = value; else delete picture()[key];
   }
@@ -63,74 +40,158 @@ function createPictureEditor(host, onChange, around = {}) {
       checkboxField('Доступность для выбора', !!picture().availableForChoice, value => { setFlag('availableForChoice', value); changed(); }),
       checkboxField('Доступность для оформления', !!picture().availableForAppearance, value => { setFlag('availableForAppearance', value); changed(); },
         'catalog-check', !picture().availableForChoice));
-    const shown = shownImage(), area = node('div', undefined, 'picture-window-image');
-    if (shown) {
-      const drawn = node('img');
-      drawn.src = shown.url;
-      drawn.alt = picture().name;
-      area.append(drawn);
-    }
-    const buttons = node('div', undefined, 'picture-window-buttons');
-    const button = (caption, enabled, act) => {
+    const folder = {...source, imageAddress: name => `/api/picture/image?path=${encodeURIComponent(source.path)}&name=${encodeURIComponent(name)}`};
+    const view = pictureChoice(choice, folder, picture().name, changed), buttons = node('div', undefined, 'picture-window-buttons');
+    for (const [caption, enabled, act] of view.commands(true)) {
       const element = node('button', caption);
       element.type = 'button';
-      element.disabled = !enabled;
+      element.disabled = !enabled();
       element.addEventListener('click', act);
       buttons.append(element);
-      return element;
-    };
-    const rows = currentSet();
-    button('Выбрать из файла', true, () => chooseFile(api));
-    button('Очистить', !!shown || !!rows, () => { image = {}; set = null; changed(); });
-    button('Установить прозрачный фон', false, () => {});
-    button('Убрать прозрачность', false, () => {});
-    button('Включить набор вариантов', !rows, () => {
-      const first = image?.content ? {image} : image?.file ? {file: image.file} : !image && source.images[0] ? {file: source.images[0]} : null;
-      set = first ? [{density: 100, ...first}] : [];
-      image = null;
-      changed();
-    });
-    button('Выключить набор вариантов', !!rows, () => {
-      const row = setImage(rows, source.variantChoices.densities.map(choice => choice.density));
-      image = row?.image ? row.image : row ? {file: row.file} : {};
-      set = null;
-      changed();
-    });
-    button('Редактировать', !!rows, async () => {
-      const edited = await showPictureSetEditor(picture().name, rows, source.variantChoices, address, source.formats);
-      if (edited) { set = edited; changed(); }
-    });
-    button('Сохранить в файл', !!shown && !rows, () => saveToFile(shown));
+    }
     const middle = node('div', undefined, 'picture-window-middle');
-    middle.append(area, buttons);
-    const kind = node('div', undefined, 'picture-window-type');
-    kind.append(node('span', 'Тип картинки:'), node('span', rows ? 'zip' : shown?.format || ''));
-    body.append(middle, kind);
-  }
-  // «Выбрать из файла»: a file of one of the formats, read whole; it becomes
-  // the picture when the window is saved.
-  async function chooseFile(api) {
-    const chosen = await choosePictureFile(source.formats);
-    if (!chosen) return;
-    image = chosen;
-    set = null;
-    api.changed();
-  }
-  // «Сохранить в файл»: the image as the browser saves a download, named
-  // after the picture.
-  function saveToFile(shown) {
-    const link = node('a');
-    link.href = shown.url;
-    link.download = `${picture().name}.${shown.format}`;
-    link.click();
+    middle.append(view.image, buttons);
+    body.append(middle, view.kind);
   }
   return objectWindowEditor(host, onChange, around, {target: opened => opened.picture, own: api => ({className: 'picture-window',
     draw: body => { source = api.source(); draw(body, api); },
     subject: opened => ({target: opened.picture, get: key => opened.picture[key], set: (key, value) => key === 'comment' ? setText(key, value) : setFlag(key, value),
       setName: value => { opened.picture.name = value; }, check: () => ({path: opened.path, name: opened.picture.name})}),
     context: () => ({windows: ['picture'], openWindow: () => host.querySelector('input')?.focus()}),
-    reset: () => { image = null; set = null; },
-    value: object => image ? {...object, image: structuredClone(image)} : set ? (set.length ? {...object, set: structuredClone(set)} : {...object, image: {}}) : object})});
+    reset: () => { choice.image = null; choice.set = null; },
+    value: object => pictureChoiceValue(choice, object)})});
+}
+
+/* pictureChoice is the picture a window chooses and its commands, one for
+   the window of a common picture (obshchaya-kartinka.md, «Окно»; snapshot
+   obshchaya-kartinka/02-okno) and for «Выбор картинки» of the picture of
+   the main section (konfiguraciya.md, «Досъёмка 30.10.2026»; snapshots
+   dosyomka-2651/07, 08). choice is what the window gives - image, an image
+   chosen ({format, content}), of the folder ({file}) or none ({}); set, the
+   rows of a set; null for each is what the folder has - kept until the
+   window writes it (ML-STUDIO.md, «Набор вариантов»): «Включить набор
+   вариантов» makes the image the one variant, «Малая (ldpi)», with no
+   question; «Выключить» leaves the image of one variant (setImage);
+   «Выбрать из файла» and «Очистить» put an image or none in place of a set.
+   A set shows the variant for the density of the screen (screenVariant) and
+   the type zip. The buttons of the transparency stand unavailable: they are
+   an item of their own. The prototype's «Редактировать» is here only for a
+   set, which it opens the editor of (showPictureSetEditor): Studio has no
+   editor of pictures, a picture is loaded from a file and saved to one (the
+   owner's decision of 15.10.2026; question В1 of series 2.631). folder is
+   the server's: images, set, formats, variantChoices, and imageAddress(name)
+   of an image of it; name names the picture; changed() follows a change.
+   Answers {image, kind, commands(saving)}: the image drawn, «Тип картинки»
+   under it, and the commands [caption, enabled(), act] - «Сохранить в
+   файл» where saving, as the window of a common picture has it. */
+function pictureChoice(choice, folder, name, changed) {
+  // address is the image a variant, or the window's image, draws.
+  const address = item => item.image?.content ? `data:${pictureMedia(item.image.format)};base64,${item.image.content}` : item.file ? folder.imageAddress(item.file) : '';
+  // The set the window shows: the one given, or the folder's when no image
+  // was given; null for a picture of one image or none.
+  function currentSet() {
+    if (choice.image) return null;
+    if (choice.set) return choice.set;
+    return folder.set?.length ? folder.set.map(variant => ({...variant})) : null;
+  }
+  // The image the window shows: of a set, chosen, cleared, or the one in
+  // the folder.
+  function shownImage() {
+    const rows = currentSet();
+    if (rows) {
+      const row = screenVariant(rows, (window.devicePixelRatio || 1) * 100);
+      return row ? {url: address(row), format: 'zip'} : null;
+    }
+    if (choice.image?.content) return {url: address({image: choice.image}), format: choice.image.format};
+    const file = choice.image ? choice.image.file : folder.images[0];
+    return file ? {url: folder.imageAddress(file), format: pictureFormat({file}), name: file} : null;
+  }
+  const shown = shownImage(), rows = currentSet(), image = node('div', undefined, 'picture-window-image');
+  if (shown) {
+    const drawn = node('img');
+    drawn.src = shown.url;
+    drawn.alt = name;
+    image.append(drawn);
+  }
+  const kind = node('div', undefined, 'picture-window-type');
+  kind.append(node('span', 'Тип картинки:'), node('span', rows ? 'zip' : shown?.format || ''));
+  const commands = saving => [
+    // «Выбрать из файла»: a file of one of the formats, read whole.
+    ['Выбрать из файла', () => true, async () => {
+      const chosen = await choosePictureFile(folder.formats);
+      if (!chosen) return;
+      choice.image = chosen; choice.set = null;
+      changed();
+    }],
+    ['Очистить', () => !!shown || !!rows, () => { choice.image = {}; choice.set = null; changed(); }],
+    ['Установить прозрачный фон', () => false, () => {}],
+    ['Убрать прозрачность', () => false, () => {}],
+    ['Включить набор вариантов', () => !rows, () => {
+      const image = choice.image, first = image?.content ? {image} : image?.file ? {file: image.file} : !image && folder.images[0] ? {file: folder.images[0]} : null;
+      choice.set = first ? [{density: 100, ...first}] : [];
+      choice.image = null;
+      changed();
+    }],
+    ['Выключить набор вариантов', () => !!rows, () => {
+      const row = setImage(rows, folder.variantChoices.densities.map(item => item.density));
+      choice.image = row?.image ? row.image : row ? {file: row.file} : {};
+      choice.set = null;
+      changed();
+    }],
+    ['Редактировать', () => !!rows, async () => {
+      const edited = await showPictureSetEditor(name, rows, folder.variantChoices, address, folder.formats);
+      if (edited) { choice.set = edited; changed(); }
+    }],
+    // «Сохранить в файл»: the image as the browser saves a download, named
+    // after the picture.
+    ...(saving ? [['Сохранить в файл', () => !!shown && !rows, () => {
+      const link = node('a');
+      link.href = shown.url;
+      link.download = `${name}.${shown.format}`;
+      link.click();
+    }]] : []),
+  ];
+  return {image, kind, commands};
+}
+
+/* pictureChoiceValue is what a window writes of what it gives a picture
+   (pictureChoice): the image, or the set - a set of no variant a picture of
+   no image - beside what it writes of its own; nothing given, its own. */
+function pictureChoiceValue(choice, own = {}) {
+  if (choice.image) return {...own, image: structuredClone(choice.image)};
+  if (choice.set) return choice.set.length ? {...own, set: structuredClone(choice.set)} : {...own, image: {}};
+  return own;
+}
+
+/* pictureMedia is the media type of an image of a format. */
+function pictureMedia(format) {
+  return format === 'svg' ? 'image/svg+xml' : format === 'jpg' ? 'image/jpeg' : format === 'ico' ? 'image/x-icon' : `image/${format}`;
+}
+
+/* chooseMainSectionPicture is «Выбор картинки» of the picture of the main
+   section, «Открыть» of its row of the palette of the root (konfiguraciya.md,
+   «Досъёмка 30.10.2026»; snapshots dosyomka-2651/07, 08): the picture at the
+   left, the commands of the picture in a column at the right (pictureChoice,
+   without «Сохранить в файл»), a gap, OK and «Отмена» under them, «Тип
+   картинки» under the picture. folder is the root's picture as the server
+   read it, given what an earlier OK gave and «Сохранить» has not written
+   yet. Answers on OK what the picture is given - {image} or {set}, or given
+   when nothing changed - and undefined on «Отмена». */
+async function chooseMainSectionPicture(folder, given) {
+  const choice = {image: given?.image ?? null, set: given?.set ?? null};
+  const content = node('div', undefined, 'picture-choice');
+  let view = null;
+  const draw = () => {
+    view = pictureChoice(choice, folder, 'КартинкаОсновногоРаздела', () => { draw(); content.dispatchEvent(new Event('change', {bubbles: true})); });
+    content.replaceChildren(view.image, view.kind);
+  };
+  draw();
+  const commands = view.commands(false).map(([caption], at) => [caption, caption, {act: () => view.commands(false)[at][2](), enabled: () => view.commands(false)[at][1]()}]);
+  const answer = await showDialog({title: 'Выбор картинки', content, side: true, className: 'picture-choice-dialog',
+    answers: [...commands, null, ['ok', 'OK', {primary: () => true}], [null, 'Отмена']]});
+  if (answer !== 'ok') return undefined;
+  const value = pictureChoiceValue(choice);
+  return value.image || value.set ? value : given;
 }
 
 /* pictureFormat is the format of an image a variant or a window draws: of

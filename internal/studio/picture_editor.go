@@ -185,12 +185,16 @@ func pictureSet(variants []metadata.PictureVariant, images []string) []metadata.
 // an image changed outside the window changes the revision of the window.
 func (workspace *Workspace) pictureImagesLocked(relative string) ([]string, []byte, error) {
 	directory := filepath.Join(workspace.root, filepath.FromSlash(path.Dir(relative)))
+	images := []string{}
+	digest := sha256.New()
 	entries, err := os.ReadDir(directory)
+	if errors.Is(err, fs.ErrNotExist) {
+		// A picture of the root is a folder only while it has images.
+		return images, digest.Sum(nil), nil
+	}
 	if err != nil {
 		return nil, nil, err
 	}
-	images := []string{}
-	digest := sha256.New()
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !metadata.PictureFile(entry.Name()) {
 			continue
@@ -216,6 +220,12 @@ func (workspace *Workspace) ReadPictureImage(relative, name string) ([]byte, str
 	if err := validateObjectEditorPath(relative, metadata.CommonPictureKind); err != nil {
 		return nil, "", err
 	}
+	return workspace.readPictureImageLocked(relative, name)
+}
+
+// readPictureImageLocked answers an image of the folder of the picture
+// described at relative, by its name, and its media type.
+func (workspace *Workspace) readPictureImageLocked(relative, name string) ([]byte, string, error) {
 	if !metadata.PictureFile(name) {
 		return nil, "", ErrInvalidSourcePath
 	}
@@ -263,28 +273,10 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 	// The transparency stays as the description has it; the variants are
 	// the image's or the set's the window gave.
 	value.PictureImages = opened.Picture.PictureImages
-	if window.Set != nil && len(window.Set) == 0 {
-		// A set left with no variant is a picture of no image.
-		window.Image, window.Set = &PictureImage{}, nil
-	}
 	var remove []string
 	var write []pictureFile
-	switch {
-	case window.Image != nil && window.Set != nil:
-		return PictureEditorSource{}, fmt.Errorf("a picture is given either an image or a set of variants")
-	case window.Image != nil:
-		image, err := workspace.pictureImageLocked(relative, opened.Images, *window.Image)
-		if err != nil {
-			return PictureEditorSource{}, err
-		}
-		value.Variants, remove = nil, opened.Images
-		if len(image.Content) > 0 {
-			write = []pictureFile{{baseImage(image.Format), image.Content}}
-		}
-	case window.Set != nil:
-		if value.Variants, remove, write, err = pictureSetFiles(opened, window.Set); err != nil {
-			return PictureEditorSource{}, err
-		}
+	if value.Variants, remove, write, err = workspace.pictureChangeLocked(relative, opened.Images, value.Variants, window.Image, window.Set); err != nil {
+		return PictureEditorSource{}, err
 	}
 	var encoded bytes.Buffer
 	if err := metadata.Encode(&encoded, value); err != nil {
@@ -310,6 +302,37 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 		}
 	}
 	return workspace.readPictureEditorLocked(written)
+}
+
+// pictureChangeLocked is what the image or the set a window gives makes of
+// a picture described at relative, its folder holding images, its
+// description saying variants: the variants it says after, the images taken
+// away and the ones written. «Выбрать из файла» makes the image the one
+// image of the picture, its base drawn at density 100 (metadata.
+// PictureDensity), in place of a set too; «Очистить» leaves the picture with
+// none; a set turned off leaves the image of one of its variants; a set
+// left with no variant is a picture of no image. Given neither, the picture
+// stays as it is.
+func (workspace *Workspace) pictureChangeLocked(relative string, images []string, variants []metadata.PictureVariant, image *PictureImage, set []PictureSetVariant) ([]metadata.PictureVariant, []string, []pictureFile, error) {
+	if set != nil && len(set) == 0 {
+		image, set = &PictureImage{}, nil
+	}
+	switch {
+	case image != nil && set != nil:
+		return nil, nil, nil, fmt.Errorf("a picture is given either an image or a set of variants")
+	case image != nil:
+		chosen, err := workspace.pictureImageLocked(relative, images, *image)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(chosen.Content) == 0 {
+			return nil, images, nil, nil
+		}
+		return nil, images, []pictureFile{{baseImage(chosen.Format), chosen.Content}}, nil
+	case set != nil:
+		return pictureSetFiles(images, variants, set)
+	}
+	return variants, nil, nil, nil
 }
 
 // baseImage is the name of the base image of a picture in a format: the
@@ -362,7 +385,7 @@ func pictureImageNamed(images []string, name string) (string, bool) {
 // set drew and the new one does not is taken away; an image no variant of
 // the old set named is left as it lies, as the prototype keeps such files;
 // without variants every image was the set's, named by its density.
-func pictureSetFiles(opened PictureEditorSource, set []PictureSetVariant) ([]metadata.PictureVariant, []string, []pictureFile, error) {
+func pictureSetFiles(images []string, described []metadata.PictureVariant, set []PictureSetVariant) ([]metadata.PictureVariant, []string, []pictureFile, error) {
 	variants := make([]metadata.PictureVariant, len(set))
 	kept := map[string]bool{}
 	for index, item := range set {
@@ -370,7 +393,7 @@ func pictureSetFiles(opened PictureEditorSource, set []PictureSetVariant) ([]met
 		if item.Image != nil {
 			continue
 		}
-		name, ok := pictureImageNamed(opened.Images, item.File)
+		name, ok := pictureImageNamed(images, item.File)
 		if !ok {
 			return nil, nil, nil, fmt.Errorf("variant %d draws %s, which is not an image of the picture", index+1, item.File)
 		}
@@ -378,14 +401,14 @@ func pictureSetFiles(opened PictureEditorSource, set []PictureSetVariant) ([]met
 		kept[strings.ToLower(name)] = true
 	}
 	drawn := map[string]bool{}
-	for _, variant := range opened.Picture.Variants {
+	for _, variant := range described {
 		drawn[strings.ToLower(variant.File)] = true
 	}
 	var remove []string
 	taken := map[string]bool{}
-	for _, image := range opened.Images {
+	for _, image := range images {
 		folded := strings.ToLower(image)
-		if !kept[folded] && (len(opened.Picture.Variants) == 0 || drawn[folded]) {
+		if !kept[folded] && (len(described) == 0 || drawn[folded]) {
 			remove = append(remove, image)
 			continue
 		}
@@ -572,18 +595,9 @@ func (workspace *Workspace) DeletePicture(relative, expectedRevision string) err
 }
 
 func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
-	routes.HandleFunc("GET "+pictureImageAddress, func(response http.ResponseWriter, request *http.Request) {
-		content, media, err := workspace.ReadPictureImage(request.URL.Query().Get("path"), request.URL.Query().Get("name"))
-		if err != nil {
-			writeSourceError(response, err)
-			return
-		}
-		if media != "" {
-			response.Header().Set("Content-Type", media)
-		}
-		response.Header().Set("Cache-Control", "no-store")
-		_, _ = response.Write(content)
-	})
+	routes.HandleFunc("GET "+pictureImageAddress, answerPictureImage(func(request *http.Request) ([]byte, string, error) {
+		return workspace.ReadPictureImage(request.URL.Query().Get("path"), request.URL.Query().Get("name"))
+	}))
 	routes.HandleFunc("GET "+pictureEditorAddress+"/library", answerQuery(writeSourceError, func(*http.Request) (any, error) {
 		return workspace.PictureLibrary()
 	}))
@@ -593,4 +607,22 @@ func registerPictureEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		return workspace.ClearPicture(input.Path)
 	}))
 	registerObjectEditor(routes, pictureEditorAddress, workspace.ReadPictureEditor, workspace.SavePictureEditor, workspace.CreatePicture, workspace.DeletePicture)
+}
+
+// answerPictureImage answers the image read reads for a request - of a
+// common picture, of the picture of the main section - by its media type,
+// never kept by the browser: a picture changed is drawn anew.
+func answerPictureImage(read func(*http.Request) ([]byte, string, error)) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		content, media, err := read(request)
+		if err != nil {
+			writeSourceError(response, err)
+			return
+		}
+		if media != "" {
+			response.Header().Set("Content-Type", media)
+		}
+		response.Header().Set("Cache-Control", "no-store")
+		_, _ = response.Write(content)
+	}
 }

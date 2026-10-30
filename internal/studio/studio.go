@@ -299,7 +299,6 @@ func (workspace *Workspace) Snapshot() (Snapshot, error) {
 	}
 	root.Modules = rootModuleCommands()
 	root.Creates = rootCreates()
-	root.Children = append(root.Children, workspace.rootPictureNodesLocked()...)
 	// A tree listing must stay usable even while some object's metadata
 	// doesn't yet fully validate (e.g. mid-edit, or an older/minimal
 	// fixture) — so a load failure here just means the per-kind data
@@ -1338,7 +1337,6 @@ const (
 	formIcon          = "form"
 	commandIcon       = "command"
 	templateIcon      = "template"
-	pictureIcon       = "picture"
 )
 
 // kindIcon is the icon of a kind, which its descriptor names.

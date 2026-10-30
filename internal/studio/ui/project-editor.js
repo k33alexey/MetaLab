@@ -75,18 +75,28 @@ function rootSubject(configuration, choices) {
 /* createProjectEditor is the palette of the root. around holds the
    palette and its title, and opens what its rows open: a module of the root
    by its file (openModule), the windows of its interface (openWindow:
-   commandInterface, homePage, mainSectionCommands, clientInterface). The picture of the main
-   section and the help have no window in Studio yet, as the root's menu
-   shows «Справочная информация» unavailable. */
+   commandInterface, homePage, mainSectionCommands, clientInterface); the
+   picture of the main section in its own window (chooseMainSectionPicture).
+   The help has no window in Studio yet, as the root's menu shows
+   «Справочная информация» unavailable. */
 function createProjectEditor(host, onChange, around = {}) {
-  // What the palette edits, for the window of the command interface.
-  let opened = null;
+  // What the palette edits, for the window of the command interface; what
+  // «Выбор картинки» gave the picture of the main section, written by
+  // «Сохранить» with the description, as the prototype keeps a change of
+  // the configuration until it is saved.
+  let opened = null, picture = null;
+  async function choosePicture() {
+    const chosen = await chooseMainSectionPicture({...opened.picture, imageAddress: name => `/api/project/picture/image?name=${encodeURIComponent(name)}`}, picture);
+    if (chosen === undefined || chosen === picture) return;
+    picture = chosen;
+    onChange();
+  }
   const editor = paletteEditor(host, onChange, around, {
     target: source => (opened = source).configuration,
     subject: source => rootSubject(source.configuration, source.choices),
     // The languages of the texts are the root's own.
-    context: source => ({project: source.configuration, choices: source.choices, windows: ['commandInterface', 'homePage', 'mainSectionCommands', 'clientInterface'],
-      openModule: path => around.openModule?.({path}), openWindow: key => around.openWindow?.(key),
+    context: source => ({project: source.configuration, choices: source.choices, windows: ['commandInterface', 'homePage', 'mainSectionCommands', 'mainSectionPicture', 'clientInterface'],
+      openModule: path => around.openModule?.({path}), openWindow: key => key === 'mainSectionPicture' ? choosePicture() : around.openWindow?.(key),
       openFile: path => around.openFile?.(path),
       // A main form of the root is a common form, named by its identifier;
       // every row of a form offers the same ones.
@@ -98,6 +108,10 @@ function createProjectEditor(host, onChange, around = {}) {
         : chooseObjects('Выбор объекта', source.choices?.[row.key] || [], items, {open: true})}),
   });
   return {...editor,
+    open(value) { picture = null; editor.open(value); },
+    // What «Сохранить» writes of the picture of the main section: null
+    // while «Выбор картинки» gave nothing.
+    picture() { return picture; },
     // «Открыть командный интерфейс проекта» of the menu of the root: what
     // its window writes goes into the description the palette edits.
     async openCommandInterface() {

@@ -292,14 +292,24 @@ func TestOrdinaryApplicationModuleIsNotCarried(t *testing.T) {
 	}
 }
 
-// The picture of the root shows up only when it is there: a configuration
-// without one is an ordinary configuration, and a branch offering to make one
-// would be an offer rather than a fact. The logo and the splash are not
-// carried (owner, 15.10.2026): a folder of either name is no picture of the
-// root and no row of the tree.
-func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
+// The pictures of the root are no rows of the tree: the prototype's tree
+// has none (snapshot dosyomka-2651/05), the picture of the main section
+// opens from the palette of the root, «Картинка основного раздела:
+// Открыть». Defects caught: a row of the picture of the main section coming
+// back; a folder of the logo or of the splash, which ML does not carry
+// (owner, 15.10.2026), shown.
+func TestRootPicturesAreNoRowsOfTheTree(t *testing.T) {
 	t.Parallel()
 	root := createProject(t)
+	for _, folder := range []string{"Логотип", "Заставка", project.MainSectionPictureDirectory} {
+		directory := filepath.Join(root, folder)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "100.png"), []byte("image"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	workspace, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -309,51 +319,8 @@ func TestRootPicturesAppearOnlyWhenPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, node := range snapshot.Tree.Children {
-		if strings.HasPrefix(node.ID, "root-picture:") {
-			t.Fatalf("a picture nobody added is in the tree: %+v", node)
+		if node.Kind != "group" && node.Kind != "metadata-group" {
+			t.Errorf("the root holds a row %q (%s) of no branch", node.Title, node.ID)
 		}
-	}
-
-	for _, folder := range []string{"Логотип", "Заставка"} {
-		directory := filepath.Join(root, folder)
-		if err := os.MkdirAll(directory, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, "100.png"), []byte("image"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	snapshot, err = workspace.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, node := range snapshot.Tree.Children {
-		if strings.HasPrefix(node.ID, "root-picture:") {
-			t.Fatalf("a folder that is no picture of the root is in the tree: %+v", node)
-		}
-	}
-
-	// The description beside the images is not one of them.
-	main := filepath.Join(root, project.MainSectionPictureDirectory)
-	if err := os.MkdirAll(main, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for file, content := range map[string]string{"Picture.png": "image", project.RootPictureDescriptionFile: "variants: [{file: Picture.png, density: 100}]\n"} {
-		if err := os.WriteFile(filepath.Join(main, file), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	snapshot, err = workspace.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var shown *Node
-	for index, node := range snapshot.Tree.Children {
-		if node.ID == "root-picture:"+project.MainSectionPictureDirectory {
-			shown = &snapshot.Tree.Children[index]
-		}
-	}
-	if shown == nil || len(shown.Properties) == 0 || shown.Properties[0].Value != "Picture.png" {
-		t.Fatalf("the picture of the main section is not in the tree as its images: %+v", shown)
 	}
 }

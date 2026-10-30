@@ -2,11 +2,19 @@ package studio
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/k33alexey/MetaLab/internal/atomicfile"
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -43,7 +51,39 @@ type ProjectEditorSource struct {
 	// row: the tree of the window choosing them and the names the row shows
 	// (ObjectChoiceBranch).
 	Choices map[string][]ObjectChoiceBranch `json:"choices"`
+	// Picture is the picture of the main section as its window «Выбор
+	// картинки» shows it.
+	Picture RootPictureSource `json:"picture"`
+	// description is the revision of configuration.yaml alone, which its
+	// save checks; Revision holds the picture too.
+	description string
 }
+
+// RootPictureSource is the picture of the main section, the root's own
+// folder (project.MainSectionPictureDirectory), as its window shows it, the
+// window of a common picture's picture (konfiguraciya.md, «Досъёмка
+// 30.10.2026»; snapshots dosyomka-2651/07, 08): its images by name, its set
+// of variants as the editor of a set shows it (pictureSet), and what that
+// editor and «Выбрать из файла» offer.
+type RootPictureSource struct {
+	Images         []string                  `json:"images"`
+	Set            []metadata.PictureVariant `json:"set,omitempty"`
+	VariantChoices PictureVariantChoices     `json:"variantChoices"`
+	Formats        []string                  `json:"formats"`
+}
+
+// RootPictureValue is what OK of «Выбор картинки» gave the picture of the
+// main section, written by «Сохранить» of the root with configuration.yaml:
+// a new image or a new set, as the window of a common picture gives them.
+type RootPictureValue struct {
+	Image *PictureImage       `json:"image,omitempty"`
+	Set   []PictureSetVariant `json:"set,omitempty"`
+}
+
+// mainSectionPictureFile is the description of the picture of the main
+// section beside its images: a picture of the root is read and written as
+// a common picture is, by the path of its description.
+var mainSectionPictureFile = path.Join(project.MainSectionPictureDirectory, project.RootPictureDescriptionFile)
 
 // rootChoices are what the rows of the palette of the root may name, by the
 // key of the row: a role, a style, a language, a settings storage, a common
@@ -121,10 +161,71 @@ func (workspace *Workspace) readProjectEditorLocked() (ProjectEditorSource, erro
 		return ProjectEditorSource{}, err
 	}
 	configuration = withEnglishLanguage(configuration)
+	picture, digest, err := workspace.rootPictureLocked()
+	if err != nil {
+		return ProjectEditorSource{}, err
+	}
+	revision := sha256.New()
+	revision.Write([]byte(file.Revision))
+	revision.Write(digest)
 	return ProjectEditorSource{
-		Path: project.ConfigurationFile, Revision: file.Revision,
-		Configuration: configuration, Palette: rootPaletteRows(), Choices: rootChoices(workspace.root, configuration),
+		Path: project.ConfigurationFile, Revision: hex.EncodeToString(revision.Sum(nil)), description: file.Revision,
+		Configuration: configuration, Palette: rootPaletteRows(), Choices: rootChoices(workspace.root, configuration), Picture: picture,
 	}, nil
+}
+
+// rootPictureLocked reads the picture of the main section and a digest of
+// its images and its description: a picture changed outside Studio changes
+// the revision of the root. A description that does not read leaves the
+// images drawn by their names - the root is where a broken project is
+// repaired, so its palette opens.
+func (workspace *Workspace) rootPictureLocked() (RootPictureSource, []byte, error) {
+	images, digest, err := workspace.pictureImagesLocked(mainSectionPictureFile)
+	if err != nil {
+		return RootPictureSource{}, nil, err
+	}
+	description, err := os.ReadFile(filepath.Join(workspace.root, filepath.FromSlash(mainSectionPictureFile)))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return RootPictureSource{}, nil, err
+	}
+	described, _ := metadata.ReadRootPictureImages(workspace.root, project.MainSectionPictureDirectory)
+	return RootPictureSource{Images: images, Set: pictureSet(described.Variants, images), VariantChoices: pictureVariantChoices, Formats: metadata.PictureFormats()},
+		append(digest, description...), nil
+}
+
+// ReadRootPictureImage answers an image of the picture of the main section,
+// by its name in the folder, and its media type.
+func (workspace *Workspace) ReadRootPictureImage(name string) ([]byte, string, error) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	return workspace.readPictureImageLocked(mainSectionPictureFile, name)
+}
+
+// rootPictureFilesLocked is what writing the picture the window gave makes
+// of the folder of the picture of the main section: the files taken away
+// and written - the images and the description, which keeps the
+// transparency and says the variants, and is not written when it says
+// neither (project.RootPictureDescriptionFile).
+func (workspace *Workspace) rootPictureFilesLocked(opened RootPictureSource, picture RootPictureValue) ([]string, []pictureFile, error) {
+	described, _ := metadata.ReadRootPictureImages(workspace.root, project.MainSectionPictureDirectory)
+	variants, remove, write, err := workspace.pictureChangeLocked(mainSectionPictureFile, opened.Images, described.Variants, picture.Image, picture.Set)
+	if err != nil {
+		return nil, nil, err
+	}
+	described.Variants = variants
+	if _, err := os.Stat(filepath.Join(workspace.root, filepath.FromSlash(mainSectionPictureFile))); err == nil {
+		remove = append(remove, project.RootPictureDescriptionFile)
+	}
+	// A picture left with no image is no folder: its description goes too.
+	kept := slices.DeleteFunc(slices.Clone(opened.Images), func(image string) bool { return slices.Contains(remove, image) })
+	if len(kept)+len(write) > 0 && (described.LoadTransparent || described.TransparentPixel != nil || len(described.Variants) > 0) {
+		var encoded bytes.Buffer
+		if err := metadata.Encode(&encoded, described); err != nil {
+			return nil, nil, err
+		}
+		write = append(write, pictureFile{project.RootPictureDescriptionFile, encoded.Bytes()})
+	}
+	return remove, write, nil
 }
 
 // withEnglishLanguage guarantees English is present and canonical — added
@@ -158,8 +259,12 @@ func findLanguage(languages []project.Language, code string) (project.Language, 
 	return project.Language{}, false
 }
 
-// SaveProjectEditor validates and writes an edited project configuration.
-func (workspace *Workspace) SaveProjectEditor(configuration project.Project, revision string) (ProjectEditorSource, error) {
+// SaveProjectEditor validates and writes an edited project configuration
+// and, when «Выбор картинки» gave one, the picture of the main section, as
+// one save: the description first, then the folder of the picture; a
+// refusal there puts the description back as it was read and leaves the
+// folder as it was (replacePictureImagesLocked).
+func (workspace *Workspace) SaveProjectEditor(configuration project.Project, picture *RootPictureValue, revision string) (ProjectEditorSource, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	opened, err := workspace.readProjectEditorLocked()
@@ -194,13 +299,52 @@ func (workspace *Workspace) SaveProjectEditor(configuration project.Project, rev
 	if err := project.Encode(&encoded, configuration); err != nil {
 		return ProjectEditorSource{}, err
 	}
-	saved, err := workspace.saveSourceLocked(project.ConfigurationFile, encoded.String(), revision)
+	var remove []string
+	var write []pictureFile
+	if picture != nil {
+		if remove, write, err = workspace.rootPictureFilesLocked(opened.Picture, *picture); err != nil {
+			return ProjectEditorSource{}, err
+		}
+	}
+	original, err := workspace.readSource(project.ConfigurationFile)
 	if err != nil {
 		return ProjectEditorSource{}, err
 	}
-	opened.Configuration, opened.Revision = configuration, saved.Revision
-	opened.Choices = rootChoices(workspace.root, configuration)
-	return opened, nil
+	if _, err := workspace.saveSourceLocked(project.ConfigurationFile, encoded.String(), opened.description); err != nil {
+		return ProjectEditorSource{}, err
+	}
+	if picture != nil {
+		if err := workspace.writeRootPictureLocked(remove, write); err != nil {
+			restored := atomicfile.Write(filepath.Join(workspace.root, project.ConfigurationFile), ".ml-write-*", 0o644, atomicfile.Bytes([]byte(original.Content)))
+			workspace.invalidateStudioIndexesLocked()
+			return ProjectEditorSource{}, errors.Join(err, restored)
+		}
+	}
+	return workspace.readProjectEditorLocked()
+}
+
+// writeRootPictureLocked replaces the files of the folder of the picture of
+// the main section: the folder is made for the first image and taken away
+// when the last one goes.
+func (workspace *Workspace) writeRootPictureLocked(remove []string, write []pictureFile) error {
+	directory := filepath.Join(workspace.root, project.MainSectionPictureDirectory)
+	_, missing := os.Stat(directory)
+	if len(write) > 0 {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			return err
+		}
+	}
+	if err := workspace.replacePictureImagesLocked(mainSectionPictureFile, remove, write); err != nil {
+		if missing != nil {
+			_ = os.Remove(directory)
+		}
+		return err
+	}
+	if len(write) == 0 {
+		// Empty now, or kept for files that are no images of it.
+		_ = os.Remove(directory)
+	}
+	return nil
 }
 
 // withoutRemovedTranslations drops the texts of the configuration root written
@@ -264,9 +408,13 @@ func registerProjectEditorRoutes(routes *http.ServeMux, workspace *Workspace) {
 		return workspace.ReadProjectEditor()
 	}))
 	routes.HandleFunc("PUT /api/project-configuration", answerStudio(0, writeSourceError, func(input struct {
-		ExpectedRevision string          `json:"expectedRevision"`
-		Configuration    project.Project `json:"configuration"`
+		ExpectedRevision string            `json:"expectedRevision"`
+		Configuration    project.Project   `json:"configuration"`
+		Picture          *RootPictureValue `json:"picture"`
 	}) (any, error) {
-		return workspace.SaveProjectEditor(input.Configuration, input.ExpectedRevision)
+		return workspace.SaveProjectEditor(input.Configuration, input.Picture, input.ExpectedRevision)
+	}))
+	routes.HandleFunc("GET /api/project/picture/image", answerPictureImage(func(request *http.Request) ([]byte, string, error) {
+		return workspace.ReadRootPictureImage(request.URL.Query().Get("name"))
 	}))
 }

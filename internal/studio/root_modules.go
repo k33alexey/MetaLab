@@ -7,8 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"sort"
-	"strings"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -83,33 +81,6 @@ func rootModuleCommands() []NodeModule {
 		commands = append(commands, NodeModule{Command: module.command, Path: module.file})
 	}
 	return commands
-}
-
-// rootPictureNodesLocked reports the pictures the configuration root owns.
-// Unlike a module, a picture is shown only when it is there: a module always
-// exists and only its contents are a decision, while a configuration without a
-// picture of the main section is an ordinary configuration, and an empty branch offering to make one
-// would be an offer, not a fact.
-func (workspace *Workspace) rootPictureNodesLocked() []Node {
-	var nodes []Node
-	for _, picture := range project.RootPictureDirectories() {
-		entries, err := os.ReadDir(filepath.Join(workspace.root, picture))
-		if err != nil || len(entries) == 0 {
-			continue
-		}
-		images := make([]string, 0, len(entries))
-		for _, entry := range entries {
-			if !entry.IsDir() && entry.Name() != project.RootPictureDescriptionFile {
-				images = append(images, entry.Name())
-			}
-		}
-		sort.Strings(images)
-		nodes = append(nodes, Node{
-			ID: "root-picture:" + picture, Kind: "metadata", Icon: pictureIcon, Title: picture, Path: picture,
-			Properties: []Property{{Name: "Изображения", Value: strings.Join(images, ", ")}},
-		})
-	}
-	return nodes
 }
 
 // OpenRootModule returns one module of the configuration root by its address

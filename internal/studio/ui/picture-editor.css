@@ -42,3 +42,8 @@
 .picture-variant-image.empty{background:linear-gradient(to top right,transparent calc(50% - 1px),#6f737a,transparent calc(50% + 1px)),linear-gradient(to bottom right,transparent calc(50% - 1px),#6f737a,transparent calc(50% + 1px)),var(--panel-bg,#2b2d30)}
 .picture-variant-size{min-height:16px;font-size:12px}
 .picture-variant .picture-window-buttons{width:160px}
+/* «Выбор картинки» основного раздела (dosyomka-2651/07, 08): картинка слева,
+   тип под ней; кнопки картинки, промежуток, OK и «Отмена» — столбцом окна. */
+.picture-choice{display:flex;flex-direction:column;width:360px}
+.picture-choice .picture-window-image{min-height:280px}
+.picture-choice-dialog .localized-title-actions{width:230px}

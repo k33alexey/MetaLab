@@ -90,9 +90,9 @@ const rootPaletteWalk = `(async () => {
 // menu does. Defects caught: the root opening a window of its own in the
 // work area again; a tab or a row of «Основные» lost or out of order; the
 // main language cleared by a cross, chosen in a window not titled by its
-// kind, or not written by «Сохранить»; «…» of the dictionaries offering a
-// window the inventory does not show; a row «Открыть» opening nothing or
-// the picture of the main section offering a window Studio has not;
+// kind, or not written by «Сохранить»; a row «Открыть» unavailable or
+// opening nothing (the picture of the main section -
+// TestTheMainSectionPictureIsChosenAsThePrototypes);
 // «Командный интерфейс: Открыть» missing or opening no window; «…» of the
 // dictionaries unavailable, titled by a kind, with a branch closed, or its
 // choice not shown or not written with its kind; a row of «Выбор объекта:
@@ -183,7 +183,7 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	if steps.Form.Title != "Выбор объекта: Общая форма" || !slices.Equal(steps.Form.Rows, []string{"ДемоФормаТовара"}) || steps.Form.Chosen != "ДемоФормаТовара" {
 		t.Errorf("«…» of «Основная форма поиска» opens %+v", steps.Form)
 	}
-	if want := []string{"Командный интерфейс", "Рабочая область начальной страницы", "Командный интерфейс основного раздела", "Картинка основного раздела -", "Интерфейс клиентского приложения"}; !slices.Equal(steps.Windows, want) {
+	if want := []string{"Командный интерфейс", "Рабочая область начальной страницы", "Командный интерфейс основного раздела", "Картинка основного раздела", "Интерфейс клиентского приложения"}; !slices.Equal(steps.Windows, want) {
 		t.Errorf("the windows of «Представление» are %q, want %q", steps.Windows, want)
 	}
 	if steps.CommandInterface != "Командный интерфейс" {

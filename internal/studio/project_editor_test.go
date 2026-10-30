@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k33alexey/MetaLab/internal/metadata"
 	"github.com/k33alexey/MetaLab/internal/project"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
@@ -39,7 +40,7 @@ func TestProjectEditorAlwaysIncludesCanonicalEnglish(t *testing.T) {
 	corrupted := opened.Configuration
 	corrupted.Languages = []project.Language{{ID: uuid.MustNew(), Name: "NotEnglish", Title: project.LocalizedText{"en": "Not English"}, Code: "en"}}
 	corrupted.DefaultLanguage = "en"
-	saved, err := workspace.SaveProjectEditor(corrupted, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(corrupted, nil, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,19 +71,19 @@ func TestProjectEditorSaveConflictsAndIdentity(t *testing.T) {
 	}
 	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Новое название"}
-	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(updated, nil, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if saved.Revision == opened.Revision || saved.Configuration.Title["ru"] != "Новое название" {
 		t.Fatalf("save did not persist edits: %+v", saved)
 	}
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); !errors.Is(err, ErrSourceChanged) {
+	if _, err := workspace.SaveProjectEditor(updated, nil, opened.Revision); !errors.Is(err, ErrSourceChanged) {
 		t.Fatalf("stale save: %v", err)
 	}
 	invalid := saved.Configuration
 	invalid.ID = uuid.MustNew()
-	if _, err := workspace.SaveProjectEditor(invalid, saved.Revision); err == nil {
+	if _, err := workspace.SaveProjectEditor(invalid, nil, saved.Revision); err == nil {
 		t.Fatal("identity change accepted")
 	}
 	again, err := workspace.ReadProjectEditor()
@@ -170,7 +171,7 @@ func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
 	updated := opened.Configuration
 	updated.Title = project.LocalizedText{"ru": "Продажи", "en": "Sales"}
 	updated.Copyright = project.LocalizedText{"ru": "© Пример"}
-	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(updated, nil, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestRemovingALanguageTakesItsTextsWithIt(t *testing.T) {
 	withoutRussian := saved.Configuration
 	withoutRussian.Languages = []project.Language{{Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"}}
 	withoutRussian.DefaultLanguage = "en"
-	saved, err = workspace.SaveProjectEditor(withoutRussian, saved.Revision)
+	saved, err = workspace.SaveProjectEditor(withoutRussian, nil, saved.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +212,7 @@ func TestASynonymLeftWithNoLanguageFallsBackToTheName(t *testing.T) {
 	updated.Title = project.LocalizedText{"ru": "Продажи"}
 	updated.Languages = []project.Language{{Name: "English", Title: project.LocalizedText{"en": "English"}, Code: "en"}}
 	updated.DefaultLanguage = "en"
-	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(updated, nil, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +326,7 @@ func TestProjectEditorSavesTheDefaultsOfTheRoot(t *testing.T) {
 	updated.DefaultSearchForm = &form
 	updated.DefaultReportAppearanceTemplate = &appearance
 	updated.FormDataSettingsStorage = &storage
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+	if _, err := workspace.SaveProjectEditor(updated, nil, opened.Revision); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := workspace.ReadProjectEditor()
@@ -362,7 +363,7 @@ func TestProjectEditorKeepsADefaultPointingAtNothing(t *testing.T) {
 	stranger := uuid.MustNew()
 	updated := opened.Configuration
 	updated.DefaultStyle = &stranger
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+	if _, err := workspace.SaveProjectEditor(updated, nil, opened.Revision); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := workspace.ReadProjectEditor()
@@ -399,7 +400,7 @@ func TestProjectEditorSavesTheSettingsOfTheRoot(t *testing.T) {
 	updated.AdditionalFullTextSearchDictionaries = []project.DictionaryReference{
 		{Kind: project.TemplateDictionary, Object: written["spreadsheet"]},
 	}
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+	if _, err := workspace.SaveProjectEditor(updated, nil, opened.Revision); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := workspace.ReadProjectEditor()
@@ -431,7 +432,7 @@ func TestProjectEditorSavesTheHelpFlagOfTheRoot(t *testing.T) {
 	}
 	updated := opened.Configuration
 	updated.IncludeHelpInContents = true
-	if _, err := workspace.SaveProjectEditor(updated, opened.Revision); err != nil {
+	if _, err := workspace.SaveProjectEditor(updated, nil, opened.Revision); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := workspace.ReadProjectEditor()
@@ -466,7 +467,7 @@ func TestRemovingALanguageLeavesEveryLanguageNamed(t *testing.T) {
 	}
 	updated.Languages = append(updated.Languages,
 		project.Language{Name: "Українська", Title: project.LocalizedText{"uk": "Українська"}, Code: "uk"})
-	saved, err := workspace.SaveProjectEditor(updated, opened.Revision)
+	saved, err := workspace.SaveProjectEditor(updated, nil, opened.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +479,7 @@ func TestRemovingALanguageLeavesEveryLanguageNamed(t *testing.T) {
 			withoutUkrainian.Languages = append(withoutUkrainian.Languages, language)
 		}
 	}
-	saved, err = workspace.SaveProjectEditor(withoutUkrainian, saved.Revision)
+	saved, err = workspace.SaveProjectEditor(withoutUkrainian, nil, saved.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,5 +493,109 @@ func TestRemovingALanguageLeavesEveryLanguageNamed(t *testing.T) {
 		if language.Code == "ru" && language.Title["ru"] != language.Name {
 			t.Fatalf("the synonym did not fall back to the name: %+v", language)
 		}
+	}
+}
+
+// The picture of the main section is written by «Сохранить» of the root
+// with configuration.yaml, as «Выбор картинки» gave it (konfiguraciya.md,
+// «Досъёмка 30.10.2026»): an image is its base 100.png in a folder made for
+// it; a set writes its variants into picture.yaml, which keeps the
+// transparency it said; a picture changed outside Studio is a conflict;
+// «Очистить» takes the folder away. A refusal halfway - the folder cannot
+// take the image - puts configuration.yaml back as it was read. Defects
+// caught: the picture written apart from the description or not at all; the
+// variants not described or the transparency lost; a folder of no image
+// left; an outside change overwritten; a half-done save leaving the new
+// description.
+func TestTheRootWritesThePictureOfTheMainSectionWithItsDescription(t *testing.T) {
+	t.Parallel()
+	root := createProject(t)
+	workspace, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(root, project.MainSectionPictureDirectory)
+	opened, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opened.Picture.Images) != 0 || len(opened.Picture.Formats) == 0 {
+		t.Fatalf("a project of no picture reads %+v", opened.Picture)
+	}
+	image := pngImage(t, 16, 16, 120)
+	updated := opened.Configuration
+	updated.Vendor = "Поставщик"
+	saved, err := workspace.SaveProjectEditor(updated, &RootPictureValue{Image: &PictureImage{Format: "png", Content: image}}, opened.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written, err := os.ReadFile(filepath.Join(folder, "100.png")); err != nil || string(written) != string(image) || saved.Configuration.Vendor != "Поставщик" {
+		t.Fatalf("the image and the description were not written together: %v, vendor %q", err, saved.Configuration.Vendor)
+	}
+	if !reflect.DeepEqual(saved.Picture.Images, []string{"100.png"}) {
+		t.Fatalf("the picture reads %+v after its save", saved.Picture)
+	}
+
+	// The transparency said outside the window stays; a set describes its
+	// variants beside it.
+	if err := os.WriteFile(filepath.Join(folder, project.RootPictureDescriptionFile), []byte("load_transparent: true\ntransparent_pixel: {x: 1, y: 2}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.SaveProjectEditor(saved.Configuration, nil, saved.Revision); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("a picture changed outside Studio was not a conflict: %v", err)
+	}
+	reread, err := workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := []PictureSetVariant{{PictureVariant: metadata.PictureVariant{File: "100.png", Density: 100}},
+		{PictureVariant: metadata.PictureVariant{Density: 200}, Image: &PictureImage{Format: "png", Content: pngImage(t, 32, 32, 60)}}}
+	saved, err = workspace.SaveProjectEditor(reread.Configuration, &RootPictureValue{Set: set}, reread.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	described, err := metadata.ReadRootPictureImages(root, project.MainSectionPictureDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []metadata.PictureVariant{{File: "100.png", Density: 100}, {File: "200.png", Density: 200}}
+	if !described.LoadTransparent || described.TransparentPixel == nil || *described.TransparentPixel != (metadata.PicturePixel{X: 1, Y: 2}) || !reflect.DeepEqual(described.Variants, want) {
+		t.Fatalf("picture.yaml says %+v, want the transparency kept and the variants %+v", described, want)
+	}
+
+	// A refusal halfway: a folder where the new image goes.
+	before, err := os.ReadFile(filepath.Join(root, project.ConfigurationFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(folder, "100.jpg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reread, err = workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := reread.Configuration
+	refused.Vendor = "Другой"
+	if _, err := workspace.SaveProjectEditor(refused, &RootPictureValue{Image: &PictureImage{Format: "jpg", Content: []byte("jpeg")}}, reread.Revision); err == nil {
+		t.Fatal("an image the folder cannot take was written")
+	}
+	if after, err := os.ReadFile(filepath.Join(root, project.ConfigurationFile)); err != nil || string(after) != string(before) {
+		t.Fatalf("a refused save left configuration.yaml changed: %v", err)
+	}
+	if err := os.Remove(filepath.Join(folder, "100.jpg")); err != nil {
+		t.Fatal(err)
+	}
+
+	// «Очистить»: no image, no folder.
+	reread, err = workspace.ReadProjectEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.SaveProjectEditor(reread.Configuration, &RootPictureValue{Image: &PictureImage{}}, reread.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(folder); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a cleared picture left its folder: %v", err)
 	}
 }
