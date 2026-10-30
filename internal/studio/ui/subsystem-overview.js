@@ -114,7 +114,7 @@ function createSubsystemOverview(host, around) {
       const said = pane.value();
       if (said) row.subsystem.commandInterface = said; else delete row.subsystem.commandInterface;
       changedRow(row);
-    }, {list: {key: 'all-subsystems-commands', width: 25}, inside: async item => {
+    }, {list: {key: 'all-subsystems-commands', width: 25}, findInTree: id => around.findInTree?.(id), inside: async item => {
       const under = rowOf(item.id)?.subsystem || {id: item.id};
       return {answer: await postJSON('/api/subsystem/section', {subsystem: under.id, members: under.members || []}), said: under.commandInterface || {}};
     }});

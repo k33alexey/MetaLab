@@ -204,6 +204,7 @@
       remove:async row=>{if(unsavedOverview())return;loadingFile=true;try{if(!await deleteObjectAt('/api/subsystem',row.path,row.revision))return;await loadTree(false)}catch(error){showToolError(error);return}finally{loadingFile=false}await reopenSubsystemOverview(false)},
       move:async row=>{if(unsavedOverview())return;if(await moveSubsystem(row.path,configuration.name)){await loadTree(false);await reopenSubsystemOverview(true)}},
       menu:(row,event,element)=>{const node=nodeAt(row.path);if(node)showContextMenu(event,treeCommands(node,element))},
+      findInTree:id=>revealInTree(id),
     });
     // «Рабочая область начальной страницы» stands in the place of the open file too, the prototype's window being not modal and without OK: «Сохранить» writes the page.
     // The windows of the descriptions of the root's interface stand in the place of the open file, written by «Сохранить» at their address (openRootDescription).
@@ -231,8 +232,10 @@
     // отказывает, пока первый ещё открывает файл, а двойной щелчок открывает
     // модуль после них.
     let selecting=Promise.resolve();
+    // «Найти в дереве» of a window: the row of the object with this identifier is chosen in the tree, the branches above it opened, and nothing of it is opened - the window stays (podsistema.md, «Досъёмка 29.10.2026», В5).
+    function revealInTree(id){const row=[...tree.querySelectorAll('.studio-tree-row')].find(item=>item.dataset.node===id);if(!row)return;for(let above=(row.tagName==='SUMMARY'?row.parentElement.parentElement:row.parentElement).closest('details');above;above=above.parentElement.closest('details'))above.open=true;if(selectedElement)selectedElement.classList.remove('selected');selectedElement=row;row.classList.add('selected');let found=null;const walk=nodes=>{for(const node of nodes||[]){if(found)return;if(node.id===id)found=node;walk(node.children)}};walk(projectData?.tree?.children);selectedNode=found;updateTreeToolbar();row.scrollIntoView({block:'nearest'})}
     function selectNode(node,element){const next=()=>select(node,element);selecting=selecting.then(next,next);return selecting}
-    function renderNode(node){const children=(node.children||[]).map(renderNode);const {element,row}=treeNode({icon:node.icon,caption:node.title,children,open:node.id==='project'||node.id==='metadata',foldOnDoubleClick:node.kind==='group'||node.kind==='metadata-group'});row.addEventListener('click',async event=>{event.stopPropagation();await selectNode(node,row);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,row);return element}
+    function renderNode(node){const children=(node.children||[]).map(renderNode);const {element,row}=treeNode({icon:node.icon,caption:node.title,children,open:node.id==='project'||node.id==='metadata',foldOnDoubleClick:node.kind==='group'||node.kind==='metadata-group'});row.dataset.node=node.id;row.addEventListener('click',async event=>{event.stopPropagation();await selectNode(node,row);if(node.line)bslEditor.goTo({line:node.line,column:1})});offerTreeCommands(node,row);return element}
     // Контекстное меню узла дерева. Модуль — не строка дерева, а команда
     // меню его владельца: «Открыть модуль» общего модуля, «Открыть модуль
     // приложения / сеанса / внешнего соединения» корня, «Открыть модуль

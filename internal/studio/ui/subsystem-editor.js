@@ -260,12 +260,16 @@ const sectionActions = {create: ': создать', 'create-folder': ': созд
    drawn by a pane of the subsystem nested in this one (nested: the strip
    of the columns of the roles and the columns shown of this one), which
    answers {rows()} - its groups - and edits nothing. Answers {element,
-   value(), add, remove, at()}:
+   value(), add, remove, at()}. findInTree(id), «Все подсистемы» alone
+   has it, is «Найти в дереве» (Cmd+T) of a row (podsistema.md, «Досъёмка
+   29.10.2026», В5; snapshots dosyomka-2642/14-18): of a command the object
+   it opens - an object's own command its object, a common command
+   itself - of a subsection its subsystem; of a group none. Answers:
    value is the command interface the list says - what OK of the window
    writes - or null where it says nothing; at() is the group the row
    current is or stands in, {key, panel}, or null. */
 function sectionCommandsPane(answer, said, language, changed = () => {}, {moves = true, hideTitle = 'Скрыть команды, невидимые по умолчанию', content = false,
-  list = {key: 'subsystem-commands'}, inside = null, nested = null} = {}) {
+  list = {key: 'subsystem-commands'}, inside = null, nested = null, findInTree = null} = {}) {
   const groups = answer.groups, subsections = answer.subsections || [], projectRoles = answer.roles || [];
   const listSettings = commandListSettings(list.key, projectRoles, list.width);
   let setting = listSettings.standard();
@@ -513,6 +517,12 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     current = next ? {line: next} : {group: key};
     edited();
   }
+  // What «Найти в дереве» finds of the row current.
+  function treeTarget() {
+    const line = current?.line;
+    return line ? line.object || line.owner || line.command : current?.subsection?.id;
+  }
+  function findCurrent() { const target = treeTarget(); if (target) findInTree(target); }
   const menu = event => showContextMenu(event, [
     ...(moves ? [['Переместить команду', moveCommand, !!current?.line, '', 'move-item']] : []),
     ['Переместить вверх', () => shift(-1), !!(current?.line || current?.subsection), 'Cmd+Shift+Up', 'move-up'],
@@ -521,6 +531,7 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     ['Установить свойства по умолчанию', setDefault, !!(current?.line || current?.subsection), '', 'restore-values'],
     ['Восстановить автоматический порядок', restore, !!(current?.group || current?.subsections)],
     ...(content ? [null, ['Удалить команду из основного раздела', remove, !!current?.line, 'Del', 'delete']] : []),
+    ...(findInTree ? [null, ['Найти в дереве', findCurrent, !!treeTarget(), 'Cmd+T', 'find-in-tree']] : []),
     null,
     ['Настройка списка...', async () => {
       const next = await chooseListSettings(listSettings, setting, applied => { setting = applied; draw(); });
@@ -528,7 +539,10 @@ function sectionCommandsPane(answer, said, language, changed = () => {}, {moves 
     }, true, '', 'list-settings'],
   ]);
   tree.addEventListener('keydown', event => {
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    if (findInTree && (event.metaKey || event.ctrlKey) && !event.shiftKey && event.code === 'KeyT') {
+      event.preventDefault();
+      findCurrent();
+    } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault();
       shift(event.key === 'ArrowUp' ? -1 : 1);
     } else if (content && event.key === 'Delete') {
