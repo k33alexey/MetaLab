@@ -44,7 +44,10 @@ const homePageChoiceWalk = `(async () => {
     return [...dialog().querySelectorAll('.studio-tree-row')].map(row => [row.textContent,
       [...row.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'), row.classList.contains('studio-search-path')]);
   };
-  steps.searched = {list: await typed('списк'), goods: await typed('ТОВАР'), forms: await typed('форм')};
+  steps.searched = {list: await typed('списк'), goods: await typed('ТОВАР')};
+  const alone = rowNamed('Товары');
+  steps.alone = [alone.classList.contains('studio-tree-leaf'), alone.dataset.choice || '', alone.closest('details')?.querySelector('.studio-tree-row') === alone];
+  steps.searched.forms = await typed('форм');
   search.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); await settle();
   steps.enter = dialogs().length === 2 ? dialog().querySelector('h3').textContent : '';
   press('OK'); await settle();
@@ -77,7 +80,10 @@ const homePageChoiceWalk = `(async () => {
 // В4, В5 of series 2.646): under an object the branch «Формы», the forms in
 // it; the search narrows the tree by the names of the rows, in any case,
 // the found part red, a branch shown only for what it holds grey, Enter in
-// it is OK (snapshots dosyomka-2653/34, 35); the keys of a tree of choice,
+// it is OK (snapshots dosyomka-2653/34, 35); «Формы» takes no search, an
+// object whose name alone is found stands red without its forms and the
+// sign opening them, choosing nothing (obshchee.md, «Досъёмка 31.10.2026»;
+// configurator-2026-10-31/vopr-2672/01 to 03); the keys of a tree of choice,
 // the focus on it, the current row the first or the form chosen
 // (obshchee.md, «Окна выбора — одно поведение»); OK on a branch refused
 // «Объект не выбран.», the window staying;
@@ -88,7 +94,8 @@ const homePageChoiceWalk = `(async () => {
 // the focus in the search, no current row, the chosen form not current;
 // the search by the full name - Товары finding its ФормаСписка -, the found
 // part not drawn, a branch of the path drawn as a match, a branch holding
-// what is searched drawn grey;
+// what is searched drawn grey; «Формы» found by its caption; an object
+// found by its name hidden, or shown with its forms or as a row to choose;
 // the row before the last made current after «Отмена»; the link
 // «Одинаковая» while a role is said.
 func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
@@ -131,6 +138,7 @@ func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
 			List, Goods, Forms [][]any
 		}
 		Keys        []string
+		Alone       []any
 		Copied      string
 		Enter       string
 		Stays       string
@@ -156,9 +164,11 @@ func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
 	expect("current in the choice of a copy", steps.Copied, "ФормаСписка")
 	type row = []any
 	expect("search «списк»", steps.Searched.List, [][]any{row{"Справочники", "", true}, row{"Товары", "", true}, row{"Формы", "", true}, row{"ФормаСписка", "Списк", false}})
-	expect("search «ТОВАР»", steps.Searched.Goods, [][]any{row{"Общие", "", true}, row{"Общие формы", "", true}, row{"ДемоФормаТовара", "Товар", false}})
+	expect("search «ТОВАР»", steps.Searched.Goods, [][]any{row{"Общие", "", true}, row{"Общие формы", "", true}, row{"ДемоФормаТовара", "Товар", false},
+		row{"Справочники", "", true}, row{"Товары", "Товар", false}})
+	expect("the object found by its name alone: a leaf choosing nothing", steps.Alone, []any{true, "", false})
 	expect("search «форм»", steps.Searched.Forms, [][]any{row{"Общие", "", true}, row{"Общие формы", "", true}, row{"ДемоФормаТовара", "Форм", false},
-		row{"Справочники", "", true}, row{"Товары", "", true}, row{"Формы", "Форм", false}, row{"ФормаСписка", "Форм", false}})
+		row{"Справочники", "", true}, row{"Товары", "", true}, row{"Формы", "", true}, row{"ФормаСписка", "Форм", false}})
 	expect("Enter in the search on nothing chosen", steps.Enter, "Объект не выбран.")
 	expect("under the object", steps.Under, []string{"Формы", "ФормаСписка"})
 	expect("OK on a branch", steps.Refusal, struct {

@@ -1082,12 +1082,17 @@ async function chooseOneObject(title, tree, current) {
     const holds = item => item.id === current || (item.items || []).some(holds);
     // An object holding items is a branch, an item holding items too - the
     // object, its «Формы», the forms; its name is red where it holds what is
-    // searched, grey where it is shown only for its items.
+    // searched, grey where it is shown only for its items. A branch inside
+    // an object - «Формы», of no identifier - takes no search: grey on
+    // «форм». An object whose name is found while none of its items is
+    // stands alone, red, without its items and the sign opening them - a
+    // row choosing nothing («Бригады» on «Бригады»; obshchee.md, «Досъёмка
+    // 31.10.2026»; snapshots configurator-2026-10-31/vopr-2672/01 to 03).
     const object = item => {
       if (!item.items) return found(item) ? {element: leaf(item), open: holds(item)} : null;
       const inner = item.items.map(object).filter(Boolean);
-      if (!inner.length) return null;
-      const ranges = foundIn(item.name, text);
+      const ranges = item.id ? foundIn(item.name, text) : [];
+      if (!inner.length) return text && ranges.length ? {element: treeNode({icon: item.icon, caption: searchCaption(item.name, ranges)}).element, open: false} : null;
       const {element, row} = treeNode({icon: item.icon, caption: searchCaption(item.name, ranges), children: inner.map(one => one.element), open: !!text || holds(item)});
       searchPath(row, !!text && !ranges.length);
       return {element, open: holds(item)};
