@@ -1813,9 +1813,13 @@ function subsystemsPage(source, marks, changed) {
    project by their parents (places, MemberPlace), a box at each marked
    where the object is in its content (marks, a Set the boxes change);
    a subsystem holding a marked one beneath stands open. changed() is
-   called on every mark. root, the name of the project, puts the
-   subsystems under the root of the project, as the window of the field
-   «Подсистемы» draws them (chooseSubsystems). */
+   called on every mark. root, {name, marks} - the name of the project and
+   the set its box marks, as 'root' - puts the subsystems under the root of
+   the project, as the window of the field «Подсистемы» draws them
+   (chooseSubsystems): the box of the root is a mark of its own, «Состав»
+   of the root, nothing below it marked or taken by it and it by nothing
+   below (obshchee.md, «Окно поля „Подсистемы“»; snapshots
+   dosyomka-2653/25-32). */
 function subsystemsTree(places, marks, changed, root) {
   const under = parent => (places || []).filter(place => (place.parent || null) === parent);
   const holds = place => marks.has(place.id) || under(place.id).some(holds);
@@ -1826,13 +1830,7 @@ function subsystemsTree(places, marks, changed, root) {
   };
   const tree = node('div', undefined, 'object-window-tree object-window-tree-tall');
   if (root === undefined) tree.append(...under(null).map(branch));
-  else {
-    // The prototype's root has a box too; what it does is not shot
-    // (question В4 of series 2.653): it stands unavailable.
-    const box = markBox(root, new Set(), null);
-    box.disabled = true;
-    tree.append(treeNode({icon: 'configuration', caption: root, mark: box, children: under(null).map(branch), open: true}).element);
-  }
+  else tree.append(treeNode({icon: 'configuration', caption: root.name, mark: markBox(root.name, root.marks, 'root', changed), children: under(null).map(branch), open: true}).element);
   return tree;
 }
 
@@ -1841,13 +1839,14 @@ function subsystemsTree(places, marks, changed, root) {
    (obshchee.md, «Окно объекта», «Окно поля „Подсистемы“ с „…“»): the tree of
    the page «Подсистемы» under the root of the project, OK, «Отмена»,
    «Справка» at the right. places are the subsystems (MemberPlace), marked
-   the identifiers marked first. Answers the set marked on OK, null on
-   «Отмена». */
-async function chooseSubsystems(places, marked, project) {
-  const marks = new Set(marked);
-  const answer = await showDialog({title: 'Подсистемы', content: subsystemsTree(places, marks, () => {}, project), side: true,
+   the identifiers marked first; rooted tells whether the box of the root
+   is marked first. Answers {marks, rooted} on OK - the set marked and the
+   box of the root - and null on «Отмена». */
+async function chooseSubsystems(places, marked, project, rooted) {
+  const marks = new Set(marked), root = {name: project, marks: new Set(rooted ? ['root'] : [])};
+  const answer = await showDialog({title: 'Подсистемы', content: subsystemsTree(places, marks, () => {}, root), side: true,
     className: 'object-choice-dialog', help: 'object-window', answers: [['ok', 'OK'], [null, 'Отмена']]});
-  return answer === 'ok' ? marks : null;
+  return answer === 'ok' ? {marks, rooted: root.marks.has('root')} : null;
 }
 
 /* windowHeadFields are the fields at the top of the window of an object
@@ -1856,7 +1855,10 @@ async function chooseSubsystems(places, marked, project) {
    it by commas with «…» - the window «Подсистемы» (chooseSubsystems).
    object is the object edited; typed() is called on every key; the
    synonym's cleanup goes to cleanups. subsystems are the marks of the
-   window - a Set of the subsystems marked - and their changed(). */
+   window - a Set of the subsystems marked -, rooted - {marked}, the box of
+   the root - and their changed(). The field begins with the project where
+   the root is marked, as the prototype's (obshchee.md, «Окно поля
+   „Подсистемы“»: «BASERP,…»). */
 function windowHeadFields(source, object, typed, cleanups, subsystems) {
   const setText = (key, value) => { if (typeof value === 'string' ? value : Object.keys(value || {}).length) object[key] = value; else delete object[key]; };
   const synonym = createLocalizedField(source, code => object.title?.[code], (language, value) => setText('title', setTranslation(object.title, language, value)), typed, titleTextOptions);
@@ -1865,12 +1867,14 @@ function windowHeadFields(source, object, typed, cleanups, subsystems) {
     () => ({path: source.path, name: object.name}));
   const members = node('input');
   members.readOnly = true;
-  members.value = (source.subsystems || []).filter(place => subsystems.marks.has(place.id)).map(place => place.name).join(',');
+  members.value = [...(subsystems.rooted.marked ? [source.project] : []),
+    ...(source.subsystems || []).filter(place => subsystems.marks.has(place.id)).map(place => place.name)].join(',');
   const choose = fieldChoiceButton('Подсистемы', async () => {
-    const chosen = await chooseSubsystems(source.subsystems, subsystems.marks, source.project);
+    const chosen = await chooseSubsystems(source.subsystems, subsystems.marks, source.project, subsystems.rooted.marked);
     if (!chosen) return;
     subsystems.marks.clear();
-    for (const id of chosen) subsystems.marks.add(id);
+    for (const id of chosen.marks) subsystems.marks.add(id);
+    subsystems.rooted.marked = chosen.rooted;
     subsystems.changed();
   });
   return [labeledField('Имя:', name), labeledField('Синоним:', synonym),
@@ -1899,6 +1903,8 @@ function windowHeadFields(source, object, typed, cleanups, subsystems) {
    of a module, the actions and the closing of the window. */
 function objectWindowEditor(host, onChange, around, {target, own = () => ({pages: {}}), valueChecks}) {
   let source = null, frame = null, marks = new Set(), options = new Set(), cleanups = [];
+  // The box of the root of the window «Подсистемы» of a field (windowHeadFields).
+  const rooted = {marked: false};
   const paletteCleanups = [];
   const object = () => target(source);
   const title = () => kind.title?.() || `${source.kindTitle} ${object().name}`;
@@ -1920,7 +1926,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
   const api = {source: () => source, object, changed, typed, marked: () => onChange(), refresh: () => frame.refresh(), show: key => frame.show?.(key),
     // The field «Подсистемы» of a window of no pages (windowHeadFields): the
     // window drawing it gives the marks with the object.
-    subsystems: () => { headMarks = true; return {marks, changed}; },
+    subsystems: () => { headMarks = true; return {marks, rooted, changed}; },
     palette: () => renderPalette(), cleanups: () => cleanups, rowsPage: key => rowsOf(key),
     chosen: () => chosen, setChosen: choice => { chosen = choice; }, choose, treeRow, focusPalette, addTemplate: () => common.addTemplate()};
   const kind = own(api);
@@ -1990,6 +1996,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       if (!keep) { chosen = null; kind.reset?.(); }
       kind.open?.(source);
       marks = new Set((source.subsystems || []).filter(place => place.member).map(place => place.id));
+      rooted.marked = !!source.rootContent;
       options = new Set((source.functionalOptions || []).filter(place => place.member).map(place => place.id));
       common.open();
       frame = kind.draw ? pagelessWindow() : showObjectWindow(host, around, {title: title(), pages: source.pages, chosen: page, page: renderPage});
@@ -2001,7 +2008,7 @@ function objectWindowEditor(host, onChange, around, {target, own = () => ({pages
       if (!source) return null;
       // A window of no pages marks its subsystems in its field «Подсистемы»,
       // where it has one.
-      if (kind.value) return {...kind.value(structuredClone(object())), ...(headMarks ? {subsystems: [...marks].sort()} : {}), ...common.value()};
+      if (kind.value) return {...kind.value(structuredClone(object())), ...(headMarks ? {subsystems: [...marks].sort(), rootContent: rooted.marked} : {}), ...common.value()};
       // A kind of the page «Функциональные опции» writes the options marked;
       // its own subsystems are a property of its own, not marks of a page.
       if (source.pages?.some(page => page.key === 'functional-options')) return {...structuredClone(object()), functionalOptions: [...options].sort(), ...common.value()};

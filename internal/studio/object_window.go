@@ -21,6 +21,11 @@ import (
 type windowHead struct {
 	objectHead
 	Subsystems []MemberPlace `json:"subsystems"`
+	// RootContent tells whether «Состав» of the root lists the object - the
+	// box of the root of the window «Подсистемы» of the field «Подсистемы»
+	// (rootPlace, root).
+	RootContent bool `json:"rootContent"`
+	root        MemberPlace
 	// FunctionalOptions are the options of the project marked where the
 	// object is in their content - the page «Функциональные опции».
 	FunctionalOptions []MemberPlace `json:"functionalOptions,omitempty"`
@@ -93,6 +98,9 @@ type windowMarks struct {
 	Roles                         *[]RoleMark
 	TemplateContents              []TemplateContent
 	Kind                          metadata.Kind
+	// RootContent is the box of the root of the window «Подсистемы» of a
+	// field, where the window gives it (rootMembership).
+	RootContent *bool
 }
 
 // pageMarks are what the common pages of a window write with the object -
@@ -146,6 +154,9 @@ func (marks windowMarks) memberships(id uuid.UUID, head windowHead) []membership
 	if marks.Subsystems != nil {
 		pages = append(pages, subsystemMembership(id, head.Subsystems, *marks.Subsystems))
 	}
+	if marks.RootContent != nil {
+		pages = append(pages, rootMembership(id, head.root, *marks.RootContent))
+	}
 	if marks.FunctionalOptions != nil {
 		pages = append(pages, optionMembership(marks.Kind, id, head.FunctionalOptions, *marks.FunctionalOptions))
 	}
@@ -173,7 +184,12 @@ func readObjectWindow[T any](workspace *Workspace, kind metadata.Kind, relative 
 		return value, windowHead{}, nil, err
 	}
 	id, _ := shape.named(value)
-	window := windowHead{objectHead: head, Subsystems: subsystemPlaces(loaded, id)}
+	configuration, err := project.ValidateLayout(workspace.root)
+	if err != nil {
+		return value, windowHead{}, nil, err
+	}
+	root := rootPlace(configuration, id)
+	window := windowHead{objectHead: head, Subsystems: subsystemPlaces(loaded, id), RootContent: root.Member, root: root}
 	if err := readObjectPages(workspace, &window, loaded, kind, value, shape); err != nil {
 		return value, windowHead{}, nil, err
 	}

@@ -170,6 +170,34 @@ func subsystemMembership(object uuid.UUID, places []MemberPlace, marked []uuid.U
 		}}
 }
 
+// rootPlace is the root of the project configuration as a place whose
+// content may list the object: «Состав» of the root (project.Project.Content),
+// the box of the root of the window «Подсистемы» of a field (obshchee.md,
+// «Окно поля „Подсистемы“»), marked where it lists the object.
+func rootPlace(configuration project.Project, object uuid.UUID) MemberPlace {
+	return MemberPlace{ID: configuration.ID, Name: configuration.Name, Member: slices.Contains(configuration.Content, object), path: project.ConfigurationFile}
+}
+
+// rootMembership is the box of the root of the window «Подсистемы» of a
+// field: «Состав» of the root lists the object - last, where it was not -
+// or not, marked or not, a mark of its own, nothing below the root changed
+// by it (snapshots dosyomka-2653/25-39).
+func rootMembership(object uuid.UUID, root MemberPlace, marked bool) membership {
+	var marks []MemberPlace
+	if marked {
+		marks = []MemberPlace{{ID: root.ID}}
+	}
+	return membership{places: []MemberPlace{root}, marked: marks,
+		include: func(relative, content string, mark *MemberPlace, _ project.Project) (any, error) {
+			configuration, err := project.DecodeSource(relative, strings.NewReader(content))
+			if err != nil {
+				return nil, err
+			}
+			configuration.Content = listed(configuration.Content, object, func(id uuid.UUID) bool { return id == object }, mark != nil)
+			return configuration, configuration.Validate()
+		}}
+}
+
 // optionMembership is the page «Функциональные опции» of the object of a
 // kind: the content of an option lists it as an item naming the object
 // alone, and the items naming its parts stay as they are.

@@ -66,6 +66,9 @@ func (source StyleEditorSource) identity() (uuid.UUID, string) {
 type StyleWindowValue struct {
 	metadata.StyleDefinition
 	Subsystems *[]uuid.UUID `json:"subsystems,omitempty"`
+	// RootContent is the box of the root of the window «Подсистемы», when
+	// the subsystems were chosen.
+	RootContent *bool `json:"rootContent,omitempty"`
 }
 
 // styleEditorAddress is where the window of a style is read and written.
@@ -97,10 +100,10 @@ func (workspace *Workspace) readStyleEditorLocked(relative string) (StyleEditorS
 		BorderLines: metadata.BorderLines, SystemFonts: metadata.SystemFonts}, nil
 }
 
-// SaveStyleWindow writes the style and the subsystems its window marks as
-// one save (saveObjectWindow).
+// SaveStyleWindow writes the style, the subsystems its window marks and the
+// box of the root as one save (saveObjectWindow).
 func (workspace *Workspace) SaveStyleWindow(relative string, window StyleWindowValue, revision string) (StyleEditorSource, error) {
-	return saveObjectWindowAs(workspace, relative, revision, window.StyleDefinition, windowMarks{Subsystems: window.Subsystems}, workspace.readStyleEditorLocked, styleShape)
+	return saveObjectWindowAs(workspace, relative, revision, window.StyleDefinition, windowMarks{Subsystems: window.Subsystems, RootContent: window.RootContent}, workspace.readStyleEditorLocked, styleShape)
 }
 
 // CreateStyle makes the next style - one giving no item a value of its own

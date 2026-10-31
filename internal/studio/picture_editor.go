@@ -61,6 +61,10 @@ type PictureEditorSource struct {
 	// Subsystems are the subsystems of the project, those holding the
 	// picture marked: the field «Подсистемы» lists them.
 	Subsystems []MemberPlace `json:"subsystems"`
+	// RootContent tells whether «Состав» of the root lists the picture - the
+	// box of the root of the window «Подсистемы» (rootPlace, root).
+	RootContent bool `json:"rootContent"`
+	root        MemberPlace
 	// description is the revision of the description alone, which its save
 	// checks; Revision holds the images too.
 	description string
@@ -77,6 +81,9 @@ type PictureWindowValue struct {
 	// Subsystems are the subsystems the field «Подсистемы» of the window
 	// marks the picture in; none given leaves them as they are.
 	Subsystems *[]uuid.UUID `json:"subsystems,omitempty"`
+	// RootContent is the box of the root of the window «Подсистемы», when
+	// the subsystems were chosen.
+	RootContent *bool `json:"rootContent,omitempty"`
 }
 
 // PictureImage is the image a window gives a picture: a file of a format a
@@ -159,6 +166,7 @@ func (workspace *Workspace) readPictureEditorLocked(relative string) (PictureEdi
 	if err != nil {
 		return PictureEditorSource{}, err
 	}
+	root := rootPlace(configuration, value.ID)
 	revision := sha256.New()
 	revision.Write([]byte(file.Revision))
 	revision.Write(digest)
@@ -167,6 +175,7 @@ func (workspace *Workspace) readPictureEditorLocked(relative string) (PictureEdi
 		Languages: editorLanguages(configuration), DefaultLanguage: configuration.DefaultLanguage, Project: configuration.Name,
 		KindTitle: kinds.Must(metadata.CommonPictureKind).Title, Palette: kinds.Must(metadata.CommonPictureKind).Palette(),
 		Set: pictureSet(value.Variants, images), VariantChoices: pictureVariantChoices, Formats: metadata.PictureFormats(), Subsystems: subsystemPlaces(loaded, value.ID),
+		RootContent: root.Member, root: root,
 	}, nil
 }
 
@@ -290,7 +299,8 @@ func (workspace *Workspace) SavePictureEditor(relative string, window PictureWin
 	}
 	// The subsystems marked go first, as every window writes them, and back
 	// if anything after them is refused.
-	restoreMembership, err := workspace.writeMembershipLocked(windowMarks{Subsystems: window.Subsystems}.memberships(value.ID, windowHead{Subsystems: opened.Subsystems}))
+	restoreMembership, err := workspace.writeMembershipLocked(windowMarks{Subsystems: window.Subsystems, RootContent: window.RootContent}.memberships(value.ID,
+		windowHead{Subsystems: opened.Subsystems, root: opened.root}))
 	if err != nil {
 		return PictureEditorSource{}, fmt.Errorf("write the objects listing the object: %w", err)
 	}
