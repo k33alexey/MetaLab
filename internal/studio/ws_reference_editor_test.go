@@ -224,11 +224,12 @@ func TestTheSchemasADescriptionImportsAreKeptBesideIt(t *testing.T) {
 // that imports another keeps «1.xsd» naming «file://2.xsd» and «2.xsd»; a
 // schema is read by an address relative to the schema naming it. Where a
 // description imports two and the first imports a third, the third is
-// «3.xsd» - found after the description's own (not shot: question В4 of
-// series 2.672) - and a schema named again, a chain going round too, is
+// «2.xsd» and the description's second «3.xsd» - the numbers go in depth
+// (ws-ssylka.md, «Ветвление цепочки»; configurator-2026-10-31/vopr-2672/
+// 41-v4-vygruzka) - and a schema named again, a chain going round too, is
 // taken once. Defects caught: the schemas of a schema left out - the
 // import failing at run time; a relative address read from the
-// description's place; a schema kept twice; a chain going round fetched
+// description's place; the numbers given in breadth; a schema kept twice; a chain going round fetched
 // without end; the import inside a schema left naming the address.
 func TestTheChainOfSchemasIsKept(t *testing.T) {
 	t.Parallel()
@@ -299,8 +300,8 @@ func TestTheChainOfSchemasIsKept(t *testing.T) {
 		t.Errorf("the chain kept: %q", chain)
 	}
 	branch := kept("/branch.wsdl")
-	if len(branch) != 4 || branch["definition.xml"] != description("file://1.xsd", "file://2.xsd") || branch["1.xsd"] != schema("urn:a2", "file://3.xsd") ||
-		branch["2.xsd"] != schema("urn:c", "file://1.xsd") || branch["3.xsd"] != schema("urn:b2", "file://1.xsd") {
+	if len(branch) != 4 || branch["definition.xml"] != description("file://1.xsd", "file://3.xsd") || branch["1.xsd"] != schema("urn:a2", "file://2.xsd") ||
+		branch["2.xsd"] != schema("urn:b2", "file://1.xsd") || branch["3.xsd"] != schema("urn:c", "file://1.xsd") {
 		t.Errorf("the branches kept: %q", branch)
 	}
 	if fetched["/deep/a2.xsd"] != 1 || fetched["/deep/b2.xsd"] != 1 {

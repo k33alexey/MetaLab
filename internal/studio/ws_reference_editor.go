@@ -189,10 +189,14 @@ var wsImportedSchema = regexp.MustCompile(`(\sschemaLocation\s*=\s*["'])([^"']+)
 // fetchWSSchemas takes the schemas the description imports and the schemas
 // they import in turn, the whole chain, and keeps them as the prototype
 // does (ws-ssylka.md, «Выгрузки», «Цепочка схем, RPC, „Возможно пустое“»;
-// series-2.603/wsdl/dump): «1.xsd», «2.xsd» in the order they are found -
-// the description's in the order it names them, then those of «1.xsd», of
-// «2.xsd» and on - each import naming its schema «file://N.xsd», in the
-// description and in a schema alike. A schema is read by its address,
+// series-2.603/wsdl/dump): «1.xsd», «2.xsd» in the order they are found,
+// in depth - a schema named for the first time takes the next number and
+// the schemas it names are numbered right after it, before the next schema
+// of the file naming it: a description importing a and c, a importing b,
+// keeps a «1.xsd», b «2.xsd», c «3.xsd» (ws-ssylka.md, «Ветвление
+// цепочки»; configurator-2026-10-31/vopr-2672/41-v4-vygruzka) - each import
+// naming its schema «file://N.xsd», in the description and in a schema
+// alike. A schema is read by its address,
 // relative to the address of the file naming it or absolute, and taken once
 // however many files name it - a chain going round too. Answers the
 // description so changed and the schemas; a schema that cannot be read
@@ -201,8 +205,10 @@ func fetchWSSchemas(ctx context.Context, content []byte, location string) ([]byt
 	var schemas []wsSchema
 	numbers := map[string]string{}
 	// keep names each schema the text read at base names by the file it is
-	// kept as, reading the schemas named for the first time.
-	keep := func(text []byte, base string) ([]byte, error) {
+	// kept as, reading a schema named for the first time - and the schemas
+	// it names in turn - at once.
+	var keep func(text []byte, base string) ([]byte, error)
+	keep = func(text []byte, base string) ([]byte, error) {
 		from, err := url.Parse(base)
 		if err != nil {
 			return nil, err
@@ -229,7 +235,16 @@ func fetchWSSchemas(ctx context.Context, content []byte, location string) ([]byt
 				}
 				name = strconv.Itoa(len(schemas)+1) + ".xsd"
 				numbers[address] = name
-				schemas = append(schemas, wsSchema{name: name, content: schema, address: address})
+				at := len(schemas)
+				schemas = append(schemas, wsSchema{name: name, address: address})
+				// The schemas it names take their numbers first; schemas may
+				// grow meanwhile, so it is indexed after.
+				kept, err := keep(schema, address)
+				if err != nil {
+					failure = err
+					return match
+				}
+				schemas[at].content = kept
 			}
 			return []byte(string(parts[1]) + "file://" + name + string(parts[3]))
 		})
@@ -238,12 +253,6 @@ func fetchWSSchemas(ctx context.Context, content []byte, location string) ([]byt
 	changed, err := keep(content, location)
 	if err != nil {
 		return nil, nil, err
-	}
-	// The schemas found are read in their turn, those they find appended.
-	for at := 0; at < len(schemas); at++ {
-		if schemas[at].content, err = keep(schemas[at].content, schemas[at].address); err != nil {
-			return nil, nil, err
-		}
 	}
 	return changed, schemas, nil
 }
