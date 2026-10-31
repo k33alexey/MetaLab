@@ -61,6 +61,10 @@ const sectionRolesWalk = `(async () => {
     }
     choice.querySelectorAll('.studio-tree-row')[1].click();
     steps.typed.push(now());
+    const search = choice.querySelector('.object-choice-search input');
+    search.value = 'СМОТР'; search.dispatchEvent(new Event('input', {bubbles: true})); await settle();
+    steps.searched = [...choice.querySelectorAll('.studio-tree-row')].map(row => [row.textContent,
+      [...row.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'), row.classList.contains('studio-search-path')]);
     [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'Отмена').click(); await settle();
   }
   steps.choice = await choose('Просмотр');
@@ -95,7 +99,10 @@ const sectionRolesWalk = `(async () => {
 // away. The choice opens with the focus on its tree, the root current; a
 // letter goes to the next row on it, round, the root among them, a letter
 // no row begins with stays, a click makes a row current (snapshots
-// dosyomka-2653/20-24). Defects caught: the focus left in the search, no
+// dosyomka-2653/20-24). A search, in any case, leaves the roles holding it,
+// the found part red, the root grey (snapshot dosyomka-2653/34). Defects
+// caught: the found part not drawn, the case taken into account in the
+// search, the root drawn as a match; the focus left in the search, no
 // current row, a letter searching from the first row, no round, the case
 // taken into account, a right taken for another, a role's rights taken for
 // another's, the roles not added up, an empty group or a closed subsection
@@ -175,6 +182,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 		Problem                                             string
 		Choice, List, Typed                                 []string
 		Before, Viewing, Adding, Empty, Picked, Unset, None []any
+		Searched                                            [][]any
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -196,6 +204,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 	expect("before", steps.Before, []any{"<Не установлен>", all})
 	expect("the choice", steps.Choice, []string{"открыт", "ПродажиИСклад", "Просмотр", "Добавление", "Пусто"})
 	expect("typed in the choice", steps.Typed, []string{"дерево", "ПродажиИСклад", "Просмотр", "Пусто", "ПродажиИСклад", "Добавление", "Добавление", "Добавление", "Просмотр"})
+	expect("searched in the choice", steps.Searched, [][]any{{"ПродажиИСклад", "", true}, {"Просмотр", "смотр", false}})
 	expect("by viewing", steps.Viewing, []any{"Просмотр", [][]string{{"Панель навигации.Обычное", "Список товаров"}, {"Подразделы", "Партнёрский", "Товарный"}}})
 	expect("by adding too", steps.Adding, []any{"Просмотр, Добавление", [][]string{{"Панель навигации.Обычное", "Список товаров"},
 		{"Панель действий.Создать", "Товары: создать"}, {"Подразделы", "Партнёрский", "Товарный"}}})

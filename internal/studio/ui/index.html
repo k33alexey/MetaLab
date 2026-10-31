@@ -431,9 +431,11 @@
     async function loadTree(selectRoot=true){StudioIcons.load();status.textContent='Обновление…';status.className='';const response=await fetch('/api/project');if(!response.ok){status.textContent=await response.text();status.className='error';return}const data=await response.json();projectData=data;Object.assign(StudioLimits,data.limits);Object.assign(PlatformNamespaces,data.platformNamespaces);showLoadError(data.loadError);configuration=data.configuration;refreshLanguageSelector(configuration.languages,configuration.defaultLanguage);paintProjectTitle();renderTree();if(selectRoot)await select(data.tree,tree.querySelector('summary'));if(!dirty){status.className='';status.textContent='Готово'}return data}
     async function pollExternalChange(){
       if(!currentFile||loadingFile)return;
-      // Окна над всеми ролями сверяют ревизии при сохранении: опрашивать все роли
-      // разом значило бы перечитывать весь проект каждые несколько секунд.
-      if(currentFile.isRoleOverview)return;
+      // Окна без своего файла — над всеми ролями, над всеми подсистемами, окна
+      // описаний корня — сверяют ревизии при сохранении: опрашивать все роли
+      // разом значило бы перечитывать весь проект каждые несколько секунд, а
+      // опрос без пути — запрос «path=null», который сервер отвергает.
+      if(currentFile.path==null)return;
       const opened=currentFile,knownRevision=opened.externalRevision||opened.revision;
       try{
         // A role is its description and its grid of rights together, so it is

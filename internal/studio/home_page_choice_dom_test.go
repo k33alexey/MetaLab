@@ -32,6 +32,17 @@ const homePageChoiceWalk = `(async () => {
   const press = text => [...dialog().querySelectorAll('button')].find(item => item.textContent === text).click();
   const rowNamed = name => [...dialog().querySelectorAll('.studio-tree-row')].find(row => row.textContent === name);
   button('Добавить новый элемент').click(); await settle();
+  const search = dialog().querySelector('.object-choice-search input');
+  const typed = async text => {
+    search.value = text; search.dispatchEvent(new Event('input', {bubbles: true})); await settle();
+    return [...dialog().querySelectorAll('.studio-tree-row')].map(row => [row.textContent,
+      [...row.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'), row.classList.contains('studio-search-path')]);
+  };
+  steps.searched = {list: await typed('списк'), goods: await typed('ТОВАР'), forms: await typed('форм')};
+  search.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); await settle();
+  steps.enter = dialogs().length === 2 ? dialog().querySelector('h3').textContent : '';
+  press('OK'); await settle();
+  await typed('');
   const goods = rowNamed('Товары');
   goods.click(); await settle();
   steps.under = [...goods.parentElement.querySelectorAll(':scope > .studio-tree-children .studio-tree-row')].map(row => row.textContent);
@@ -57,11 +68,17 @@ const homePageChoiceWalk = `(async () => {
 // «Выбор управляемой формы» and «Отмена» of the work area of the home page
 // are the prototype's (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»; В2,
 // В4, В5 of series 2.646): under an object the branch «Формы», the forms in
-// it; OK on a branch refused «Объект не выбран.», the window staying;
+// it; the search narrows the tree by the names of the rows, in any case,
+// the found part red, a branch shown only for what it holds grey, Enter in
+// it is OK (snapshots dosyomka-2653/34, 35); OK on a branch refused
+// «Объект не выбран.», the window staying;
 // «Отмена» of the choice after «Скопировать» makes current again the row
 // copied; a role said explicitly - even as the common box says - makes the
 // link «Различная». Defects caught: the forms right under the object; OK on
 // a branch unavailable, closing the window or choosing nothing silently;
+// the search by the full name - Товары finding its ФормаСписка -, the found
+// part not drawn, a branch of the path drawn as a match, a branch holding
+// what is searched drawn grey;
 // the row before the last made current after «Отмена»; the link
 // «Одинаковая» while a role is said.
 func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
@@ -100,6 +117,10 @@ func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
 			Count int
 			Text  string
 		}
+		Searched struct {
+			List, Goods, Forms [][]any
+		}
+		Enter       string
 		Stays       string
 		AfterCancel []bool
 		Turned      string
@@ -116,6 +137,12 @@ func TestTheChoiceOfAFormOfTheHomePageIsThePrototypes(t *testing.T) {
 			t.Errorf("%s: %s, want %s", what, gotJSON, wantJSON)
 		}
 	}
+	type row = []any
+	expect("search «списк»", steps.Searched.List, [][]any{row{"Справочники", "", true}, row{"Товары", "", true}, row{"Формы", "", true}, row{"ФормаСписка", "Списк", false}})
+	expect("search «ТОВАР»", steps.Searched.Goods, [][]any{row{"Общие", "", true}, row{"Общие формы", "", true}, row{"ДемоФормаТовара", "Товар", false}})
+	expect("search «форм»", steps.Searched.Forms, [][]any{row{"Общие", "", true}, row{"Общие формы", "", true}, row{"ДемоФормаТовара", "Форм", false},
+		row{"Справочники", "", true}, row{"Товары", "", true}, row{"Формы", "Форм", false}, row{"ФормаСписка", "Форм", false}})
+	expect("Enter in the search on nothing chosen", steps.Enter, "Объект не выбран.")
 	expect("under the object", steps.Under, []string{"Формы", "ФормаСписка"})
 	expect("OK on a branch", steps.Refusal, struct {
 		Count int

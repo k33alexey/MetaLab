@@ -46,6 +46,13 @@ const rootPaletteWalk = `(async () => {
   steps.choice = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent),
     icons: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.querySelector('use')?.getAttribute('href') || ''),
     current: dialog().querySelector('.object-window-list-row.current')?.textContent};
+  {
+    const search = dialog().querySelector('.object-choice-search input');
+    search.value = 'КРАЇ'; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+    steps.choice.searched = [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent + ':' +
+      [...item.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'));
+    search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
+  }
   // A double click is two clicks and the double click, as the browser sends it.
   const english = () => [...dialog().querySelectorAll('.object-window-list-row')].find(item => item.textContent === 'English');
   english().click(); await studio.settle();
@@ -127,8 +134,8 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 		Tabs, Main, Dictionaries, LanguageButtons                                      []string
 		Windows, ImportantTabs, ImportantRows                                          []string
 		Choice                                                                         struct {
-			Title, Current string
-			Rows, Icons    []string
+			Title, Current        string
+			Rows, Icons, Searched []string
 		}
 		Form struct {
 			Title, Chosen string
@@ -174,6 +181,12 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	if steps.Choice.Title != "Выбор объекта: Язык" || !slices.Equal(steps.Choice.Rows, []string{"Русский", "Українська", "English"}) || steps.Choice.Current != "Русский" ||
 		!slices.Equal(steps.Choice.Icons, []string{"#icon-language", "#icon-language", "#icon-language"}) {
 		t.Errorf("«…» of the main language opens %+v", steps.Choice)
+	}
+	// The search, in any case, leaves the rows holding it, the found part
+	// red (snapshot dosyomka-2653/34): caught - the part not drawn, the case
+	// taken into account.
+	if !slices.Equal(steps.Choice.Searched, []string{"Українська:краї"}) {
+		t.Errorf("«КРАЇ» in «Выбор объекта: Язык» shows %q, want Українська with «краї» red", steps.Choice.Searched)
 	}
 	if steps.Chosen != "English" || !steps.Changed || !steps.Saved {
 		t.Errorf("after the choice the language shows %q, changed %v, saved %v", steps.Chosen, steps.Changed, steps.Saved)

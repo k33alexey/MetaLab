@@ -863,6 +863,41 @@ function searchField(className, changed) {
   return [line, search];
 }
 
+/* searchCaption is a caption with the parts a search found in it drawn red,
+   as the prototype draws them in every search of a list - the palette, the
+   type editor, the windows of choice (obolochka.md, «Палитра свойств»;
+   obshchee.md, «Поиск»; konfiguraciya.md, «Досъёмка 29.10.2026, вечер»,
+   snapshot dosyomka-2653/34). ranges are [start, length] in the order of
+   the caption; one starting inside the one before is passed over. Answers
+   the caption's element, of className. */
+function searchCaption(caption, ranges, className) {
+  const text = node('span', undefined, className);
+  let from = 0;
+  for (const [start, length] of ranges) {
+    if (start < from) continue;
+    text.append(caption.slice(from, start), node('span', caption.slice(start, start + length), 'studio-search-match'));
+    from = start + length;
+  }
+  text.append(caption.slice(from));
+  return text;
+}
+
+/* foundIn is where text - lowercase, searched as one piece - stands in
+   caption: [[start, length]], none where it does not or nothing is
+   searched. */
+function foundIn(caption, text) {
+  const at = text ? caption.toLocaleLowerCase().indexOf(text) : -1;
+  return at < 0 ? [] : [[at, text.length]];
+}
+
+/* searchPath marks the row of a branch a search shows only for what it
+   holds, its own name holding nothing searched: grey, as the prototype's
+   «Формы» of «Выбор управляемой формы» (snapshot dosyomka-2653/34). */
+function searchPath(row, searched) {
+  row.classList.toggle('studio-search-path', searched);
+  return row;
+}
+
 /* markBox is the box of a row of a tree of marks, standing before its icon
    (treeNode's mark): checked while marked holds key, which it adds or takes
    away; changed() is told of each mark. */
@@ -895,13 +930,14 @@ function objectList(caption, items, current, choose, change, remove) {
    [key, caption] or [key, caption, sign, mark] - sign an element drawn
    before the caption, an icon or an image, mark one at the right end of the
    row - one of them current; choose(key) makes a row current, open() is a
-   double click on a row. */
-function objectRows(items, current, choose, open = () => {}) {
+   double click on a row; searched, lowercase, is what a search over the
+   list found in the captions, drawn red (searchCaption). */
+function objectRows(items, current, choose, open = () => {}, searched = '') {
   const list = node('div', undefined, 'object-window-list');
   list.setAttribute('role', 'listbox');
   for (const [key, text, sign, mark] of items) {
-    const row = node('div', sign || mark ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
-    if (sign || mark) row.append(...(sign ? [sign] : []), node('span', text), ...(mark ? [mark] : []));
+    const row = node('div', sign || mark || searched ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    if (sign || mark || searched) row.append(...(sign ? [sign] : []), searchCaption(text, foundIn(text, searched)), ...(mark ? [mark] : []));
     row.title = text;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
@@ -978,11 +1014,13 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
     const text = search.value.trim().toLocaleLowerCase();
     const branch = (group, leading) => {
       const objects = (group.objects || []).filter(item => !text || item.name.toLocaleLowerCase().includes(text)).map(item => {
-        return treeNode({icon: item.icon, caption: item.name, mark: markBox(item.name, marked, item.id)}).element;
+        return treeNode({icon: item.icon, caption: searchCaption(item.name, foundIn(item.name, text)), mark: markBox(item.name, marked, item.id)}).element;
       });
       const children = [...(group.children || []).map((inner, at) => branch(inner, leading && at === 0)).filter(Boolean), ...objects];
       if (text && !children.length) return null;
-      return treeNode({icon: group.icon, caption: group.title, children, open: open || !!text || leading}).element;
+      const {element, row} = treeNode({icon: group.icon, caption: group.title, children, open: open || !!text || leading});
+      searchPath(row, !!text);
+      return element;
     };
     rows.replaceChildren(...tree.map((group, at) => branch(group, first && at === 0)).filter(Boolean));
     makeCurrent(rows.querySelector('.studio-tree-row'));
@@ -996,7 +1034,10 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
 /* chooseOneObject is the platform's window of the choice of one object of
    the project - «Выбор управляемой формы» of the home page
    (konfiguraciya.md, «Досъёмка 27.10.2026»; snapshot series-2.595/42): the
-   search over the full names with its clearing, the tree of the branches -
+   search over the names of the rows with its clearing - the forms of
+   «Заметки» not named so are not found by it (snapshot dosyomka-2653/34) -
+   the found part red, a branch shown only for what it holds grey; the
+   tree of the branches -
    «Общие» holding its own - and OK, «Отмена» in a column at the right. tree
    is the server's (objectChoiceTree): an object holding items is a row to
    open, chosen by one of them; any other is chosen itself. current is the
@@ -1008,28 +1049,34 @@ async function chooseOneObject(title, tree, current) {
   let chosen = current || null;
   return chooseInWindow(title, (rows, text, accept, draw) => {
     const leaf = item => {
-      const {element, row} = treeNode({icon: item.icon, caption: item.name});
+      const {element, row} = treeNode({icon: item.icon, caption: searchCaption(item.name, foundIn(item.name, text))});
       row.classList.toggle('selected', item.id === chosen);
       row.title = item.fullName || item.name;
       row.addEventListener('click', () => { chosen = item.id; draw(); });
       row.addEventListener('dblclick', () => { chosen = item.id; accept(); });
       return element;
     };
-    const found = item => !text || (item.fullName || item.name).toLocaleLowerCase().includes(text);
+    const found = item => !text || item.name.toLocaleLowerCase().includes(text);
     const holds = item => item.id === chosen || (item.items || []).some(holds);
     // An object holding items is a branch, an item holding items too - the
-    // object, its «Формы», the forms.
+    // object, its «Формы», the forms; its name is red where it holds what is
+    // searched, grey where it is shown only for its items.
     const object = item => {
       if (!item.items) return found(item) ? {element: leaf(item), open: holds(item)} : null;
       const inner = item.items.map(object).filter(Boolean);
       if (!inner.length) return null;
-      return {element: treeNode({icon: item.icon, caption: item.name, children: inner.map(one => one.element), open: !!text || holds(item)}).element, open: holds(item)};
+      const ranges = foundIn(item.name, text);
+      const {element, row} = treeNode({icon: item.icon, caption: searchCaption(item.name, ranges), children: inner.map(one => one.element), open: !!text || holds(item)});
+      searchPath(row, !!text && !ranges.length);
+      return {element, open: holds(item)};
     };
     const branch = group => {
       const children = [...(group.children || []).map(branch), ...(group.objects || []).map(object)].filter(Boolean);
       if (text && !children.length) return null;
       const open = !!text || children.some(child => child.open);
-      return {element: treeNode({icon: group.icon, caption: group.title, children: children.map(child => child.element), open}).element, open};
+      const {element, row} = treeNode({icon: group.icon, caption: group.title, children: children.map(child => child.element), open});
+      searchPath(row, !!text);
+      return {element, open};
     };
     rows.replaceChildren(...tree.map(branch).filter(Boolean).map(item => item.element));
     rows.querySelector('.selected')?.scrollIntoView?.({block: 'nearest'});
@@ -1067,8 +1114,8 @@ async function chooseInWindow(title, fill, chosen, refusal) {
    - the numerator of a document (dokument.md, «Досъёмка 28.10.2026»), the
    defaults of the root: the search over the names with its clearing, the
    list of the objects in the order of the tree, OK and «Отмена» in a column
-   at the right, a row the kind's icon and the name (snapshots
-   dosyomka-2651/09 to 11). tree is the server's (objectChoiceTree) offering
+   at the right, a row the kind's icon and the name, the part searched red
+   (snapshots dosyomka-2651/09 to 11; dosyomka-2653/34). tree is the server's (objectChoiceTree) offering
    the objects of one kind, its word for one object titling the window; current
    is the identifier current at first. A double click chooses too. Answers
    the identifier chosen on OK - OK is unavailable while none is - and null
@@ -1080,7 +1127,7 @@ async function chooseListedObject(tree, current) {
   let chosen = objects.some(item => item.id === current) ? current : null;
   return chooseInWindow(`Выбор объекта: ${one}`, (rows, text, accept, draw) => {
     const shown = objects.filter(item => !text || item.name.toLocaleLowerCase().includes(text));
-    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name, iconElement(item.icon)]), chosen, id => { chosen = id; draw(); }, accept));
+    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name, iconElement(item.icon)]), chosen, id => { chosen = id; draw(); }, accept, text));
     rows.querySelector('.current')?.scrollIntoView?.({block: 'nearest'});
   }, () => chosen);
 }
@@ -1247,12 +1294,9 @@ function objectPalette(tabs, control, visible = () => true) {
   const kept = item => (!PaletteView.important || item.important) && (!item.field || visible(item));
   function line(row, text) {
     if (row.field === 'separator') return node('hr', undefined, 'object-palette-separator');
-    const label = node('div', undefined, 'object-palette-row'), caption = node('span', undefined, 'object-palette-caption');
+    const label = node('div', undefined, 'object-palette-row'), caption = searchCaption(row.title, foundIn(row.title, text), 'object-palette-caption');
     // A caption cut by a narrow palette is read whole in its hint.
     caption.title = row.title;
-    const at = text ? row.title.toLocaleLowerCase().indexOf(text) : -1;
-    if (at < 0) caption.textContent = row.title;
-    else caption.append(row.title.slice(0, at), node('mark', row.title.slice(at, at + text.length), 'object-palette-match'), row.title.slice(at + text.length));
     label.append(caption, control(row) || node('span'));
     label.addEventListener('focusin', () => { explanation.textContent = row.description || ''; });
     label.addEventListener('click', () => { explanation.textContent = row.description || ''; });
@@ -3666,17 +3710,6 @@ function showTypeEditor(offer, types) {
       draw();
     }
   });
-  function caption(row) {
-    const text = node('span', undefined, 'type-editor-caption');
-    let from = 0;
-    for (const [start, length] of row.highlights) {
-      if (start < from) continue;
-      text.append(row.caption.slice(from, start), node('span', row.caption.slice(start, start + length), 'type-editor-match'));
-      from = start + length;
-    }
-    text.append(row.caption.slice(from));
-    return text;
-  }
   function drawTree() {
     tree.replaceChildren();
     for (const row of model.visible()) {
@@ -3701,7 +3734,7 @@ function showTypeEditor(offer, types) {
         box.addEventListener('change', () => { mark(row.key, box.checked); });
         line.append(box);
       } else line.append(node('span', undefined, 'type-editor-nobox'));
-      line.append(row.icon ? iconElement(row.icon) : node('span', undefined, 'type-editor-noicon'), caption(row));
+      line.append(row.icon ? iconElement(row.icon) : node('span', undefined, 'type-editor-noicon'), searchCaption(row.caption, row.highlights, 'type-editor-caption'));
       line.addEventListener('click', event => {
         if (event.target.tagName === 'INPUT' || event.target.closest('.type-editor-sign')) return;
         model.choose(row.key);

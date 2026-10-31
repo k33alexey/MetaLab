@@ -396,7 +396,7 @@ const paletteWalk = `(async () => {
   await click(button('Показывать только важные'));
   const search = palette().querySelector('.object-palette-search input');
   search.value = 'модуль'; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
-  steps.found = {rows: rows(), tabs: tabs(), marked: [...palette().querySelectorAll('.object-palette-match')].map(item => item.textContent)};
+  steps.found = {rows: rows(), tabs: tabs(), marked: [...palette().querySelectorAll('.studio-search-match')].map(item => item.textContent)};
   search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
   await click(button('Сортировка по алфавиту'));
   steps.alphabet = {rows: rows().filter(caption => ['Имя', 'Синоним', 'Комментарий', 'Модуль объекта', 'Модуль менеджера', 'Длина кода'].includes(caption)), tabs: tabs(),
