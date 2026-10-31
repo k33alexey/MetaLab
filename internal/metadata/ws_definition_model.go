@@ -55,7 +55,9 @@ type WSPort struct {
 }
 
 // WSOperation is an operation: its type of return - none where the
-// response has several fields or there is none - and its parameters.
+// response has several fields or parts or there is none - its «Возможно
+// пустое» (Nillable), the field of the response of minOccurs="0", and its
+// parameters.
 type WSOperation struct {
 	Name                string        `json:"name"`
 	Documentation       string        `json:"documentation,omitempty"`
@@ -155,7 +157,10 @@ func (reading *wsReading) qname(node *xdtoNode, written string) XDTOName {
 }
 
 // schemaPackage makes a package of a schema and of every schema it imports
-// that is kept beside the description, each once, in the order met.
+// that is kept beside the description, each once: the schemas it imports
+// before it, the deepest first - «Модель данных» of a chain description →
+// a → b lists b, a, the description's (ws-ssylka.md, «Цепочка схем, RPC,
+// „Возможно пустое“»; snapshot series-2.603/28).
 func (reading *wsReading) schemaPackage(schema *xdtoNode) {
 	space, _ := xmlAttribute(schema, "targetNamespace")
 	content := XDTOContent{Namespace: space}
@@ -228,10 +233,10 @@ func (reading *wsReading) schemaPackage(schema *xdtoNode) {
 		object := reading.objectType(item.node, item.name, space, &inner)
 		content.ObjectTypes = append(append(content.ObjectTypes, object), inner...)
 	}
-	reading.packages = append(reading.packages, content)
 	for _, child := range imported {
 		reading.schemaPackage(child)
 	}
+	reading.packages = append(reading.packages, content)
 }
 
 // xsdFlag is a flag of a schema said true - nillable, mixed.
@@ -517,13 +522,20 @@ func (reading *wsReading) operation(node *xdtoNode, messages map[XDTOName][]wsMe
 		return operation
 	}
 	// A message of parts by type (the style of remote procedure calls): a
-	// parameter a part, the one part of the response the type of return.
-	// The inventory shows no such description (series 2.603, question В8).
+	// parameter «Входной» a part of the request, the one part of the
+	// response the type of return, several parts of the response
+	// parameters «Выходной» and no type of return; none may be empty
+	// (ws-ssylka.md, «Цепочка схем, RPC, „Возможно пустое“»; snapshots
+	// series-2.603/33-38).
 	for _, part := range input {
 		operation.Parameters = append(operation.Parameters, WSParameter{Name: part.name, Type: part.typed, Direction: "in"})
 	}
 	if len(output) == 1 {
 		operation.ReturnType = output[0].typed
+		return operation
+	}
+	for _, part := range output {
+		operation.Parameters = append(operation.Parameters, WSParameter{Name: part.name, Type: part.typed, Direction: "out"})
 	}
 	return operation
 }
@@ -586,6 +598,15 @@ func (reading *wsReading) wrapperFields(element XDTOName) ([]*xdtoNode, bool) {
 	return fields, len(fields) > 0
 }
 
+// wsMayBeEmpty is «Возможно пустое» of a parameter of an operation
+// unwrapped: its field of minOccurs="0" or nillable="true"
+// (ws-ssylka.md, «Цепочка схем, RPC, „Возможно пустое“»; snapshots
+// series-2.603/29-31).
+func wsMayBeEmpty(field *xdtoNode) bool {
+	minimum, _ := xmlAttribute(field, "minOccurs")
+	return minimum == "0" || xsdFlag(field, "nillable")
+}
+
 // unwrap gives an operation the fields of its request and response.
 func (reading *wsReading) unwrap(operation *WSOperation, request, response []*xdtoNode) {
 	fieldType := func(field *xdtoNode) *XDTOName {
@@ -600,7 +621,7 @@ func (reading *wsReading) unwrap(operation *WSOperation, request, response []*xd
 	asked := map[string]int{}
 	for _, field := range request {
 		asked[name(field)] = len(operation.Parameters)
-		operation.Parameters = append(operation.Parameters, WSParameter{Name: name(field), Type: fieldType(field), Direction: "in"})
+		operation.Parameters = append(operation.Parameters, WSParameter{Name: name(field), Type: fieldType(field), Direction: "in", Nillable: wsMayBeEmpty(field)})
 	}
 	if len(response) == 1 {
 		operation.ReturnType = fieldType(response[0])
@@ -613,6 +634,6 @@ func (reading *wsReading) unwrap(operation *WSOperation, request, response []*xd
 			operation.Parameters[at].Direction = "in-out"
 			continue
 		}
-		operation.Parameters = append(operation.Parameters, WSParameter{Name: name(field), Type: fieldType(field), Direction: "out"})
+		operation.Parameters = append(operation.Parameters, WSParameter{Name: name(field), Type: fieldType(field), Direction: "out", Nillable: wsMayBeEmpty(field)})
 	}
 }

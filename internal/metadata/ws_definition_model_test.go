@@ -10,13 +10,14 @@ import (
 // wsShop is a description written for the test: a schema of global elements
 // of their own types and of named ones, a type of text with an attribute, a
 // type open and mixed, an enumeration, a field of a nameless type, and a
-// schema imported from «1.xsd»; five operations, one of each rule.
+// schema imported from «1.xsd» that imports «2.xsd»; six operations, one of
+// each rule.
 const wsShop = `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
   xmlns:tns="urn:shop" xmlns:s="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:shop">
   <types>
     <s:schema targetNamespace="urn:shop" elementFormDefault="qualified">
       <s:import namespace="urn:goods" schemaLocation="file://1.xsd"/>
-      <s:element name="Price"><s:complexType><s:sequence><s:element name="code" type="s:string"/><s:element name="day" type="s:date"/></s:sequence></s:complexType></s:element>
+      <s:element name="Price"><s:complexType><s:sequence><s:element name="code" type="s:string" minOccurs="0"/><s:element name="day" type="s:date"/></s:sequence></s:complexType></s:element>
       <s:element name="PriceResponse"><s:complexType><s:sequence><s:element name="sum" type="s:decimal" minOccurs="0"/></s:sequence></s:complexType></s:element>
       <s:element name="Swap" type="tns:Pair"/>
       <s:element name="SwapResponse" type="tns:Pair2"/>
@@ -43,12 +44,14 @@ const wsShop = `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap
   <message name="DeepOut"><part name="parameters" element="tns:DeepResponse"/></message>
   <message name="CallIn"><part name="a" type="s:int"/><part name="b" type="s:int"/></message>
   <message name="CallOut"><part name="result" type="s:int"/></message>
+  <message name="SplitOut"><part name="left" type="s:int"/><part name="right" type="s:int"/></message>
   <portType name="ShopPort">
     <operation name="Price"><documentation>Цена товара</documentation><input message="tns:PriceIn"/><output message="tns:PriceOut"/></operation>
     <operation name="Swap"><input message="tns:SwapIn"/><output message="tns:SwapOut"/></operation>
     <operation name="Ping"><input message="tns:PingIn"/><output message="tns:PingOut"/></operation>
     <operation name="Deep"><input message="tns:DeepIn"/><output message="tns:DeepOut"/></operation>
     <operation name="Call"><input message="tns:CallIn"/><output message="tns:CallOut"/></operation>
+    <operation name="Split"><input message="tns:CallIn"/><output message="tns:SplitOut"/></operation>
   </portType>
   <binding name="ShopSoap" type="tns:ShopPort"/>
   <binding name="ShopSoap12" type="tns:ShopPort"/>
@@ -58,6 +61,7 @@ const wsShop = `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap
 </definitions>`
 
 const wsGoods = `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:goods">
+  <xs:import namespace="urn:units" schemaLocation="file://2.xsd"/>
   <xs:element name="Item" type="xs:string"/>
   <xs:complexType name="Box"><xs:sequence><xs:element name="weight" type="xs:double"/></xs:sequence></xs:complexType>
 </xs:schema>`
@@ -78,11 +82,18 @@ const wsGoods = `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNa
 // any and mixed not open, mixed and sequenced; an operation unwrapped
 // against the rule or not unwrapped by it; a field of both «Входной»; a
 // response of one field not the type of return, its minOccurs="0" not
-// «Возможно пустое».
+// «Возможно пустое»; a field of minOccurs="0" or nillable="true" not
+// «Возможно пустое» (series-2.603/29-31); a package before the one it
+// imports (series-2.603/28); a call of several parts of the response
+// without its parameters «Выходной», or with a type of return
+// (series-2.603/36-38).
 func TestTheDescriptionOfAWSReferenceIsReadAsItsWindowShowsIt(t *testing.T) {
 	model, err := ReadWSDefinition([]byte("\uFEFF"+wsShop), func(name string) ([]byte, error) {
-		if name == "1.xsd" {
+		switch name {
+		case "1.xsd":
 			return []byte(wsGoods), nil
+		case "2.xsd":
+			return []byte(`<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:units"><xs:element name="Unit" type="xs:string"/></xs:schema>`), nil
 		}
 		return nil, errors.New("no " + name)
 	})
@@ -130,7 +141,11 @@ func TestTheDescriptionOfAWSReferenceIsReadAsItsWindowShowsIt(t *testing.T) {
 		}
 		packages = append(packages, one)
 	}
+	// The packages imported before the package importing them, the deepest
+	// first (series-2.603/28).
 	want := []shown{
+		{Namespace: "urn:units", Properties: []string{"Unit:string"}},
+		{Namespace: "urn:goods", Imports: []string{"urn:units"}, Properties: []string{"Item:string"}, ObjectTypes: []string{"Box(weight/)---"}},
 		{Namespace: "urn:shop", Imports: []string{"urn:goods"},
 			Properties: []string{"Price:Price", "PriceResponse:PriceResponse", "Swap:Pair", "SwapResponse:Pair2", "Ping:Ping", "PingResponse:PingResponse",
 				"Deep:Deep", "DeepResponse:DeepResponse", "Bag:Bag", "Note:Note", "alpha:alpha"},
@@ -138,17 +153,17 @@ func TestTheDescriptionOfAWSReferenceIsReadAsItsWindowShowsIt(t *testing.T) {
 				"Bag()+++", "Deep(item/)---", "Deep_item(code/)---", "DeepResponse(ok/)---", "Note(note/)---", "Ping()---", "PingResponse(ok/)---",
 				"Price(code/,day/)---", "PriceResponse(sum/)---", "alpha()---"},
 			ValueTypes: []string{"Kind=Home,Work"}},
-		{Namespace: "urn:goods", Properties: []string{"Item:string"}, ObjectTypes: []string{"Box(weight/)---"}},
 	}
 	got, _ := json.Marshal(packages)
 	expected, _ := json.Marshal(want)
 	if string(got) != string(expected) {
 		t.Errorf("the packages:\n%s\nwant\n%s", got, expected)
 	}
-	if form := model.Packages[0].ElementFormQualified; form == nil || !*form || model.Packages[0].AttributeFormQualified != nil {
+	shop := model.Packages[2]
+	if form := shop.ElementFormQualified; form == nil || !*form || shop.AttributeFormQualified != nil {
 		t.Error("the qualified forms of the schema are not as written")
 	}
-	right := model.Packages[0].ObjectTypes[0].Properties[1]
+	right := shop.ObjectTypes[0].Properties[1]
 	if right.UpperBound == nil || *right.UpperBound != -1 || right.LowerBound != nil {
 		t.Errorf("maxOccurs unbounded: %+v", right)
 	}
@@ -164,7 +179,7 @@ func TestTheDescriptionOfAWSReferenceIsReadAsItsWindowShowsIt(t *testing.T) {
 			if parameter.Type != nil {
 				typed = parameter.Type.Name
 			}
-			parameters = append(parameters, parameter.Name+":"+typed+":"+parameter.Direction)
+			parameters = append(parameters, parameter.Name+":"+typed+":"+parameter.Direction+map[bool]string{true: "?"}[parameter.Nillable])
 		}
 		returned := ""
 		if operation.ReturnType != nil {
@@ -173,8 +188,9 @@ func TestTheDescriptionOfAWSReferenceIsReadAsItsWindowShowsIt(t *testing.T) {
 		operations = append(operations, operation.Name+"("+strings.Join(parameters, ",")+")"+returned+map[bool]string{true: "?"}[operation.Nillable])
 	}
 	if got, want := strings.Join(operations, " "),
-		"Price(code:string:in,day:date:in)decimal? Swap(left:int:in-out,right:int:in,total:int:out) "+
-			"Ping(parameters:Ping:in)PingResponse Deep(parameters:Deep:in)DeepResponse Call(a:int:in,b:int:in)int"; got != want {
+		"Price(code:string:in?,day:date:in)decimal? Swap(left:int:in-out,right:int:in,total:int:out?) "+
+			"Ping(parameters:Ping:in)PingResponse Deep(parameters:Deep:in)DeepResponse Call(a:int:in,b:int:in)int "+
+			"Split(a:int:in,b:int:in,left:int:out,right:int:out)"; got != want {
 		t.Errorf("the operations:\n%s\nwant\n%s", got, want)
 	}
 	if model.Services[0].Ports[0].Operations[0].Documentation != "Цена товара" {

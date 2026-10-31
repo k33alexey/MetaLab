@@ -117,9 +117,11 @@ func TestTheWindowViewingAWSReferenceIsThePrototypes(t *testing.T) {
 	}
 	expect("the menu", steps.Menu, []string{"Просмотр (жирный)", "Импорт WSDL…"})
 	expect("the title", steps.Title, "WS-ссылка Склад: WS-ссылка [Только для чтения]")
-	expect("the tree", steps.Tree, []string{"Модель данных", "Пакет (urn:shop)", "Директивы импорта", "urn:goods", "Свойства", "Price", "PriceResponse",
+	// The package imported before the one importing it (series-2.603/28).
+	expect("the tree", steps.Tree, []string{"Модель данных", "Пакет (urn:goods)", "Свойства", "Item",
+		"Пакет (urn:shop)", "Директивы импорта", "urn:goods", "Свойства", "Price", "PriceResponse",
 		"Типы значений", "Kind", "Перечисление", "Home", "Типы объектов", "Price", "code", "PriceResponse", "sum",
-		"Пакет (urn:goods)", "Свойства", "Item", "Web-сервисы", "Shop", "ShopSoap", "Price", "code"})
+		"Web-сервисы", "Shop", "ShopSoap", "Price", "code"})
 	expect("the palette of the description", steps.Root, []string{"Свойства: Описание определения Web-сервисов", "Описание определения Web-сервисов: "})
 	expect("an operation", steps.Operation, []string{"Свойства: Price", "Имя: Price", "Описание операции: Цена товара",
 		"Тип возвращаемого значения: decimal (http://www.w3.org/2001/XMLSchema)", "Возможно пустое: Истина", "Описание возвращаемого значения: "})
