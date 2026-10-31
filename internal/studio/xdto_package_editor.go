@@ -157,11 +157,20 @@ func (workspace *Workspace) SaveXDTOPackageWindow(relative string, window XDTOPa
 }
 
 // CreateXDTOPackage makes the next package - «ПакетXDTO1» of the
-// namespace «http://www.sample-package.org» with its body (paket-xdto.md,
-// «Новый пакет») - by the one way every object is made (CreateObject) and
-// opens its editor.
+// namespace «http://www.sample-package.org», or of it with the name where
+// another package has it (metadata.NewXDTOPackageAmong), with its body
+// (paket-xdto.md, «Новый пакет») - by the one way every object is made
+// (CreateObject) and opens its editor.
 func (workspace *Workspace) CreateXDTOPackage(name string) (XDTOPackageEditorSource, error) {
-	return createObjectAs(workspace, metadata.XDTOPackageKind, name, nil, workspace.readXDTOPackageEditorLocked)
+	return createObjectAs(workspace, metadata.XDTOPackageKind, name, func(fresh *metadata.Fresh) error {
+		loaded, err := metadata.Load(workspace.root)
+		if err != nil {
+			return err
+		}
+		made, _ := fresh.Value.(metadata.XDTOPackageDefinition)
+		*fresh = metadata.NewXDTOPackageAmong(loaded, made.ID, made.Name)
+		return nil
+	}, workspace.readXDTOPackageEditorLocked)
 }
 
 // DeleteXDTOPackage removes the folder of a package by the one order of

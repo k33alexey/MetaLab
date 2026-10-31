@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,5 +70,40 @@ func TestTheEditorOfAnXDTOPackageSavesTheBodyWithTheDescription(t *testing.T) {
 	}
 	if _, err := metadata.Load(root); err != nil {
 		t.Errorf("the project after the refusal: %v", err)
+	}
+}
+
+// A new package takes the prototype's namespace «http://www.sample-package.org»
+// while no package of the project has it, and that namespace with its own
+// name where one has: «Добавить» does not refuse the default it chose itself
+// (METADATA-OBJECTS.md, «Новый пакет»; the owner, 27.10.2026, В4 of series
+// 2.603) - the body says the same namespace, and the project loads. Defects
+// caught: the second package refused, or made of the namespace taken and
+// the project then refusing to load; the description and the body of
+// different namespaces; the namespace taken by a package of another name
+// not seen.
+func TestASecondNewPackageTakesItsNameIntoTheNamespace(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var namespaces []string
+	for range 3 {
+		made, err := workspace.CreateXDTOPackage("")
+		if err != nil {
+			t.Fatalf("package %d: %v", len(namespaces)+1, err)
+		}
+		if made.Content.Namespace != made.Package.Namespace {
+			t.Errorf("%s: the description of %q, the body of %q", made.Package.Name, made.Package.Namespace, made.Content.Namespace)
+		}
+		namespaces = append(namespaces, made.Package.Namespace)
+	}
+	want := []string{"http://www.sample-package.org", "http://www.sample-package.org/ПакетXDTO2", "http://www.sample-package.org/ПакетXDTO3"}
+	if !slices.Equal(namespaces, want) {
+		t.Errorf("the namespaces of three new packages: %q, want %q", namespaces, want)
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("the project with the new packages: %v", err)
 	}
 }

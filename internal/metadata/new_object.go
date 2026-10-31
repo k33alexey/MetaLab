@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"path"
+	"slices"
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
@@ -153,12 +154,7 @@ var kindNewObjectOf = map[Kind]newObject{
 	// form of an element true, of an attribute false, in the prototype's
 	// form beside the description.
 	XDTOPackageKind: func(id uuid.UUID, name string, _ project.Project) Fresh {
-		yes, no := true, false
-		var body bytes.Buffer
-		_ = EncodeXDTOContent(&body, XDTOContent{Namespace: newXDTONamespace, ElementFormQualified: &yes, AttributeFormQualified: &no})
-		description, _ := project.ObjectMetadataPath(string(XDTOPackageKind), name)
-		return Fresh{Value: XDTOPackageDefinition{Format: CurrentFormat, ID: id, Name: name, Namespace: newXDTONamespace},
-			Files: []FreshFile{{Path: path.Join(path.Dir(description), XDTOPackageContentFile), Content: body.Bytes()}}}
+		return newXDTOPackage(id, name, newXDTONamespace)
 	},
 	// perechislenie.md, «Новое перечисление»: no values, the standard commands
 	// off, chosen both ways with the quick choice on, the history «Авто».
@@ -168,6 +164,33 @@ var kindNewObjectOf = map[Kind]newObject{
 			ChoiceMode: ChoiceBothWays, QuickChoice: true, ChoiceHistoryOnInput: ChoiceHistoryAuto,
 		}}
 	},
+}
+
+// newXDTOPackage is a new package of the namespace, with its body beside
+// the description.
+func newXDTOPackage(id uuid.UUID, name, namespace string) Fresh {
+	yes, no := true, false
+	var body bytes.Buffer
+	_ = EncodeXDTOContent(&body, XDTOContent{Namespace: namespace, ElementFormQualified: &yes, AttributeFormQualified: &no})
+	description, _ := project.ObjectMetadataPath(string(XDTOPackageKind), name)
+	return Fresh{Value: XDTOPackageDefinition{Format: CurrentFormat, ID: id, Name: name, Namespace: namespace},
+		Files: []FreshFile{{Path: path.Join(path.Dir(description), XDTOPackageContentFile), Content: body.Bytes()}}}
+}
+
+// NewXDTOPackageAmong is a new package as «Добавить» makes it among the
+// packages of catalog: of the namespace «http://www.sample-package.org»,
+// or, where a package of the project has it already, of that namespace
+// with the name of the new one - «http://www.sample-package.org/ПакетXDTO2»
+// (METADATA-OBJECTS.md, «Новый пакет»; the owner, 27.10.2026, В4 of series
+// 2.603: the prototype gives every new package the one namespace, ML
+// refuses two packages of one, and «Добавить» does not refuse the default
+// it chose itself).
+func NewXDTOPackageAmong(catalog *Catalog, id uuid.UUID, name string) Fresh {
+	namespace := newXDTONamespace
+	if slices.ContainsFunc(catalog.XDTOPackages, func(item XDTOPackageDefinition) bool { return item.Namespace == namespace }) {
+		namespace += "/" + name
+	}
+	return newXDTOPackage(id, name, namespace)
 }
 
 // NewObject is an object of a kind as «Добавить» makes it, with the
