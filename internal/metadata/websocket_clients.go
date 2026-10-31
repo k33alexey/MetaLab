@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/k33alexey/MetaLab/internal/kinds"
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/secretstore"
 	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
@@ -191,6 +194,52 @@ func httpToken(value string) bool {
 		}
 	}
 	return true
+}
+
+// The secrets of a client - its password and the values of its secret
+// headers - lie in the protected store of the system, one entry each,
+// named so that one sees whose secret it is (METADATA-OBJECTS.md,
+// WebSocket-клиент, «записи секретов в хранилище»; the owner, 31.10.2026,
+// В3 of series 2.672): «websocket.<project>.<client>.password» after the
+// entry of the password of a database, «….header.<name>» a header.
+
+// WebSocketPasswordKey is the entry of the password of the client clientID
+// of the project projectID.
+func WebSocketPasswordKey(projectID, clientID uuid.UUID) string {
+	return webSocketSecretPrefix(projectID, clientID) + "password"
+}
+
+// WebSocketHeaderKey is the entry of the value of the secret header named
+// header of the client clientID of the project projectID: the name in
+// lowercase - the case of a header does not count, and two names differing
+// by it alone are refused -, or «h-» and the first 32 hexadecimal digits of
+// SHA-256 of it where the store does not take the name so (a symbol it
+// does not take, an entry longer than its 200).
+func WebSocketHeaderKey(projectID, clientID uuid.UUID, header string) string {
+	prefix := webSocketSecretPrefix(projectID, clientID) + "header."
+	name := strings.ToLower(header)
+	if key := prefix + name; secretstore.ValidKey(key) {
+		return key
+	}
+	sum := sha256.Sum256([]byte(name))
+	return prefix + "h-" + hex.EncodeToString(sum[:16])
+}
+
+// WebSocketSecretKeys are the entries a client may hold - its password and
+// each of its secret headers -, which go with it: a deletion of the client
+// takes them away, a copy takes their values under its own identifier.
+func WebSocketSecretKeys(projectID uuid.UUID, client WebSocketClientDefinition) []string {
+	keys := []string{WebSocketPasswordKey(projectID, client.ID)}
+	for _, header := range client.Headers {
+		if header.Secret {
+			keys = append(keys, WebSocketHeaderKey(projectID, client.ID, header.Name))
+		}
+	}
+	return keys
+}
+
+func webSocketSecretPrefix(projectID, clientID uuid.UUID) string {
+	return "websocket." + projectID.String() + "." + clientID.String() + "."
 }
 
 func cloneWebSocketClient(value WebSocketClientDefinition) WebSocketClientDefinition {

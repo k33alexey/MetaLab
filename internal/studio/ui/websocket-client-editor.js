@@ -5,8 +5,9 @@
    name, the synonym, the comment, two flags, the module, the address, the
    user, the password by dots, the headers - «…» opening «Настройка
    заголовков» -, two flags of the system and the timeout. The password and
-   the value of a secret header lie in the protected store of the system,
-   which Studio does not write yet (series 2.584, В4): they are shown and not
+   the value of a secret header lie in the protected store of the system:
+   the password typed goes with the client as newPassword, which the server
+   writes there (WebSocketClientEdit); a secret header is shown and not
    changed. A timeout of 0 is written as typed - zero is not thirty (the
    model). around holds the palette, its title and the opening of a module. */
 function createWebSocketClientEditor(host, onChange, around = {}) {
@@ -14,7 +15,8 @@ function createWebSocketClientEditor(host, onChange, around = {}) {
     target: source => source.client,
     subject: source => {
       const own = ownSubject(source, source.client);
-      return {...own, set: (key, value) => { if (key === 'timeout') source.client.timeout = value; else own.set(key, value); }};
+      return {...own, set: (key, value) => { if (key === 'timeout') source.client.timeout = value; else own.set(key, value); },
+        setPassword: value => { source.client.newPassword = value; }, typedPassword: () => source.client.newPassword};
     },
     context: () => ({windows: [], openModule: role => around.openModule?.(role), editHeaders: showHeadersWindow}),
   });

@@ -252,11 +252,14 @@ type paletteSource[T any] interface {
 // savePaletteObject writes an object its palette edited: the object read
 // last at revision (read) must be the same object, a new name is checked in
 // its branch and moves its folder (followNameLocked); keep, when given,
-// puts back what the palette does not change - the address of a reference,
-// the password of a client - or refuses the edit. Answers the object as
-// the palette reads it after.
+// puts back what the palette does not change - the address of a reference
+// - or refuses the edit, and may write what lies beside the project - the
+// password of a client in the protected store of the system -, answering
+// how to put it back: a write of the description that fails then puts it
+// back, under the same lock. Answers the object as the palette reads it
+// after.
 func savePaletteObject[S paletteSource[T], T any](workspace *Workspace, relative, revision string, value T,
-	read func(string) (S, error), keep func(opened T, value *T) error) (S, error) {
+	read func(string) (S, error), keep func(opened T, value *T) (func() error, error)) (S, error) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	var none S
@@ -278,21 +281,26 @@ func savePaletteObject[S paletteSource[T], T any](workspace *Workspace, relative
 			return none, err
 		}
 	}
+	putBack := func() error { return nil }
 	if keep != nil {
-		if err := keep(object, &value); err != nil {
+		undo, err := keep(object, &value)
+		if err != nil {
 			return none, err
+		}
+		if undo != nil {
+			putBack = undo
 		}
 	}
 	var encoded bytes.Buffer
 	if err := metadata.Encode(&encoded, value); err != nil {
-		return none, err
+		return none, errors.Join(err, putBack())
 	}
 	written, moveBack, err := workspace.followNameLocked(relative, openedName, name)
 	if err != nil {
-		return none, err
+		return none, errors.Join(err, putBack())
 	}
 	if _, err := workspace.saveSourceLocked(written, encoded.String(), revision); err != nil {
-		return none, errors.Join(err, moveBack())
+		return none, errors.Join(err, moveBack(), putBack())
 	}
 	return read(written)
 }

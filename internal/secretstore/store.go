@@ -4,7 +4,6 @@ package secretstore
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 const serviceName = "MetaLab"
@@ -83,13 +82,24 @@ func (err backendError) Error() string {
 func (err backendError) Unwrap() error { return err.cause }
 
 func validateKey(key string) error {
-	if key == "" || key != strings.TrimSpace(key) || len(key) > 200 {
+	if !ValidKey(key) {
 		return fmt.Errorf("invalid secret key %q", key)
+	}
+	return nil
+}
+
+// ValidKey reports whether the store takes key as the name of an entry: at
+// most 200 symbols of lowercase Latin letters, digits and «. _ -». A name
+// built of something else - the name of a header of a WebSocket client -
+// is checked by it before it is used.
+func ValidKey(key string) bool {
+	if key == "" || len(key) > 200 {
+		return false
 	}
 	for _, symbol := range key {
 		if symbol != '.' && symbol != '_' && symbol != '-' && (symbol < 'a' || symbol > 'z') && (symbol < '0' || symbol > '9') {
-			return fmt.Errorf("invalid secret key %q", key)
+			return false
 		}
 	}
-	return nil
+	return true
 }

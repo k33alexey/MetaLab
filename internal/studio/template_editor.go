@@ -114,11 +114,11 @@ func (workspace *Workspace) readTemplateEditorLocked(relative string) (TemplateE
 // template; its kind stays as it was made, and a new name moves its folder
 // with its content (followNameLocked).
 func (workspace *Workspace) SaveTemplateEditor(relative string, value metadata.CommonTemplateDefinition, revision string) (TemplateEditorSource, error) {
-	return savePaletteObject(workspace, relative, revision, value, workspace.readTemplateEditorLocked, func(opened metadata.CommonTemplateDefinition, value *metadata.CommonTemplateDefinition) error {
+	return savePaletteObject(workspace, relative, revision, value, workspace.readTemplateEditorLocked, func(opened metadata.CommonTemplateDefinition, value *metadata.CommonTemplateDefinition) (func() error, error) {
 		if value.Kind != opened.Kind {
-			return fmt.Errorf("the kind of a template is not changed once it is made")
+			return nil, fmt.Errorf("the kind of a template is not changed once it is made")
 		}
-		return nil
+		return nil, nil
 	})
 }
 

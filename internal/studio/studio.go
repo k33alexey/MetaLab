@@ -52,6 +52,7 @@ type Workspace struct {
 	debugDatabase uuid.UUID
 	saveData      SaveDataProvider
 	savedNames    SavedNamesProvider
+	secrets       SecretStore
 	// configurationID names the folder of the user's settings of this
 	// configuration (list_settings.go).
 	configurationID       uuid.UUID
@@ -343,6 +344,23 @@ func (workspace *Workspace) SetSavedNamesProvider(provider SavedNamesProvider) {
 	workspace.mu.Lock()
 	defer workspace.mu.Unlock()
 	workspace.savedNames = provider
+}
+
+// SecretStore is the protected store of the system Studio keeps the secrets
+// of the project in - the password of a WebSocket client
+// (secretstore.Store); an entry not there is secretstore.ErrNotFound.
+type SecretStore interface {
+	Set(key, secret string) error
+	Get(key string) (string, error)
+	Delete(key string) error
+}
+
+// SetSecretStore gives Studio the protected store of the system: without
+// one a secret is shown and not changed.
+func (workspace *Workspace) SetSecretStore(store SecretStore) {
+	workspace.mu.Lock()
+	defer workspace.mu.Unlock()
+	workspace.secrets = store
 }
 
 // SetSaveDataProvider connects this database-bound Studio to its database.

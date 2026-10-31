@@ -100,9 +100,9 @@ func (workspace *Workspace) readWSReferenceEditorLocked(relative string) (WSRefe
 // reference; the address stays as the import wrote it, and a new name moves
 // the folder with the description (followNameLocked).
 func (workspace *Workspace) SaveWSReferenceEditor(relative string, value metadata.WSReferenceDefinition, revision string) (WSReferenceEditorSource, error) {
-	return savePaletteObject(workspace, relative, revision, value, workspace.readWSReferenceEditorLocked, func(opened metadata.WSReferenceDefinition, value *metadata.WSReferenceDefinition) error {
+	return savePaletteObject(workspace, relative, revision, value, workspace.readWSReferenceEditorLocked, func(opened metadata.WSReferenceDefinition, value *metadata.WSReferenceDefinition) (func() error, error) {
 		value.LocationURL = opened.LocationURL
-		return nil
+		return nil, nil
 	})
 }
 

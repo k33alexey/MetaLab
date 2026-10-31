@@ -44,7 +44,11 @@ func runStudio(ctx context.Context, settings appconfig.Config, projectPath, data
 	if err != nil {
 		return fmt.Errorf("read ML Project: %w", err)
 	}
-	platformRuntime := platform.New(ctx, settings, secretstore.New())
+	// One protected store for the platform and for the secrets of the
+	// project Studio writes - the password of a WebSocket client.
+	secrets := secretstore.New()
+	workspace.SetSecretStore(secrets)
+	platformRuntime := platform.New(ctx, settings, secrets)
 	defer platformRuntime.Close()
 	lease, err := openStudioLease(ctx, platformRuntime, databaseID, snapshot.Configuration.ID)
 	if err != nil {

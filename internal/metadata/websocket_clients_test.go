@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/project"
+	"github.com/k33alexey/MetaLab/internal/uuid"
 )
 
 const (
@@ -323,5 +324,43 @@ func TestWebSocketClientHeadersKeepTheirOrder(t *testing.T) {
 	}
 	if got := order(again.Headers); got != "X-Zeta,Accept,X-Middle" {
 		t.Fatalf("the headers were written as %s:\n%s", got, written.String())
+	}
+}
+
+// The entries of the secrets of a client are named as the owner decided
+// (METADATA-OBJECTS.md, WebSocket-клиент, «записи секретов в хранилище»;
+// 31.10.2026, В3 of series 2.672): the password «websocket.<project>.
+// <client>.password», a header «….header.<name in lowercase>», «….header.
+// h-<32 hexadecimal digits of SHA-256 of the name in lowercase>» where the
+// store does not take the name - a symbol outside «a-z 0-9 . _ -» or an
+// entry over 200 symbols -; the entries of a client are its password and
+// its secret headers. Defects caught: the case of a header kept, two
+// spellings two entries; a name the store refuses used as it is; a long
+// name cut instead of hashed; a header not secret given an entry.
+func TestTheEntriesOfTheSecretsOfAWebSocketClient(t *testing.T) {
+	projectID := uuid.MustParse("10000000-0000-4000-8000-000000000001")
+	clientID := uuid.MustParse("20000000-0000-4000-8000-000000000002")
+	prefix := "websocket.10000000-0000-4000-8000-000000000001.20000000-0000-4000-8000-000000000002."
+	if got := WebSocketPasswordKey(projectID, clientID); got != prefix+"password" {
+		t.Errorf("the password: %q", got)
+	}
+	if got, other := WebSocketHeaderKey(projectID, clientID, "X-Api_Key.v2"), WebSocketHeaderKey(projectID, clientID, "x-api_key.V2"); got != prefix+"header.x-api_key.v2" || other != got {
+		t.Errorf("a header of the symbols the store takes: %q and %q", got, other)
+	}
+	// SHA-256 of "x!key": its first 16 bytes in hexadecimal.
+	if got := WebSocketHeaderKey(projectID, clientID, "X!Key"); got != prefix+"header.h-"+"80d81db86bd318dc3c6f37b3b5b2e9c8" {
+		t.Errorf("a header of a symbol the store does not take: %q", got)
+	}
+	long := strings.Repeat("a", 200-len(prefix+"header.")+1)
+	if got := WebSocketHeaderKey(projectID, clientID, long); !strings.HasPrefix(got, prefix+"header.h-") || len(got) != len(prefix+"header.h-")+32 {
+		t.Errorf("a header too long for the store: %q", got)
+	}
+	fits := strings.Repeat("a", 200-len(prefix+"header."))
+	if got := WebSocketHeaderKey(projectID, clientID, fits); got != prefix+"header."+fits {
+		t.Errorf("a header filling the store's 200: %q", got)
+	}
+	client := WebSocketClientDefinition{ID: clientID, Headers: []WebSocketHeader{{Name: "X-Version", Value: "2"}, {Name: "Authorization", Secret: true}}}
+	if got := WebSocketSecretKeys(projectID, client); !slices.Equal(got, []string{prefix + "password", prefix + "header.authorization"}) {
+		t.Errorf("the entries of a client: %q", got)
 	}
 }

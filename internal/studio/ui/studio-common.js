@@ -1539,12 +1539,18 @@ function paletteFields(context) {
       if (context.valueChecks?.[row.key]) watchValue(input, context.valueChecks[row.key], () => ({value: input.value}));
       return input;
     }
-    // A password kept apart from the project: dots when there is one; Studio
-    // does not write the protected store yet (series 2.584, В4).
+    // A password kept apart from the project, typed by dots (snapshot
+    // websocket-klient/11): dots where there is one; what is typed goes to
+    // subject.setPassword - the protected store of the system, on «Сохранить»
+    // -, all of it at once: the field is selected as it takes the focus, the
+    // dots shown standing for no value; cleared, there is none.
     if (row.field === 'password') {
-      const shown = node('input');
-      shown.type = 'password'; shown.readOnly = true; shown.disabled = true;
-      shown.value = subject.get(row.key) ? '••••••••' : '';
+      const shown = node('input'), typed = subject.typedPassword?.();
+      shown.type = 'password';
+      shown.value = typed ?? (subject.get(row.key) ? '••••••••' : '');
+      if (!subject.setPassword) { shown.readOnly = true; shown.disabled = true; return shown; }
+      shown.addEventListener('focus', () => shown.select());
+      shown.addEventListener('input', () => { subject.setPassword(shown.value); context.typed(); });
       return shown;
     }
     // The headers of a WebSocket client, «Имя(значение)» by commas - a
