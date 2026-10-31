@@ -370,7 +370,7 @@ dialog.ws-reference-view{position:fixed;inset:8% 10%;width:auto;height:auto;marg
 #client-interface[hidden]{display:none}
 .client-interface-tree,.client-interface-list{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1}
 .client-interface-tree .object-window-list,.client-interface-list .object-window-list{margin-top:0}
-.client-interface-row{white-space:nowrap;min-height:1.4em}
+.client-interface-row{white-space:nowrap;min-height:1.4em}.client-interface-row.drop-target{outline:1px solid var(--text,#dfe1e5);outline-offset:-1px}
 .object-window-panel button.pressed{background:rgba(88,157,246,.25)}
 /* «Все подсистемы» (predsyomka-1/02): слева дерево подсистем и под ним
    «Состав» выбранной, справа её командный интерфейс. */

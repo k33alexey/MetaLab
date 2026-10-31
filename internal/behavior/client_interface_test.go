@@ -2,6 +2,7 @@ package behavior
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -12,10 +13,11 @@ import (
 // The panels of the platform the tests place, by the identifiers the export
 // writes (docs/block-00/konfiguraciya.md, «Досъёмка 29.10.2026, вечер»).
 var (
-	sectionsPanel = uuid.MustParse("b553047f-c9aa-4157-978d-448ecad24248")
-	openPanel     = uuid.MustParse("cbab57f2-a0f3-4f0a-89ea-4cb19570ab75")
-	historyPanel  = uuid.MustParse("c933ac92-92cd-459d-81cc-e0c8a83ced99")
-	unknownPanel  = uuid.MustParse("8e10648b-f52d-4ec2-b4dd-87de33778d95")
+	sectionsPanel   = uuid.MustParse("b553047f-c9aa-4157-978d-448ecad24248")
+	openPanel       = uuid.MustParse("cbab57f2-a0f3-4f0a-89ea-4cb19570ab75")
+	historyPanel    = uuid.MustParse("c933ac92-92cd-459d-81cc-e0c8a83ced99")
+	favouritesPanel = uuid.MustParse("13322b22-3960-4d68-93a6-fe2dd7f28ca3")
+	unknownPanel    = uuid.MustParse("8e10648b-f52d-4ec2-b4dd-87de33778d95")
 )
 
 func panelItem(panel uuid.UUID) metadata.ClientInterfaceItem {
@@ -230,27 +232,55 @@ func TestTheRepresentationLiesOnTheDefinitionOfThePanelOfSections(t *testing.T) 
 	}
 }
 
-// A panel dragged from the list onto a group stands at the end of the
-// group, in a nameless group of its own, chosen, of an identifier of its own
-// (series-2.595/71); a panel placed already, a zero panel, a drop onto a
-// side or onto a panel are refused, the interface left as it was. Defects
-// caught: the panel put first or bare into the group, left not chosen, a
-// panel of the platform placed twice, a drop onto a side or a panel taken,
-// a refusal leaving an empty panel behind.
-func TestAPanelDraggedOntoAGroupStandsAtItsEnd(t *testing.T) {
-	favourites := uuid.MustParse("13322b22-3960-4d68-93a6-fe2dd7f28ca3")
+// A panel dragged from the list stands where «Добавить» puts one at the row
+// it is dropped onto (konfiguraciya.md, «Досъёмка 31.10.2026,
+// перетаскивание»; series-2.595/71, dosyomka-2667/20-25): onto a group at
+// its end in a nameless group of its own, onto a side at its end on the
+// side itself, onto a panel of a group before it in a nameless group of its
+// own, onto a panel of a side before it on the side; chosen, of an
+// identifier of its own. A panel placed already puts a panel none chosen
+// there and stays where it stood. A zero panel and a row not there are
+// refused, the interface left as it was. Defects caught: the panel put
+// first or bare into the group, wrapped on a side, after the panel dropped
+// onto, left not chosen; a panel of the platform placed twice or moved from
+// its place; a drop onto a side or a panel refused; a refusal leaving an
+// empty panel behind.
+func TestAPanelDraggedFromTheListStandsWhereAddPutsOne(t *testing.T) {
+	favourites := favouritesPanel
+	chosen := func(item metadata.ClientInterfaceItem, panel uuid.UUID) bool {
+		return item.Panel != nil && uuid.UUID(*item.Panel) == panel && item.ID != nil && !item.ID.IsZero() && len(item.Items) == 0
+	}
 	value := erpInterface()
 	at, err := DropClientInterfacePanel(&value, place("left", 0), favourites)
-	if err != nil || at.Side != "left" || len(at.Path) != 3 || at.Path[0] != 0 || at.Path[1] != 1 || at.Path[2] != 0 {
-		t.Fatalf("the panel dropped stands at %+v: %v", at, err)
+	if err != nil || !slices.Equal(at.Path, []int{0, 1, 0}) || at.Side != "left" {
+		t.Fatalf("the panel dropped onto the group stands at %+v: %v", at, err)
 	}
-	group := value.Left[0].Items
-	if len(group) != 2 || group[1].ID != nil || len(group[1].Items) != 1 {
+	if group := value.Left[0].Items; len(group) != 2 || group[1].ID != nil || len(group[1].Items) != 1 || !chosen(group[1].Items[0], favourites) {
 		t.Fatalf("the group holds %+v", group)
 	}
-	dropped := group[1].Items[0]
-	if dropped.Panel == nil || uuid.UUID(*dropped.Panel) != favourites || dropped.ID == nil || dropped.ID.IsZero() {
-		t.Fatalf("the panel dropped is %+v", dropped)
+	value = erpInterface()
+	at, err = DropClientInterfacePanel(&value, place("right"), favourites)
+	if err != nil || at.Side != "right" || !slices.Equal(at.Path, []int{0}) || len(value.Right) != 1 || !chosen(value.Right[0], favourites) {
+		t.Fatalf("the panel dropped onto a side stands at %+v: %v; the side holds %+v", at, err, value.Right)
+	}
+	at, err = DropClientInterfacePanel(&value, place("right", 0), historyPanel)
+	if err != nil || !slices.Equal(at.Path, []int{0}) || len(value.Right) != 2 || !chosen(value.Right[0], historyPanel) || !chosen(value.Right[1], favourites) {
+		t.Fatalf("the panel dropped onto a panel of a side stands at %+v: %v; the side holds %+v", at, err, value.Right)
+	}
+	value = erpInterface()
+	at, err = DropClientInterfacePanel(&value, place("top", 0, 1, 0), historyPanel)
+	if group := value.Top[0].Items; err != nil || !slices.Equal(at.Path, []int{0, 1, 0}) || len(group) != 3 || group[1].ID != nil || len(group[1].Items) != 1 ||
+		!chosen(group[1].Items[0], historyPanel) || !chosen(group[2].Items[0], openPanel) {
+		t.Fatalf("the panel dropped onto a panel of a group stands at %+v: %v; the group holds %+v", at, err, value.Top[0].Items)
+	}
+	// Placed already: the panel of sections dropped onto the right side.
+	value = erpInterface()
+	at, err = DropClientInterfacePanel(&value, place("right"), sectionsPanel)
+	if err != nil || !slices.Equal(at.Path, []int{0}) || len(value.Right) != 1 || value.Right[0].Panel == nil || value.Right[0].Panel.Chosen() || value.Right[0].ID == nil {
+		t.Fatalf("a placed panel dropped puts %+v at %+v: %v", value.Right, at, err)
+	}
+	if left := value.Left[0].Items; len(left) != 1 || !chosen(left[0].Items[0], sectionsPanel) {
+		t.Fatalf("the placed panel moved: %+v", left)
 	}
 	if issue := metadataIssues(value); issue != "" {
 		t.Fatalf("the model refuses the interface: %s", issue)
@@ -259,21 +289,83 @@ func TestAPanelDraggedOntoAGroupStandsAtItsEnd(t *testing.T) {
 		at    ClientInterfacePlace
 		panel uuid.UUID
 	}{
-		"размещённая":     {place("top", 0), sectionsPanel},
 		"нулевая":         {place("top", 0), uuid.UUID{}},
-		"на сторону":      {place("right"), historyPanel},
-		"на панель":       {place("top", 0, 1, 0), historyPanel},
 		"мимо интерфейса": {place("top", 5), historyPanel},
+		"мимо стороны":    {place("middle"), historyPanel},
 	} {
-		before := erpInterface()
-		value := before
-		value.Top = append([]metadata.ClientInterfaceItem(nil), before.Top...)
-		value.Top[0].Items = append([]metadata.ClientInterfaceItem(nil), before.Top[0].Items...)
+		value := erpInterface()
 		if _, err := DropClientInterfacePanel(&value, drop.at, drop.panel); err == nil {
 			t.Errorf("%s: the drop was taken", name)
 		}
 		if len(value.Top[0].Items) != 2 || len(value.Right) != 0 {
 			t.Errorf("%s: the refusal changed the interface: %+v %+v", name, value.Top, value.Right)
+		}
+	}
+}
+
+// A panel of the tree dragged moves, keeping its identifier, from where it
+// stood with its nameless group (konfiguraciya.md, «Досъёмка 31.10.2026,
+// перетаскивание»; dosyomka-2667/26-28): onto a side to its end on the side
+// itself, onto a panel before it - in its group, wrapped; onto itself it
+// stays. A group dragged and a drop onto a group are not shot and refused,
+// the interface left as it was. Defects caught: the panel left at the old
+// place or its empty wrapper left; the panel wrapped on a side or bare in a
+// group; the place of the target taken before the panel went - one place
+// off in the same list; a new identifier; a group moved or a drop onto a
+// group taken.
+func TestAPanelOfTheTreeDraggedMoves(t *testing.T) {
+	value := erpInterface()
+	open := *value.Top[0].Items[1].Items[0].ID
+	at, err := MoveClientInterfacePanelTo(&value, place("top", 0, 1, 0), place("right"))
+	if err != nil || at.Side != "right" || !slices.Equal(at.Path, []int{0}) || len(value.Right) != 1 || *value.Right[0].ID != open || len(value.Right[0].Items) != 0 {
+		t.Fatalf("the panel of a group dropped onto a side stands at %+v: %v; the side holds %+v", at, err, value.Right)
+	}
+	if len(value.Top[0].Items) != 1 {
+		t.Fatalf("the group keeps %+v", value.Top[0].Items)
+	}
+	at, err = MoveClientInterfacePanelTo(&value, place("right", 0), place("left", 0, 0, 0))
+	if left := value.Left[0].Items; err != nil || !slices.Equal(at.Path, []int{0, 0, 0}) || at.Side != "left" || len(value.Right) != 0 || len(left) != 2 ||
+		left[0].ID != nil || *left[0].Items[0].ID != open || uuid.UUID(*left[1].Items[0].Panel) != sectionsPanel {
+		t.Fatalf("the panel of a side dropped onto a panel of a group stands at %+v: %v; the group holds %+v", at, err, value.Left[0].Items)
+	}
+	// In the same group: the last panel before the first, the first onto the
+	// last - before it, one place off once the first went.
+	value = erpInterface()
+	unknown := *value.Top[0].Items[0].Items[0].ID
+	at, err = MoveClientInterfacePanelTo(&value, place("top", 0, 0, 0), place("top", 0, 1, 0))
+	if group := value.Top[0].Items; err != nil || !slices.Equal(at.Path, []int{0, 0, 0}) || len(group) != 2 || *group[0].Items[0].ID != unknown {
+		t.Fatalf("the first panel dropped onto the next stands at %+v: %v; the group holds %+v", at, err, value.Top[0].Items)
+	}
+	value.Top = append(value.Top, panelItem(historyPanel), panelItem(favouritesPanel))
+	history := *value.Top[1].ID
+	at, err = MoveClientInterfacePanelTo(&value, place("top", 1), place("top", 2))
+	if err != nil || !slices.Equal(at.Path, []int{1}) || *value.Top[1].ID != history {
+		t.Fatalf("a panel of a side dropped onto the next stands at %+v: %v", at, err)
+	}
+	at, err = MoveClientInterfacePanelTo(&value, place("top", 2), place("top", 1))
+	if err != nil || !slices.Equal(at.Path, []int{1}) || uuid.UUID(*value.Top[1].Panel) != favouritesPanel || *value.Top[2].ID != history {
+		t.Fatalf("a panel of a side dropped onto the one before stands at %+v: %v; the side holds %+v", at, err, value.Top)
+	}
+	at, err = MoveClientInterfacePanelTo(&value, place("top", 1), place("top", 1))
+	if err != nil || !slices.Equal(at.Path, []int{1}) || len(value.Top) != 3 {
+		t.Fatalf("a panel dropped onto itself goes to %+v: %v", at, err)
+	}
+	if issue := metadataIssues(value); issue != "" {
+		t.Fatalf("the model refuses the interface: %s", issue)
+	}
+	for name, move := range map[string][2]ClientInterfacePlace{
+		"группа":          {place("top", 0), place("right")},
+		"на группу":       {place("top", 0, 1, 0), place("left", 0)},
+		"сторона":         {place("top"), place("right")},
+		"мимо интерфейса": {place("top", 0, 1, 0), place("top", 7)},
+		"мимо стороны":    {place("top", 0, 1, 0), place("middle")},
+	} {
+		value := erpInterface()
+		if _, err := MoveClientInterfacePanelTo(&value, move[0], move[1]); err == nil {
+			t.Errorf("%s: the drop was taken", name)
+		}
+		if len(value.Top[0].Items) != 2 || len(value.Left[0].Items) != 1 || len(value.Right) != 0 {
+			t.Errorf("%s: the refusal changed the interface: %+v %+v %+v", name, value.Top, value.Left, value.Right)
 		}
 	}
 }

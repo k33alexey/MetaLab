@@ -112,7 +112,14 @@ func withPath(place ClientInterfacePlace, path ...int) ClientInterfacePlace {
 // nameless group of its own. Every panel added gets an identifier of its
 // own, as the prototype gives one. Answers where the panel stands.
 func AddClientInterfacePanel(value *metadata.ClientInterface, at ClientInterfacePlace) (ClientInterfacePlace, error) {
-	panel := metadata.ClientInterfaceItem{ID: newID(), Panel: &metadata.PanelID{}}
+	return placePanel(value, at, metadata.ClientInterfaceItem{ID: newID(), Panel: &metadata.PanelID{}})
+}
+
+// placePanel puts the panel item where «Добавить» puts a panel at at
+// (AddClientInterfacePanel) - and a drop onto the row at at with it
+// (konfiguraciya.md, «Досъёмка 31.10.2026, перетаскивание»). Answers where
+// it stands.
+func placePanel(value *metadata.ClientInterface, at ClientInterfacePlace, panel metadata.ClientInterfaceItem) (ClientInterfacePlace, error) {
 	if len(at.Path) == 0 {
 		list := side(value, at.Side)
 		if list == nil {
@@ -227,30 +234,73 @@ func ChooseClientInterfacePanel(value *metadata.ClientInterface, place ClientInt
 }
 
 // DropClientInterfacePanel puts a panel of the platform dragged from the list
-// of the window onto a group: at the end of the group, in a nameless group
-// of its own, as «Добавить» puts one, and chosen (series-2.595/71). A panel
-// placed already is refused, as the choice refuses it (owner, 29.10.2026:
-// one panel of the platform stands once), and so is a drop onto anything
-// but a group - onto a side and onto a panel it is not shot. Nothing is
-// changed by a refusal. Answers where the panel stands.
-func DropClientInterfacePanel(value *metadata.ClientInterface, group ClientInterfacePlace, panel uuid.UUID) (ClientInterfacePlace, error) {
-	if len(group.Path) == 0 {
-		return ClientInterfacePlace{}, fmt.Errorf("a panel is dropped onto a group")
-	}
+// of the window onto the row at at - a side, a group or a panel - where
+// «Добавить» puts a panel at it: on a side at its end on the side itself, on
+// a group at its end in a nameless group of its own, on a panel before it
+// (konfiguraciya.md, «Досъёмка 31.10.2026, перетаскивание»; series-2.595/71,
+// dosyomka-2667/20, 22, 23). A panel free stands there chosen; a panel
+// placed already neither moves nor stands twice - a standard panel none
+// chosen stands there instead, the placed one staying where it stood
+// (dosyomka-2667/24, 25; one panel of the platform stands once, the owner,
+// 29.10.2026). A zero panel and a row that is not there are refused,
+// nothing changed. Answers where the panel dropped stands.
+func DropClientInterfacePanel(value *metadata.ClientInterface, at ClientInterfacePlace, panel uuid.UUID) (ClientInterfacePlace, error) {
 	if panel.IsZero() {
 		return ClientInterfacePlace{}, fmt.Errorf("no panel is dropped")
 	}
 	if PlacedClientInterfacePanels(*value)[panel] {
-		return ClientInterfacePlace{}, fmt.Errorf("the panel stands in the interface already")
+		return AddClientInterfacePanel(value, at)
 	}
-	if list, index, err := container(value, group); err != nil || (*list)[index].Panel != nil || (*list)[index].ID == nil {
-		return ClientInterfacePlace{}, fmt.Errorf("a panel is dropped onto a group")
-	}
-	at, err := AddClientInterfacePanel(value, group)
+	chosen := metadata.PanelID(panel)
+	return placePanel(value, at, metadata.ClientInterfaceItem{ID: newID(), Panel: &chosen})
+}
+
+// MoveClientInterfacePanelTo moves the panel at from - a row of the tree
+// dragged - onto the row at to: onto a side at its end on the side itself,
+// onto a panel before it, on its side or in its group in a nameless group
+// of its own; the panel goes from where it stood, with the nameless group
+// wrapping it (konfiguraciya.md, «Досъёмка 31.10.2026, перетаскивание»;
+// dosyomka-2667/26-28). It keeps its identifier and its panel. A panel
+// dropped onto itself stays. A group dragged and a drop onto a group are
+// not shot and refused, as is a place that is not there; nothing is
+// changed by a refusal. Answers where the panel stands.
+func MoveClientInterfacePanelTo(value *metadata.ClientInterface, from, to ClientInterfacePlace) (ClientInterfacePlace, error) {
+	list, index, err := container(value, from)
 	if err != nil {
 		return ClientInterfacePlace{}, err
 	}
-	return at, ChooseClientInterfacePanel(value, at, panel)
+	moved := (*list)[index]
+	if moved.Panel == nil {
+		return ClientInterfacePlace{}, fmt.Errorf("a panel is dragged, not a group")
+	}
+	if len(to.Path) > 0 {
+		target, at, err := container(value, to)
+		if err != nil {
+			return ClientInterfacePlace{}, err
+		}
+		if (*target)[at].Panel == nil {
+			return ClientInterfacePlace{}, fmt.Errorf("a panel is dropped onto a side or a panel")
+		}
+	} else if side(value, to.Side) == nil {
+		return ClientInterfacePlace{}, errNoClientInterfaceElement
+	}
+	if to.Side == from.Side && slices.Equal(to.Path, from.Path) {
+		return from, nil
+	}
+	gone := unit(value, from)
+	if err := RemoveClientInterfaceElement(value, from); err != nil {
+		return ClientInterfacePlace{}, err
+	}
+	// What stood after the unit taken away in the same list stands one
+	// place before.
+	if to.Side == gone.Side && len(to.Path) >= len(gone.Path) {
+		depth := len(gone.Path) - 1
+		if slices.Equal(to.Path[:depth], gone.Path[:depth]) && to.Path[depth] > gone.Path[depth] {
+			to = withPath(to)
+			to.Path[depth]--
+		}
+	}
+	return placePanel(value, to, moved)
 }
 
 // PlacedClientInterfacePanels answers the panels the sides show, the ones
