@@ -43,26 +43,34 @@ const rootPaletteWalk = `(async () => {
   steps.language = row('Основной язык').querySelector('input').value;
   steps.languageButtons = [...row('Основной язык').querySelectorAll('button')].map(item => item.title);
   row('Основной язык').querySelector('button').click(); await studio.settle();
-  steps.choice = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent),
-    icons: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.querySelector('use')?.getAttribute('href') || ''),
-    current: dialog().querySelector('.object-window-list-row.current')?.textContent};
+  steps.choice = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.studio-tree-row')].map(item => item.textContent),
+    icons: [...dialog().querySelectorAll('.studio-tree-row')].map(item => item.querySelector('use')?.getAttribute('href') || ''),
+    current: dialog().querySelector('.studio-tree-row.selected')?.textContent};
+  {
+    const tree = dialog().querySelector('.object-choice-tree'), now = () => dialog().querySelector('.studio-tree-row.selected')?.textContent || '';
+    steps.choice.keys = [document.activeElement === tree ? 'дерево' : 'не дерево'];
+    for (const key of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'Home', 'e', 'ArrowUp', 'ArrowRight', 'ArrowLeft', ' ']) {
+      tree.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+      steps.choice.keys.push(now());
+    }
+  }
   {
     const search = dialog().querySelector('.object-choice-search input');
     search.value = 'КРАЇ'; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
-    steps.choice.searched = [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent + ':' +
+    steps.choice.searched = [...dialog().querySelectorAll('.studio-tree-row')].map(item => item.textContent + ':' +
       [...item.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'));
     search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await studio.settle();
   }
   // A double click is two clicks and the double click, as the browser sends it.
-  const english = () => [...dialog().querySelectorAll('.object-window-list-row')].find(item => item.textContent === 'English');
+  const english = () => [...dialog().querySelectorAll('.studio-tree-row')].find(item => item.textContent === 'English');
   english().click(); await studio.settle();
   english().dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
   await studio.settle();
   steps.chosen = row('Основной язык').querySelector('input').value;
   steps.changed = !document.querySelector('#save').disabled;
   row('Основная форма поиска').querySelector('button').click(); await studio.settle();
-  steps.form = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.object-window-list-row')].map(item => item.textContent)};
-  const form = dialog().querySelector('.object-window-list-row');
+  steps.form = {title: dialog().querySelector('h3').textContent, rows: [...dialog().querySelectorAll('.studio-tree-row')].map(item => item.textContent)};
+  const form = dialog().querySelector('.studio-tree-row');
   form.click(); await studio.settle();
   form.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
   await studio.settle();
@@ -134,8 +142,8 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 		Tabs, Main, Dictionaries, LanguageButtons                                      []string
 		Windows, ImportantTabs, ImportantRows                                          []string
 		Choice                                                                         struct {
-			Title, Current        string
-			Rows, Icons, Searched []string
+			Title, Current              string
+			Rows, Icons, Searched, Keys []string
 		}
 		Form struct {
 			Title, Chosen string
@@ -181,6 +189,15 @@ func TestThePaletteOfTheRootIsTheWayIntoIt(t *testing.T) {
 	if steps.Choice.Title != "Выбор объекта: Язык" || !slices.Equal(steps.Choice.Rows, []string{"Русский", "Українська", "English"}) || steps.Choice.Current != "Русский" ||
 		!slices.Equal(steps.Choice.Icons, []string{"#icon-language", "#icon-language", "#icon-language"}) {
 		t.Errorf("«…» of the main language opens %+v", steps.Choice)
+	}
+	// The keys of a window of choice (obshchee.md, «Окна выбора — одно
+	// поведение»; dosyomka-2667/02, 07, 15-17): the focus on the list, ↓ to
+	// the next row and none past the last, Home to the first, a letter to
+	// the row on it, ↑ to the one before; → and ← and the space do nothing
+	// on a row of a list. Caught: the focus in the search, the keys not
+	// taken, ↓ going round, a key of a tree moving a row of a list.
+	if want := []string{"дерево", "Українська", "English", "English", "Русский", "English", "Українська", "Українська", "Українська", "Українська"}; !slices.Equal(steps.Choice.Keys, want) {
+		t.Errorf("the keys in «Выбор объекта: Язык» go %q, want %q", steps.Choice.Keys, want)
 	}
 	// The search, in any case, leaves the rows holding it, the found part
 	// red (snapshot dosyomka-2653/34): caught - the part not drawn, the case

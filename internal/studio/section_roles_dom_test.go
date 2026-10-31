@@ -65,6 +65,14 @@ const sectionRolesWalk = `(async () => {
     search.value = 'СМОТР'; search.dispatchEvent(new Event('input', {bubbles: true})); await settle();
     steps.searched = [...choice.querySelectorAll('.studio-tree-row')].map(row => [row.textContent,
       [...row.querySelectorAll('.studio-search-match')].map(part => part.textContent).join('+'), row.classList.contains('studio-search-path')]);
+    search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); await settle();
+    const tree = choice.querySelector('.object-choice-tree'), root = choice.querySelector('details.studio-tree-node');
+    const marked = () => [...choice.querySelectorAll('input.object-choice-box')].filter(box => box.checked).map(box => box.getAttribute('aria-label')).join(',');
+    steps.keys = [];
+    for (const key of ['ArrowDown', 'ArrowDown', ' ', 'ArrowLeft', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowRight', 'ArrowUp', ' ', 'End']) {
+      tree.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+      steps.keys.push(key + ' ' + now() + (root.open ? '' : ' свёрнут') + ' [' + marked() + ']');
+    }
     [...choice.querySelectorAll('.localized-title-actions button')].find(item => item.textContent === 'Отмена').click(); await settle();
   }
   steps.choice = await choose('Просмотр');
@@ -100,8 +108,16 @@ const sectionRolesWalk = `(async () => {
 // letter goes to the next row on it, round, the root among them, a letter
 // no row begins with stays, a click makes a row current (snapshots
 // dosyomka-2653/20-24). A search, in any case, leaves the roles holding it,
-// the found part red, the root grey (snapshot dosyomka-2653/34). Defects
-// caught: the found part not drawn, the case taken into account in the
+// the found part red, the root grey (snapshot dosyomka-2653/34). The keys
+// of the tree (obshchee.md, «Окна выбора — одно поведение»; snapshots
+// dosyomka-2667/02-11): ↓ to the next row shown and none into a closed
+// branch, a space marks the current row and nothing on the root, ← from a
+// role to the root leaving it open and on the open root closing it, → on
+// it closed opening it and open going to its first row, ↑ back, a key the
+// window does not know nothing. Defects caught: an arrow not taken, ↓ into
+// a closed branch, ← closing the branch from a row inside it, → going in
+// before opening, the space not marking or marking on a branch; and: the
+// found part not drawn, the case taken into account in the
 // search, the root drawn as a match; the focus left in the search, no
 // current row, a letter searching from the first row, no round, the case
 // taken into account, a right taken for another, a role's rights taken for
@@ -183,6 +199,7 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 		Choice, List, Typed                                 []string
 		Before, Viewing, Adding, Empty, Picked, Unset, None []any
 		Searched                                            [][]any
+		Keys                                                []string
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -205,6 +222,10 @@ func TestTheFilterByRolesOfASectionIsThePrototypes(t *testing.T) {
 	expect("the choice", steps.Choice, []string{"открыт", "ПродажиИСклад", "Просмотр", "Добавление", "Пусто"})
 	expect("typed in the choice", steps.Typed, []string{"дерево", "ПродажиИСклад", "Просмотр", "Пусто", "ПродажиИСклад", "Добавление", "Добавление", "Добавление", "Просмотр"})
 	expect("searched in the choice", steps.Searched, [][]any{{"ПродажиИСклад", "", true}, {"Просмотр", "смотр", false}})
+	expect("keys in the choice", steps.Keys, []string{"ArrowDown Просмотр []", "ArrowDown Добавление []", "  Добавление [Добавление]",
+		"ArrowLeft ПродажиИСклад [Добавление]", "ArrowLeft ПродажиИСклад свёрнут [Добавление]", "ArrowDown ПродажиИСклад свёрнут [Добавление]",
+		"ArrowRight ПродажиИСклад [Добавление]", "ArrowRight Просмотр [Добавление]", "ArrowUp ПродажиИСклад [Добавление]",
+		"  ПродажиИСклад [Добавление]", "End ПродажиИСклад [Добавление]"})
 	expect("by viewing", steps.Viewing, []any{"Просмотр", [][]string{{"Панель навигации.Обычное", "Список товаров"}, {"Подразделы", "Партнёрский", "Товарный"}}})
 	expect("by adding too", steps.Adding, []any{"Просмотр, Добавление", [][]string{{"Панель навигации.Обычное", "Список товаров"},
 		{"Панель действий.Создать", "Товары: создать"}, {"Подразделы", "Партнёрский", "Товарный"}}})

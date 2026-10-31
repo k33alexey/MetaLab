@@ -930,14 +930,13 @@ function objectList(caption, items, current, choose, change, remove) {
    [key, caption] or [key, caption, sign, mark] - sign an element drawn
    before the caption, an icon or an image, mark one at the right end of the
    row - one of them current; choose(key) makes a row current, open() is a
-   double click on a row; searched, lowercase, is what a search over the
-   list found in the captions, drawn red (searchCaption). */
-function objectRows(items, current, choose, open = () => {}, searched = '') {
+   double click on a row. */
+function objectRows(items, current, choose, open = () => {}) {
   const list = node('div', undefined, 'object-window-list');
   list.setAttribute('role', 'listbox');
   for (const [key, text, sign, mark] of items) {
-    const row = node('div', sign || mark || searched ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
-    if (sign || mark || searched) row.append(...(sign ? [sign] : []), searchCaption(text, foundIn(text, searched)), ...(mark ? [mark] : []));
+    const row = node('div', sign || mark ? undefined : text, 'object-window-list-row' + (key === current ? ' current' : ''));
+    if (sign || mark) row.append(...(sign ? [sign] : []), node('span', text), ...(mark ? [mark] : []));
     row.title = text;
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(key === current));
@@ -972,6 +971,54 @@ function rowByLetter(captions, at, letter) {
   return at;
 }
 
+/* choiceRows makes rows - the tree of a window of choice, or its list - the
+   platform's, one behaviour for every window of choice (obshchee.md, «Окна
+   выбора — одно поведение»; snapshots dosyomka-2667/01 to 17): they hold
+   the focus and a current row, drawn chosen, made current by a click; ↑ and
+   ↓ go to the next row shown, Home to the first; → opens a closed branch
+   and goes into an open one, to its first row; ← closes an open branch and
+   goes from a row inside one to the branch, leaving it open; a space marks
+   the box of the current row and does nothing on a branch without one; a
+   letter goes to the next row on it (rowByLetter), the rows of a closed
+   branch not taken. made(row) is told of each row made current. Answers
+   go(row), making a row current - none for null. */
+function choiceRows(rows, made = () => {}) {
+  rows.tabIndex = 0;
+  let current = null;
+  const go = row => {
+    current?.classList.remove('selected');
+    current = row || null;
+    current?.classList.add('selected');
+    current?.scrollIntoView?.({block: 'nearest'});
+    made(current);
+  };
+  rows.addEventListener('click', event => { const row = event.target.closest('.studio-tree-row'); if (row) go(row); });
+  rows.addEventListener('keydown', event => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const shown = [...rows.querySelectorAll('.studio-tree-row')].filter(row => !row.closest('details:not([open]) > .studio-tree-children'));
+    const at = shown.indexOf(current), branch = current?.matches('summary') ? current.parentElement : null;
+    // ↑, ↓ and the space are those of every list of marks (markListKey).
+    const boxes = shown.map(row => row.querySelector('input.object-choice-box'));
+    const listed = shown.map((row, place) => ({key: place, checked: !!boxes[place]?.checked, checkable: !!boxes[place]}));
+    if (markListKey(event, listed, at, place => { if (place !== at) go(shown[place]); }, place => boxes[place].click())) return;
+    let to = null;
+    if (event.key === 'Home') to = shown[0];
+    else if (event.key === 'ArrowRight') {
+      if (branch && !branch.open) branch.open = true;
+      else to = branch?.querySelector(':scope > .studio-tree-children .studio-tree-row');
+    } else if (event.key === 'ArrowLeft') {
+      if (branch?.open) branch.open = false;
+      else to = current?.closest('.studio-tree-children')?.parentElement.querySelector(':scope > .studio-tree-row');
+    } else if (event.key === ' ') {
+      // A space on a branch without a box does nothing.
+    } else if (event.key.length === 1) to = shown[rowByLetter(shown.map(row => row.textContent), at, event.key)];
+    else return;
+    event.preventDefault();
+    if (to && to !== current) go(to);
+  });
+  return go;
+}
+
 /* chooseObjects is the platform's window «Выбор объекта» of objects of the
    project marked by boxes (docs/block-00/spravochnik.md, the window of the
    owners; snapshots spravochnik/vladelcy-pyat-vidov, vladelcy-vybor-obekta):
@@ -984,32 +1031,15 @@ function rowByLetter(captions, at, letter) {
    ролям» shows its root (snapshot series-2.603/45); first shows the first
    branch open at each level, as «Редактировать состав…» of «Все подсистемы»
    opens the root, «Общие» and «Общие модули» (snapshot predsyomka-1/25).
-   The tree has a current row, the first one on opening and after a search,
-   and the focus, as the prototype's (snapshots vladelcy-vybor-obekta,
-   dosyomka-2653/20); a click makes a row current, a letter typed goes to
-   the next row on it (rowByLetter). Answers the identifiers marked, in the
-   order of the tree, on «ОК», and null on «Отмена». */
+   The tree is choiceRows, its current row the first one on opening and
+   after a search (snapshots vladelcy-vybor-obekta, dosyomka-2653/20).
+   Answers the identifiers marked, in the order of the tree, on «ОК», and
+   null on «Отмена». */
 async function chooseObjects(title, tree, chosen, {open = false, first = false} = {}) {
   const marked = new Set(chosen), content = node('div', undefined, 'object-choice'), order = choiceOrder(tree);
   const [searchRow, search] = searchField('object-choice-search', () => draw());
-  const rows = node('div', undefined, 'object-choice-tree');
-  rows.tabIndex = 0;
+  const rows = node('div', undefined, 'object-choice-tree'), go = choiceRows(rows);
   content.append(searchRow, rows);
-  let current = null;
-  const makeCurrent = row => {
-    current?.classList.remove('selected');
-    current = row;
-    row?.classList.add('selected');
-    row?.scrollIntoView?.({block: 'nearest'});
-  };
-  rows.addEventListener('click', event => { const row = event.target.closest('.studio-tree-row'); if (row) makeCurrent(row); });
-  rows.addEventListener('keydown', event => {
-    if (event.key.length !== 1 || event.key === ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
-    const shown = [...rows.querySelectorAll('.studio-tree-row')].filter(row => !row.closest('details:not([open]) > .studio-tree-children'));
-    const at = rowByLetter(shown.map(row => row.textContent), shown.indexOf(current), event.key);
-    event.preventDefault();
-    if (at >= 0) makeCurrent(shown[at]);
-  });
   function draw() {
     const text = search.value.trim().toLocaleLowerCase();
     const branch = (group, leading) => {
@@ -1023,7 +1053,7 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
       return element;
     };
     rows.replaceChildren(...tree.map((group, at) => branch(group, first && at === 0)).filter(Boolean));
-    makeCurrent(rows.querySelector('.studio-tree-row'));
+    go(rows.querySelector('.studio-tree-row'));
   }
   draw();
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog', answers: [['ok', 'ОК'], [null, 'Отмена']]});
@@ -1037,27 +1067,19 @@ async function chooseObjects(title, tree, chosen, {open = false, first = false} 
    search over the names of the rows with its clearing - the forms of
    «Заметки» not named so are not found by it (snapshot dosyomka-2653/34) -
    the found part red, a branch shown only for what it holds grey; the
-   tree of the branches -
-   «Общие» holding its own - and OK, «Отмена» in a column at the right. tree
-   is the server's (objectChoiceTree): an object holding items is a row to
-   open, chosen by one of them; any other is chosen itself. current is the
-   identifier chosen first: the tree opens down to it. A double click
-   chooses too. OK with nothing chosen - on a branch - is refused,
-   «Объект не выбран.» (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»).
-   Answers the identifier chosen on OK and null on «Отмена». */
+   tree of the branches - «Общие» holding its own - and OK, «Отмена» in a
+   column at the right. tree is the server's (objectChoiceTree): an object
+   holding items is a row to open, chosen by one of them; any other is
+   chosen itself. current is the identifier chosen first: the tree opens
+   down to it, and it is the current row - the first row where none is
+   (snapshot dosyomka-2667/12). OK with nothing chosen - on a branch - is
+   refused, «Объект не выбран.» (konfiguraciya.md, «Досъёмка 29.10.2026,
+   вечер»). Answers the identifier chosen on OK and null on «Отмена». */
 async function chooseOneObject(title, tree, current) {
-  let chosen = current || null;
-  return chooseInWindow(title, (rows, text, accept, draw) => {
-    const leaf = item => {
-      const {element, row} = treeNode({icon: item.icon, caption: searchCaption(item.name, foundIn(item.name, text))});
-      row.classList.toggle('selected', item.id === chosen);
-      row.title = item.fullName || item.name;
-      row.addEventListener('click', () => { chosen = item.id; draw(); });
-      row.addEventListener('dblclick', () => { chosen = item.id; accept(); });
-      return element;
-    };
+  return chooseInWindow(title, (rows, text, accept) => {
+    const leaf = item => choiceLeaf(item, text, accept);
     const found = item => !text || item.name.toLocaleLowerCase().includes(text);
-    const holds = item => item.id === chosen || (item.items || []).some(holds);
+    const holds = item => item.id === current || (item.items || []).some(holds);
     // An object holding items is a branch, an item holding items too - the
     // object, its «Формы», the forms; its name is red where it holds what is
     // searched, grey where it is shown only for its items.
@@ -1079,34 +1101,54 @@ async function chooseOneObject(title, tree, current) {
       return {element, open};
     };
     rows.replaceChildren(...tree.map(branch).filter(Boolean).map(item => item.element));
-    rows.querySelector('.selected')?.scrollIntoView?.({block: 'nearest'});
-  }, () => chosen, 'Объект не выбран.');
+  }, current, 'Объект не выбран.');
+}
+
+/* choiceLeaf is the row of an object to choose in a window choosing one
+   (chooseInWindow): its icon and name, the part searched - text, lowercase
+   - red, its identifier as data-choice, its full name in the hint; a
+   double click is accept(), OK. */
+function choiceLeaf(item, text, accept) {
+  const {element, row} = treeNode({icon: item.icon, caption: searchCaption(item.name, foundIn(item.name, text))});
+  row.dataset.choice = item.id;
+  row.title = item.fullName || item.name;
+  row.addEventListener('dblclick', accept);
+  return element;
 }
 
 /* chooseInWindow is the frame of the platform's windows choosing one object
    (chooseOneObject, chooseListedObject): the search over the names with its
    clearing above the rows, OK - unavailable while nothing is chosen - and
-   «Отмена» in a column at the right, the search focused. fill(rows, text,
-   accept, draw) draws the rows for the text searched, lowercase; accept()
-   is OK, for a double click; draw() draws them anew. chosen() is the
-   identifier chosen. refusal, where given, makes OK available with nothing
-   chosen - on a branch - and tells it as the prototype's «Выбор
-   управляемой формы» does, «Объект не выбран.», the window staying
-   (konfiguraciya.md, «Досъёмка 29.10.2026, вечер»). Answers it on OK and
-   null on «Отмена». */
-async function chooseInWindow(title, fill, chosen, refusal) {
+   «Отмена» in a column at the right. fill(rows, text, accept) draws the
+   rows for the text searched, lowercase - a row to choose carrying its
+   identifier as data-choice; accept() is OK, for a double click. The rows
+   are choiceRows: the one of current, the identifier chosen first, is
+   current on opening - the first row where there is none and refusal is
+   given -, the first row after a search; the current row chooses its
+   identifier, a branch none. The rows take the focus (dosyomka-2667/12, 15).
+   refusal, where given, makes OK available with nothing chosen - on a
+   branch - and tells it as the prototype's «Выбор управляемой формы» does,
+   «Объект не выбран.», the window staying (konfiguraciya.md, «Досъёмка
+   29.10.2026, вечер»). Answers the identifier chosen on OK and null on
+   «Отмена». */
+async function chooseInWindow(title, fill, current, refusal) {
   const content = node('div', undefined, 'object-choice'), rows = node('div', undefined, 'object-choice-tree');
-  const [searchRow, search] = searchField('object-choice-search', () => draw());
+  let chosen = null, accept = () => {};
+  const go = choiceRows(rows, row => { chosen = row?.dataset.choice || null; });
+  const [searchRow, search] = searchField('object-choice-search', () => draw(false));
   content.append(searchRow, rows);
-  let accept = () => {};
-  const draw = () => fill(rows, search.value.trim().toLocaleLowerCase(), () => accept(), draw);
-  draw();
+  const draw = opening => {
+    fill(rows, search.value.trim().toLocaleLowerCase(), () => accept());
+    const shown = [...rows.querySelectorAll('.studio-tree-row')];
+    go(opening ? shown.find(row => row.dataset.choice === current) || (refusal ? shown[0] : null) : shown[0]);
+  };
+  draw(true);
   const answer = showDialog({title, content, side: true, className: 'object-choice-dialog',
-    check: key => { if (key !== 'ok' || chosen()) return ''; askChoice(refusal, undefined, [['ok', 'OK']]); return true; },
-    answers: [['ok', 'OK', refusal ? {} : {enabled: () => !!chosen()}], [null, 'Отмена']]});
+    check: key => { if (key !== 'ok' || chosen) return ''; askChoice(refusal, undefined, [['ok', 'OK']]); return true; },
+    answers: [['ok', 'OK', refusal ? {} : {enabled: () => !!chosen}], [null, 'Отмена']]});
   accept = () => content.closest('dialog').querySelector('button.primary')?.click();
-  search.focus();
-  return await answer === 'ok' ? chosen() : null;
+  rows.focus();
+  return await answer === 'ok' ? chosen : null;
 }
 
 /* chooseListedObject is the platform's window of the choice of one object
@@ -1114,9 +1156,10 @@ async function chooseInWindow(title, fill, chosen, refusal) {
    - the numerator of a document (dokument.md, «Досъёмка 28.10.2026»), the
    defaults of the root: the search over the names with its clearing, the
    list of the objects in the order of the tree, OK and «Отмена» in a column
-   at the right, a row the kind's icon and the name, the part searched red
-   (snapshots dosyomka-2651/09 to 11; dosyomka-2653/34). tree is the server's (objectChoiceTree) offering
-   the objects of one kind, its word for one object titling the window; current
+   at the right, a row the kind's icon and the name, the part searched red,
+   drawn as the leaves of a tree (snapshots dosyomka-2651/09 to 11;
+   dosyomka-2653/34). tree is the server's (objectChoiceTree) offering the
+   objects of one kind, its word for one object titling the window; current
    is the identifier current at first. A double click chooses too. Answers
    the identifier chosen on OK - OK is unavailable while none is - and null
    on «Отмена». */
@@ -1124,12 +1167,9 @@ async function chooseListedObject(tree, current) {
   const objects = [];
   let one = '';
   (function collect(groups) { for (const group of groups) { one ||= group.one || ''; collect(group.children || []); objects.push(...(group.objects || [])); } })(tree || []);
-  let chosen = objects.some(item => item.id === current) ? current : null;
-  return chooseInWindow(`Выбор объекта: ${one}`, (rows, text, accept, draw) => {
-    const shown = objects.filter(item => !text || item.name.toLocaleLowerCase().includes(text));
-    rows.replaceChildren(objectRows(shown.map(item => [item.id, item.name, iconElement(item.icon)]), chosen, id => { chosen = id; draw(); }, accept, text));
-    rows.querySelector('.current')?.scrollIntoView?.({block: 'nearest'});
-  }, () => chosen);
+  return chooseInWindow(`Выбор объекта: ${one}`, (rows, text, accept) => {
+    rows.replaceChildren(...objects.filter(item => !text || item.name.toLocaleLowerCase().includes(text)).map(item => choiceLeaf(item, text, accept)));
+  }, current);
 }
 
 /* chosenForm is a main form named by its identifier among the common forms
