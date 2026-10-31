@@ -38,7 +38,7 @@ const xmlSchemaPrefix = "xs"
 // ExportXDTOSchema writes the schema of the package, or answers the issues
 // that keep it from being written.
 func ExportXDTOSchema(content XDTOContent, catalog *Catalog) ([]byte, []XDTOSchemaIssue) {
-	writer := xdtoSchemaWriter{content: content}
+	writer := xdtoSchemaWriter{content: content, packages: xdtoBodies{content: content, catalog: catalog}}
 	if issues := CheckXDTOContent(content, catalog); len(issues) > 0 {
 		return nil, issues
 	}
@@ -48,8 +48,9 @@ func ExportXDTOSchema(content XDTOContent, catalog *Catalog) ([]byte, []XDTOSche
 }
 
 type xdtoSchemaWriter struct {
-	content XDTOContent
-	text    strings.Builder
+	content  XDTOContent
+	packages xdtoBodies
+	text     strings.Builder
 }
 
 // line writes one line at its depth.
@@ -254,7 +255,7 @@ func (writer *xdtoSchemaWriter) objectType(depth int, object XDTOObjectType) {
 			elements = append(elements, property)
 		}
 	}
-	open := writer.open(object, 0)
+	open := writer.packages.open(object, 0)
 	if text != nil && len(elements) == 0 && !open {
 		writer.line(depth, head+">")
 		writer.line(depth+1, "<xs:simpleContent>")
@@ -289,10 +290,7 @@ func (writer *xdtoSchemaWriter) objectType(depth int, object XDTOObjectType) {
 		writer.line(depth+2, extension+">")
 		inner = depth + 3
 	}
-	group := "xs:sequence"
-	if writer.unordered(object, 0) {
-		group = "xs:choice"
-	}
+	group := writer.packages.group(object, writer.content.Namespace)
 	if len(elements) > 0 || open {
 		writer.line(inner, "<"+group+">")
 		for _, element := range elements {
@@ -316,52 +314,95 @@ func (writer *xdtoSchemaWriter) objectType(depth int, object XDTOObjectType) {
 	writer.line(depth, "</xs:complexType>")
 }
 
-// unordered reports whether an object type is sequenced and not ordered -
-// its elements a choice. A type that does not say takes it from its base, an
-// object type of the package (CML208.xsd: a type extending Контрагент).
-func (writer *xdtoSchemaWriter) unordered(object XDTOObjectType, depth int) bool {
-	if object.Ordered == nil || object.Sequenced == nil {
-		if base, ok := writer.base(object, depth); ok {
-			if object.Ordered != nil {
-				base.Ordered = object.Ordered
+// xdtoBodies are the bodies of the packages a base of an object type is
+// found in: the package written or checked, and those of the project.
+type xdtoBodies struct {
+	content XDTOContent
+	catalog *Catalog
+}
+
+// base answers the object type an object type of the package of space
+// extends, and the namespace of the base: in the package itself or in any
+// package of the project (paket-xdto.md, «Досъёмка 28.10.2026, поздний
+// вечер»: a base from another package passes its flags too). depth, the
+// bases walked so far, stops a loop of bases.
+func (bodies xdtoBodies) base(object XDTOObjectType, depth int) (XDTOObjectType, string, bool) {
+	if object.Base == nil || depth > 64 {
+		return XDTOObjectType{}, "", false
+	}
+	types := bodies.content.ObjectTypes
+	if object.Base.Namespace != bodies.content.Namespace {
+		types = nil
+		if bodies.catalog != nil {
+			for _, item := range bodies.catalog.XDTOPackages {
+				if body, ok := bodies.catalog.xdtoContents[item.ID]; ok && item.Namespace == object.Base.Namespace {
+					types = body.ObjectTypes
+					break
+				}
 			}
-			if object.Sequenced != nil {
-				base.Sequenced = object.Sequenced
-			}
-			return writer.unordered(base, depth+1)
 		}
 	}
-	return object.Sequenced != nil && *object.Sequenced && object.Ordered != nil && !*object.Ordered
+	for _, base := range types {
+		if base.Name == object.Base.Name {
+			return base, object.Base.Namespace, true
+		}
+	}
+	return XDTOObjectType{}, "", false
 }
 
 // open reports whether an object type is open - any element and any
 // attribute after its own. A type that does not say takes it from its base,
-// an object type of the package: the extension of an open type is open too
-// (paket-xdto.md, «Досъёмка 28.10.2026, вечер»; configurator-2026-10-28/
-// seriya-2631/10-v5-open-inherit.xsd).
-func (writer *xdtoSchemaWriter) open(object XDTOObjectType, depth int) bool {
+// of the package or of another: the extension of an open type is open too
+// (paket-xdto.md, «Досъёмка 28.10.2026, вечер», «…поздний вечер»;
+// seriya-2631/10-v5-open-inherit.xsd, vopr-2.636/33).
+func (bodies xdtoBodies) open(object XDTOObjectType, depth int) bool {
 	if object.Open == nil {
-		if base, ok := writer.base(object, depth); ok {
-			return writer.open(base, depth+1)
+		if base, _, ok := bodies.base(object, depth); ok {
+			return bodies.open(base, depth+1)
 		}
 		return false
 	}
 	return *object.Open
 }
 
-// base answers the object type of the package an object type extends,
-// whose flags it takes where it says none; depth, the bases walked so far,
-// stops a loop of bases.
-func (writer *xdtoSchemaWriter) base(object XDTOObjectType, depth int) (XDTOObjectType, bool) {
-	if object.Base == nil || object.Base.Namespace != writer.content.Namespace || depth >= len(writer.content.ObjectTypes) {
-		return XDTOObjectType{}, false
+// flags are «Упорядоченный» and «Последовательный» of an object type of
+// the package of space, nil where nothing says. A type that does not say
+// takes «Упорядоченный» from its base, of the package or of another, and
+// «Последовательный» from a base of its own package alone: a type of
+// CML208 of erp extending Контрагент, unordered and sequenced, is written
+// a choice by the prototype, D of vopr-2.636/33, whose base of another
+// package is so too, all (paket-xdto.md, «Досъёмка 28.10.2026, поздний
+// вечер»).
+func (bodies xdtoBodies) flags(object XDTOObjectType, space string, depth int) (ordered, sequenced *bool) {
+	ordered, sequenced = object.Ordered, object.Sequenced
+	if ordered != nil && sequenced != nil {
+		return ordered, sequenced
 	}
-	for _, base := range writer.content.ObjectTypes {
-		if base.Name == object.Base.Name {
-			return base, true
+	if base, baseSpace, ok := bodies.base(object, depth); ok {
+		baseOrdered, baseSequenced := bodies.flags(base, baseSpace, depth+1)
+		if ordered == nil {
+			ordered = baseOrdered
+		}
+		if sequenced == nil && baseSpace == space {
+			sequenced = baseSequenced
 		}
 	}
-	return XDTOObjectType{}, false
+	return ordered, sequenced
+}
+
+// group is the group the elements of an object type of the package of
+// space are written in: ordered - a sequence, as by default; not ordered
+// and sequenced - a choice; neither - all (paket-xdto.md, «Экспорт
+// XML-схемы», «Досъёмка 28.10.2026, поздний вечер»).
+func (bodies xdtoBodies) group(object XDTOObjectType, space string) string {
+	ordered, sequenced := bodies.flags(object, space, 0)
+	switch {
+	case ordered == nil || *ordered:
+		return "xs:sequence"
+	case sequenced != nil && *sequenced:
+		return "xs:choice"
+	}
+	return "xs:all"
 }
 
 // xmlQuoted is a value of an attribute in double quotes, escaped as the
@@ -379,7 +420,7 @@ func xmlQuoted(value string) string { return `"` + xdtoAttributeEscape.Replace(v
 // the schema either; the prototype's words for it are not shot, and ML says
 // it in its own (question В5 of series 2.631).
 func CheckXDTOContent(content XDTOContent, catalog *Catalog) []XDTOSchemaIssue {
-	check := xdtoCheck{content: content, known: catalog.XDTOTypes(), objects: map[XDTOName]bool{}}
+	check := xdtoCheck{content: content, known: catalog.XDTOTypes(), objects: map[XDTOName]bool{}, packages: xdtoBodies{content: content, catalog: catalog}}
 	for _, item := range catalog.XDTOPackages {
 		if body, ok := catalog.xdtoContents[item.ID]; ok && item.Namespace != content.Namespace {
 			for _, object := range body.ObjectTypes {
@@ -413,7 +454,8 @@ func CheckXDTOContent(content XDTOContent, catalog *Catalog) []XDTOSchemaIssue {
 }
 
 type xdtoCheck struct {
-	content XDTOContent
+	content  XDTOContent
+	packages xdtoBodies
 	// known are the names of the types of each namespace.
 	known   map[string][]string
 	objects map[XDTOName]bool
@@ -459,6 +501,15 @@ func (check *xdtoCheck) valueType(value XDTOValueType, name string) {
 
 func (check *xdtoCheck) objectType(object XDTOObjectType) {
 	check.imported(object.Base)
+	// «Открытый» = Ложь said by an extension of an open type
+	// (paket-xdto.md, «Досъёмка 28.10.2026, поздний вечер»; snapshot
+	// vopr-2.636/31).
+	if object.Open != nil && !*object.Open {
+		if base, _, ok := check.packages.base(object, 0); ok && check.packages.open(base, 1) {
+			check.issues = append(check.issues, XDTOSchemaIssue{Code: "xdto-objectType-5.4", Type: object.Name,
+				Text: "Изменение открытой модели содержания типа '{" + XDTONamespaceShown(check.content.Namespace) + "}" + object.Name + "' при наследовании расширением"})
+		}
+	}
 	for _, property := range object.Properties {
 		check.imported(property.Type)
 		check.imported(property.Ref)

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -304,4 +305,63 @@ func equalIssues(got, want []XDTOSchemaIssue) bool {
 		}
 	}
 	return true
+}
+
+// The flags of a base of another package, and «Открытый» = Ложь said by
+// an extension of an open type, are the prototype's (paket-xdto.md,
+// «Досъёмка 28.10.2026, поздний вечер»; vopr-2.636/31-33): in p2 C is open,
+// unordered and sequenced; in p1, importing p2, A is open, B extends A, D
+// extends {p2}C, saying nothing, each with a property of no type. D is open
+// and unordered by C, and not sequenced - «Последовательный» comes from a
+// base of the package alone (a type of CML208 of erp extending its
+// unordered sequenced Контрагент is a choice) - so its elements are all,
+// followed by any and anyAttribute; a type unordered and not sequenced of
+// its own is all too. B saying «Открытый» = Ложь is xdto-objectType-5.4,
+// and the package is not exported. The expected schema is the prototype's
+// form of vopr-2.636/33 written out here. Defects caught: a base looked for
+// in the package alone - D closed and a sequence; «Последовательный» taken
+// from a base of another package - D a choice; a type neither ordered nor
+// sequenced written a sequence; «Ложь» of an extension of an open type
+// taken quietly and the package exported.
+func TestTheFlagsOfABaseOfAnotherPackageAndOfAnOpenBase(t *testing.T) {
+	t.Parallel()
+	yes, no := true, false
+	const p1, p2 = "http://zz/p1", "http://zz/p2"
+	other := XDTOContent{Namespace: p2, ObjectTypes: []XDTOObjectType{{Name: "C", Open: &yes, Ordered: &no, Sequenced: &yes}}}
+	field := []XDTOProperty{{Name: "Свойство1"}}
+	own := XDTOContent{Namespace: p1, Imports: []string{p2}, ObjectTypes: []XDTOObjectType{
+		{Name: "A", Open: &yes},
+		{Name: "B", Base: &XDTOName{p1, "A"}, Properties: field},
+		{Name: "D", Base: &XDTOName{p2, "C"}, Properties: field},
+		{Name: "E", Ordered: &no, Properties: field},
+	}}
+	schema, issues := ExportXDTOSchema(own, xdtoCatalog(own, other))
+	if issues != nil {
+		t.Fatalf("issues: %v", issues)
+	}
+	any := `<xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>`
+	anyAttribute := `<xs:anyAttribute namespace="##any" processContents="lax"/>`
+	for _, want := range []string{
+		"\t<xs:complexType name=\"D\">\r\n\t\t<xs:complexContent>\r\n\t\t\t<xs:extension base=\"ns1:C\">\r\n\t\t\t\t<xs:all>\r\n\t\t\t\t\t<xs:element name=\"Свойство1\"/>\r\n\t\t\t\t\t" +
+			any + "\r\n\t\t\t\t</xs:all>\r\n\t\t\t\t" + anyAttribute + "\r\n\t\t\t</xs:extension>",
+		"\t<xs:complexType name=\"B\">\r\n\t\t<xs:complexContent>\r\n\t\t\t<xs:extension base=\"tns:A\">\r\n\t\t\t\t<xs:sequence>\r\n\t\t\t\t\t<xs:element name=\"Свойство1\"/>\r\n\t\t\t\t\t" + any,
+		"\t<xs:complexType name=\"E\">\r\n\t\t<xs:all>\r\n\t\t\t<xs:element name=\"Свойство1\"/>\r\n\t\t</xs:all>",
+	} {
+		if !strings.Contains(string(schema), want) {
+			t.Errorf("the schema has not\n%s\nin\n%s", want, schema)
+		}
+	}
+	closed := own
+	closed.ObjectTypes = slices.Clone(own.ObjectTypes)
+	closed.ObjectTypes[1].Open = &no
+	schema, issues = ExportXDTOSchema(closed, xdtoCatalog(closed, other))
+	want := []XDTOSchemaIssue{{Code: "xdto-objectType-5.4", Type: "B", Text: "Изменение открытой модели содержания типа '{http://zz/p1}B' при наследовании расширением"}}
+	if schema != nil || !equalIssues(issues, want) {
+		t.Errorf("«Ложь» of an extension of an open type: %v, %d bytes", issues, len(schema))
+	}
+	// «Ложь» of a type of no open base, or of none, is no issue.
+	closed.ObjectTypes[1].Base = nil
+	if _, issues = ExportXDTOSchema(closed, xdtoCatalog(closed, other)); issues != nil {
+		t.Errorf("«Ложь» of a type of no base: %v", issues)
+	}
 }
