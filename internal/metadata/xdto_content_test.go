@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -216,9 +217,13 @@ func TestTheTypesOfTheNamespacesAreTheWindows(t *testing.T) {
 	}
 	// The other namespaces of the platform (series-2.603/xdto-types.txt): the
 	// envelope of SOAP and 64 of v8.1c.ru, 1720 names besides data/core's;
-	// current-config gives none until its rule is shot.
+	// current-config is the project's objects
+	// (TestTheTypesOfCurrentConfigAreTheProjectsObjects).
 	platform, names := 0, 0
 	for space, list := range types {
+		if space == "http://v8.1c.ru/8.1/data/enterprise/current-config" {
+			continue
+		}
 		if strings.HasPrefix(space, "http://v8.1c.ru/") || strings.HasPrefix(space, "http://schemas.xmlsoap.org/") {
 			platform++
 			names += len(list)
@@ -236,13 +241,88 @@ func TestTheTypesOfTheNamespacesAreTheWindows(t *testing.T) {
 	if got := types["http://v8.1c.ru/8.2/data/geo"]; len(got) != 31 || got[0] != "dp" || got[30] != "vi" {
 		t.Errorf("8.2/data/geo, small letters among capitals: %d %q", len(got), got)
 	}
-	if got, ok := types["http://v8.1c.ru/8.1/data/enterprise/current-config"]; ok {
-		t.Errorf("current-config gives types by no rule shot: %q", got)
+	if got, ok := types["http://v8.1c.ru/8.1/data/enterprise/current-config"]; !ok || len(got) != 0 {
+		t.Errorf("current-config of a project of no object of a kind giving types: %q, %v", got, ok)
 	}
 	if got := strings.Join(types["http://example.org/goods"], ","); got != "Адрес,Вид,Товар,цена" {
 		t.Errorf("the package: %s", got)
 	}
 	if got, ok := types["http://example.org/empty"]; !ok || len(got) != 0 {
 		t.Errorf("a package of no body: %q, %v", got, ok)
+	}
+}
+
+// The types of current-config are the project's own objects by the rule
+// shot (paket-xdto.md, «Досъёмка 28.10.2026, вечер», «…поздний вечер»):
+// «<вид XDTO>.<имя>» of every object of a kind that gives any, rows of
+// each table part «<вид>TabularSectionRow.<объект>.<табличная часть>»,
+// a recalculation and a table of a source named with their owner; the
+// subconto rows of a chart of accounts of more than no subconto - none at
+// 0 with the types of subconto given -, the base
+// and displacing rows of a chart of calculation types depending on a base
+// and of a period of action, Object and Ref of a table of objects, Record,
+// RecordKey and RecordSet of a table of records; a journal, a report, a
+// processor and the common kinds give none; by the alphabet whatever the
+// case. The expectation is written out from the inventory, not read from
+// the descriptor. Defects caught: a type missing or given to a kind that
+// gives none; a condition ignored; a row type not one for each table part;
+// an object inside another named without its owner; the order, the case
+// of a name taken into it.
+func TestTheTypesOfCurrentConfigAreTheProjectsObjects(t *testing.T) {
+	t.Parallel()
+	root := compositeProject(t)
+	head := func(id, name string) string {
+		return "format: 1\nid: " + id + "\nname: " + name + "\ntitle: {ru: " + name + "}\n"
+	}
+	writeMetadata(t, root, TaskKind, cmpTask, head(cmpTask, "Задача")+"number: {type: string, length: 11, auto: true, periodicity: none}\n"+
+		"description_length: 150\naddressing_attributes: []\ntable_parts:\n"+
+		"  - {id: "+compositeID(70)+", name: Исполнители, title: {ru: Исполнители}}\n"+
+		"  - {id: "+compositeID(71)+", name: Вложения, title: {ru: Вложения}}\n")
+	deductions := compositeID(72)
+	writeMetadata(t, root, ChartOfCalculationTypesKind, deductions, head(deductions, "Удержания")+
+		"code: {type: string, length: 9}\ndescription_length: 100\nbase_dependency: by-action-period\nbase_charts: ["+deductions+"]\naction_period_use: true\n")
+	management := compositeID(75)
+	writeMetadata(t, root, ChartOfAccountsKind, management, head(management, "Управленческий")+
+		"code: {type: string, length: 9, auto: false}\ndescription_length: 100\next_dimension_types: "+cmpCharacteristics+"\n")
+	cars := compositeID(74)
+	writeMetadata(t, root, CatalogKind, cars, head(cars, "автомобили")+"code: {type: string, length: 9, auto: true}\ndescription_length: 100\n")
+	writeExternalTable(t, root, "Склад", stockTable, "Остатки", "name_in_data_source: dbo.Stock\ndata_type: non-object\nfields:\n"+
+		"  - {id: "+compositeID(73)+", name: Поле, title: {ru: Поле}, name_in_data_source: f, types: [{kind: string, length: 10}]}\n")
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"AccountingRegisterExtDimensions.Хозрасчетный", "AccountingRegisterRecord.Хозрасчетный", "AccountingRegisterRecordSet.Хозрасчетный",
+		"AccumulationRegisterRecord.Остатки", "AccumulationRegisterRecordSet.Остатки",
+		"BaseCalculationTypesRow.Удержания",
+		"BusinessProcessObject.Задание", "BusinessProcessRef.Задание",
+		"CalculationRegisterRecord.Начисления", "CalculationRegisterRecordSet.Начисления",
+		"CatalogObject.автомобили", "CatalogObject.Номенклатура", "CatalogObject.Пользователи", "CatalogObject.Склады",
+		"CatalogRef.автомобили", "CatalogRef.Номенклатура", "CatalogRef.Пользователи", "CatalogRef.Склады",
+		"Characteristic.ВидыСубконто",
+		"ChartOfAccountsExtDimensionTypesRow.Хозрасчетный", "ChartOfAccountsObject.Управленческий", "ChartOfAccountsObject.Хозрасчетный",
+		"ChartOfAccountsRef.Управленческий", "ChartOfAccountsRef.Хозрасчетный",
+		"ChartOfCalculationTypesObject.Начисления", "ChartOfCalculationTypesObject.Удержания",
+		"ChartOfCalculationTypesRef.Начисления", "ChartOfCalculationTypesRef.Удержания",
+		"ChartOfCharacteristicTypesObject.ВидыСубконто", "ChartOfCharacteristicTypesRef.ВидыСубконто",
+		"ConstantValueManager.ОсновнойСклад",
+		"DisplacingCalculationTypesRow.Удержания",
+		"DocumentObject.Поступление", "DocumentRef.Поступление",
+		"EnumRef.ВидыТоваров",
+		"ExchangePlanObject.Филиалы", "ExchangePlanRef.Филиалы",
+		"ExternalDataSourceTableObject.Склад.Товары", "ExternalDataSourceTableRecord.Склад.Остатки",
+		"ExternalDataSourceTableRecordKey.Склад.Остатки", "ExternalDataSourceTableRecordSet.Склад.Остатки",
+		"ExternalDataSourceTableRef.Склад.Товары",
+		"InformationRegisterRecord.Цены", "InformationRegisterRecordSet.Цены",
+		"LeadingCalculationTypesRow.Начисления", "LeadingCalculationTypesRow.Удержания",
+		"RecalculationRecord.Начисления.Перерасчет", "RecalculationRecordSet.Начисления.Перерасчет",
+		"SequenceRecord.Последовательность", "SequenceRecordSet.Последовательность",
+		"TaskObject.Задача", "TaskRef.Задача",
+		"TaskTabularSectionRow.Задача.Вложения", "TaskTabularSectionRow.Задача.Исполнители",
+	}
+	got := catalog.XDTOTypes()["http://v8.1c.ru/8.1/data/enterprise/current-config"]
+	if !slices.Equal(got, want) {
+		t.Errorf("current-config:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }

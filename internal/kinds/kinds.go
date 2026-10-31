@@ -196,6 +196,76 @@ var references = map[Kind][]Words{
 	ExternalDimensionTable:     {{"ВнешнийИсточникДанныхКубТаблицаИзмеренияСсылка", "ExternalDataSourceCubeDimensionTableRef"}},
 }
 
+// XDTOType is a type of the namespace current-config an object of a kind
+// gives the window choosing a type of XDTO: Name.<object> - or, for Row,
+// Name.<object>.<table part>, one for each of its table parts - where the
+// object of a kind inside another is named with its owner, as the
+// prototype's (docs/block-00/paket-xdto.md, «Досъёмка 28.10.2026, вечер»,
+// «…поздний вечер»; snapshots seriya-2631/13-19, vopr-2.636/34-44). When
+// is what the object must have for the type, none for always.
+type XDTOType struct {
+	Name string
+	Row  bool
+	When XDTOCondition
+}
+
+// XDTOCondition names a property an object must have for a type of
+// current-config; the model says which objects have it.
+type XDTOCondition string
+
+const (
+	// XDTOExtDimensions - a chart of accounts of «Максимальное количество
+	// субконто» above 0, whatever the types of the ext dimensions.
+	XDTOExtDimensions XDTOCondition = "ext-dimensions"
+	// XDTOBaseDependency - a chart of calculation types depending on a base,
+	// by the period of action or of registration.
+	XDTOBaseDependency XDTOCondition = "base-dependency"
+	// XDTOActionPeriod - a chart of calculation types of «Использует период
+	// действия».
+	XDTOActionPeriod XDTOCondition = "action-period"
+	// XDTOObjectTable and XDTORecordTable - a table of an external source of
+	// objects and of records.
+	XDTOObjectTable XDTOCondition = "object-table"
+	XDTORecordTable XDTOCondition = "record-table"
+)
+
+// xdtoTypes are the types of current-config of the kinds that give any, in
+// the order of the inventory; the window lists them all by the alphabet.
+// No key of a record, no selection, no manager and no route point, though
+// the help counts some of them in current-config: the window does not show
+// them. A journal, a report and a data processor give none.
+var xdtoTypes = map[Kind][]XDTOType{
+	Catalog:     {{Name: "CatalogObject"}, {Name: "CatalogRef"}, {Name: "CatalogTabularSectionRow", Row: true}},
+	Document:    {{Name: "DocumentObject"}, {Name: "DocumentRef"}, {Name: "DocumentTabularSectionRow", Row: true}},
+	Enumeration: {{Name: "EnumRef"}},
+	Constant:    {{Name: "ConstantValueManager"}},
+	ChartOfCharacteristicTypes: {{Name: "ChartOfCharacteristicTypesObject"}, {Name: "ChartOfCharacteristicTypesRef"}, {Name: "Characteristic"},
+		{Name: "ChartOfCharacteristicTypesTabularSectionRow", Row: true}},
+	ChartOfAccounts: {{Name: "ChartOfAccountsObject"}, {Name: "ChartOfAccountsRef"}, {Name: "ChartOfAccountsTabularSectionRow", Row: true},
+		{Name: "ChartOfAccountsExtDimensionTypesRow", When: XDTOExtDimensions}},
+	ChartOfCalculationTypes: {{Name: "ChartOfCalculationTypesObject"}, {Name: "ChartOfCalculationTypesRef"}, {Name: "LeadingCalculationTypesRow"},
+		{Name: "ChartOfCalculationTypesTabularSectionRow", Row: true}, {Name: "BaseCalculationTypesRow", When: XDTOBaseDependency},
+		{Name: "DisplacingCalculationTypesRow", When: XDTOActionPeriod}},
+	ExchangePlan:         {{Name: "ExchangePlanObject"}, {Name: "ExchangePlanRef"}, {Name: "ExchangePlanTabularSectionRow", Row: true}},
+	BusinessProcess:      {{Name: "BusinessProcessObject"}, {Name: "BusinessProcessRef"}, {Name: "BusinessProcessTabularSectionRow", Row: true}},
+	Task:                 {{Name: "TaskObject"}, {Name: "TaskRef"}, {Name: "TaskTabularSectionRow", Row: true}},
+	InformationRegister:  {{Name: "InformationRegisterRecord"}, {Name: "InformationRegisterRecordSet"}},
+	AccumulationRegister: {{Name: "AccumulationRegisterRecord"}, {Name: "AccumulationRegisterRecordSet"}},
+	AccountingRegister:   {{Name: "AccountingRegisterExtDimensions"}, {Name: "AccountingRegisterRecord"}, {Name: "AccountingRegisterRecordSet"}},
+	CalculationRegister:  {{Name: "CalculationRegisterRecord"}, {Name: "CalculationRegisterRecordSet"}},
+	Recalculation:        {{Name: "RecalculationRecord"}, {Name: "RecalculationRecordSet"}},
+	Sequence:             {{Name: "SequenceRecord"}, {Name: "SequenceRecordSet"}},
+	ExternalDataSourceTable: {{Name: "ExternalDataSourceTableObject", When: XDTOObjectTable}, {Name: "ExternalDataSourceTableRef", When: XDTOObjectTable},
+		{Name: "ExternalDataSourceTableRecord", When: XDTORecordTable}, {Name: "ExternalDataSourceTableRecordKey", When: XDTORecordTable},
+		{Name: "ExternalDataSourceTableRecordSet", When: XDTORecordTable}},
+}
+
+// XDTOTypes are the types of current-config an object of the kind gives
+// (xdtoTypes); a kind giving none has none.
+func (descriptor Descriptor) XDTOTypes() []XDTOType {
+	return slices.Clone(xdtoTypes[descriptor.Kind])
+}
+
 // newNames are the names «Добавить» gives a new object of a kind where it is
 // not the kind's word for one object numbered: a template is «Макет», as
 // the constructor of a template offers it (docs/block-00/obshchij-maket.md,

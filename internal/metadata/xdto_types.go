@@ -3,6 +3,8 @@ package metadata
 import (
 	"slices"
 	"strings"
+
+	"github.com/k33alexey/MetaLab/internal/kinds"
 )
 
 // The types a property of an XDTO package, an operation of a web service
@@ -33,9 +35,8 @@ var xmlSchemaTypes = []string{
 // (paket-xdto.md, «Проверить пакет, экспорт схемы, окно типа»;
 // configurator-2026-10-27/series-2.603/xdto-types.txt - 64 namespaces of
 // the platform and the envelope of SOAP, data/core shot before, series
-// 2.595). The types of current-config are the project's own objects by
-// kind, whose rule the inventory does not give yet (series 2.618,
-// question): the window shows it with none.
+// 2.595). The types of current-config are the project's own objects, by
+// the descriptor of their kind (currentConfigTypes).
 var platformXDTOTypes = map[string][]string{
 	"http://schemas.xmlsoap.org/soap/envelope/": {
 		"Body", "detail", "encodingStyle", "Envelope", "Fault", "Header",
@@ -536,12 +537,74 @@ var platformXDTOTypes = map[string][]string{
 	},
 }
 
+// currentConfigNamespace is the namespace of the types of the project's own
+// objects.
+const currentConfigNamespace = "http://v8.1c.ru/8.1/data/enterprise/current-config"
+
+// xdtoConditions say whether the description of an object has what a type
+// of current-config asks of it (kinds.XDTOType.When; paket-xdto.md,
+// «Досъёмка 28.10.2026, поздний вечер»).
+var xdtoConditions = map[kinds.XDTOCondition]func(description any) bool{
+	kinds.XDTOExtDimensions: func(description any) bool {
+		chart, ok := description.(ChartOfAccountsDefinition)
+		return ok && chart.MaxExtDimensionCount > 0
+	},
+	kinds.XDTOBaseDependency: func(description any) bool {
+		chart, ok := description.(ChartOfCalculationTypesDefinition)
+		return ok && chart.BaseDependency != "" && chart.BaseDependency != NoBaseDependency
+	},
+	kinds.XDTOActionPeriod: func(description any) bool {
+		chart, ok := description.(ChartOfCalculationTypesDefinition)
+		return ok && chart.ActionPeriodUse
+	},
+	kinds.XDTOObjectTable: func(description any) bool {
+		table, ok := description.(ExternalTable)
+		return ok && table.DataType == ExternalObjectData
+	},
+	kinds.XDTORecordTable: func(description any) bool {
+		table, ok := description.(ExternalTable)
+		return ok && table.DataType == ExternalNonObjectData
+	},
+}
+
+// currentConfigTypes are the types of current-config: of every object of a
+// kind that gives any, the types its descriptor names (kinds.XDTOType) - a
+// type of rows one for each of its table parts, a type on a condition where
+// the object has it - by the alphabet whatever the case, as the window
+// lists them.
+func (catalog *Catalog) currentConfigTypes() []string {
+	names := []string{}
+	for id, object := range catalog.objects {
+		types := kinds.Must(object.kind).XDTOTypes()
+		if len(types) == 0 {
+			continue
+		}
+		description, _ := descriptionOf(catalog, object.kind, id)
+		for _, item := range types {
+			if item.When != "" && (!description.IsValid() || !xdtoConditions[item.When](description.Interface())) {
+				continue
+			}
+			if !item.Row {
+				names = append(names, item.Name+"."+object.name)
+				continue
+			}
+			for _, part := range describedParts(catalog, object.kind, id) {
+				if part.group == TablePartsPart {
+					names = append(names, item.Name+"."+object.name+"."+part.name)
+				}
+			}
+		}
+	}
+	slices.SortStableFunc(names, func(one, other string) int { return strings.Compare(strings.ToLower(one), strings.ToLower(other)) })
+	return names
+}
+
 // XDTOTypes answers the types a type is chosen from, by namespace: XML
-// Schema, the platform's namespaces whose types are known, and every
-// package of the project - its value types and object types by the
-// alphabet whatever the case, as the window lists them.
+// Schema, the platform's namespaces whose types are known, current-config,
+// and every package of the project - its value types and object types by
+// the alphabet whatever the case, as the window lists them.
 func (catalog *Catalog) XDTOTypes() map[string][]string {
-	byNamespace := map[string][]string{xmlSchemaNamespace: slices.Clone(xmlSchemaTypes)}
+	byNamespace := map[string][]string{xmlSchemaNamespace: slices.Clone(xmlSchemaTypes), currentConfigNamespace: catalog.currentConfigTypes()}
 	for space, names := range platformXDTOTypes {
 		byNamespace[space] = slices.Clone(names)
 	}

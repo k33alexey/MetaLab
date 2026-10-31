@@ -667,3 +667,49 @@ func TestTheWordOfTheCaptionsOfAWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestTheTypesOfCurrentConfigAreThePrototypes catches a type of
+// current-config missing, misnamed, given to a kind that gives none, a row
+// type not marked one or a condition lost: every kind is walked, and the
+// expectation is written out here from the inventory (paket-xdto.md,
+// «Досъёмка 28.10.2026, вечер», «…поздний вечер»), not read from the table
+// under test; a kind not named gives none.
+func TestTheTypesOfCurrentConfigAreThePrototypes(t *testing.T) {
+	expected := map[Kind]string{
+		Catalog:                    "CatalogObject CatalogRef CatalogTabularSectionRow/row",
+		Document:                   "DocumentObject DocumentRef DocumentTabularSectionRow/row",
+		Enumeration:                "EnumRef",
+		Constant:                   "ConstantValueManager",
+		ChartOfCharacteristicTypes: "ChartOfCharacteristicTypesObject ChartOfCharacteristicTypesRef Characteristic ChartOfCharacteristicTypesTabularSectionRow/row",
+		ChartOfAccounts:            "ChartOfAccountsObject ChartOfAccountsRef ChartOfAccountsTabularSectionRow/row ChartOfAccountsExtDimensionTypesRow/ext-dimensions",
+		ChartOfCalculationTypes: "ChartOfCalculationTypesObject ChartOfCalculationTypesRef LeadingCalculationTypesRow ChartOfCalculationTypesTabularSectionRow/row " +
+			"BaseCalculationTypesRow/base-dependency DisplacingCalculationTypesRow/action-period",
+		ExchangePlan:         "ExchangePlanObject ExchangePlanRef ExchangePlanTabularSectionRow/row",
+		BusinessProcess:      "BusinessProcessObject BusinessProcessRef BusinessProcessTabularSectionRow/row",
+		Task:                 "TaskObject TaskRef TaskTabularSectionRow/row",
+		InformationRegister:  "InformationRegisterRecord InformationRegisterRecordSet",
+		AccumulationRegister: "AccumulationRegisterRecord AccumulationRegisterRecordSet",
+		AccountingRegister:   "AccountingRegisterExtDimensions AccountingRegisterRecord AccountingRegisterRecordSet",
+		CalculationRegister:  "CalculationRegisterRecord CalculationRegisterRecordSet",
+		Recalculation:        "RecalculationRecord RecalculationRecordSet",
+		Sequence:             "SequenceRecord SequenceRecordSet",
+		ExternalDataSourceTable: "ExternalDataSourceTableObject/object-table ExternalDataSourceTableRef/object-table ExternalDataSourceTableRecord/record-table " +
+			"ExternalDataSourceTableRecordKey/record-table ExternalDataSourceTableRecordSet/record-table",
+	}
+	for _, item := range All() {
+		var words []string
+		for _, xdto := range item.XDTOTypes() {
+			word := xdto.Name
+			if xdto.Row {
+				word += "/row"
+			}
+			if xdto.When != "" {
+				word += "/" + string(xdto.When)
+			}
+			words = append(words, word)
+		}
+		if got := strings.Join(words, " "); got != expected[item.Kind] {
+			t.Errorf("%s gives the types of current-config %q, the prototype %q", item.Kind, got, expected[item.Kind])
+		}
+	}
+}
