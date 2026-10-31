@@ -1694,7 +1694,7 @@ function paletteFields(context) {
   // The members of a union: «Редактирование списка значений», a row chosen
   // by the window of a type (paket-xdto.md, «Проверить пакет, экспорт
   // схемы, окно типа»).
-  const chooseXMLTypes = types => editValueList(types, xmlTypeName, value => chooseXMLType(value, context.typeNamespaces(), context.xmlTypes()));
+  const chooseXMLTypes = types => editValueList(types, xmlTypeName, value => chooseXMLType(value, context.typeNamespaces(), context.xmlTypes()), xmlTypeText);
   // A value a node may leave not said (row.optional; paket-xdto.md,
   // «Палитра узла»): not said, the field shows the default greyed and ✓
   // says it - the default, or for a type the window choosing one, which is
@@ -2853,48 +2853,62 @@ function readOnlyPalette(tabs, get) {
 }
 
 /* editValueList is the platform's window «Редактирование списка
-   значений» (paket-xdto.md, «Проверить пакет, экспорт схемы, окно типа»;
-   snapshots series-2.603/19-21): «Список значений:» with «Добавить»,
-   «Скопировать», «Изменить», «Удалить» and «Сохранить в файл» over the
-   rows; OK, «Отмена», «Справка». «Добавить» puts an empty row after the
-   current and makes it current, «Скопировать» a copy of the current;
-   «…» of a row and «Изменить» choose its value by choose(value), which
-   answers the value or null; «Удалить» takes the current away. What
-   «Сохранить в файл» writes the inventory does not show (series 2.618,
-   question): it stands unavailable. items are the values, text(value)
-   writes one in its row. Answers the values on OK - rows left empty
+   значений» (paket-xdto.md, «Проверить пакет, экспорт схемы, окно типа»,
+   «Досъёмка 28.10.2026»; snapshots series-2.603/19-21,
+   v3-v4-raspisanie-spisok/083-089): «Список значений:» with «Добавить»,
+   «Скопировать», «Изменить», «Удалить» and «Закончить редактирование
+   строки» over the rows; OK, «Отмена», «Справка». A row is shown in the
+   list by text(value) - «{пространство}Body» - and, while it is edited, by
+   edited(value) - «Body (пространство)» - with «…» and ✕. «Добавить» puts
+   an empty row after the current, makes it current and edits it;
+   «Скопировать» puts a copy of the current after it; «Изменить» edits the
+   current row and chooses its value, as «…» of the row edited does, by
+   choose(value), which answers the value or null; ✕ empties it; «Удалить»
+   takes the current away. «Закончить редактирование строки» is available
+   while a row is edited and ends it; another row made current ends it
+   too. items are the values. Answers the values on OK - rows left empty
    dropped - or null on «Отмена». */
-async function editValueList(items, text, choose) {
+async function editValueList(items, text, choose, edited) {
   const rows = items.map(value => ({value}));
-  let current = rows.length ? 0 : -1;
+  let current = rows.length ? 0 : -1, editing = -1;
   const content = node('div', undefined, 'value-list-edit');
   const list = node('div', undefined, 'object-window-list value-list-edit-rows');
   list.setAttribute('role', 'listbox');
   const pick = async index => {
+    editing = index;
+    render();
     const chosen = await choose(rows[index].value);
     if (chosen) rows[index].value = chosen;
     render();
   };
   const buttons = [
-    panelButton('add', 'Добавить', true, () => { rows.splice(current + 1, 0, {value: null}); current += 1; render(); }),
-    panelButton('copy', 'Скопировать', true, () => { rows.splice(current + 1, 0, {value: structuredClone(rows[current].value)}); current += 1; render(); }),
+    panelButton('add', 'Добавить', true, () => { rows.splice(current + 1, 0, {value: null}); current += 1; editing = current; render(); }),
+    panelButton('copy', 'Скопировать', true, () => { rows.splice(current + 1, 0, {value: structuredClone(rows[current].value)}); current += 1; editing = -1; render(); }),
     panelButton('change', 'Изменить', true, () => pick(current)),
-    panelButton('delete', 'Удалить', true, () => { rows.splice(current, 1); current = Math.min(current, rows.length - 1); render(); }),
-    panelButton('save', 'Сохранить в файл', false, () => {}),
+    panelButton('delete', 'Удалить', true, () => { rows.splice(current, 1); current = Math.min(current, rows.length - 1); editing = -1; render(); }),
+    panelButton('save', 'Закончить редактирование строки', false, () => { editing = -1; render(); }),
   ];
   const head = node('div', undefined, 'object-window-list-head');
   head.append(node('span', 'Список значений:'), ...buttons);
   function render() {
     for (const button of buttons.slice(1, 4)) button.disabled = current < 0;
+    buttons[4].disabled = editing < 0;
     list.replaceChildren(...rows.map((row, index) => {
       const shown = node('input');
       shown.readOnly = true;
-      shown.value = row.value ? text(row.value) : '';
-      const line = node('div', undefined, 'object-window-list-row value-list-edit-row' + (index === current ? ' current' : ''));
+      const line = node('div', undefined, 'object-window-list-row value-list-edit-row' + (index === current ? ' current' : '') + (index === editing ? ' editing' : ''));
       line.setAttribute('role', 'option');
       line.setAttribute('aria-selected', String(index === current));
-      line.addEventListener('click', () => { if (current !== index) { current = index; render(); } });
-      line.append(fieldWithButtons(shown, [fieldChoiceButton('Выбрать значение', () => pick(index))]));
+      line.addEventListener('click', () => { if (current !== index) { current = index; editing = -1; render(); } });
+      if (index !== editing) {
+        shown.value = row.value ? text(row.value) : '';
+        line.append(shown);
+        return line;
+      }
+      shown.value = row.value ? edited(row.value) : '';
+      const clear = clearButton('Очистить', () => { row.value = null; render(); });
+      clear.classList.add('field-button');
+      line.append(fieldWithButtons(shown, [fieldChoiceButton('Выбрать значение', () => pick(index)), clear]));
       return line;
     }));
   }
