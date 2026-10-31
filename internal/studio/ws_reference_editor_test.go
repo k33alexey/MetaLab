@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/k33alexey/MetaLab/internal/metadata"
@@ -214,5 +215,105 @@ func TestTheSchemasADescriptionImportsAreKeptBesideIt(t *testing.T) {
 	}
 	if after, _ := os.ReadDir(filepath.Join(workspace.root, "metadata", "ws-references")); len(after) != len(entries) {
 		t.Error("a refused import made a reference")
+	}
+}
+
+// The schemas a schema imports are taken too, the whole chain, as the
+// prototype takes them (ws-ssylka.md, «Цепочка схем, RPC, „Возможно
+// пустое“»; series-2.603/wsdl/dump): a description importing a schema
+// that imports another keeps «1.xsd» naming «file://2.xsd» and «2.xsd»; a
+// schema is read by an address relative to the schema naming it. Where a
+// description imports two and the first imports a third, the third is
+// «3.xsd» - found after the description's own (not shot: question В4 of
+// series 2.672) - and a schema named again, a chain going round too, is
+// taken once. Defects caught: the schemas of a schema left out - the
+// import failing at run time; a relative address read from the
+// description's place; a schema kept twice; a chain going round fetched
+// without end; the import inside a schema left naming the address.
+func TestTheChainOfSchemasIsKept(t *testing.T) {
+	t.Parallel()
+	workspace, err := Open(copyDemoProjectForStudioTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := func(namespace string, imports ...string) string {
+		text := `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="` + namespace + `">`
+		for _, location := range imports {
+			text += `<xs:import namespace="urn:x" schemaLocation="` + location + `"/>`
+		}
+		return text + `</xs:schema>`
+	}
+	description := func(imports ...string) string {
+		text := `<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" targetNamespace="urn:svc"><types>`
+		for _, location := range imports {
+			text += `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:svc"><xs:import namespace="urn:x" schemaLocation="` + location + `"/></xs:schema>`
+		}
+		return text + `</types></definitions>`
+	}
+	served := map[string]string{
+		"/chain.wsdl":  description("deep/a.xsd"),
+		"/deep/a.xsd":  schema("urn:a", "b.xsd"),
+		"/deep/b.xsd":  schema("urn:b"),
+		"/branch.wsdl": description("deep/a2.xsd", "c.xsd"),
+		"/deep/a2.xsd": schema("urn:a2", "b2.xsd"),
+		"/deep/b2.xsd": schema("urn:b2", "a2.xsd"),
+		"/c.xsd":       schema("urn:c", "deep/a2.xsd"),
+		"/broken.wsdl": description("deep/a3.xsd"),
+		"/deep/a3.xsd": schema("urn:a3", "missing.xsd"),
+		"/deep/c3.xsd": schema("urn:c3"),
+	}
+	fetched := map[string]int{}
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		fetched[request.URL.Path]++
+		mu.Unlock()
+		content, ok := served[request.URL.Path]
+		if !ok {
+			http.NotFound(response, request)
+			return
+		}
+		_, _ = response.Write([]byte(content))
+	}))
+	defer server.Close()
+	ctx := context.Background()
+	kept := func(address string) map[string]string {
+		t.Helper()
+		made, err := workspace.ImportWSReference(ctx, WSImport{Address: server.URL + address})
+		if err != nil {
+			t.Fatalf("%s: %v", address, err)
+		}
+		folder := filepath.Join(workspace.root, "metadata", "ws-references", made.Reference.Name)
+		entries, _ := os.ReadDir(folder)
+		files := map[string]string{}
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".xsd") || entry.Name() == "definition.xml" {
+				content, _ := os.ReadFile(filepath.Join(folder, entry.Name()))
+				files[entry.Name()] = string(content)
+			}
+		}
+		return files
+	}
+	chain := kept("/chain.wsdl")
+	if len(chain) != 3 || chain["definition.xml"] != description("file://1.xsd") || chain["1.xsd"] != schema("urn:a", "file://2.xsd") || chain["2.xsd"] != schema("urn:b") {
+		t.Errorf("the chain kept: %q", chain)
+	}
+	branch := kept("/branch.wsdl")
+	if len(branch) != 4 || branch["definition.xml"] != description("file://1.xsd", "file://2.xsd") || branch["1.xsd"] != schema("urn:a2", "file://3.xsd") ||
+		branch["2.xsd"] != schema("urn:c", "file://1.xsd") || branch["3.xsd"] != schema("urn:b2", "file://1.xsd") {
+		t.Errorf("the branches kept: %q", branch)
+	}
+	if fetched["/deep/a2.xsd"] != 1 || fetched["/deep/b2.xsd"] != 1 {
+		t.Errorf("a schema named again fetched %d and %d times, want once", fetched["/deep/a2.xsd"], fetched["/deep/b2.xsd"])
+	}
+	entries, _ := os.ReadDir(filepath.Join(workspace.root, "metadata", "ws-references"))
+	if _, err := workspace.ImportWSReference(ctx, WSImport{Address: server.URL + "/broken.wsdl"}); !errors.Is(err, errWSFileMissing) {
+		t.Errorf("a schema of a schema missing answered %v", err)
+	}
+	if after, _ := os.ReadDir(filepath.Join(workspace.root, "metadata", "ws-references")); len(after) != len(entries) {
+		t.Error("a refused import made a reference")
+	}
+	if _, err := metadata.Load(workspace.root); err != nil {
+		t.Fatalf("the project with the chains: %v", err)
 	}
 }

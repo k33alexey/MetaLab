@@ -175,58 +175,75 @@ func (workspace *Workspace) ImportWSReference(ctx context.Context, request WSImp
 }
 
 // wsSchema is a schema a description imports, as the reference keeps it
-// beside the description: «1.xsd» and on.
+// beside the description: «1.xsd» and on; address is where it was read.
 type wsSchema struct {
 	name    string
 	content []byte
+	address string
 }
 
 // wsImportedSchema finds where a description names a schema it imports or
 // includes: the attribute schemaLocation, its value.
 var wsImportedSchema = regexp.MustCompile(`(\sschemaLocation\s*=\s*["'])([^"']+)(["'])`)
 
-// fetchWSSchemas takes the schemas the description imports - each
-// schemaLocation of it, by the address of the description where it is
-// relative - and keeps them as the prototype does (ws-ssylka.md,
-// «Выгрузки»): «1.xsd», «2.xsd» in the order the description names them,
-// the description naming each «file://1.xsd». A schema named twice is taken
-// once. Answers the description so changed and the schemas; a schema that
-// cannot be read refuses the import with its address, as a description
-// does. The schemas a schema imports in turn are not taken (series 2.603,
-// question В7).
+// fetchWSSchemas takes the schemas the description imports and the schemas
+// they import in turn, the whole chain, and keeps them as the prototype
+// does (ws-ssylka.md, «Выгрузки», «Цепочка схем, RPC, „Возможно пустое“»;
+// series-2.603/wsdl/dump): «1.xsd», «2.xsd» in the order they are found -
+// the description's in the order it names them, then those of «1.xsd», of
+// «2.xsd» and on - each import naming its schema «file://N.xsd», in the
+// description and in a schema alike. A schema is read by its address,
+// relative to the address of the file naming it or absolute, and taken once
+// however many files name it - a chain going round too. Answers the
+// description so changed and the schemas; a schema that cannot be read
+// refuses the import with its address, as a description does.
 func fetchWSSchemas(ctx context.Context, content []byte, location string) ([]byte, []wsSchema, error) {
-	base, err := url.Parse(location)
-	if err != nil {
-		return nil, nil, err
-	}
 	var schemas []wsSchema
 	numbers := map[string]string{}
-	var failure error
-	changed := wsImportedSchema.ReplaceAllFunc(content, func(match []byte) []byte {
-		parts := wsImportedSchema.FindSubmatch(match)
-		written := string(parts[2])
-		name, ok := numbers[written]
-		if !ok && failure == nil {
-			address := written
-			if kept, found := strings.CutPrefix(written, "file://"); found && metadata.WSReferenceSchemaFile(kept) {
+	// keep names each schema the text read at base names by the file it is
+	// kept as, reading the schemas named for the first time.
+	keep := func(text []byte, base string) ([]byte, error) {
+		from, err := url.Parse(base)
+		if err != nil {
+			return nil, err
+		}
+		var failure error
+		changed := wsImportedSchema.ReplaceAllFunc(text, func(match []byte) []byte {
+			parts := wsImportedSchema.FindSubmatch(match)
+			if failure != nil {
+				return match
+			}
+			address := string(parts[2])
+			if kept, found := strings.CutPrefix(address, "file://"); found && metadata.WSReferenceSchemaFile(kept) {
 				address = kept
 			}
 			if reference, err := url.Parse(address); err == nil {
-				address = base.ResolveReference(reference).String()
+				address = from.ResolveReference(reference).String()
 			}
-			schema, _, err := fetchWSDefinition(ctx, address)
-			if err != nil {
-				failure = err
-				return match
+			name, ok := numbers[address]
+			if !ok {
+				schema, _, err := fetchWSDefinition(ctx, address)
+				if err != nil {
+					failure = err
+					return match
+				}
+				name = strconv.Itoa(len(schemas)+1) + ".xsd"
+				numbers[address] = name
+				schemas = append(schemas, wsSchema{name: name, content: schema, address: address})
 			}
-			name = strconv.Itoa(len(schemas)+1) + ".xsd"
-			numbers[written] = name
-			schemas = append(schemas, wsSchema{name: name, content: schema})
+			return []byte(string(parts[1]) + "file://" + name + string(parts[3]))
+		})
+		return changed, failure
+	}
+	changed, err := keep(content, location)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The schemas found are read in their turn, those they find appended.
+	for at := 0; at < len(schemas); at++ {
+		if schemas[at].content, err = keep(schemas[at].content, schemas[at].address); err != nil {
+			return nil, nil, err
 		}
-		return []byte(string(parts[1]) + "file://" + name + string(parts[3]))
-	})
-	if failure != nil {
-		return nil, nil, failure
 	}
 	return changed, schemas, nil
 }
