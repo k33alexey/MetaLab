@@ -215,7 +215,9 @@ func TestTheClientInterfaceWindowIsThePrototypes(t *testing.T) {
 // the panel of history onto the side Право, the panel of functions onto the
 // panel of sections, the placed panel of sections onto the side Низ; then
 // rows of the tree: the panel of open windows onto Право, the panel none
-// chosen onto the panel of favourites, the panel of history onto a group.
+// chosen onto the panel of favourites, the panel of history onto a group;
+// then groups: the group of Лево onto Низ, the group of Верх onto the panel
+// of open windows, the group of Право onto a panel of the group of Низ.
 const clientInterfaceDragWalk = `(async () => {
   const studio = window.__studio, steps = {};
   steps.errors = []; window.addEventListener('unhandledrejection', event => steps.errors.push(String(event.reason?.stack || event.reason))); window.addEventListener('error', event => steps.errors.push(String(event.message)));
@@ -255,6 +257,12 @@ const clientInterfaceDragWalk = `(async () => {
   steps.rowOnPanel = await drag(() => row('Стандартная панель'), () => row('Панель избранного'));
   steps.movedOnPanel = rows();
   steps.rowOnGroup = await drag(() => row('Панель истории'), () => row('Группа', 1));
+  steps.movedOnGroup = rows();
+  steps.groupOnSide = await drag(() => row('Группа', 1), () => row('Низ'));
+  steps.groupMovedOnSide = rows();
+  steps.groupOnPanel = await drag(() => row('Группа', 0), () => row('Панель открытых'));
+  steps.groupMovedOnPanel = rows();
+  steps.groupOnPanelOfGroup = await drag(() => row('Группа', 1), () => row('Панель разделов'));
   steps.notTaken = rows();
   steps.groupDragged = row('Группа').draggable;
   steps.panelDragged = row('Панель истории').draggable;
@@ -270,13 +278,17 @@ const clientInterfaceDragWalk = `(async () => {
 // side on the side itself, before a panel in its group - current, the list
 // marking it placed; a panel placed already puts «Стандартная панель» there
 // and stays; a panel of the tree moves - onto a side to its end, onto a
-// panel before it - and its old place goes; a group takes no row of the
-// tree and is not dragged; a black frame round the row under the drag.
+// panel before it, onto a group to its end - and its old place goes; a
+// group of the tree moves onto a side to its end, onto a panel of a side
+// before it, with its panels, and onto a panel of a group it does not go,
+// the frame drawn all the same (configurator-2026-10-31/vopr-2672/04-13);
+// a black frame round the row under the drag.
 // Defects caught: the panel put first, into a group on a side, after the
 // panel dropped onto; the row current left where it was; the mark not
 // following; a placed panel standing twice or refused; a row of the tree
-// copied, not moved, or taken by a group; a group dragged, a panel of the
-// tree not; no frame.
+// copied, not moved, or refused by a group; a group not dragged, put
+// after the panel, without its panels or into a group; a panel of the
+// tree not dragged; no frame.
 func TestAPanelDraggedStandsWhereThePrototypePutsIt(t *testing.T) {
 	root := copyDemoProjectForStudioTest(t)
 	if err := os.WriteFile(filepath.Join(root, project.ClientInterfaceFile), []byte(erpClientInterface), 0o644); err != nil {
@@ -288,10 +300,12 @@ func TestAPanelDraggedStandsWhereThePrototypePutsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var steps struct {
-		List, Dropped, ListAfter, OnSide, OnPanel, Placed, MovedOnSide, MovedOnPanel, NotTaken, ListEnd []string
-		OverGroup, OverSide, OverPanel, OverWithPlaced, RowOnSide, RowOnPanel, RowOnGroup               []bool
-		GroupDragged, PanelDragged, Dirty                                                               bool
-		Errors                                                                                          []string
+		List, Dropped, ListAfter, OnSide, OnPanel, Placed, MovedOnSide, MovedOnPanel, MovedOnGroup, NotTaken, ListEnd []string
+		GroupMovedOnSide, GroupMovedOnPanel                                                                           []string
+		OverGroup, OverSide, OverPanel, OverWithPlaced, RowOnSide, RowOnPanel, RowOnGroup                             []bool
+		GroupOnSide, GroupOnPanel, GroupOnPanelOfGroup                                                                []bool
+		GroupDragged, PanelDragged, Dirty                                                                             bool
+		Errors                                                                                                        []string
 	}
 	if err := json.Unmarshal(result, &steps); err != nil {
 		t.Fatalf("the walk answered %s: %v", result, err)
@@ -320,9 +334,15 @@ func TestAPanelDraggedStandsWhereThePrototypePutsIt(t *testing.T) {
 	expect("a row moved onto a side", steps.MovedOnSide, []string{"Верх", "Группа", "", "Низ", "Стандартная панель", "Лево", "Группа", "Панель функций текущего раздела", "Панель разделов", "Панель избранного", "Право", "Панель истории", "Панель открытых *"})
 	expect("a row taken by a panel", steps.RowOnPanel, taken)
 	expect("a row moved onto a panel", steps.MovedOnPanel, []string{"Верх", "Группа", "", "Низ", "Лево", "Группа", "Панель функций текущего раздела", "Панель разделов", "Стандартная панель *", "Панель избранного", "Право", "Панель истории", "Панель открытых"})
-	expect("a row over a group", steps.RowOnGroup, []bool{false, false})
-	expect("nothing taken by a group", steps.NotTaken, steps.MovedOnPanel)
-	expect("a group dragged", steps.GroupDragged, false)
+	expect("a row taken by a group", steps.RowOnGroup, taken)
+	expect("a row moved onto a group", steps.MovedOnGroup, []string{"Верх", "Группа", "", "Низ", "Лево", "Группа", "Панель функций текущего раздела", "Панель разделов", "Стандартная панель", "Панель избранного", "Панель истории *", "Право", "Панель открытых"})
+	expect("a group taken by a side", steps.GroupOnSide, taken)
+	expect("a group moved onto a side", steps.GroupMovedOnSide, []string{"Верх", "Группа", "", "Низ", "Группа *", "Панель функций текущего раздела", "Панель разделов", "Стандартная панель", "Панель избранного", "Панель истории", "Лево", "Право", "Панель открытых"})
+	expect("a group taken by a panel of a side", steps.GroupOnPanel, taken)
+	expect("a group moved onto a panel of a side", steps.GroupMovedOnPanel, []string{"Верх", "Низ", "Группа", "Панель функций текущего раздела", "Панель разделов", "Стандартная панель", "Панель избранного", "Панель истории", "Лево", "Право", "Группа *", "", "Панель открытых"})
+	expect("a panel of a group framed under a group", steps.GroupOnPanelOfGroup, taken)
+	expect("nothing moved by a group onto a panel of a group", steps.NotTaken, steps.GroupMovedOnPanel)
+	expect("a group dragged", steps.GroupDragged, true)
 	expect("a panel of the tree dragged", steps.PanelDragged, true)
 	expect("the list at the end", steps.ListEnd, []string{"Панель разделов ■ ↕", "Панель избранного ■ ↕", "Панель истории ■ ↕", "Панель открытых ■ ↕", "Панель функций текущего раздела ■ ↕"})
 	expect("changed", steps.Dirty, true)

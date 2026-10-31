@@ -30,14 +30,15 @@
    «Свойства». «Добавить» at a panel puts the new element before it - on
    its side, or in its group, where «Тип элемента» offers the panel alone
    (dosyomka-2649/02-09). A project writing no interface shows the default
-   one (metadata.DefaultClientInterface). A panel of the list is dragged
-   onto a side, a group or a panel of the tree and a panel of the tree onto
-   a side or a panel, a black frame round the row under it (konfiguraciya.md,
-   «Досъёмка 31.10.2026, перетаскивание»; dosyomka-2667/18-28): where it
-   goes - and that a panel placed already puts a panel none chosen there -
-   the server says (behavior.DropClientInterfacePanel,
-   MoveClientInterfacePanelTo); the row dropped becomes current. A group is
-   not dragged and takes no row of the tree - not shot.
+   one (metadata.DefaultClientInterface). A panel of the list and a panel
+   or a group of the tree are dragged onto a side, a group or a panel of
+   the tree, a black frame round the row under it (konfiguraciya.md,
+   «Досъёмка 31.10.2026, перетаскивание»; dosyomka-2667/18-28,
+   configurator-2026-10-31/vopr-2672/04-13): where it goes - that a panel
+   placed already puts a panel none chosen there, that a group onto a panel
+   of a group changes nothing - the server says
+   (behavior.DropClientInterfacePanel, MoveClientInterfaceElementTo); the
+   row dropped becomes current.
 
    around is {changed(), palette, paletteTitle}. */
 function createClientInterfaceEditor(host, around) {
@@ -130,7 +131,7 @@ function createClientInterfaceEditor(host, around) {
     if (await edit('choose', {panel: chosen})) changed();
   }
   // A drop onto the row at place: a panel of the list ({panel}) or the
-  // panel of the tree at from ({from}).
+  // row of the tree at from ({from}).
   async function drop(place, dropped) {
     current = place;
     const edited = await edit(dropped.panel ? 'drop-panel' : 'drop-row', dropped);
@@ -203,13 +204,11 @@ function createClientInterfaceEditor(host, around) {
       line.append(node('span', item.caption));
       line.addEventListener('mousedown', () => { current = item.place; palette = 'tree'; draw(); });
       line.addEventListener('contextmenu', event => { event.preventDefault(); current = item.place; palette = 'tree'; draw(); menu(event); });
-      if (item.kind === 'panel') {
+      if (item.kind !== 'side') {
         line.draggable = true;
         line.addEventListener('dragstart', event => event.dataTransfer.setData(DraggedRow, JSON.stringify(item.place)));
       }
-      // A group takes a panel of the list alone: a row of the tree onto it
-      // is not shot.
-      const takes = types => types.includes(DraggedPanel) || types.includes(DraggedRow) && item.kind !== 'group';
+      const takes = types => types.includes(DraggedPanel) || types.includes(DraggedRow);
       line.addEventListener('dragover', event => { if (!takes(event.dataTransfer.types)) return; event.preventDefault(); line.classList.add('drop-target'); });
       line.addEventListener('dragleave', () => line.classList.remove('drop-target'));
       line.addEventListener('drop', event => {
